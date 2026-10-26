@@ -1,0 +1,35 @@
+{
+  "status": "DESIGN_ONLY",
+  "protocol_version": "1.0",
+  "interfaces": [
+    "DescribeCatalog",
+    "PrepareRead",
+    "ReadPage",
+    "AuthorizeCurrent"
+  ],
+  "optional_future_capabilities": [
+    "PrepareDocument",
+    "ConfirmIssue"
+  ],
+  "trusted_context_fields": [
+    "platform_tenant_id",
+    "integration_id",
+    "issuer",
+    "subject",
+    "authorized_company_scope"
+  ],
+  "binding_invariants": [
+    "principal",
+    "integration",
+    "tenant",
+    "query_hash",
+    "catalog_versions",
+    "source_snapshot_ref",
+    "source_watermark",
+    "scope_handle",
+    "expires_at"
+  ],
+  "business_authority_owner": "source_product",
+  "cross_product_join": "REQUIRES_SEPARATE_CONTRACT",
+  "production_qualification": "NOT_APPROVED"
+}

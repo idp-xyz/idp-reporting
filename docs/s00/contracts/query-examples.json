@@ -1,0 +1,72 @@
+{
+  "status": "DESIGN_EXAMPLES_ONLY",
+  "note": "模拟合同；并非真实 Brant/Parcel 接入或已发布接口",
+  "examples": [
+    {
+      "name": "Brant 应收模拟合同",
+      "query": {
+        "schema_version": "1.0",
+        "integration_id": "brant-contract-demo",
+        "dataset": {
+          "id": "receivables.aging",
+          "version": "1.0.0"
+        },
+        "company_ids": [
+          "company_demo"
+        ],
+        "metrics": [
+          {
+            "id": "ar.open_balance",
+            "version": "1.0.0"
+          }
+        ],
+        "dimensions": [
+          "customer.id",
+          "aging.bucket"
+        ],
+        "filters": [],
+        "sort": [],
+        "as_of": "2026-10-26",
+        "timezone": "Asia/Shanghai",
+        "currency_policy": {
+          "id": "ledger_base",
+          "version": "1.0.0"
+        },
+        "page": {
+          "limit": 50
+        }
+      }
+    },
+    {
+      "name": "非财务运单模拟合同",
+      "query": {
+        "schema_version": "1.0",
+        "integration_id": "shipment-contract-demo",
+        "dataset": {
+          "id": "shipments.daily",
+          "version": "1.0.0"
+        },
+        "company_ids": [
+          "company_demo"
+        ],
+        "metrics": [
+          {
+            "id": "shipment.count",
+            "version": "1.0.0"
+          }
+        ],
+        "dimensions": [
+          "shipment.destination_country",
+          "shipment.service_code"
+        ],
+        "filters": [],
+        "sort": [],
+        "as_of": "2026-10-26",
+        "timezone": "Asia/Shanghai",
+        "page": {
+          "limit": 50
+        }
+      }
+    }
+  ]
+}
