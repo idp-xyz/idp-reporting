@@ -11,6 +11,7 @@ import (
 	"idp.local/reporting/adapters/contractsim/pgsource"
 	"idp.local/reporting/console"
 	"idp.local/reporting/export/xlsx"
+	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
 	"idp.local/reporting/storage/postgres"
@@ -37,6 +38,7 @@ func run() error {
 	useMemory := flag.Bool("memory", false, "explicit ephemeral demonstration; loses all data on restart")
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
+	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -108,7 +110,16 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	handler, e := httpapi.Handler(s, auth)
+	var layoutStores []*layouts.Store
+	if *layoutDir != "" {
+		store, err := layouts.Open(*layoutDir)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		layoutStores = append(layoutStores, store)
+	}
+	handler, e := httpapi.Handler(s, auth, layoutStores...)
 	if e != nil {
 		return e
 	}

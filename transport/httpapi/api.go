@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
+	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"io"
 	"mime"
@@ -31,7 +32,10 @@ func DemoBearer(secret string, p r.Principal) (Authenticate, error) {
 		return copy, nil
 	}, nil
 }
-func Handler(service *r.Service, authenticate Authenticate) (http.Handler, error) {
+func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*layouts.Store) (http.Handler, error) {
+	if len(layoutStores) > 1 || (len(layoutStores) == 1 && layoutStores[0] == nil) {
+		return nil, r.ErrInvalid
+	}
 	if service == nil || authenticate == nil {
 		return nil, r.ErrInvalid
 	}
@@ -63,6 +67,88 @@ func Handler(service *r.Service, authenticate Authenticate) (http.Handler, error
 		})
 	}
 	const base = "/api/reporting/v1"
+	if len(layoutStores) == 1 {
+		store := layoutStores[0]
+		authorize := func(req *http.Request, p r.Principal, d layouts.Document) error {
+			if e := layouts.Validate(d); e != nil {
+				return e
+			}
+			catalog, e := service.Catalog(req.Context(), p, d.Binding.Integration)
+			if e != nil {
+				return e
+			}
+			for _, dataset := range catalog {
+				if dataset.Ref == d.Binding.Dataset {
+					for _, c := range d.Columns {
+						found := false
+						for _, known := range dataset.Columns {
+							if known.ID == c.ID {
+								found = true
+							}
+						}
+						if !found {
+							return r.ErrDenied
+						}
+					}
+					return nil
+				}
+			}
+			return r.ErrDenied
+		}
+		bind("GET "+base+"/layouts", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			all, e := store.List(p.Identity)
+			if e != nil {
+				return e
+			}
+			out := []map[string]any{}
+			for _, v := range all {
+				if e = authorize(req, p, v.Layout); e != nil {
+					if errors.Is(e, r.ErrDenied) || errors.Is(e, r.ErrNotFound) {
+						continue
+					}
+					return e
+				}
+				out = append(out, map[string]any{"id": v.ID, "version": v.Version, "binding": v.Layout.Binding})
+			}
+			return send(w, 200, out)
+		})
+		bind("GET "+base+"/layouts/{id}", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			q := req.URL.Query()
+			if len(q) != 1 || len(q["version"]) != 1 {
+				return r.ErrInvalid
+			}
+			version, e := strconv.Atoi(q.Get("version"))
+			if e != nil {
+				return r.ErrInvalid
+			}
+			v, e := store.Get(p.Identity, req.PathValue("id"), version)
+			if e != nil {
+				return e
+			}
+			if e = authorize(req, p, v.Layout); e != nil {
+				return e
+			}
+			return send(w, 200, v)
+		})
+		bind("POST "+base+"/layouts", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			var input struct {
+				ID       string           `json:"id"`
+				Expected int              `json:"expected_version"`
+				Layout   layouts.Document `json:"layout"`
+			}
+			if e := decode(req, &input); e != nil {
+				return e
+			}
+			if e := authorize(req, p, input.Layout); e != nil {
+				return e
+			}
+			v, e := store.Save(p.Identity, input.ID, input.Expected, input.Layout)
+			if e != nil {
+				return e
+			}
+			return send(w, 201, v)
+		})
+	}
 	bind("GET "+base+"/session", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": slices.Clone(p.Integrations)})
 	})

@@ -1,0 +1,63 @@
+package httpapi_test
+
+import (
+	"encoding/json"
+	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/layouts"
+	"idp.local/reporting/transport/httpapi"
+	"path/filepath"
+	"testing"
+)
+
+func TestLayoutRoutesRecheckCatalogAndVersion(t *testing.T) {
+	service, _ := setup(t)
+	store, e := layouts.Open(filepath.Join(t.TempDir(), "private"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	auth, _ := httpapi.DemoBearer(secret, contractsim.DemoPrincipal())
+	h, e := httpapi.Handler(service, auth, store)
+	if e != nil {
+		t.Fatal(e)
+	}
+	q := contractsim.FinancialQuery()
+	d := layouts.Document{Schema: "1.0", Binding: layouts.Binding{Integration: q.Integration, Dataset: q.Dataset}, Columns: []layouts.Column{{ID: "open_amount", Align: "right"}}}
+	// Use an actual published field id rather than a product assumption.
+	catalog, e := service.Catalog(t.Context(), contractsim.DemoPrincipal(), q.Integration)
+	if e != nil {
+		t.Fatal(e)
+	}
+	d.Columns[0].ID = catalog[0].Columns[0].ID
+	body, _ := json.Marshal(map[string]any{"id": "", "expected_version": 0, "layout": d})
+	if request(h, "POST", "/api/reporting/v1/layouts", body, false).Code != 401 {
+		t.Fatal("anonymous save")
+	}
+	w := request(h, "POST", "/api/reporting/v1/layouts", body, true)
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var first layouts.Entry
+	if json.Unmarshal(w.Body.Bytes(), &first) != nil {
+		t.Fatal("response")
+	}
+	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"?version=1", nil, true).Code != 200 {
+		t.Fatal("get")
+	}
+	body, _ = json.Marshal(map[string]any{"id": first.ID, "expected_version": 0, "layout": d})
+	if request(h, "POST", "/api/reporting/v1/layouts", body, true).Code != 409 {
+		t.Fatal("stale save")
+	}
+	d.Columns[0].ID = "not-published"
+	body, _ = json.Marshal(map[string]any{"id": "", "expected_version": 0, "layout": d})
+	if request(h, "POST", "/api/reporting/v1/layouts", body, true).Code != 403 {
+		t.Fatal("unknown field")
+	}
+	if request(h, "POST", "/api/reporting/v1/layouts", []byte(`{"tenant":"admin"}`), true).Code != 400 {
+		t.Fatal("authority fields")
+	}
+	disabled, _ := httpapi.Handler(service, auth)
+	if request(disabled, "GET", "/api/reporting/v1/layouts", nil, true).Code != 404 {
+		t.Fatal("not opt-in")
+	}
+}

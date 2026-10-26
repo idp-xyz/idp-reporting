@@ -3,7 +3,7 @@
   const base = '/api/reporting/v1';
   const $ = (id) => document.getElementById(id);
   const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',tasks:'任务工作区',system:'能力与环境'};
-  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
+  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   class Failure extends Error { constructor(status,code) { super(code); this.status=status; this.code=code; } }
   class Stale extends Error {}
@@ -32,7 +32,7 @@
   }
   function disconnect(message) {
     state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
-    state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
+    state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
@@ -175,8 +175,8 @@
     $('result-table').tHead.replaceChildren(header);
     for(const values of result.rows){const row=node('tr');for(const entry of columns){const i=result.columns.findIndex(c=>c.id===entry.id);const cell=node('td',values[i],entry.align==='right'?'layout-right':'layout-left');cell.title=values[i];row.append(cell);}body.append(row);}
   }
-  function applyLayout(layout) {
-    if(!state.session||!state.lastResult||state.catalogLoading||state.busy)throw new Failure(400,'INVALID_REQUEST');
+  function applyLayout(layout,allowPending=false) {
+    if(!state.session||!state.lastResult||state.catalogLoading||(state.busy&&!allowPending))throw new Failure(400,'INVALID_REQUEST');
     const keys=(value,names)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===names.sort().join(',');
     if(!keys(layout,['schema_version','binding','columns'])||layout.schema_version!=='1.0'||!keys(layout.binding,['integration_id','dataset'])||!keys(layout.binding.dataset,['id','version'])||layout.binding.integration_id!==state.query.integration_id||layout.binding.dataset.id!==state.query.dataset.id||layout.binding.dataset.version!==state.query.dataset.version||!Array.isArray(layout.columns)||!layout.columns.length||layout.columns.length>100||new Set(layout.columns.map(c=>c?.id)).size!==layout.columns.length||!layout.columns.every(c=>keys(c,['id','align'])&&typeof c.id==='string'&&state.lastResult.columns.some(known=>known.id===c.id)&&['left','right'].includes(c.align)))throw new Failure(400,'INVALID_REQUEST');
     state.layout=copy(layout);renderTable(state.lastResult);renderDesigner();$('layout-status').textContent='布局已应用；数据和授权范围保持当前查询。';
@@ -196,6 +196,14 @@
   $('layout-reset').addEventListener('click',()=>layoutAction(()=>{state.layout=null;renderDesigner();renderTable(state.lastResult);$('layout-status').textContent='已恢复全部列。';}));
   $('layout-save').addEventListener('click',()=>layoutAction(()=>{const text=JSON.stringify(state.layout,null,2);if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');$('layout-json').value=text;const url=URL.createObjectURL(new Blob([$('layout-json').value],{type:'application/json'}));const link=node('a');link.href=url;link.download='report-layout.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);$('layout-status').textContent='布局文件已生成，不含业务行或访问令牌。';}));
   $('layout-open').addEventListener('click',()=>layoutAction(()=>{const text=$('layout-json').value;if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');let layout;try{layout=JSON.parse(text);}catch(_){throw new Failure(400,'INVALID_REQUEST');}applyLayout(layout);}));
+  function savedBindingMatches(saved) {const b=saved?.layout?.binding;const current=layoutBinding();return b&&b.integration_id===current.integration_id&&b.dataset.id===current.dataset.id&&b.dataset.version===current.dataset.version;}
+  function saveServerLayout(fresh) {layoutAction(()=>{const layout=copy(state.layout);const saved=!fresh&&savedBindingMatches(state.savedLayout)?state.savedLayout:null;perform(async m=>{const entry=await request('/layouts',{method:'POST',body:{id:saved?.id||'',expected_version:saved?.version||0,layout:layout}});if(!current(m))throw new Stale();if(!isID(entry.id)||!Number.isSafeInteger(entry.version)||entry.version<1)throw new Failure(0,'INVALID_RESPONSE');state.savedLayout=entry;$('layout-server-status').textContent='已保存 '+entry.id+' · 版本 '+entry.version+'；再次保存会创建新版本。';},{label:'布局保存'});});}
+  $('layout-server-save').addEventListener('click',()=>saveServerLayout(false));
+  $('layout-server-new').addEventListener('click',()=>saveServerLayout(true));
+  $('layout-server-list').addEventListener('click',()=>perform(async m=>{const list=await request('/layouts');if(!current(m))throw new Stale();if(!Array.isArray(list)||list.length>16||!list.every(v=>isID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw new Failure(0,'INVALID_RESPONSE');$('layout-server-listing').replaceChildren();for(const item of list){const option=node('option',item.id+' · 最新版本 '+item.version);option.value=item.id;option.dataset.version=String(item.version);$('layout-server-listing').append(option);}$('layout-server-version').value=String(list[0]?.version||1);$('layout-server-status').textContent='当前身份可访问 '+list.length+' 个服务器布局。';},{label:'布局目录'}));
+  $('layout-server-listing').addEventListener('change',()=>{$('layout-server-version').value=$('layout-server-listing').selectedOptions[0]?.dataset.version||'1';});
+  $('layout-server-open').addEventListener('click',()=>layoutAction(()=>{const id=$('layout-server-listing').value,version=Number($('layout-server-version').value);if(!isID(id)||!Number.isSafeInteger(version)||version<1||version>20)throw new Failure(400,'INVALID_REQUEST');perform(async m=>{const entry=await request('/layouts/'+id+'?version='+version);if(!current(m))throw new Stale();if(entry.id!==id||entry.version!==version)throw new Failure(0,'INVALID_RESPONSE');
+    applyLayout(entry.layout,true);state.savedLayout=entry;$('layout-server-status').textContent='正在编辑 '+id+' · 版本 '+version+'；旧版本保存若已过期会返回冲突。';},{label:'布局打开'});}));
   function renderResult(result,query,meta) {
     checkResult(result);state.lastResult=result;state.query=copy(query);
     renderDesigner();renderTable(result);
