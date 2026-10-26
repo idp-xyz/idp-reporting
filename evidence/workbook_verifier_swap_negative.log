@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/tmp/reporting-swapped-workbooks-mo89t931/scripts/verify_workbooks.py", line 36, in <module>
+    if metadata.get('B4','') != expected_dataset: raise ValueError('fixture dataset/name mismatch')
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: fixture dataset/name mismatch

@@ -9,6 +9,9 @@ records = []
 (repo / 'evidence/workbook_checks.json').write_text(json.dumps({'status': 'RUNNING'}) + '\n')
 paths = sorted((repo / 'evidence').glob('pg16_*_sample_*.xlsx')) + sorted((repo / 'evidence').glob('independent_sample_*.xlsx')) + sorted((repo / 'evidence').glob('pg16_recovery_*.xlsx'))
 if len(paths) != 14: raise ValueError('fourteen PG/HTTP/recovery workbooks required')
+finance_names={'pg16_normal_sample_1.xlsx','pg16_race_sample_1.xlsx','independent_sample_1.xlsx','pg16_recovery_before_1.xlsx','pg16_recovery_process_restart_1.xlsx','pg16_recovery_database_restart_1.xlsx'}
+shipment_names={'pg16_normal_sample_2.xlsx','pg16_race_sample_2.xlsx','independent_sample_2.xlsx','pg16_recovery_before_2.xlsx','pg16_recovery_process_restart_2.xlsx','pg16_recovery_database_restart_2.xlsx','pg16_recovery_pending_export.xlsx','pg16_recovery_other_product.xlsx'}
+if {p.name for p in paths} != finance_names|shipment_names: raise ValueError('unexpected fixture artifact names')
 for path in paths:
     with zipfile.ZipFile(path) as book:
         if book.testzip() is not None: raise ValueError('CRC failure')
@@ -28,8 +31,9 @@ for path in paths:
                 out[cell.attrib['r']] = value
             return out
         data, totals, metadata = cells(1), cells(2), cells(3)
-        financial = metadata.get('B4','') == 'receivables.aging@1.0.0'
-        if not financial and metadata.get('B4','') != 'shipments.daily@1.0.0': raise ValueError('unknown fixture dataset')
+        financial = path.name in finance_names
+        expected_dataset='receivables.aging@1.0.0' if financial else 'shipments.daily@1.0.0'
+        if metadata.get('B4','') != expected_dataset: raise ValueError('fixture dataset/name mismatch')
         expected = '9007199254740993.01' if financial else '9007199254741000'
         if totals.get('B2') != expected: raise ValueError('exact total mismatch')
         if financial:

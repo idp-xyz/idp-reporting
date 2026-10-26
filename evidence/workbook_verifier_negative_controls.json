@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "case": "swap finance and shipment workbook bytes under the two original normal-run names",
+  "expected": "nonzero exit due independent name/dataset mismatch; no PASS status",
+  "exit_code": 1,
+  "original_artifacts_modified": false
+}
