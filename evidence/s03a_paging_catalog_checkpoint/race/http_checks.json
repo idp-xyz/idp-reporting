@@ -1,0 +1,32 @@
+{
+  "checks": [
+    "signed JWT HTTP snapshot/export chains",
+    "frozen pagination",
+    "different subject and mapped tenant cannot read existing assets",
+    "wrong audience rejected with 401",
+    "missing exact scope rejected with 403",
+    "source revocation blocks job/rows/file",
+    "unrelated product file unchanged",
+    "binding removal rejects subsequent authentication"
+  ],
+  "identity": "locally signed RSA access JWT; no deployed IdP",
+  "outputs": {
+    "finance": {
+      "Snapshot": "8cf8d51bd9081c69803c5d00f9e8e92b",
+      "Artifact": "71434a920c2b9c44af309950d23913df",
+      "Job": "bd906ebc8239d3cdaeb9bc0191e12930",
+      "SHA256": "574b971f186b976020461687f01207255df12c8de6872cd761d2a963351a5851",
+      "Bytes": 7915
+    },
+    "shipments": {
+      "Snapshot": "0e0ae38748a961d8cb2553c11054594d",
+      "Artifact": "a69e85b6aadbd4d3320433b6af5157b0",
+      "Job": "c357f7ef47c5d30d0bfd7be98c00882a",
+      "SHA256": "612d9018a0183ba467c9b629e017e668d07fd61035d6b4f68622234dbd3ade3e",
+      "Bytes": 7859
+    }
+  },
+  "source": "two in-memory contract simulators",
+  "status": "PASS",
+  "transport": "TLS loopback HTTPS"
+}

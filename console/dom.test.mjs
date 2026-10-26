@@ -182,3 +182,59 @@ test('an old product catalog failure cannot clear a newer product preview',async
     assert.equal(a.$('result-table').textContent,current);assert.equal(a.$('notice').textContent,notice);assert.equal(a.$('result-table').tBodies[0].rows.length,2);
   }finally{release();a.close();}
 });
+
+test('an old task refresh error cannot clear a changed-query preview',async()=>{
+  let holding=false,entered=false,release;const blocked=new Promise(resolve=>release=resolve);
+  const a=app(async(path)=>{if(holding&&/\/jobs\/[a-f0-9]{32}$/.test(path)){entered=true;await blocked;return problem(403,'ACCESS_DENIED');}});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    holding=true;a.$('tasks-body').querySelector('button').click();await until(()=>entered,'task refresh pending');
+    a.input('query-date','2026-10-25');a.click('preview');await until(()=>a.$('result-kind').textContent==='查询预览'&&!a.$('preview').disabled,'changed-query preview');
+    const notice=a.$('notice').textContent;release();await sleep(60);
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.equal(a.$('notice').textContent,notice);
+    assert.ok(a.$('tasks-body').textContent.includes('访问受限'),'task bookkeeping still updates');
+  }finally{release();a.close();}
+});
+
+test('a task denial affects its snapshot rather than an unrelated current preview',async()=>{
+  let holding=false,entered=false,release;const blocked=new Promise(resolve=>release=resolve);
+  const a=app(async(path)=>{if(holding&&/\/jobs\/[a-f0-9]{32}$/.test(path)){entered=true;await blocked;return problem(403,'ACCESS_DENIED');}});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    holding=true;a.$('tasks-body').querySelector('button').click();await until(()=>entered,'task refresh pending');
+    a.click('preview');await until(()=>a.$('result-kind').textContent==='查询预览'&&!a.$('preview').disabled,'same-query new preview');
+    release();await sleep(60);
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.ok(a.$('notice').textContent.startsWith('任务刷新：'));
+  }finally{release();a.close();}
+});
+
+test('a current task denial clears the corresponding visible snapshot',async()=>{
+  let denied=false;const a=app(async(path)=>{if(denied&&/\/jobs\/[a-f0-9]{32}$/.test(path))return problem(403,'ACCESS_DENIED');});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'visible snapshot');
+    denied=true;a.$('tasks-body').querySelector('button').click();await until(()=>a.$('notice').textContent.startsWith('任务刷新：'),'current task denial');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,0);assert.equal(a.$('export').disabled,true);
+    assert.ok(a.$('tasks-body').textContent.includes('访问受限'));
+  }finally{a.close();}
+});
+
+test('an old task cancellation error cannot replace a changed-query result',async()=>{
+  let phase='',entered=false,release;const blocked=new Promise(resolve=>release=resolve);
+  const a=app(async(path,options)=>{
+    if(phase==='running'&&/\/jobs\/[a-f0-9]{32}$/.test(path)){
+      // Contract-boundary state injection makes the cancel control available.
+      const response=await fetch(url+path,options);const job=await response.json();job.state='running';delete job.snapshot_id;delete job.artifact_id;
+      return new Response(JSON.stringify(job),{headers:{'Content-Type':'application/json'}});
+    }
+    if(phase==='cancel'&&path.endsWith('/cancel')){entered=true;await blocked;return problem(403,'ACCESS_DENIED');}
+  });
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    phase='running';a.$('tasks-body').querySelector('button').click();
+    const cancel=()=>Array.from(a.$('tasks-body').querySelectorAll('button')).find(b=>b.textContent==='取消');
+    await until(()=>!!cancel(),'cancel control for in-progress task');phase='cancel';cancel().click();await until(()=>entered,'cancel response pending');
+    a.input('query-date','2026-10-25');a.click('preview');await until(()=>a.$('result-kind').textContent==='查询预览'&&!a.$('preview').disabled,'new preview after cancel request');
+    const notice=a.$('notice').textContent;release();await sleep(60);
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.equal(a.$('notice').textContent,notice);
+  }finally{release();a.close();}
+});

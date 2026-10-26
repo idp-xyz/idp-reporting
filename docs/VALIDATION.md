@@ -23,7 +23,10 @@ paging, page-limit consistency, repeated catalog refresh, and stale product erro
 The 4 async regressions fail against the pre-fix application at 00b37668; the
 negative-control log is kept separately in evidence/s03a_diagnostics and is not
 a qualification run. The initial 9-test checkpoint is historical in
-evidence/s03a_pre_review. Current evidence/s03a contains the fixed 13-test suite. Network fault
+evidence/s03a_pre_review. The intermediate 13-test checkpoint is in evidence/s03a_paging_catalog_checkpoint.
+Three further task refresh/cancel negative controls fail at 7f9aa7c; the current
+17-test suite also checks that a current denial clears its matching snapshot,
+while a stale or unrelated task denial leaves a newer query intact. Network fault
 injections are test-only fetch-boundary controls; no private application state is
 read. OS file download is a test port: captured bytes are written as one actual
 XLSX and independently read with Python ZIP/XML. It does not qualify an actual

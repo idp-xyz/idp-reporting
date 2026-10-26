@@ -8,7 +8,7 @@
     {
       "name": "normal",
       "exit_code": 0,
-      "elapsed_seconds": 2.074,
+      "elapsed_seconds": 2.029,
       "log": "normal.jsonl",
       "pass_events": 164,
       "top_level_passes": 33,
@@ -28,7 +28,7 @@
     {
       "name": "race",
       "exit_code": 0,
-      "elapsed_seconds": 3.935,
+      "elapsed_seconds": 3.94,
       "log": "race.jsonl",
       "pass_events": 164,
       "top_level_passes": 33,
@@ -48,34 +48,34 @@
     {
       "name": "vet",
       "exit_code": 0,
-      "elapsed_seconds": 0.217,
+      "elapsed_seconds": 0.317,
       "log": "vet.log"
     },
     {
       "name": "build",
       "exit_code": 0,
-      "elapsed_seconds": 0.78,
+      "elapsed_seconds": 1.182,
       "log": "build.log"
     },
     {
       "name": "mod_verify",
       "exit_code": 0,
-      "elapsed_seconds": 0.266,
+      "elapsed_seconds": 0.32,
       "log": "mod_verify.log"
     },
     {
       "name": "javascript_syntax",
       "exit_code": 0,
-      "elapsed_seconds": 0.065,
+      "elapsed_seconds": 0.115,
       "log": "javascript_syntax.log"
     },
     {
       "name": "dom",
       "exit_code": 0,
-      "elapsed_seconds": 5.242,
+      "elapsed_seconds": 7.699,
       "log": "dom.log",
-      "tests": 13,
-      "pass": 13,
+      "tests": 17,
+      "pass": 17,
       "fail": 0,
       "cancelled": 0,
       "skipped": 0,
@@ -121,10 +121,10 @@
     "transport/httpapi/api_test.go": "480bb129cdb0605413366fe7415a66abadd0b46548dec161a1ea74d7da4665d2",
     "transport/httpapi/authentication_test.go": "bc5287b130129bf8d61a751d4245d4cd03e87c3c1de8245f8e65b73b748672af",
     "transport/httpapi/session_test.go": "c8b5266618a38c372da59f872e3153c55bbce1a81c8c64bb7dac2e63605a82a5",
-    "console/assets/app.js": "175a46707a20b00743cda2f893d7b3fdb585f82e2a40dec1f5d9f4a1efc65421",
+    "console/assets/app.js": "aa32017ac88fd1c6a169c768974348899584eae39f0c5d36e401febb25dabf8e",
     "console/assets/index.html": "3f8be0921c7ab1be2d0a61e25484305b2abee2f326a0693b0d40a393d71216bc",
     "console/assets/styles.css": "6ba07df224d33881d2ee6eb640c801206d532593f98e1439b414930e947bdcb0",
-    "console/dom.test.mjs": "ee1bf7bc28d7ce0af8736590c7db864978cc635aa7381d3ab789eae50eaf27a3",
+    "console/dom.test.mjs": "81e3c5a24ec9b7db73890caa0b4b32500ee2323745292e22b7a1d1ed38b1997a",
     "package.json": "4843d3597102580c2aaedb93ecac71509813e267fabfe3715f4bce6bbb0697c2",
     "package-lock.json": "c22511b439514794ec2c50ed65ed9bb5d9663f4c75b7be6d40216ae132e18e9c"
   },

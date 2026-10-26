@@ -1,0 +1,8 @@
+{
+  "status": "EXPECTED_FAILURE",
+  "unfixed_commit": "7f9aa7cacc60bc10755dac033458444b899ee87c",
+  "targeted_tests": 3,
+  "expected_failures": 3,
+  "acceptance_result": false,
+  "purpose": "Public-DOM task refresh/cancel regressions detect stale error contamination; not an acceptance run."
+}

@@ -3,8 +3,8 @@
   "workbooks": [
     {
       "file": "normal/s02a_finance.xlsx",
-      "sha256": "5fff84402b9fbeb20f4ce9463eadf113b4e19d3b7bbd94b8404a513a93db0f2f",
-      "bytes": 7916,
+      "sha256": "f11801568d6b00e7c780281c81ff00461d174ebba2e8d5b2cddf842b7cd98066",
+      "bytes": 7915,
       "dataset": "receivables.aging@1.0.0",
       "exact_total": "9007199254740993.01",
       "CRC": "PASS",
@@ -13,8 +13,8 @@
     },
     {
       "file": "normal/s02a_shipments.xlsx",
-      "sha256": "7657dcf01dc7f79969df95412d767cbc8405fde8c8f513dcf9bba793940a9010",
-      "bytes": 7859,
+      "sha256": "b1c00345416465d6192feda950c87ea76e487421e7a1b44f036f60ff428949af",
+      "bytes": 7860,
       "dataset": "shipments.daily@1.0.0",
       "exact_total": "9007199254741000",
       "CRC": "PASS",
@@ -23,7 +23,7 @@
     },
     {
       "file": "race/s02a_finance.xlsx",
-      "sha256": "574b971f186b976020461687f01207255df12c8de6872cd761d2a963351a5851",
+      "sha256": "30bff9279f7756d7626a750f8eb0b87f658710943f54ca1e901fb2075c48192f",
       "bytes": 7915,
       "dataset": "receivables.aging@1.0.0",
       "exact_total": "9007199254740993.01",
@@ -33,8 +33,8 @@
     },
     {
       "file": "race/s02a_shipments.xlsx",
-      "sha256": "612d9018a0183ba467c9b629e017e668d07fd61035d6b4f68622234dbd3ade3e",
-      "bytes": 7859,
+      "sha256": "28888dab99be46aaf9fc8136f826705e2cde66b39636080214e5cb3500bd6444",
+      "bytes": 7860,
       "dataset": "shipments.daily@1.0.0",
       "exact_total": "9007199254741000",
       "CRC": "PASS",
@@ -44,8 +44,8 @@
     {
       "file": "dom/console_finance.xlsx",
       "source": "software DOM + Go HTTP",
-      "sha256": "de149dce30cfc53998f640eb20beda087116f6362ccce466393be4817d3d480d",
-      "bytes": 7913,
+      "sha256": "a22c39969c54e9644e45f139e5ba74be3e79def457bc0d9aa5e2ec7cc248b4cc",
+      "bytes": 7914,
       "exact_total": "9007199254740993.01",
       "dataset": "receivables.aging@1.0.0",
       "CRC": "PASS",

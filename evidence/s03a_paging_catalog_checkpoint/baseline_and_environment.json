@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "baseline": "6f782bd7b4b7b2b4b554cd934e86b41609d0fb6b",
+  "byte_identical_s02a_evidence_files": 18,
+  "unchanged_domain_storage_module_files": 23,
+  "browser_qa": "NOT_VERIFIED",
+  "browser_reason": "Managed preview URL returned; cloud browser connection refused; subsequent error-page action rejected by URL policy; stopped without bypass.",
+  "verification_script_hashes": {
+    "scripts/run_s03a_checks.py": "b28eafee23bd0a4d78752aafcf8a13569680efcf571430fdc7eb2577f5c2f793",
+    "scripts/verify_s03a_workbooks.py": "d4ed0325da4460b1db86e19e23818cb2d2d51d12eccc91faeae8607aeb60c144",
+    "scripts/console_preview.py": "c763428cc33fc449174981a6dd10677feb96dbc63c03e4918fe0da36f71a02fe"
+  }
+}
