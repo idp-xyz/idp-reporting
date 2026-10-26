@@ -3,7 +3,7 @@
   const base = '/api/reporting/v1';
   const $ = (id) => document.getElementById(id);
   const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',tasks:'任务工作区',system:'能力与环境'};
-  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
+  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   class Failure extends Error { constructor(status,code) { super(code); this.status=status; this.code=code; } }
   class Stale extends Error {}
@@ -23,7 +23,7 @@
     for(const id of ['query-dataset','query-companies','query-date','refresh-catalog'])$(id).disabled=!state.session||state.catalogLoading;
   }
   function clearResult() {
-    state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;
+    $('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
     $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(node('span','▤','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
@@ -32,7 +32,7 @@
   }
   function disconnect(message) {
     state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
-    state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
+    state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
@@ -166,11 +166,39 @@
   function checkResult(result) {
     if(!result||!Array.isArray(result.columns)||result.columns.length>100||!result.columns.every(c=>typeof c.id==='string'&&typeof c.label==='string'&&typeof c.type==='string')||!Array.isArray(result.rows)||result.rows.length>1000||!result.rows.every(row=>Array.isArray(row)&&row.length===result.columns.length&&row.every(value=>typeof value==='string'))||!result.totals||typeof result.totals!=='object'||!Object.values(result.totals).every(v=>typeof v==='string'))throw new Failure(0,'INVALID_RESPONSE');
   }
+  function layoutBinding() {return {integration_id:state.query.integration_id,dataset:copy(state.query.dataset)};}
+  function matchingLayout() {return state.layout&&JSON.stringify(state.layout.binding)===JSON.stringify(layoutBinding());}
+  function visibleColumns(result) {return matchingLayout()?state.layout.columns:result.columns.map(c=>({id:c.id,align:['decimal','integer'].includes(c.type)?'right':'left'}));}
+  function renderTable(result) {
+    const columns=visibleColumns(result);const header=node('tr');const body=$('result-table').tBodies[0];body.replaceChildren();
+    for(const entry of columns){const c=result.columns.find(c=>c.id===entry.id);header.append(node('th',c.label+(c.currency?' ('+c.currency+')':c.unit?' ('+c.unit+')':'')));}
+    $('result-table').tHead.replaceChildren(header);
+    for(const values of result.rows){const row=node('tr');for(const entry of columns){const i=result.columns.findIndex(c=>c.id===entry.id);const cell=node('td',values[i],entry.align==='right'?'layout-right':'layout-left');cell.title=values[i];row.append(cell);}body.append(row);}
+  }
+  function applyLayout(layout) {
+    if(!state.session||!state.lastResult||state.catalogLoading||state.busy)throw new Failure(400,'INVALID_REQUEST');
+    const keys=(value,names)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===names.sort().join(',');
+    if(!keys(layout,['schema_version','binding','columns'])||layout.schema_version!=='1.0'||!keys(layout.binding,['integration_id','dataset'])||!keys(layout.binding.dataset,['id','version'])||layout.binding.integration_id!==state.query.integration_id||layout.binding.dataset.id!==state.query.dataset.id||layout.binding.dataset.version!==state.query.dataset.version||!Array.isArray(layout.columns)||!layout.columns.length||layout.columns.length>100||new Set(layout.columns.map(c=>c?.id)).size!==layout.columns.length||!layout.columns.every(c=>keys(c,['id','align'])&&typeof c.id==='string'&&state.lastResult.columns.some(known=>known.id===c.id)&&['left','right'].includes(c.align)))throw new Failure(400,'INVALID_REQUEST');
+    state.layout=copy(layout);renderTable(state.lastResult);renderDesigner();$('layout-status').textContent='布局已应用；数据和授权范围保持当前查询。';
+  }
+  function renderDesigner() {
+    const target=$('designer-columns');target.replaceChildren();if(!state.lastResult)return;
+    if(!matchingLayout()||!state.layout.columns.every(c=>state.lastResult.columns.some(k=>k.id===c.id)))state.layout={schema_version:'1.0',binding:layoutBinding(),columns:state.lastResult.columns.map(c=>({id:c.id,align:['decimal','integer'].includes(c.type)?'right':'left'}))};
+    const entries=state.layout.columns;const ordered=[...entries.map(c=>state.lastResult.columns.find(k=>k.id===c.id)),...state.lastResult.columns.filter(c=>!entries.some(k=>k.id===c.id))];
+    for(const c of ordered){const row=node('div',undefined,'designer-row');const label=node('label');const check=node('input');check.type='checkbox';check.checked=entries.some(k=>k.id===c.id);check.setAttribute('aria-label','显示 '+c.label);label.append(check,document.createTextNode(c.label));row.append(label);
+      const update=fn=>{try{const next=copy(state.layout);fn(next.columns);applyLayout(next);}catch(error){$('layout-status').textContent=errorMessage(error);renderDesigner();}};
+      check.addEventListener('change',()=>update(cols=>{if(check.checked)cols.push({id:c.id,align:'left'});else cols.splice(cols.findIndex(k=>k.id===c.id),1);}));
+      const index=entries.findIndex(k=>k.id===c.id);const up=button('上移',()=>update(cols=>{[cols[index-1],cols[index]]=[cols[index],cols[index-1]];}));up.disabled=index<=0;row.append(up);
+      const align=node('select');align.setAttribute('aria-label',c.label+' 对齐');for(const [value,text] of [['left','左对齐'],['right','右对齐']]){const option=node('option',text);option.value=value;align.append(option);}align.value=entries[index]?.align||'left';align.disabled=index<0;align.addEventListener('change',()=>update(cols=>{cols[index].align=align.value;}));row.append(align);target.append(row);
+    }
+  }
+  function layoutAction(fn) {try{if(!state.lastResult||!state.session||state.catalogLoading||state.busy)throw new Failure(400,'INVALID_REQUEST');fn();}catch(error){$('layout-status').textContent=errorMessage(error);}}
+  $('layout-reset').addEventListener('click',()=>layoutAction(()=>{state.layout=null;renderDesigner();renderTable(state.lastResult);$('layout-status').textContent='已恢复全部列。';}));
+  $('layout-save').addEventListener('click',()=>layoutAction(()=>{$('layout-json').value=JSON.stringify(state.layout,null,2);const url=URL.createObjectURL(new Blob([$('layout-json').value],{type:'application/json'}));const link=node('a');link.href=url;link.download='report-layout.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);$('layout-status').textContent='布局文件已生成，不含业务行或访问令牌。';}));
+  $('layout-open').addEventListener('click',()=>layoutAction(()=>{const text=$('layout-json').value;if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');let layout;try{layout=JSON.parse(text);}catch(_){throw new Failure(400,'INVALID_REQUEST');}applyLayout(layout);}));
   function renderResult(result,query,meta) {
     checkResult(result);state.lastResult=result;state.query=copy(query);
-    const header=node('tr');for(const c of result.columns)header.append(node('th',c.label+(c.currency?' ('+c.currency+')':c.unit?' ('+c.unit+')':'')));$('result-table').tHead.replaceChildren(header);
-    const body=$('result-table').tBodies[0];body.replaceChildren();
-    for(const values of result.rows){const row=node('tr');values.forEach((v,i)=>{const c=result.columns[i];const cell=node('td',v,['decimal','integer'].includes(c.type)?'precise':'');cell.title=v;row.append(cell);});body.append(row);}
+    renderDesigner();renderTable(result);
     const summary=$('result-summary');summary.replaceChildren();
     for(const [id,value] of Object.entries(result.totals).slice(0,20)){const column=result.columns.find(c=>c.id===id);const card=node('div',undefined,'summary-card');card.append(node('small',(column?.label||id)+' · 原范围合计'+(column?.currency?' / '+column.currency:column?.unit?' / '+column.unit:'')),node('strong',value));summary.append(card);}
     summary.hidden=!summary.children.length;$('result-table-wrap').hidden=!result.rows.length;$('result-empty').hidden=!!result.rows.length;
