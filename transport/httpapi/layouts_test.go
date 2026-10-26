@@ -54,6 +54,19 @@ func TestLayoutRoutesRecheckCatalogAndVersion(t *testing.T) {
 	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"?version=1", nil, true).Code != 200 {
 		t.Fatal("get")
 	}
+	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"/published", nil, true).Code != 404 {
+		t.Fatal("draft published")
+	}
+	releaseBody := []byte(`{"action":"publish","version":1,"expected_revision":0}`)
+	if request(h, "POST", "/api/reporting/v1/layouts/"+first.ID+"/release", releaseBody, true).Code != 200 {
+		t.Fatal("publish")
+	}
+	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"/published", nil, true).Code != 200 {
+		t.Fatal("read published")
+	}
+	if request(h, "POST", "/api/reporting/v1/layouts/"+first.ID+"/release", releaseBody, true).Code != 409 {
+		t.Fatal("publication conflict")
+	}
 	body, _ = json.Marshal(map[string]any{"id": first.ID, "expected_version": 0, "layout": d})
 	if request(h, "POST", "/api/reporting/v1/layouts", body, true).Code != 409 {
 		t.Fatal("stale save")
@@ -67,6 +80,16 @@ func TestLayoutRoutesRecheckCatalogAndVersion(t *testing.T) {
 		t.Fatal("authority fields")
 	}
 	revoked = true
+	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"/release", nil, true).Code != 403 {
+		t.Fatal("release history bypassed current rights")
+	}
+	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"/published", nil, true).Code != 403 {
+		t.Fatal("published bypassed current rights")
+	}
+	if request(h, "POST", "/api/reporting/v1/layouts/"+first.ID+"/release", []byte(`{"action":"withdraw","version":0,"expected_revision":1}`), true).Code != 403 {
+		t.Fatal("withdraw bypassed current rights")
+	}
+
 	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"?version=1", nil, true).Code != 403 {
 		t.Fatal("get bypassed current integration rights")
 	}

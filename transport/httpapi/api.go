@@ -130,6 +130,52 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			}
 			return send(w, 200, v)
 		})
+		bind("GET "+base+"/layouts/{id}/release", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			entry, e := store.Get(p.Identity, req.PathValue("id"), 1)
+			if e != nil {
+				return e
+			}
+			if e = authorize(req, p, entry.Layout); e != nil {
+				return e
+			}
+			state, e := store.Release(p.Identity, entry.ID)
+			if e != nil {
+				return e
+			}
+			return send(w, 200, state)
+		})
+		bind("GET "+base+"/layouts/{id}/published", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			entry, e := store.Published(p.Identity, req.PathValue("id"))
+			if e != nil {
+				return e
+			}
+			if e = authorize(req, p, entry.Layout); e != nil {
+				return e
+			}
+			return send(w, 200, entry)
+		})
+		bind("POST "+base+"/layouts/{id}/release", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			var input struct {
+				Action   string `json:"action"`
+				Version  int    `json:"version"`
+				Expected int    `json:"expected_revision"`
+			}
+			if e := decode(req, &input); e != nil {
+				return e
+			}
+			entry, e := store.Get(p.Identity, req.PathValue("id"), 1)
+			if e != nil {
+				return e
+			}
+			if e = authorize(req, p, entry.Layout); e != nil {
+				return e
+			}
+			state, e := store.Publish(p.Identity, entry.ID, input.Action, input.Version, input.Expected)
+			if e != nil {
+				return e
+			}
+			return send(w, 200, state)
+		})
 		bind("POST "+base+"/layouts", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			var input struct {
 				ID       string           `json:"id"`

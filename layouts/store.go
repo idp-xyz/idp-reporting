@@ -2,6 +2,7 @@
 package layouts
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 type Binding struct {
@@ -30,6 +32,25 @@ type Entry struct {
 	ID      string   `json:"id"`
 	Version int      `json:"version"`
 	Layout  Document `json:"layout"`
+}
+type ReleaseEvent struct {
+	Revision int    `json:"revision"`
+	Action   string `json:"action"`
+	Version  int    `json:"version"`
+	At       string `json:"at"`
+}
+type ReleaseState struct {
+	Revision         int            `json:"revision"`
+	PublishedVersion int            `json:"published_version"`
+	History          []ReleaseEvent `json:"history"`
+}
+type record struct {
+	Versions []Entry        `json:"versions"`
+	Releases []ReleaseEvent `json:"releases"`
+}
+type database struct {
+	Schema  int      `json:"schema_version"`
+	Records []record `json:"records"`
 }
 type Store struct {
 	mu     sync.Mutex
@@ -98,7 +119,7 @@ func (s *Store) path(owner r.Identity) string {
 	h := sha256.Sum256(b)
 	return filepath.Join(s.dir, hex.EncodeToString(h[:])+".json")
 }
-func (s *Store) read(owner r.Identity) ([][]Entry, error) {
+func (s *Store) read(owner r.Identity) ([]record, error) {
 	if s.closed {
 		return nil, r.ErrUnavailable
 	}
@@ -108,7 +129,7 @@ func (s *Store) read(owner r.Identity) ([][]Entry, error) {
 	path := s.path(owner)
 	info, e := os.Lstat(path)
 	if os.IsNotExist(e) {
-		return [][]Entry{}, nil
+		return []record{}, nil
 	}
 	if e != nil {
 		return nil, e
@@ -121,19 +142,49 @@ func (s *Store) read(owner r.Identity) ([][]Entry, error) {
 		return nil, e
 	}
 	defer f.Close()
-	decoder := json.NewDecoder(io.LimitReader(f, maxFile+1))
-	decoder.DisallowUnknownFields()
-	var records [][]Entry
-	if decoder.Decode(&records) != nil || len(records) == 0 || len(records) > 16 {
+	data, e := io.ReadAll(io.LimitReader(f, maxFile+1))
+	if e != nil || len(data) > maxFile {
 		return nil, r.ErrIntegrity
 	}
-	var tail any
-	if decoder.Decode(&tail) != io.EOF {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return nil, r.ErrIntegrity
+	}
+	decode := func(out any) error {
+		d := json.NewDecoder(bytes.NewReader(data))
+		d.DisallowUnknownFields()
+		if d.Decode(out) != nil {
+			return r.ErrIntegrity
+		}
+		var extra any
+		if d.Decode(&extra) != io.EOF {
+			return r.ErrIntegrity
+		}
+		return nil
+	}
+	var records []record
+	if data[0] == '[' {
+		var old [][]Entry
+		if decode(&old) != nil || len(old) == 0 {
+			return nil, r.ErrIntegrity
+		}
+		for _, versions := range old {
+			records = append(records, record{Versions: versions, Releases: []ReleaseEvent{}})
+		}
+	} else {
+		var db database
+		if decode(&db) != nil || db.Schema != 2 {
+			return nil, r.ErrIntegrity
+		}
+		records = db.Records
+	}
+	if len(records) == 0 || len(records) > 16 {
 		return nil, r.ErrIntegrity
 	}
 	ids := map[string]bool{}
-	for _, versions := range records {
-		if len(versions) == 0 || len(versions) > 20 {
+	for _, item := range records {
+		versions := item.Versions
+		if len(versions) == 0 || len(versions) > 20 || item.Releases == nil || len(item.Releases) > 64 {
 			return nil, r.ErrIntegrity
 		}
 		id := versions[0].ID
@@ -143,6 +194,29 @@ func (s *Store) read(owner r.Identity) ([][]Entry, error) {
 		ids[id] = true
 		for i, v := range versions {
 			if v.ID != id || v.Version != i+1 || Validate(v.Layout) != nil || v.Layout.Binding != versions[0].Layout.Binding {
+				return nil, r.ErrIntegrity
+			}
+		}
+		published := 0
+		for i, event := range item.Releases {
+			if event.Revision != i+1 {
+				return nil, r.ErrIntegrity
+			}
+			if _, e := time.Parse(time.RFC3339Nano, event.At); e != nil {
+				return nil, r.ErrIntegrity
+			}
+			switch event.Action {
+			case "publish":
+				if event.Version < 1 || event.Version > len(versions) {
+					return nil, r.ErrIntegrity
+				}
+				published = event.Version
+			case "withdraw":
+				if event.Version != 0 || published == 0 {
+					return nil, r.ErrIntegrity
+				}
+				published = 0
+			default:
 				return nil, r.ErrIntegrity
 			}
 		}
@@ -157,7 +231,8 @@ func (s *Store) List(owner r.Identity) ([]Entry, error) {
 		return nil, e
 	}
 	out := []Entry{}
-	for _, versions := range all {
+	for _, item := range all {
+		versions := item.Versions
 		out = append(out, versions[len(versions)-1])
 	}
 	return out, nil
@@ -172,7 +247,8 @@ func (s *Store) Get(owner r.Identity, id string, version int) (Entry, error) {
 	if e != nil {
 		return Entry{}, e
 	}
-	for _, versions := range all {
+	for _, item := range all {
+		versions := item.Versions
 		if versions[0].ID == id && version <= len(versions) {
 			return versions[version-1], nil
 		}
@@ -202,14 +278,14 @@ func (s *Store) Save(owner r.Identity, id string, expected int, d Document) (Ent
 			return Entry{}, e
 		}
 		id = hex.EncodeToString(b[:])
-		all = append(all, []Entry{})
+		all = append(all, record{Versions: []Entry{}, Releases: []ReleaseEvent{}})
 		index = len(all) - 1
 	} else {
 		if !ValidID(id) {
 			return Entry{}, r.ErrInvalid
 		}
 		for i, v := range all {
-			if v[0].ID == id {
+			if v.Versions[0].ID == id {
 				index = i
 				break
 			}
@@ -217,52 +293,137 @@ func (s *Store) Save(owner r.Identity, id string, expected int, d Document) (Ent
 		if index < 0 {
 			return Entry{}, r.ErrNotFound
 		}
-		if expected != len(all[index]) {
+		if expected != len(all[index].Versions) {
 			return Entry{}, r.ErrConflict
 		}
-		if len(all[index]) >= 20 {
+		if len(all[index].Versions) >= 20 {
 			return Entry{}, r.ErrBudget
 		}
-		if d.Binding != all[index][0].Layout.Binding {
+		if d.Binding != all[index].Versions[0].Layout.Binding {
 			return Entry{}, r.ErrInvalid
 		}
 	}
-	entry := Entry{ID: id, Version: len(all[index]) + 1, Layout: d}
-	all[index] = append(all[index], entry)
-	data, e := json.Marshal(all)
-	if e != nil {
+	entry := Entry{ID: id, Version: len(all[index].Versions) + 1, Layout: d}
+	all[index].Versions = append(all[index].Versions, entry)
+	if e = s.write(owner, all); e != nil {
 		return Entry{}, e
 	}
+	return entry, nil
+}
+func (s *Store) write(owner r.Identity, all []record) error {
+	data, e := json.Marshal(database{Schema: 2, Records: all})
+	if e != nil {
+		return e
+	}
 	if len(data) > maxFile {
-		return Entry{}, r.ErrBudget
+		return r.ErrBudget
 	}
 	f, e := os.CreateTemp(s.dir, ".layout-")
 	if e != nil {
-		return Entry{}, e
+		return e
 	}
 	defer os.Remove(f.Name())
 	if _, e = f.Write(data); e != nil {
 		f.Close()
-		return Entry{}, e
+		return e
 	}
 	if e = f.Sync(); e != nil {
 		f.Close()
-		return Entry{}, e
+		return e
 	}
 	if e = f.Close(); e != nil {
-		return Entry{}, e
+		return e
 	}
 	if e = os.Rename(f.Name(), s.path(owner)); e != nil {
-		return Entry{}, e
+		return e
 	}
 	dir, e := os.Open(s.dir)
 	if e != nil {
-		return Entry{}, e
+		return e
 	}
 	e = dir.Sync()
 	dir.Close()
+	return e
+}
+func releaseState(events []ReleaseEvent) ReleaseState {
+	out := ReleaseState{Revision: len(events), History: append([]ReleaseEvent{}, events...)}
+	if len(events) > 0 && events[len(events)-1].Action == "publish" {
+		out.PublishedVersion = events[len(events)-1].Version
+	}
+	return out
+}
+func (s *Store) Release(owner r.Identity, id string) (ReleaseState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !ValidID(id) {
+		return ReleaseState{}, r.ErrInvalid
+	}
+	all, e := s.read(owner)
+	if e != nil {
+		return ReleaseState{}, e
+	}
+	for _, item := range all {
+		if item.Versions[0].ID == id {
+			return releaseState(item.Releases), nil
+		}
+	}
+	return ReleaseState{}, r.ErrNotFound
+}
+func (s *Store) Publish(owner r.Identity, id, action string, version, expected int) (ReleaseState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !ValidID(id) || expected < 0 || (action != "publish" && action != "withdraw") {
+		return ReleaseState{}, r.ErrInvalid
+	}
+	all, e := s.read(owner)
+	if e != nil {
+		return ReleaseState{}, e
+	}
+	for i, item := range all {
+		if item.Versions[0].ID != id {
+			continue
+		}
+		state := releaseState(item.Releases)
+		if expected != state.Revision {
+			return ReleaseState{}, r.ErrConflict
+		}
+		if len(item.Releases) >= 64 {
+			return ReleaseState{}, r.ErrBudget
+		}
+		if action == "publish" {
+			if version < 1 || version > len(item.Versions) {
+				return ReleaseState{}, r.ErrInvalid
+			}
+		} else if version != 0 || state.PublishedVersion == 0 {
+			return ReleaseState{}, r.ErrInvalid
+		}
+		event := ReleaseEvent{Revision: expected + 1, Action: action, Version: version, At: time.Now().UTC().Format(time.RFC3339Nano)}
+		all[i].Releases = append(item.Releases, event)
+		if e = s.write(owner, all); e != nil {
+			return ReleaseState{}, e
+		}
+		return releaseState(all[i].Releases), nil
+	}
+	return ReleaseState{}, r.ErrNotFound
+}
+func (s *Store) Published(owner r.Identity, id string) (Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !ValidID(id) {
+		return Entry{}, r.ErrInvalid
+	}
+	all, e := s.read(owner)
 	if e != nil {
 		return Entry{}, e
 	}
-	return entry, nil
+	for _, item := range all {
+		if item.Versions[0].ID == id {
+			state := releaseState(item.Releases)
+			if state.PublishedVersion == 0 {
+				return Entry{}, r.ErrNotFound
+			}
+			return item.Versions[state.PublishedVersion-1], nil
+		}
+	}
+	return Entry{}, r.ErrNotFound
 }
