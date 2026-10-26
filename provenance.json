@@ -1,5 +1,5 @@
 {
-  "project": "IDP Reporting Platform S01-A",
+  "project": "IDP Reporting Platform S01-B",
   "date": "2026-10-26 Asia/Shanghai",
   "module": "idp.local/reporting",
   "external_repository_created": false,
@@ -10,7 +10,7 @@
   "R01D_frozen_commit": "6074954d059af4e2485d0dcc3e12163990906038",
   "relationship": "Neutral implementation of the accepted S00 contract, using the R01-D orchestration and isolation lessons; no product module import, local replacement or business table dependency. Original Brant checkout unchanged.",
   "review_fixed_point": "ec09065dc024419dc2e2e6e9cc2d1dcae6ee7132",
-  "reviewed_code_commit": "084fc87feeedf37c3d569003cc17fc1b945ae415",
+  "reviewed_code_commit": "fe7729f94ca853150da535a51eaae00c96760b1e",
   "sources_are_simulated": true,
   "phase": "S01-B",
   "parent_s01a_library_file_id": "libfile_f8b77d27f4008191921b3bfea86165f7",
@@ -18,5 +18,7 @@
   "parent_s01a_commit": "ec09065dc024419dc2e2e6e9cc2d1dcae6ee7132",
   "qualified_go_checkpoint": "829a9bf",
   "reviewed_fix_commit": "fe7729f94ca853150da535a51eaae00c96760b1e",
-  "qualification": "protected durable simulators, ordinary/race PG, actual graceful process/PG restart"
+  "qualification": "protected durable simulators, ordinary/race PG, actual graceful process/PG restart",
+  "historical_s01a_reviewed_code_commit": "084fc87feeedf37c3d569003cc17fc1b945ae415",
+  "final_auxiliary_review_commit": "d3d4d33cdebd119f130f413559b13e8658039e4d"
 }

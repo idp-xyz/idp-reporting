@@ -70,7 +70,9 @@
     "CRC": "PASS",
     "exact_money_negative_integer": "PASS",
     "formula_count": 0,
-    "byte_continuity_across_process_and_pg_restart": "PASS"
+    "byte_continuity_across_process_and_pg_restart": "PASS",
+    "independent_dataset_binding": "literal fixture filename/request contract",
+    "swapped_workbook_negative_control": "PASS"
   },
   "negative_configuration_controls": [
     {
@@ -90,7 +92,7 @@
     }
   ],
   "reviews": {
-    "standards_fixed": 1,
+    "standards_fixed": 2,
     "standards_open": 0,
     "spec_confirmed_findings": 0,
     "spec_open": 0
