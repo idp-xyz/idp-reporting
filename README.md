@@ -1,6 +1,13 @@
-# IDP Reporting Platform · S01-B
+# IDP Reporting Platform · S02-A
 
-独立 Go 报表后端，2026-10-26（上海时间）。S01-B 增加持久来源合同、真实服务进程/PG
+本轮交付配置化 RS256 访问令牌认证模块 identity/accessjwt，以及 Brant/Parcel 真实
+接入资料核对。模块通过现有 httpapi.Authenticate 入口组合；须由可信宿主提供
+issuer/audience/公钥/scope/主体映射，不自动替换下方 reporting-demo 的演示身份。
+本地签名令牌及 HTTPS/合成来源验证不等于真实 IdP、两个真实业务来源或生产准入。
+组合与限制见 docs/ACCESS_JWT.md，真实接入缺口见 docs/REAL_SOURCE_DISCOVERY_S02A.md，
+下一步合同见 docs/REAL_SOURCE_ONBOARDING.md。
+
+独立 Go 报表后端，2026-10-26（上海时间）。已通过的 S01-B 基线增加持久来源合同、真实服务进程/PG
 重启验证与完整性/竞争测试。应收账龄与运单统计均为合同模拟器的合成预汇总数据，
 不连接真实 Brant/Parcel，不代表真实业务口径、SSO 或生产准入。
 
@@ -51,12 +58,8 @@ reporting_source_test_s01 / reporting_source_test_s01_race。生产库名及非�
 ## 测试与证据
 
 ```bash
-go test ./... -count=1
-go test -race ./... -count=1
-go vet ./...
-go build ./...
-go mod verify
-GO_BIN=go python3 scripts/verify_independence.py
+python3 scripts/run_s02a_checks.py --go /path/to/go1.26.5/bin/go
+python3 scripts/verify_s02a_workbooks.py --negative-controls
 ```
 
 主机缺少 DSN 时，两个真实数据库入口明确 SKIP，不能计为数据库通过。设置
@@ -64,18 +67,19 @@ REPORTING_S01_REQUIRE_PG=1 后缺少必需 DSN 直接失败。
 
 通过 Service、四个 Adapter 操作、Repository、HTTP 与 XLSX 接口验证。故障夹具只在
 受保护测试库注入最终更新失败、发布期间失租约和字节损坏。scripts/run_pg16_vm.py
-执行真实PG普通/race和真实HTTP进程/PG停止启动；工具变量见docs/VALIDATION.md。
+执行真实PG普通/race和真实HTTP进程/PG停止启动；历史工具变量见docs/VALIDATION_S01B.md。
 cmd/reporting-recovery-probe 是本地验收客户端，显式 bootstrap 会清空受保护夹具；
 业务服务不导入它，也不在 HTTP 上开放其控制能力。
 
-当前逐条状态见 docs/ACCEPTANCE_S01B.json；原始日志、文件与摘要在 evidence/，
-S01-A 历史证据保留在 evidence/s01a_baseline/，审查在docs/CODE_REVIEW_S01A.md。
+当前逐条状态见 docs/ACCEPTANCE_S02A.json；本轮原始日志、文件与摘要在 evidence/s02a/。
+S01-B 历史证据完整保留在 evidence/s01b_baseline/，其中含原 S01-A 历史证据；
+历次审查见 docs/CODE_REVIEW_S01A.md、docs/CODE_REVIEW_S01B.md。本轮不重跑 PG/VM。
 压缩包附 SOURCE_HISTORY.bundle，可 git clone SOURCE_HISTORY.bundle restored-reporting
 还原全部本地提交。直接解压源码可构建；含git diff的检查应在还原仓库运行。
 
 ## 后续范围
 
-S02：真实身份、Brant与第二真实产品授权合同和数据对账。S03：独立控制台、嵌入、
+S02 后续：真实发行方/企业身份、Brant与第二真实产品授权合同和数据对账。S03：独立控制台、嵌入、
 三个设计器/PDF。S04：生产迁移/回滚、最小权限/RLS、对象存储、配额、清理、备份与容量。
 当前不承诺自动重试、心跳、跨产品关联或跨系统撤权/提交原子性。实际优雅重启证据
 不等于崩溃、断电或备份恢复资格。

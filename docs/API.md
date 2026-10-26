@@ -1,8 +1,10 @@
-# S01-A API · implemented contract-simulator profile
+# API · S01-B source profile with S02-A composable authentication
 
 Base: `/api/reporting/v1`. This is the implemented subset, not a complete
 production OpenAPI, OIDC profile or designer API. Bearer authentication is a
 replaceable server-side port. `DemoBearer` is explicit synthetic identity only.
+S02-A adds identity/accessjwt at that same port; see ACCESS_JWT.md. Provisioning
+it does not change the simulator data classification or qualify a real issuer.
 
 | Method and path | Request / response |
 |---|---|
@@ -39,10 +41,13 @@ per page, 20 s work timeout and 30 s repository lease. These are test-profile
 limits, not production SLOs. A job that loses its lease or is cancelled cannot
 publish. No retry/backoff or heartbeat is claimed.
 
-Errors: invalid request 400; missing authentication 401; scope denied 403;
+Errors: invalid request 400; missing/invalid authentication 401; scope denied 403;
 owner-not-found 404; idempotency/integrity/lease conflict 409; unsupported shape
 422; budget 413; source authority unavailable 503; unclassified execution failure
 500. Raw SQL errors, source rows and credentials are never error response bodies.
+Missing/non-Bearer credentials receive the bare Bearer realm challenge; invalid
+Bearer tokens receive invalid_token. Verified mapped tokens without the required
+OAuth scope receive 403 insufficient_scope. Body errors remain generic.
 
 Identity is platform tenant + issuer + subject; assets additionally bind
 integration. Source tenant is a separate configured mapping. The same source
@@ -52,6 +57,8 @@ Cleanup after source business revocation is allowed while transport identity
 still has the product connection; cleanup never returns snapshot/artifact IDs.
 
 Cross-system revocation is checked immediately before commit and at every
-disclosure, not an asserted distributed atomic transaction. Source-side durable
-snapshots, real delegated subjects, identity/audience/token-use checks and
-authorization SLA are S02 contracts, not simulated by a service account.
+disclosure, not an asserted distributed atomic transaction. Durable source
+snapshots are qualified only in the protected S01-B simulator fixture. S02-A's
+signature/audience/token-purpose/scope checks are locally qualified. Real
+delegated subjects, issuer/membership authority and source authorization SLA
+remain S02 contracts, not simulated by a service account.

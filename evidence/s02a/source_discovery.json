@@ -1,0 +1,167 @@
+{
+  "phase": "S02-A",
+  "date": "2026-10-26 Asia/Shanghai",
+  "status": "DISCOVERY_COMPLETED_SOURCE_AND_IDP_QUALIFICATION_PENDING",
+  "inputs": [
+    {
+      "name": "IDP_Brant_Go_第四十批_核价身份隔离完整统一工程.zip",
+      "library_file_id": "libfile_0cc1462dcc6c81919d677bdb2d460f06",
+      "bytes": 2020875,
+      "sha256": "1253d572b74738b9f0e0dd3793df455a90d4f3851db8b61fda3c4f3c0e2920c9",
+      "ZIP_CRC": "PASS"
+    },
+    {
+      "name": "IDP_Parcel_Master_V3.0_RELEASE_FINAL_V37.zip",
+      "library_file_id": "libfile_d7d7ab4f15208191a6c8bdcfed308182",
+      "bytes": 836437,
+      "sha256": "14f7dda0e716a385d384e51dbd54494efe8fa2f687e93f9307cc614613cce394",
+      "ZIP_CRC": "PASS"
+    },
+    {
+      "name": "IDP_Parcel_Commercial_Party_UX_V1.1_Full_Package.zip",
+      "library_file_id": "libfile_e26604b853c08191af5793b75972c746",
+      "bytes": 1845983,
+      "sha256": "dd946701c5a9d3f256af13f63bf9b45adbe5f1d32ace2574fb4aadba7210dc78",
+      "ZIP_CRC": "PASS"
+    },
+    {
+      "name": "IDP_MCP_P2-02C3A_Keycloak_OIDC_MCP_PoC_V1.0.zip",
+      "library_file_id": "libfile_a7fa8530ff5c8191b85cb9236b7ea2a4",
+      "bytes": 10916,
+      "sha256": "8fbc42a6e045b6dfc8b059564a23463f1a2d10d944085a7855adb023483ab48b",
+      "ZIP_CRC": "PASS"
+    }
+  ],
+  "reports_read": [
+    {
+      "library_file_id": "libfile_e9b21f5568a48191926408ed24bd6f49",
+      "name": "IDP_Brant_Go_第四十批_业务事实跨租户隔离审查.md",
+      "version": null,
+      "all_text_read": true
+    },
+    {
+      "library_file_id": "libfile_520d98e8175c8191a09347a69c8b86a9",
+      "name": "IDP_Brant_T02_最终准入复审报告_V0.5.md",
+      "version": "4",
+      "all_text_read": true
+    }
+  ],
+  "selected_source_files": [
+    {
+      "archive_root": "IDP_Brant_Go_第四十批_核价身份隔离完整统一工程/idp-brant-go",
+      "path": "internal/foundation/postgres/authorization.go",
+      "bytes": 2806,
+      "sha256": "4041a808be1483f2dfdb3fee503690746fe5688082386ba8f7353fa671091bf9"
+    },
+    {
+      "archive_root": "IDP_Brant_Go_第四十批_核价身份隔离完整统一工程/idp-brant-go",
+      "path": "internal/foundation/application/lifecycle.go",
+      "bytes": 10089,
+      "sha256": "8d2d695dfb315e98e479a35696423fb83be08e10c5ab0b56484eacfce7e0687d"
+    },
+    {
+      "archive_root": "IDP_Brant_Go_第四十批_核价身份隔离完整统一工程/idp-brant-go",
+      "path": "internal/costing/postgres/cost_fact_resolver.go",
+      "bytes": 3528,
+      "sha256": "ba43562e0b5125706340be4b81717ba121086f97002c5c4770d0e913c7a10c3a"
+    },
+    {
+      "archive_root": "IDP_Parcel_Master_V3.0_RELEASE_FINAL_V37",
+      "path": "prototype/db/schema.ts",
+      "bytes": 169,
+      "sha256": "13ddacbf0be50e054d450a6c642b7fdc1aa943fd6b99084711e07e58b600390d"
+    },
+    {
+      "archive_root": "IDP_Parcel_Master_V3.0_RELEASE_FINAL_V37",
+      "path": "prototype/app/page.tsx",
+      "bytes": 22133,
+      "sha256": "7a70ebee6bb6ec980c1f5035350a161c7afe8795d3f82900221350e0054474f4"
+    },
+    {
+      "archive_root": "IDP_Parcel_Master_V3.0_RELEASE_FINAL_V37",
+      "path": "prototype/app/data.ts",
+      "bytes": 7194,
+      "sha256": "1fd6af44bfc21bbc13f4da749f2fa4170dce6aa3446ab27a436508e0805b7af1"
+    },
+    {
+      "archive_root": "IDP_Parcel_Commercial_Party_UX_V1.1_Full_Package",
+      "path": "db/schema.ts",
+      "bytes": 169,
+      "sha256": "13ddacbf0be50e054d450a6c642b7fdc1aa943fd6b99084711e07e58b600390d"
+    },
+    {
+      "archive_root": "IDP_MCP_P2-02C3A_Keycloak_OIDC_MCP_PoC_V1.0/IDP_MCP_P2-02C3A_Keycloak_OIDC_MCP_PoC_V1.0",
+      "path": "README.md",
+      "bytes": 4175,
+      "sha256": "4362b6479f5b1f1e530ec983bcd2779f59cfc36f2a7eacdcfd0030709c328650"
+    }
+  ],
+  "parcel_github": {
+    "repository": "idpxyz/idp-parcel",
+    "commit": "1428542bc8a5cf609ff70528ddf5e4d0697b58c7",
+    "tree_entries": 110,
+    "tree_truncated": false,
+    "files": [
+      {
+        "path": "apps/parcel-web/README.md",
+        "git_blob_sha": "fa001d77db5e31283efacdf5a42f26e1c2232f35",
+        "sha256": "357d13057e863e5484ec171fda635f23511657e33f7f661723345502c92f1d28",
+        "bytes": 1141,
+        "url": "https://github.com/idpxyz/idp-parcel/blob/1428542bc8a5cf609ff70528ddf5e4d0697b58c7/apps/parcel-web/README.md"
+      },
+      {
+        "path": "apps/parcel-web/src/shared/api/client.ts",
+        "git_blob_sha": "bfab87a5d121bade6e1a8180c2d1ed6b5baed23b",
+        "sha256": "9b1bd091e9c40a11e238548dde280c96eb5bb3787c3601503126bfae844a3522",
+        "bytes": 2099,
+        "url": "https://github.com/idpxyz/idp-parcel/blob/1428542bc8a5cf609ff70528ddf5e4d0697b58c7/apps/parcel-web/src/shared/api/client.ts"
+      },
+      {
+        "path": "apps/parcel-web/src/mocks/shipments.ts",
+        "git_blob_sha": "439363195cbc791b7c6661e34f0b455565c8ae75",
+        "sha256": "6f58d5b71cf7baa3d7e711ab890cf37421dce42477516be2c1a88384dda853d0",
+        "bytes": 1680,
+        "url": "https://github.com/idpxyz/idp-parcel/blob/1428542bc8a5cf609ff70528ddf5e4d0697b58c7/apps/parcel-web/src/mocks/shipments.ts"
+      },
+      {
+        "path": "docs/0327-07-shipment.md",
+        "git_blob_sha": "4218b6100c85659d10b4314d4d8baccf89c3e947",
+        "sha256": "f3e23748f32d3b08f21545e07f6f4a113dceae2b803de026f13498ba67c1f761",
+        "bytes": 33414,
+        "url": "https://github.com/idpxyz/idp-parcel/blob/1428542bc8a5cf609ff70528ddf5e4d0697b58c7/docs/0327-07-shipment.md"
+      },
+      {
+        "path": "docs/0327-08-account-entitlement.md",
+        "git_blob_sha": "cdd7820aedf3ad2eecb13be752dd4295e542f00e",
+        "sha256": "101ecbb351d23c19d0c16b78fb1eee3253d37600f2548e7685e293069975e93e",
+        "bytes": 11977,
+        "url": "https://github.com/idpxyz/idp-parcel/blob/1428542bc8a5cf609ff70528ddf5e4d0697b58c7/docs/0327-08-account-entitlement.md"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "SOURCE-BRANT-01",
+      "status": "OPEN",
+      "finding": "No real AR aging read contract/ledger located in inspected Go package; cost facts are not AR facts."
+    },
+    {
+      "id": "SOURCE-PARCEL-01",
+      "status": "OPEN",
+      "finding": "Inspected package has empty database schema and sessionStorage state; pinned repository shipment records are mock arrays."
+    },
+    {
+      "id": "SOURCE-PARCEL-02",
+      "status": "OPEN_CONTRACT_CLARIFICATION",
+      "finding": "Design parcel sequence starts at 1; mock sequence is 0. Design suggested statuses and mock in_transit need an explicit version mapping."
+    },
+    {
+      "id": "IDENTITY-01",
+      "status": "OPEN",
+      "finding": "Existing Keycloak package is statically/unit validated PoC, not a qualified Reporting issuer or human delegated source contract."
+    }
+  ],
+  "real_business_calls": 0,
+  "remote_writes": 0,
+  "production_approved": false
+}

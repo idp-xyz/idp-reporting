@@ -40,7 +40,18 @@ func Handler(service *r.Service, authenticate Authenticate) (http.Handler, error
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
 			p, e := authenticate(req)
 			if e != nil || !p.Identity.Valid() {
-				problem(w, r.ErrDenied, 401)
+				status := 401
+				w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="invalid_token"`)
+				scheme, _, _ := strings.Cut(req.Header.Get("Authorization"), " ")
+				if !strings.EqualFold(scheme, "Bearer") {
+					w.Header().Set("WWW-Authenticate", `Bearer realm="reporting"`)
+				}
+				var insufficient interface{ InsufficientScope() bool }
+				if errors.As(e, &insufficient) && insufficient.InsufficientScope() {
+					status = 403
+					w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="insufficient_scope"`)
+				}
+				problem(w, r.ErrDenied, status)
 				return
 			}
 			ctx, cancel := context.WithTimeout(req.Context(), r.WorkTimeout)

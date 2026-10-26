@@ -1,0 +1,47 @@
+{
+  "status": "PASS",
+  "reader": "Python stdlib ZIP/XML; independent of Excelize",
+  "oracle": "literal filename/request-bound dataset, rows and totals",
+  "workbooks": [
+    {
+      "file": "normal/s02a_finance.xlsx",
+      "sha256": "70cc265404f43a248ac3881e4c4df52c0fd1ccb6846984eedd36b8581a683711",
+      "bytes": 7916,
+      "dataset": "receivables.aging@1.0.0",
+      "exact_total": "9007199254740993.01",
+      "CRC": "PASS",
+      "all_cells": "explicit text",
+      "formulas": 0
+    },
+    {
+      "file": "normal/s02a_shipments.xlsx",
+      "sha256": "bb205b66a9bee3267438d9e897f5df4187fce1ece79f7c979d5265ce3db47880",
+      "bytes": 7860,
+      "dataset": "shipments.daily@1.0.0",
+      "exact_total": "9007199254741000",
+      "CRC": "PASS",
+      "all_cells": "explicit text",
+      "formulas": 0
+    },
+    {
+      "file": "race/s02a_finance.xlsx",
+      "sha256": "ffa2c0c16f61f19b5266c1a08ca13c1a8ce724e91aaa2049f270aec4f76fb912",
+      "bytes": 7915,
+      "dataset": "receivables.aging@1.0.0",
+      "exact_total": "9007199254740993.01",
+      "CRC": "PASS",
+      "all_cells": "explicit text",
+      "formulas": 0
+    },
+    {
+      "file": "race/s02a_shipments.xlsx",
+      "sha256": "500bdbe9fd983047a3bfa12bb89e48fdd37cd8687f67fad3c95f6ec7ee27b5cc",
+      "bytes": 7857,
+      "dataset": "shipments.daily@1.0.0",
+      "exact_total": "9007199254741000",
+      "CRC": "PASS",
+      "all_cells": "explicit text",
+      "formulas": 0
+    }
+  ]
+}

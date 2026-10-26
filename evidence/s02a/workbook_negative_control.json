@@ -1,0 +1,6 @@
+{
+  "status": "EXPECTED_REJECTION_CONFIRMED",
+  "case": "swap finance/shipment and rebind producing-run digests",
+  "reason": "independent filename/dataset mismatch",
+  "original_files_modified": false
+}

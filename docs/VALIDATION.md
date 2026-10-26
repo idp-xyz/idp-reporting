@@ -1,46 +1,45 @@
-# S01-B verification record
+# S02-A validation
 
-2026-10-26 Asia/Shanghai. Protected contract-simulator fixtures only.
+Pinned Go 1.26.5. No dependency or generic reporting core changes.
 
-Final reviewed source: 17 original platform cases + 19 durable-source/storage cases.
-Ordinary and actual race binaries each passed36 child cases +2 parents, zero DB
-skips/failures. Host ordinary/race each passed18 top-level/35 parent+child events,
-with two explicit missing-DSN DB skips per host run. All5 host command groups and
-static checks passed. Actual4-process/PG recovery,14 independent workbook readbacks
-and3 missing-DSN negative controls passed. Current structured evidence is
-evidence/verification_summary.json.
+```sh
+python3 scripts/run_s02a_checks.py --go /path/to/go1.26.5/bin/go
+python3 scripts/verify_s02a_workbooks.py --negative-controls
+```
 
-The recovery probe verifies changed server process PID/start ticks and PostgreSQL
-start time, old artifact SHA/bytes, old cursor/source binding, queued snapshot and
-export completion, an intentionally abandoned claim's next generation, old-claim
-fencing, cancelled state/idempotency, actual DB outage non-disclosure and source
-revocation after another initializing startup. Platform and source are separate
-DBs on one guest PostgreSQL instance; independent-host failure domains are not
-qualified. The abandoned claim is made by the fixture probe, not a power-loss or
-worker-crash qualification.
+The runner executes the ordinary and race full host suites, vet, build and mod
+verify. It explicitly removes S01 PG requirement/DSNs from its child environment:
+this phase qualifies the identity/HTTP seam, not another database run. The two
+DB entry tests must be reported as SKIP; packages with no test files are listed
+separately. Pass events include parent tests and their subtests, not independent
+extra scenarios. Inspect evidence/s02a/host_checks.json plus raw JSONL.
 
-For direct PG tests use both guarded local DSNs:
-REPORTING_S01_TEST_DSN=postgresql://postgres@127.0.0.1:55432/reporting_test_s01?sslmode=disable
-REPORTING_S01_SOURCE_DSN=postgresql://postgres@127.0.0.1:55432/reporting_source_test_s01?sslmode=disable
-Set REPORTING_S01_REQUIRE_PG=1. Run go test ./integration -count=1 and the same
-with -race. Each destructive setup is restricted to the named fixture databases.
-Missing required DSNs fail; host runs without DSNs explicitly skip both DB entries.
+Both full runs exercise actual TLS loopback HTTP with a local RSA signer and two
+in-memory synthetic sources: snapshot jobs, worker execution, frozen pagination,
+XLSX tasks/download, other-subject/tenant denial, issuer/audience/scope validation,
+source revocation and binding removal. Four downloaded workbooks (two per run)
+are independently read through Python ZIP/XML using a literal filename-bound
+dataset/row/total oracle; producing-run digests must match. A temporary-copy
+negative control swaps finance/shipment bytes and rebinds those digests; the
+semantic oracle must still reject it. Original outputs are never modified.
 
-Full guest runner: python3 scripts/run_pg16_vm.py. Provide existing paths GO_BIN,
-REPORTING_PG_BUNDLE (bin/lib/share PostgreSQL), QEMU_BIN, REPORTING_VM_KERNEL,
-REPORTING_VM_BUSYBOX (static), REPORTING_QEMU_DATA and REPORTING_VM_BIOS. Optional
-private QEMU dependencies: REPORTING_QEMU_LOADER, REPORTING_QEMU_LIBRARY_PATH,
-REPORTING_QEMU_MODULE_DIR. PG must resolve its own shared libraries. No tools are
-downloaded by the runner. Go1.26.5/PG16 are required; no source-product repo needed.
+No actual Keycloak, real product ledger, enterprise membership authority, remote
+delegated identity, production key refresh/rotation or source contract was
+qualified. Current genuine-source inspection is recorded separately in
+source_discovery.json and REAL_SOURCE_DISCOVERY_S02A.md.
 
-The fixture upgrade adds canonical JSONB payload checksums. Those detect damaged
-or mismatched records; a privileged DB writer able to change both payload/hash is
-outside this integrity guarantee. SQL/payload owner mismatch is separately denied.
-Production roles/RLS and migration/rollback qualification remain S04. Fixture v1
-layout tests preserve durable-source assets; they do not recreate old S01-A
-in-memory handles that were never stored.
+S01-B ordinary/race 36-case PG and graceful recovery results remain historical
+evidence in evidence/s01b_baseline/. Its launch/source hashes apply to that
+accepted baseline only. It includes the older s01a_baseline evidence. Do not
+combine those PG passes with the current host suite or call them a current VM
+rerun. Historical commands/limitations remain in VALIDATION_S01B.md.
 
-No Docker/hosted CI, real SSO/product adapters, UI/PDF/designers, capacity, object
-storage, backup, crash/power loss or cross-system atomic revocation is claimed.
-S01-A evidence and review are retained under evidence/s01a_baseline/ and
-corresponding *_S01A.md documents.
+The only old production Go file touched is transport/httpapi/api.go (Bearer
+challenges); identity/accessjwt is new. The four generic core files, all source
+adapters, storage implementations and go.mod/go.sum remain byte-for-byte as
+accepted S01-B. Full source hashes are captured before the qualification run and
+must be unchanged afterward. Source discovery hashes pin each inspected file.
+
+Real-source I14 and real-issuer I15 remain unqualified; current state is tracked
+in ACCEPTANCE_S02A.json. HTML structural/link validation and isolated extracted
+build are packaging checks, not browser visual or production runtime acceptance.
