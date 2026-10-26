@@ -27,3 +27,9 @@ Old binaries cannot read schema2: downgrade/rollback and crash/power-loss recove
 are not qualified. Trusted local directory only; no tamper-evident audit claim.
 No production/browser/PG rerun claim. Real product/enterprise identity remains last.
 Verification: public Store, actual HTTP and public DOM using loopback Go API.
+
+Column-change policy: publish validates the exact target version's columns, and
+published read validates that pinned version. Release history/withdrawal require
+current dataset binding access (not obsolete v1 columns), so the owner can inspect
+and withdraw publication after a field is removed. These metadata-only routes
+return no layout fields or data; integration/dataset revocation still denies them.

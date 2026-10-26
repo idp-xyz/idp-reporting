@@ -69,31 +69,39 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	const base = "/api/reporting/v1"
 	if len(layoutStores) == 1 {
 		store := layoutStores[0]
+		describeBinding := func(req *http.Request, p r.Principal, b layouts.Binding) (r.Dataset, error) {
+			catalog, e := service.Catalog(req.Context(), p, b.Integration)
+			if e != nil {
+				return r.Dataset{}, e
+			}
+			for _, dataset := range catalog {
+				if dataset.Ref == b.Dataset {
+					return dataset, nil
+				}
+			}
+			return r.Dataset{}, r.ErrDenied
+		}
 		authorize := func(req *http.Request, p r.Principal, d layouts.Document) error {
 			if e := layouts.Validate(d); e != nil {
 				return e
 			}
-			catalog, e := service.Catalog(req.Context(), p, d.Binding.Integration)
+			dataset, e := describeBinding(req, p, d.Binding)
 			if e != nil {
 				return e
 			}
-			for _, dataset := range catalog {
-				if dataset.Ref == d.Binding.Dataset {
-					for _, c := range d.Columns {
-						found := false
-						for _, known := range dataset.Columns {
-							if known.ID == c.ID {
-								found = true
-							}
-						}
-						if !found {
-							return r.ErrDenied
-						}
+			for _, column := range d.Columns {
+				found := false
+				for _, known := range dataset.Columns {
+					if known.ID == column.ID {
+						found = true
+						break
 					}
-					return nil
+				}
+				if !found {
+					return r.ErrDenied
 				}
 			}
-			return r.ErrDenied
+			return nil
 		}
 		bind("GET "+base+"/layouts", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			all, e := store.List(p.Identity)
@@ -135,7 +143,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			if e != nil {
 				return e
 			}
-			if e = authorize(req, p, entry.Layout); e != nil {
+			if _, e = describeBinding(req, p, entry.Layout.Binding); e != nil {
 				return e
 			}
 			state, e := store.Release(p.Identity, entry.ID)
@@ -163,12 +171,25 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			if e := decode(req, &input); e != nil {
 				return e
 			}
-			entry, e := store.Get(p.Identity, req.PathValue("id"), 1)
+			if input.Action != "publish" && input.Action != "withdraw" {
+				return r.ErrInvalid
+			}
+			target := 1
+			if input.Action == "publish" {
+				target = input.Version
+			}
+			entry, e := store.Get(p.Identity, req.PathValue("id"), target)
 			if e != nil {
 				return e
 			}
-			if e = authorize(req, p, entry.Layout); e != nil {
-				return e
+			if input.Action == "publish" {
+				if e = authorize(req, p, entry.Layout); e != nil {
+					return e
+				}
+			} else {
+				if _, e = describeBinding(req, p, entry.Layout.Binding); e != nil {
+					return e
+				}
 			}
 			state, e := store.Publish(p.Identity, entry.ID, input.Action, input.Version, input.Expected)
 			if e != nil {
