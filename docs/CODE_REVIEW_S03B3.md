@@ -16,3 +16,7 @@ Store tests cover draft/published separation, revision CAS, rollback publication
 withdrawal, owner privacy, event quota, reopen, old-file migration and corrupt null history.
 Complete current Go normal/race and26 DOM are recorded separately from reviewers' targeted
 runs. No real browser, PG rerun, production audit, sharing or approvals qualification.
+
+Initial ordinary log was incomplete and rejected as qualification; diagnostic is
+kept separate. A fresh complete same-source run verified all started tests ended: 
+normal/race each40 top-level/175 parent-child passes, two explicit DB skips.

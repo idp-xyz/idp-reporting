@@ -5,8 +5,8 @@
   "code_commit": "10d5e96756c2252cd3f740302151920c404e4ab7",
   "go_checks": {
     "go": {
-      "top_level_passes": 38,
-      "pass_events": 173,
+      "top_level_passes": 40,
+      "pass_events": 175,
       "explicit_skips": [
         "TestPostgresContract",
         "TestDurablePostgresContract"
@@ -84,5 +84,6 @@
     "transport/httpapi/layouts_test.go": "f5149fab42fa0b02513da398548a07dbb32e3182b880cdc548ebffeac60e3825",
     "transport/httpapi/release_catalog_test.go": "289e57b90acec3755d02af4e76317683cbdab770c5fe8418a4f0be322149b9fc",
     "transport/httpapi/session_test.go": "c8b5266618a38c372da59f872e3153c55bbce1a81c8c64bb7dac2e63605a82a5"
-  }
+  },
+  "ordinary_log_note": "Initial ordinary log incomplete (diagnostic only); complete same-source rerun verified every started test terminated."
 }
