@@ -138,7 +138,7 @@
       "category": "experience",
       "expectation": "同一平台同时提供独立控制台与嵌入入口；共享布局不携带作者数据权限",
       "status": "PARTIAL_IMPLEMENTED_API_DOM",
-      "current_evidence": "独立控制台/基础查看器实现并通过API和9项软件DOM回归；浏览器验收待补。嵌入、三类设计器/模板/PDF尚未完成。"
+      "current_evidence": "独立控制台/基础查看器实现并通过API和21项软件DOM回归；浏览器验收待补。嵌入、三类设计器/模板/PDF尚未完成。"
     },
     {
       "id": "I18",
