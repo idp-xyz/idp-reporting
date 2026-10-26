@@ -147,7 +147,11 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		_ = tx.Rollback(cleanup)
+	}()
 	j, e := scanJob(tx.QueryRow(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE id=$1 FOR UPDATE", c.Job.ID))
 	if e != nil {
 		return e
