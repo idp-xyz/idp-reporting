@@ -124,7 +124,7 @@ func (s *Store) read(owner r.Identity) ([][]Entry, error) {
 	decoder := json.NewDecoder(io.LimitReader(f, maxFile+1))
 	decoder.DisallowUnknownFields()
 	var records [][]Entry
-	if decoder.Decode(&records) != nil || len(records) > 16 {
+	if decoder.Decode(&records) != nil || len(records) == 0 || len(records) > 16 {
 		return nil, r.ErrIntegrity
 	}
 	var tail any

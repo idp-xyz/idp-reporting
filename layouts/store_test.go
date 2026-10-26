@@ -4,7 +4,9 @@ import (
 	"errors"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -95,5 +97,48 @@ func TestInvalidLayouts(t *testing.T) {
 		if layouts.Validate(d) == nil {
 			t.Fatal("invalid layout accepted")
 		}
+	}
+}
+
+func TestDamagedOwnerFileCannotEraseHistory(t *testing.T) {
+	for _, payload := range []string{"null", "[]", "{}", "[null]"} {
+		t.Run(payload, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "private")
+			store, e := layouts.Open(dir)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer store.Close()
+			owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
+			first, e := store.Save(owner, "", 0, document())
+			if e != nil {
+				t.Fatal(e)
+			}
+			files, e := os.ReadDir(dir)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, file := range files {
+				if strings.HasSuffix(file.Name(), ".json") {
+					path := filepath.Join(dir, file.Name())
+					info, _ := os.Stat(path)
+					if info.Mode().Perm() != 0600 {
+						t.Fatal("private file mode")
+					}
+					if e = os.WriteFile(path, []byte(payload), 0600); e != nil {
+						t.Fatal(e)
+					}
+				}
+			}
+			if _, e = store.List(owner); !errors.Is(e, r.ErrIntegrity) {
+				t.Fatal("corruption listed as empty", e)
+			}
+			if _, e = store.Get(owner, first.ID, 1); !errors.Is(e, r.ErrIntegrity) {
+				t.Fatal("corruption hidden", e)
+			}
+			if _, e = store.Save(owner, "", 0, document()); !errors.Is(e, r.ErrIntegrity) {
+				t.Fatal("corruption overwritten", e)
+			}
+		})
 	}
 }

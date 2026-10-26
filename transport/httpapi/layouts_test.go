@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/layouts"
+	r "idp.local/reporting/reporting"
 	"idp.local/reporting/transport/httpapi"
+	"net/http"
 	"path/filepath"
 	"testing"
 )
@@ -16,7 +18,15 @@ func TestLayoutRoutesRecheckCatalogAndVersion(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	auth, _ := httpapi.DemoBearer(secret, contractsim.DemoPrincipal())
+	demoAuth, _ := httpapi.DemoBearer(secret, contractsim.DemoPrincipal())
+	revoked := false
+	auth := func(req *http.Request) (r.Principal, error) {
+		p, e := demoAuth(req)
+		if revoked {
+			p.Integrations = nil
+		}
+		return p, e
+	}
 	h, e := httpapi.Handler(service, auth, store)
 	if e != nil {
 		t.Fatal(e)
@@ -55,6 +65,14 @@ func TestLayoutRoutesRecheckCatalogAndVersion(t *testing.T) {
 	}
 	if request(h, "POST", "/api/reporting/v1/layouts", []byte(`{"tenant":"admin"}`), true).Code != 400 {
 		t.Fatal("authority fields")
+	}
+	revoked = true
+	if request(h, "GET", "/api/reporting/v1/layouts/"+first.ID+"?version=1", nil, true).Code != 403 {
+		t.Fatal("get bypassed current integration rights")
+	}
+	listed := request(h, "GET", "/api/reporting/v1/layouts", nil, true)
+	if listed.Code != 200 || listed.Body.String() != "[]\n" {
+		t.Fatal("list disclosed revoked binding")
 	}
 	disabled, _ := httpapi.Handler(service, auth)
 	if request(disabled, "GET", "/api/reporting/v1/layouts", nil, true).Code != 404 {

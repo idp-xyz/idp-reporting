@@ -35,7 +35,7 @@ func main() {
 func run() error {
 	profile := flag.String("profile", "", "required: contract-simulator")
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
-	useMemory := flag.Bool("memory", false, "explicit ephemeral demonstration; loses all data on restart")
+	useMemory := flag.Bool("memory", false, "explicit ephemeral query/job store; loses query/job data on restart")
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
 	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
