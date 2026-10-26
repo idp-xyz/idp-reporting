@@ -1,0 +1,256 @@
+// Package contractsim provides explicit synthetic product-side contracts.
+// No real Brant/Parcel API or database is queried by this package.
+package contractsim
+
+import (
+	"context"
+	"encoding/json"
+	r "idp.local/reporting/reporting"
+	"math/big"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+type Record struct {
+	Company string
+	Key     string
+	Values  []string
+}
+type Grant struct {
+	Companies      []string
+	Rows           []string
+	Timezone       string
+	CurrencyPolicy *r.Ref
+}
+type frozen struct {
+	prepared r.PreparedRead
+	query    r.QuerySpec
+	grant    Grant
+	records  []Record
+}
+type Simulator struct {
+	mu          sync.Mutex
+	dataset     r.Dataset
+	records     []Record
+	grants      map[r.Owner]Grant
+	frozen      map[string]frozen
+	unavailable bool
+	reads       int
+	revision    int
+}
+
+func copyValue[T any](v T) T {
+	b, e := json.Marshal(v)
+	if e != nil {
+		panic(e)
+	}
+	var out T
+	if e = json.Unmarshal(b, &out); e != nil {
+		panic(e)
+	}
+	return out
+}
+func New(d r.Dataset, records []Record) *Simulator {
+	return &Simulator{dataset: copyValue(d), records: copyValue(records), grants: map[r.Owner]Grant{}, frozen: map[string]frozen{}, revision: 1}
+}
+
+// Explicit fixture controls are Go-only. They are never exposed as HTTP admin
+// endpoints and cannot be used to mutate a production source.
+func (s *Simulator) Grant(o r.Owner, g Grant) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.grants[o] = copyValue(g)
+}
+func (s *Simulator) Revoke(o r.Owner)      { s.mu.Lock(); defer s.mu.Unlock(); delete(s.grants, o) }
+func (s *Simulator) SetUnavailable(v bool) { s.mu.Lock(); defer s.mu.Unlock(); s.unavailable = v }
+func (s *Simulator) ReplaceRecords(v []Record) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records = copyValue(v)
+	s.revision++
+}
+func (s *Simulator) ReadCalls() int { s.mu.Lock(); defer s.mu.Unlock(); return s.reads }
+func (s *Simulator) catalog(sc r.SourceContext) (Grant, error) {
+	if s.unavailable {
+		return Grant{}, r.ErrUnavailable
+	}
+	g, ok := s.grants[sc.Owner]
+	if !ok || sc.SourceTenant != "tenant_a" {
+		return Grant{}, r.ErrDenied
+	}
+	return g, nil
+}
+func (s *Simulator) DescribeCatalog(ctx context.Context, sc r.SourceContext) ([]r.Dataset, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, e := s.catalog(sc); e != nil {
+		return nil, e
+	}
+	return []r.Dataset{copyValue(s.dataset)}, nil
+}
+func (s *Simulator) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QuerySpec, hash string) (r.PreparedRead, error) {
+	if e := ctx.Err(); e != nil {
+		return r.PreparedRead{}, e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g, e := s.catalog(sc)
+	if e != nil {
+		return r.PreparedRead{}, e
+	}
+	if e = r.ValidateQuery(q, s.dataset); e != nil {
+		return r.PreparedRead{}, e
+	}
+	if q.Integration != sc.Owner.Integration || hash != r.QueryHash(q) {
+		return r.PreparedRead{}, r.ErrIntegrity
+	}
+	for _, c := range q.Companies {
+		if !slices.Contains(g.Companies, c) {
+			return r.PreparedRead{}, r.ErrDenied
+		}
+	}
+	if g.Timezone != q.Timezone || !reflect.DeepEqual(g.CurrencyPolicy, q.CurrencyPolicy) {
+		return r.PreparedRead{}, r.ErrDenied
+	}
+	for id, v := range s.frozen {
+		if !time.Now().Before(v.prepared.ExpiresAt) {
+			delete(s.frozen, id)
+		}
+	}
+	if len(s.frozen) >= 10000 {
+		return r.PreparedRead{}, r.ErrBudget
+	}
+	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: copyValue(q.CurrencyPolicy), Watermark: "fixture-v" + strconv.Itoa(s.revision), ExpiresAt: time.Now().Add(10 * time.Minute)}
+	// Immutable version pointer; admission does not enumerate or query rows.
+	s.frozen[p.Ref] = frozen{prepared: copyValue(p), query: copyValue(q), grant: copyValue(g), records: s.records}
+	return p, nil
+}
+func (s *Simulator) authorize(sc r.SourceContext, p r.PreparedRead) (frozen, error) {
+	g, e := s.catalog(sc)
+	if e != nil {
+		return frozen{}, e
+	}
+	f, ok := s.frozen[p.Ref]
+	if !ok || r.Digest(f.prepared) != r.Digest(p) || sc != p.Context || !time.Now().Before(p.ExpiresAt) {
+		return frozen{}, r.ErrDenied
+	}
+	if g.Timezone != f.grant.Timezone || !reflect.DeepEqual(g.CurrencyPolicy, f.grant.CurrencyPolicy) {
+		return frozen{}, r.ErrDenied
+	}
+	for _, c := range p.Companies {
+		if !slices.Contains(g.Companies, c) {
+			return frozen{}, r.ErrDenied
+		}
+	}
+	// Covers the original authorized row universe, not an opaque policy hash.
+	for _, row := range f.grant.Rows {
+		if !slices.Contains(g.Rows, row) {
+			return frozen{}, r.ErrDenied
+		}
+	}
+	return f, nil
+}
+func (s *Simulator) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.PreparedRead) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, e := s.authorize(sc, p)
+	return e
+}
+func (s *Simulator) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedRead, cursor string, limit int) (r.SourcePage, error) {
+	if e := ctx.Err(); e != nil {
+		return r.SourcePage{}, e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, e := s.authorize(sc, p)
+	if e != nil {
+		return r.SourcePage{}, e
+	}
+	if limit < 1 || limit > 100 {
+		return r.SourcePage{}, r.ErrInvalid
+	}
+	start := 0
+	if cursor != "" {
+		parts := strings.Split(cursor, ":")
+		if len(parts) != 2 || parts[0] != p.Ref {
+			return r.SourcePage{}, r.ErrInvalid
+		}
+		start, e = strconv.Atoi(parts[1])
+		if e != nil || start < 0 {
+			return r.SourcePage{}, r.ErrInvalid
+		}
+	}
+	s.reads++
+	rows := [][]string{}
+	totals := map[string]string{}
+	metricCols := s.dataset.Columns[len(f.query.Dimensions):]
+	for _, record := range f.records {
+		if slices.Contains(f.query.Companies, record.Company) && slices.Contains(f.grant.Rows, record.Key) {
+			rows = append(rows, slices.Clone(record.Values))
+		}
+	}
+	for i, m := range f.query.Metrics {
+		values := []string{}
+		for _, row := range rows {
+			if len(row) != len(s.dataset.Columns) {
+				return r.SourcePage{}, r.ErrIntegrity
+			}
+			values = append(values, row[len(f.query.Dimensions)+i])
+		}
+		v, e := sum(values, metricCols[i].Scale)
+		if e != nil {
+			return r.SourcePage{}, e
+		}
+		totals[m.ID] = v
+	}
+	if start > len(rows) {
+		return r.SourcePage{}, r.ErrInvalid
+	}
+	end := min(start+limit, len(rows))
+	page := r.SourcePage{Ref: p.Ref, QueryHash: p.QueryHash, Watermark: p.Watermark, Rows: rows[start:end], Totals: totals}
+	if end < len(rows) {
+		page.NextCursor = p.Ref + ":" + strconv.Itoa(end)
+	}
+	return page, nil
+}
+func sum(values []string, scale int) (string, error) {
+	total := new(big.Int)
+	for _, v := range values {
+		parts := strings.Split(v, ".")
+		if scale > 0 && (len(parts) != 2 || len(parts[1]) != scale) {
+			return "", r.ErrIntegrity
+		}
+		if scale == 0 && len(parts) != 1 {
+			return "", r.ErrIntegrity
+		}
+		n, ok := new(big.Int).SetString(strings.ReplaceAll(v, ".", ""), 10)
+		if !ok {
+			return "", r.ErrIntegrity
+		}
+		total.Add(total, n)
+	}
+	negative := total.Sign() < 0
+	digits := new(big.Int).Abs(total).String()
+	if scale > 0 {
+		for len(digits) <= scale {
+			digits = "0" + digits
+		}
+		digits = digits[:len(digits)-scale] + "." + digits[len(digits)-scale:]
+	}
+	if negative {
+		digits = "-" + digits
+	}
+	return digits, nil
+}
+
+var _ r.Adapter = (*Simulator)(nil)
