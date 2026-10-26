@@ -1,0 +1,23 @@
+{
+  "adapters/contractsim/financial.go": "93aef5b39fb2ae473e9081fa5162ef91aec9c32c85b63194ac5c466b2e4f4855",
+  "adapters/contractsim/shipment.go": "40f7f25c4d240d35a5d04b8d91c9703f2aeb9c9f05ec97e1d0ed99ce69172981",
+  "adapters/contractsim/simulator.go": "f63507c1be1d25296c7a35ef3a1fb53249d046968ad143d05b6d33429d2ae394",
+  "cmd/reporting-demo/main.go": "92fd6d47278ad0c3b8a76b698688e60bbd5a6543bade84eac0f59f3f8810111a",
+  "export/xlsx/writer.go": "71ed51e6c9d92926586d75699deddaeffbb269c37af9fdaaa2a633595a3de0a8",
+  "integration/contracts_test.go": "33c258b50419221e8053ef45470232214589d470b6cab3c3d715bed5399537ac",
+  "integration/fencing_test.go": "da787070a776a2086fec7a2e44ff6bd9c872ee649797ccd985303b268be05273",
+  "integration/paging_test.go": "b3837ef4dd1b6d4ecb3f0a7db8260659e24e4b3cbe782a62415ece9caf312488",
+  "reporting/export_test.go": "0e4a376c37c42220602c4700e77f0e0038d9690e19d54dc8ad13b0f1bcd58457",
+  "reporting/repository_contract.go": "4a27dea8b9a3eb44b531eb96b6ae2741ecc90c3562f548ff80e65cbe1dee14b6",
+  "reporting/service.go": "26ae26f3aa7fd948049e4b61f3da897891b665850d82b1f970d99e82af9f3762",
+  "reporting/service_test.go": "8fed847e46903e2dd9ffa0dcc9351833c7d9fa84a0bde683ab7c4539c0d8cb47",
+  "reporting/shipment_test.go": "d1d0d93c4aeef5d8e0a9247db10d325f315151919a4f71ae2ceb8f8aa962e0d2",
+  "reporting/strict_json_test.go": "b6d55c8e24726f6e0f5e0f3e8fb6255931704ca77cf2a810a736a41ac81f99bd",
+  "reporting/types.go": "6ec9bf8667b47474ecf32f893001999978491e8c42d433b5fe00c5c3808da968",
+  "reporting/validation.go": "76141dbaf2afe60a83c7203d45456417e806c19ae11a75087004e90fac16b79e",
+  "storage/memory/repository.go": "d3d9063497a2e811c7d3d70a005b34c880629db63ac9f2d9dc247d28f5e496e5",
+  "storage/postgres/guard_test.go": "1e919c6080938051c2534c03aaf2d1fae597565dafb9e51ec843f506a920d18c",
+  "storage/postgres/repository.go": "c72c28f0a354dc16038214adcca378b28bd21e890e6979e7cf31d63a0b29a0f9",
+  "transport/httpapi/api.go": "313d9e500006653b84872cc1ebb9728d04359ab341b0d56c7c8e633a4793b937",
+  "transport/httpapi/api_test.go": "480bb129cdb0605413366fe7415a66abadd0b46548dec161a1ea74d7da4665d2"
+}

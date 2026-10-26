@@ -1,0 +1,60 @@
+{
+  "phase": "S01-A",
+  "status": "PASS_WITHIN_CONTRACT_SIMULATOR_SCOPE",
+  "date": "2026-10-26 Asia/Shanghai",
+  "code_reviewed_commit": "084fc87feeedf37c3d569003cc17fc1b945ae415",
+  "go": "go version go1.26.5 linux/amd64",
+  "postgres": "postgres (PostgreSQL) 16.14",
+  "host": {
+    "commands": 5,
+    "ordinary_top_level_passes": 16,
+    "ordinary_pass_events": 33,
+    "race_pass_events": 33,
+    "explicit_db_skip_per_host_run": 1,
+    "static_checks": [
+      "Python AST",
+      "Go formatting",
+      "source whitespace"
+    ]
+  },
+  "real_pg": {
+    "child_scenarios_per_run": 17,
+    "ordinary_pass_events": 18,
+    "race_pass_events": 18,
+    "skips": 0,
+    "failures": 0,
+    "mechanism": "isolated full Linux guest, unmodified PG as UID65534, no NIC"
+  },
+  "independent_copy": {
+    "build_start_http_chains": 2,
+    "core_dependencies": "standard library only",
+    "product_private_dependencies": [],
+    "public_module_cache_reused": true
+  },
+  "workbooks": {
+    "independent_readbacks": 6,
+    "CRC": "PASS",
+    "exact_money_and_large_integers": "PASS",
+    "formula_count": 0,
+    "all_cells": "explicit text"
+  },
+  "review": {
+    "standards_findings_fixed": 2,
+    "standards_open": 0,
+    "spec_confirmed_findings": 0,
+    "spec_open": 0
+  },
+  "production_approved": false,
+  "not_qualified": [
+    "real product integrations",
+    "OIDC/SSO and delegated service identity",
+    "source/platform restart recovery",
+    "crash/power-loss and backup recovery",
+    "production roles/RLS",
+    "production migrations/upgrades",
+    "UI and embedding",
+    "three designers and PDF",
+    "official business issuance",
+    "capacity and object storage"
+  ]
+}

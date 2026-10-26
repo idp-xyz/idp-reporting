@@ -5,165 +5,165 @@ postgres (PostgreSQL) 16.14
 waiting for server to start.... done
 server started
 REPORTING_JSON_normal_BEGIN
-{"Time":"2026-10-26T06:01:55.52390376Z","Action":"start","Package":"idp.local/reporting/integration"}
-{"Time":"2026-10-26T06:01:55.87860497Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
-{"Time":"2026-10-26T06:01:55.88349175Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
-{"Time":"2026-10-26T06:01:56.42975843Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
-{"Time":"2026-10-26T06:01:56.4302459Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
-{"Time":"2026-10-26T06:01:57.3508079Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (0.91s)\n"}
-{"Time":"2026-10-26T06:01:57.35258255Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":0.91}
-{"Time":"2026-10-26T06:01:57.35543198Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
-{"Time":"2026-10-26T06:01:57.35571507Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
-{"Time":"2026-10-26T06:01:57.40358145Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.05s)\n"}
-{"Time":"2026-10-26T06:01:57.40450572Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.05}
-{"Time":"2026-10-26T06:01:57.40484568Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
-{"Time":"2026-10-26T06:01:57.4052107Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
-{"Time":"2026-10-26T06:01:57.47495848Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.07s)\n"}
-{"Time":"2026-10-26T06:01:57.47605494Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.07}
-{"Time":"2026-10-26T06:01:57.47695305Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
-{"Time":"2026-10-26T06:01:57.47757863Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
-{"Time":"2026-10-26T06:01:57.65392566Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (0.18s)\n"}
-{"Time":"2026-10-26T06:01:57.65495894Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":0.18}
-{"Time":"2026-10-26T06:01:57.65627267Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
-{"Time":"2026-10-26T06:01:57.6570477Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
-{"Time":"2026-10-26T06:01:57.75368399Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.10s)\n"}
-{"Time":"2026-10-26T06:01:57.75564876Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.1}
-{"Time":"2026-10-26T06:01:57.756439Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
-{"Time":"2026-10-26T06:01:57.75653009Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
-{"Time":"2026-10-26T06:01:57.94819797Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (0.19s)\n"}
-{"Time":"2026-10-26T06:01:57.94860989Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":0.19}
-{"Time":"2026-10-26T06:01:57.95143211Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
-{"Time":"2026-10-26T06:01:57.95251464Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
-{"Time":"2026-10-26T06:01:57.97944133Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.03s)\n"}
-{"Time":"2026-10-26T06:01:57.98083163Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.03}
-{"Time":"2026-10-26T06:01:57.98129318Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
-{"Time":"2026-10-26T06:01:57.98273774Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
-{"Time":"2026-10-26T06:01:58.09974026Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.12s)\n"}
-{"Time":"2026-10-26T06:01:58.10370815Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.12}
-{"Time":"2026-10-26T06:01:58.10408032Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
-{"Time":"2026-10-26T06:01:58.10464405Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
-{"Time":"2026-10-26T06:01:58.18901162Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.09s)\n"}
-{"Time":"2026-10-26T06:01:58.19006957Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.09}
-{"Time":"2026-10-26T06:01:58.19446453Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
-{"Time":"2026-10-26T06:01:58.19475313Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
-{"Time":"2026-10-26T06:01:58.27664107Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.09s)\n"}
-{"Time":"2026-10-26T06:01:58.27989111Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.09}
-{"Time":"2026-10-26T06:01:58.28086386Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
-{"Time":"2026-10-26T06:01:58.28200436Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
-{"Time":"2026-10-26T06:01:58.48429238Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (0.21s)\n"}
-{"Time":"2026-10-26T06:01:58.48584857Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":0.21}
-{"Time":"2026-10-26T06:01:58.48800636Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
-{"Time":"2026-10-26T06:01:58.48833781Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
-{"Time":"2026-10-26T06:01:58.69079267Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (0.20s)\n"}
-{"Time":"2026-10-26T06:01:58.69116607Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":0.2}
-{"Time":"2026-10-26T06:01:58.69425113Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
-{"Time":"2026-10-26T06:01:58.69507886Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
-{"Time":"2026-10-26T06:01:58.90063644Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (0.21s)\n"}
-{"Time":"2026-10-26T06:01:58.9034506Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":0.21}
-{"Time":"2026-10-26T06:01:58.90362426Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
-{"Time":"2026-10-26T06:01:58.90399591Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
-{"Time":"2026-10-26T06:01:59.11203158Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.21s)\n"}
-{"Time":"2026-10-26T06:01:59.11284933Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":0.21}
-{"Time":"2026-10-26T06:01:59.11564581Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
-{"Time":"2026-10-26T06:01:59.11647318Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
-{"Time":"2026-10-26T06:01:59.19289638Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.08s)\n"}
-{"Time":"2026-10-26T06:01:59.19585375Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.08}
-{"Time":"2026-10-26T06:01:59.19704592Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
-{"Time":"2026-10-26T06:01:59.19976767Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
-{"Time":"2026-10-26T06:01:59.6157954Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.42s)\n"}
-{"Time":"2026-10-26T06:01:59.61881697Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.42}
-{"Time":"2026-10-26T06:01:59.62047264Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
-{"Time":"2026-10-26T06:01:59.62113149Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
-{"Time":"2026-10-26T06:02:00.90058388Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.28s)\n"}
-{"Time":"2026-10-26T06:02:00.90289654Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.28}
-{"Time":"2026-10-26T06:02:00.91982138Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (5.04s)\n"}
-{"Time":"2026-10-26T06:02:00.92096805Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":5.04}
-{"Time":"2026-10-26T06:02:00.93480543Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
-{"Time":"2026-10-26T06:02:00.96369537Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":5.44}
+{"Time":"2026-10-26T06:13:40.78349424Z","Action":"start","Package":"idp.local/reporting/integration"}
+{"Time":"2026-10-26T06:13:41.03268558Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
+{"Time":"2026-10-26T06:13:41.03339896Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
+{"Time":"2026-10-26T06:13:41.58313652Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
+{"Time":"2026-10-26T06:13:41.58604694Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
+{"Time":"2026-10-26T06:13:42.44589295Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (0.86s)\n"}
+{"Time":"2026-10-26T06:13:42.44934884Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":0.86}
+{"Time":"2026-10-26T06:13:42.45601737Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
+{"Time":"2026-10-26T06:13:42.45694139Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
+{"Time":"2026-10-26T06:13:42.49308445Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.05s)\n"}
+{"Time":"2026-10-26T06:13:42.49399908Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.05}
+{"Time":"2026-10-26T06:13:42.49544989Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
+{"Time":"2026-10-26T06:13:42.4962591Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
+{"Time":"2026-10-26T06:13:42.57436389Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.08s)\n"}
+{"Time":"2026-10-26T06:13:42.57709083Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.08}
+{"Time":"2026-10-26T06:13:42.57797077Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
+{"Time":"2026-10-26T06:13:42.57899389Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
+{"Time":"2026-10-26T06:13:42.78831324Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (0.21s)\n"}
+{"Time":"2026-10-26T06:13:42.78926332Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":0.21}
+{"Time":"2026-10-26T06:13:42.78975471Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
+{"Time":"2026-10-26T06:13:42.79173962Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
+{"Time":"2026-10-26T06:13:42.89786074Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.11s)\n"}
+{"Time":"2026-10-26T06:13:42.89888583Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.11}
+{"Time":"2026-10-26T06:13:42.90086976Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
+{"Time":"2026-10-26T06:13:42.90113881Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
+{"Time":"2026-10-26T06:13:43.0870731Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (0.19s)\n"}
+{"Time":"2026-10-26T06:13:43.08760217Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":0.19}
+{"Time":"2026-10-26T06:13:43.08810296Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
+{"Time":"2026-10-26T06:13:43.09161899Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
+{"Time":"2026-10-26T06:13:43.11540481Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.03s)\n"}
+{"Time":"2026-10-26T06:13:43.11949942Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.03}
+{"Time":"2026-10-26T06:13:43.12006903Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
+{"Time":"2026-10-26T06:13:43.12103396Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
+{"Time":"2026-10-26T06:13:43.21757963Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.10s)\n"}
+{"Time":"2026-10-26T06:13:43.22199357Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.1}
+{"Time":"2026-10-26T06:13:43.22281092Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
+{"Time":"2026-10-26T06:13:43.22334893Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
+{"Time":"2026-10-26T06:13:43.3105121Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.09s)\n"}
+{"Time":"2026-10-26T06:13:43.31273025Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.09}
+{"Time":"2026-10-26T06:13:43.31618056Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
+{"Time":"2026-10-26T06:13:43.31785943Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
+{"Time":"2026-10-26T06:13:43.39683378Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.08s)\n"}
+{"Time":"2026-10-26T06:13:43.39813575Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.08}
+{"Time":"2026-10-26T06:13:43.4010577Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
+{"Time":"2026-10-26T06:13:43.40238702Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
+{"Time":"2026-10-26T06:13:43.62691459Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (0.23s)\n"}
+{"Time":"2026-10-26T06:13:43.62805283Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":0.23}
+{"Time":"2026-10-26T06:13:43.63007763Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
+{"Time":"2026-10-26T06:13:43.63134455Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
+{"Time":"2026-10-26T06:13:43.83543474Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (0.21s)\n"}
+{"Time":"2026-10-26T06:13:43.83611763Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":0.21}
+{"Time":"2026-10-26T06:13:43.83712177Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
+{"Time":"2026-10-26T06:13:43.84180858Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
+{"Time":"2026-10-26T06:13:44.224313Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (0.38s)\n"}
+{"Time":"2026-10-26T06:13:44.22629185Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":0.38}
+{"Time":"2026-10-26T06:13:44.227686Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
+{"Time":"2026-10-26T06:13:44.22802779Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
+{"Time":"2026-10-26T06:13:44.41296495Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.19s)\n"}
+{"Time":"2026-10-26T06:13:44.41528173Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":0.19}
+{"Time":"2026-10-26T06:13:44.42150949Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
+{"Time":"2026-10-26T06:13:44.42276255Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
+{"Time":"2026-10-26T06:13:44.49988433Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.09s)\n"}
+{"Time":"2026-10-26T06:13:44.50094244Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.09}
+{"Time":"2026-10-26T06:13:44.50448481Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
+{"Time":"2026-10-26T06:13:44.50500723Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
+{"Time":"2026-10-26T06:13:44.95763237Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.45s)\n"}
+{"Time":"2026-10-26T06:13:44.95835451Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.45}
+{"Time":"2026-10-26T06:13:44.95986125Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
+{"Time":"2026-10-26T06:13:44.96060704Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
+{"Time":"2026-10-26T06:13:46.24638282Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.29s)\n"}
+{"Time":"2026-10-26T06:13:46.25155817Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.29}
+{"Time":"2026-10-26T06:13:46.28137144Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (5.25s)\n"}
+{"Time":"2026-10-26T06:13:46.28177129Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":5.25}
+{"Time":"2026-10-26T06:13:46.30395895Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
+{"Time":"2026-10-26T06:13:46.31566201Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":5.533}
 REPORTING_EXIT_normal=0
 REPORTING_JSON_normal_END
 REPORTING_JSON_race_BEGIN
-{"Time":"2026-10-26T06:02:00.9930665Z","Action":"start","Package":"idp.local/reporting/integration"}
-{"Time":"2026-10-26T06:02:01.61326545Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
-{"Time":"2026-10-26T06:02:01.61529467Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
-{"Time":"2026-10-26T06:02:01.96629335Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
-{"Time":"2026-10-26T06:02:01.96727615Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
-{"Time":"2026-10-26T06:02:03.98127756Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (2.01s)\n"}
-{"Time":"2026-10-26T06:02:03.98423478Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":2.01}
-{"Time":"2026-10-26T06:02:03.98584891Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
-{"Time":"2026-10-26T06:02:03.98671069Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
-{"Time":"2026-10-26T06:02:04.07470193Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.09s)\n"}
-{"Time":"2026-10-26T06:02:04.07628139Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.09}
-{"Time":"2026-10-26T06:02:04.07857635Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
-{"Time":"2026-10-26T06:02:04.0787981Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
-{"Time":"2026-10-26T06:02:04.24314859Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.16s)\n"}
-{"Time":"2026-10-26T06:02:04.24377823Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.16}
-{"Time":"2026-10-26T06:02:04.24555324Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
-{"Time":"2026-10-26T06:02:04.24656921Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
-{"Time":"2026-10-26T06:02:05.45719215Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (1.21s)\n"}
-{"Time":"2026-10-26T06:02:05.45963266Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":1.21}
-{"Time":"2026-10-26T06:02:05.46032554Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
-{"Time":"2026-10-26T06:02:05.46111616Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
-{"Time":"2026-10-26T06:02:05.68922905Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.22s)\n"}
-{"Time":"2026-10-26T06:02:05.69196685Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.22}
-{"Time":"2026-10-26T06:02:05.69529833Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
-{"Time":"2026-10-26T06:02:05.69712163Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
-{"Time":"2026-10-26T06:02:07.0242617Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (1.33s)\n"}
-{"Time":"2026-10-26T06:02:07.02587633Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":1.33}
-{"Time":"2026-10-26T06:02:07.02817033Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
-{"Time":"2026-10-26T06:02:07.02887934Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
-{"Time":"2026-10-26T06:02:07.07999562Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.05s)\n"}
-{"Time":"2026-10-26T06:02:07.08399399Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.05}
-{"Time":"2026-10-26T06:02:07.08492498Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
-{"Time":"2026-10-26T06:02:07.08567778Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
-{"Time":"2026-10-26T06:02:07.34601259Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.26s)\n"}
-{"Time":"2026-10-26T06:02:07.34723928Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.26}
-{"Time":"2026-10-26T06:02:07.35024103Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
-{"Time":"2026-10-26T06:02:07.3506323Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
-{"Time":"2026-10-26T06:02:07.56831084Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.22s)\n"}
-{"Time":"2026-10-26T06:02:07.56995602Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.22}
-{"Time":"2026-10-26T06:02:07.57047135Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
-{"Time":"2026-10-26T06:02:07.57105345Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
-{"Time":"2026-10-26T06:02:07.73405785Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.16s)\n"}
-{"Time":"2026-10-26T06:02:07.73491443Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.16}
-{"Time":"2026-10-26T06:02:07.74043084Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
-{"Time":"2026-10-26T06:02:07.74072706Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
-{"Time":"2026-10-26T06:02:08.49285683Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (0.75s)\n"}
-{"Time":"2026-10-26T06:02:08.49494908Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":0.75}
-{"Time":"2026-10-26T06:02:08.49575075Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
-{"Time":"2026-10-26T06:02:08.49711337Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
-{"Time":"2026-10-26T06:02:09.93600653Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (1.44s)\n"}
-{"Time":"2026-10-26T06:02:09.93727794Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":1.44}
-{"Time":"2026-10-26T06:02:09.93781664Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
-{"Time":"2026-10-26T06:02:09.9381912Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
-{"Time":"2026-10-26T06:02:12.05089458Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (2.11s)\n"}
-{"Time":"2026-10-26T06:02:12.05319756Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":2.11}
-{"Time":"2026-10-26T06:02:12.05518375Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
-{"Time":"2026-10-26T06:02:12.05661681Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
-{"Time":"2026-10-26T06:02:12.79874469Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.74s)\n"}
-{"Time":"2026-10-26T06:02:12.79968737Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":0.74}
-{"Time":"2026-10-26T06:02:12.80016381Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
-{"Time":"2026-10-26T06:02:12.80129387Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
-{"Time":"2026-10-26T06:02:12.96294713Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.16s)\n"}
-{"Time":"2026-10-26T06:02:12.96447107Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.16}
-{"Time":"2026-10-26T06:02:12.96502837Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
-{"Time":"2026-10-26T06:02:12.96579039Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
-{"Time":"2026-10-26T06:02:13.71204185Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.74s)\n"}
-{"Time":"2026-10-26T06:02:13.71683974Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.74}
-{"Time":"2026-10-26T06:02:13.72017044Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
-{"Time":"2026-10-26T06:02:13.72112285Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
-{"Time":"2026-10-26T06:02:15.05689421Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.34s)\n"}
-{"Time":"2026-10-26T06:02:15.05901388Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.34}
-{"Time":"2026-10-26T06:02:15.10587589Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (13.47s)\n"}
-{"Time":"2026-10-26T06:02:15.11390748Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":13.47}
-{"Time":"2026-10-26T06:02:15.13483664Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
-{"Time":"2026-10-26T06:02:16.16197828Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":15.169}
+{"Time":"2026-10-26T06:13:46.34466862Z","Action":"start","Package":"idp.local/reporting/integration"}
+{"Time":"2026-10-26T06:13:47.02394538Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
+{"Time":"2026-10-26T06:13:47.02613823Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
+{"Time":"2026-10-26T06:13:47.39074641Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
+{"Time":"2026-10-26T06:13:47.39102225Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
+{"Time":"2026-10-26T06:13:49.61785587Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (2.22s)\n"}
+{"Time":"2026-10-26T06:13:49.62035051Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":2.22}
+{"Time":"2026-10-26T06:13:49.62081147Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
+{"Time":"2026-10-26T06:13:49.62208151Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
+{"Time":"2026-10-26T06:13:49.70660539Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.08s)\n"}
+{"Time":"2026-10-26T06:13:49.70694169Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.08}
+{"Time":"2026-10-26T06:13:49.70926642Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
+{"Time":"2026-10-26T06:13:49.70962859Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
+{"Time":"2026-10-26T06:13:49.8871511Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.18s)\n"}
+{"Time":"2026-10-26T06:13:49.88810947Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.18}
+{"Time":"2026-10-26T06:13:49.89099575Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
+{"Time":"2026-10-26T06:13:49.89135981Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
+{"Time":"2026-10-26T06:13:50.94777207Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (1.05s)\n"}
+{"Time":"2026-10-26T06:13:50.94982768Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":1.05}
+{"Time":"2026-10-26T06:13:50.95016221Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
+{"Time":"2026-10-26T06:13:50.95087779Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
+{"Time":"2026-10-26T06:13:51.19958109Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.25s)\n"}
+{"Time":"2026-10-26T06:13:51.20202086Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.25}
+{"Time":"2026-10-26T06:13:51.2043998Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
+{"Time":"2026-10-26T06:13:51.20456816Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
+{"Time":"2026-10-26T06:13:52.4009121Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (1.18s)\n"}
+{"Time":"2026-10-26T06:13:52.47411422Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":1.18}
+{"Time":"2026-10-26T06:13:52.48286508Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
+{"Time":"2026-10-26T06:13:52.48638058Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
+{"Time":"2026-10-26T06:13:52.532136Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.05s)\n"}
+{"Time":"2026-10-26T06:13:52.5330051Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.05}
+{"Time":"2026-10-26T06:13:52.53477185Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
+{"Time":"2026-10-26T06:13:52.53783978Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
+{"Time":"2026-10-26T06:13:52.77747682Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.24s)\n"}
+{"Time":"2026-10-26T06:13:52.78009248Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.24}
+{"Time":"2026-10-26T06:13:52.78169721Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
+{"Time":"2026-10-26T06:13:52.7828198Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
+{"Time":"2026-10-26T06:13:52.98896802Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.21s)\n"}
+{"Time":"2026-10-26T06:13:52.99199603Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.21}
+{"Time":"2026-10-26T06:13:52.99343052Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
+{"Time":"2026-10-26T06:13:52.99479212Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
+{"Time":"2026-10-26T06:13:53.14157492Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.15s)\n"}
+{"Time":"2026-10-26T06:13:53.14195197Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.15}
+{"Time":"2026-10-26T06:13:53.1458988Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
+{"Time":"2026-10-26T06:13:53.14710746Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
+{"Time":"2026-10-26T06:13:54.29199547Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (1.15s)\n"}
+{"Time":"2026-10-26T06:13:54.29565061Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":1.15}
+{"Time":"2026-10-26T06:13:54.29841824Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
+{"Time":"2026-10-26T06:13:54.2986396Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
+{"Time":"2026-10-26T06:13:55.56938058Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (1.27s)\n"}
+{"Time":"2026-10-26T06:13:55.57185126Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":1.27}
+{"Time":"2026-10-26T06:13:55.57275568Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
+{"Time":"2026-10-26T06:13:55.57289072Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
+{"Time":"2026-10-26T06:13:56.39169413Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (0.82s)\n"}
+{"Time":"2026-10-26T06:13:56.39293807Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":0.82}
+{"Time":"2026-10-26T06:13:56.39349873Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
+{"Time":"2026-10-26T06:13:56.39393382Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
+{"Time":"2026-10-26T06:13:57.80663061Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (1.41s)\n"}
+{"Time":"2026-10-26T06:13:57.8126675Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":1.41}
+{"Time":"2026-10-26T06:13:57.81357696Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
+{"Time":"2026-10-26T06:13:57.8143682Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
+{"Time":"2026-10-26T06:13:57.94890949Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.14s)\n"}
+{"Time":"2026-10-26T06:13:57.95004747Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.14}
+{"Time":"2026-10-26T06:13:57.95617563Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
+{"Time":"2026-10-26T06:13:57.95744514Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
+{"Time":"2026-10-26T06:13:58.51765483Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.57s)\n"}
+{"Time":"2026-10-26T06:13:58.5206747Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.57}
+{"Time":"2026-10-26T06:13:58.52281309Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
+{"Time":"2026-10-26T06:13:58.52343542Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
+{"Time":"2026-10-26T06:13:59.94011848Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.41s)\n"}
+{"Time":"2026-10-26T06:13:59.94398788Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.41}
+{"Time":"2026-10-26T06:14:00.01189964Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (12.96s)\n"}
+{"Time":"2026-10-26T06:14:00.01978038Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":12.96}
+{"Time":"2026-10-26T06:14:00.03275344Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
+{"Time":"2026-10-26T06:14:01.06042982Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":14.716}
 REPORTING_EXIT_race=0
 REPORTING_JSON_race_END
 waiting for server to shut down.... done
 server stopped
 REPORTING_FILE=/evidence/normal/sample_1.xlsx
-4273bfb415d9e59567cc700fb3e5fe8d17e269bca089866b3c0527aaa8b445ea  /evidence/normal/sample_1.xlsx
+e65ed139765d2217622fc345076efcdf1f597c7e88f9a37ed23f60ff9bfb686a  /evidence/normal/sample_1.xlsx
 REPORTING_XLSX_BEGIN
 UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1sfJVf
 b5swFMXf9yksv6/GxBAyGVfdukl7359nRtwGFePIpiEff6LZzL23IS/Iye/4cHK4Jvr+7Hp2siF2
@@ -248,65 +248,65 @@ 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
-AAAUAAAAeGwvc2hhcmVkU3RyaW5ncy54bWx0VL+PHDUY7fkrrO13xp7fe+xtWI4gRQp30u1eAc3o
-G/ubHSsz9sT2LHvUFBSUkRAFTQpKqgikSPDXcBH3X6C9oETYe+W89/lp/N77vHxyGHqyR2OlVucz
-FtEZQcW1kGp3PrvZfjmvZk9WnyytdeQw9MqezzrnxrM4trzDAWykR1SHoW+1GcDZSJtdbEeDIGyH
-6IY+Tigt4gGkmhGuJ+XOZzmbkUnJlxNefABWSytXS7e6++31ux/+WMZutYyPyHv0nze/3v/1/d2P
-b+9/euNzd29fvXv1+99//nz/+hef45N1ekBTQ8gYg8r5MKM0SvJHZZpgvk6pj81plGSPSnCfSVld
-BBoLSku2WCR5Vma0WqQRDUYGdEYGangA7uo99BOevjK/9fFJycAHMA/B1g30oHgg9b/fWxx/j/kj
-F5df+5D/LcBBzXuwNjh8dbm9Xl9syebZVzfP19uraxKTy6stuX66fk4+v9k8u3y62ZAv1tu1f9Qq
-GG2nXS1FEFZWLpCjaNsyayuaCJY2JcuqBMq8EGnQEakc7gw4qdUJtcaAcnOulTPA3VzgoE9d0GJg
-rkGOcg9NjzaCnVS7z1hEoyBgsLVufTChSTFndJ4UPuPkgN9pFWS1thLiTQdq14H0yZcTmtu6A9v5
-TF5im+UtbzKWYdUsRAZl3pRQpVDQrICKFyxhhUjztkIGtOGQiQZaXLRpKsIdsnoyHOtvwaEZwLzw
-+VYe3GRwvg+a9N/JD8EaDFwRtIC0oGlalSXNaMbbTNBcNEmZptCyYG3xMEqDtoYgm4/+bmlxxthZ
-Xnzjz4wGuTw+mIHVfU8eVs8SMEgedpE4PDjCse9tRG4sEhhHo/coiLsdURA5jNo4S1ptCBjpugGd
-5J8SpY/QMPVgyQ4VGnAootA17INmHoUDEzn0J16E949SFLbbOiPVzkfDjh7rGzUTfxHWXCCXA/SB
-wx+B2Fq3+jcAAP//UEsHCKfvotPXAgAAgwYAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAAGgAA
-AHhsL19yZWxzL3dvcmtib29rLnhtbC5yZWxzxNLNSsNAEMDxu0+xzN1Mk2oRSdKLCL1qfIAlmWSX
-7kfYWTV9eyGCSbGFCAEvCXv5z4+dzfeDNeKDAmvvCkiTDQhytW+06wp4q55vH2Bf3uQvZGTU3rHS
-PYvBGscFqBj7R0SuFVnJie/JDda0PlgZOfGhw17WR9kRZpvNDsO8AeVZUxyaAsKhSUFUMnQUC/j0
-4ciKKDKOvzQZrAFRnXpaMtq3ra7pydfvlly8IMCfAVDmOMdcpmUTjePJEK/t+a4uw2wnTFRkCcfv
-6lc0VpeJ7q5vLlub9cfN3V+nbf+ZtptoOBhkJQM1rzFo163/vubx37yzI5dfAQAA//9QSwcIlawt
-hvsAAAAaBAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZG9jUHJvcHMvY29yZS54bWyk
-kU1LAzEQhu/+iiX33cm2UDSk6UHpSUGwongLybQNbj5IUjf+e+m23VbsTchp3mce3iR8UWxXfWFM
-xrs5aRtKKnTKa+M2c/K6Wta3ZCFuuApM+YjP0QeM2WCqiu1cYirMyTbnwACS2qKVqfEBXbHd2kcr
-c2p83ECQ6lNuECaUzsBillpmCXthHUYjOSq1GpVhF7tBoBVghxZdTtA2LZzZjNGmqwtDckFak78D
-XkVP4UiXZEaw7/umnw7ohNIW3p8eX4ar1salLJ1CIrhWTEWU2UdRdtFwuBjwY8vDAHVVkmGHLqfk
-bXr/sFoSsX+gmt7V7WxFKRvOx971a/8stF6btfmH8SQQHP78sPgJAAD//1BLBwhF30CoEAEAABwC
-AABQSwMEFAAIAAgAAAAAAAAAAAAAAAAAAAAAABAAAABkb2NQcm9wcy9hcHAueG1snM8/SwQxEAXw
-3k+xpL+d1ULkyOYQ/NNarPZLMns3kMyEzHhEP72I4FlbPh78eM8fesnDGZuS8Oyux8kNyFES8XF2
-r8vT7s4dwpV/aVKxGaEOvWTW2Z3M6h5A4wnLqqNU5F7yJq2spqO0I8i2UcQHie8F2eBmmm4BuyEn
-TLv6C7ofcX+2/6JJ4vc+fVs+KqoLfhFb80IFw+ThEvx9rZniaiQcnmV47BEzfaKHv4WHy9nwFQAA
-//9QSwcI4jggCbYAAAAgAQAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAALAAAAX3JlbHMvLnJl
-bHOU0MFK/DAQBvD7/ylC7tt09w8isuleRNibSH2AmEzb0CQTJqPGtxe9uMWK9jgwfN+P73iqMYgX
-oOIxablvWikgWXQ+jVo+9ne7a3nq/h0fIBj2mMrkcxE1hlS0nJjzjVLFThBNaTBDqjEMSNFwaZBG
-lY2dzQjq0LZXii4zZLfIFGenJZ3dfyl6QyOwlg7tPWEuyuTc1Bik6N8y/KUVh8FbuEX7HCHxSrmC
-ypAcuF0mzEDs4QOkLkXrvsOKzyLBNuDPs6gIbJxh85m6mbf/4tWgXpHmJ8R5G+739ZYf32WLs3Tv
-AQAA//9QSwcIt8x7k+cAAABkAgAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAATAAAAW0NvbnRl
-bnRfVHlwZXNdLnhtbMSUz27UMBDG7zxF5Ctae1skhFCSHvhzhEqUBzD2JLHW9lgz0yV9e5SkW0HZ
-ol1tJC7xZfL9fvrkcX0zpljtgThgbtSV3qoKskMfct+o73efN+/UTfuqvnsowNWYYuZGDSLlvTHs
-BkiWNRbIY4odUrLCGqk3xbqd7cFcb7dvjcMskGUjU4Zq64/Q2fso1adRIC9cgsiq+rAMTqxG2VJi
-cFYCZrPP/hll80jQBHGe4SEUfj2mqNraPBKOoqaRl0nPA77ugSh4qG4tyReboFFmjEYGSLB8r/S/
-E4+4Y9cFBx7dfYIseo45qB+AL6JZHiLwxVAuBNbzACAp6iX0ZIefSLsfiLu1LaZTJxvyaSYe3S1h
-YWNLuVgFpiviwW8KYQGScGYfszyb+bj8TvxZzFP+aUZPvTgkOF/lsFrT32u0cX2+wpptHDF689+N
-eLAE/ptQyP3qy/x79t9GZn7L218BAAD//1BLBwhxqLoPYgEAAPoFAABQSwECFAAUAAgACAAAAAAA
-Q/BIYtwBAAAfBwAAGAAAAAAAAAAAAAAAAAAAAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1sUEsB
-AhQAFAAIAAgAAAAAAP7Cp0AZAQAASgIAABgAAAAAAAAAAAAAAAAAIgIAAHhsL3dvcmtzaGVldHMv
-c2hlZXQyLnhtbFBLAQIUABQACAAIAAAAAAByTE/orwEAAM4DAAAYAAAAAAAAAAAAAAAAAIEDAAB4
-bC93b3Jrc2hlZXRzL3NoZWV0MS54bWxQSwECFAAUAAgACAAAAAAA7g/97qUBAABaAwAADwAAAAAA
-AAAAAAAAAAB2BQAAeGwvd29ya2Jvb2sueG1sUEsBAhQAFAAIAAgAAAAAALCinXt9BQAAZRwAABMA
-AAAAAAAAAAAAAAAAWAcAAHhsL3RoZW1lL3RoZW1lMS54bWxQSwECFAAUAAgACAAAAAAAFTvNhxIF
-AAAUFwAADQAAAAAAAAAAAAAAAAAWDQAAeGwvc3R5bGVzLnhtbFBLAQIUABQACAAIAAAAAACn76LT
-1wIAAIMGAAAUAAAAAAAAAAAAAAAAAGMSAAB4bC9zaGFyZWRTdHJpbmdzLnhtbFBLAQIUABQACAAI
-AAAAAACVrC2G+wAAABoEAAAaAAAAAAAAAAAAAAAAAHwVAAB4bC9fcmVscy93b3JrYm9vay54bWwu
-cmVsc1BLAQIUABQACAAIAAAAAABF30CoEAEAABwCAAARAAAAAAAAAAAAAAAAAL8WAABkb2NQcm9w
-cy9jb3JlLnhtbFBLAQIUABQACAAIAAAAAADiOCAJtgAAACABAAAQAAAAAAAAAAAAAAAAAA4YAABk
-b2NQcm9wcy9hcHAueG1sUEsBAhQAFAAIAAgAAAAAALfMe5PnAAAAZAIAAAsAAAAAAAAAAAAAAAAA
-AhkAAF9yZWxzLy5yZWxzUEsBAhQAFAAIAAgAAAAAAHGoug9iAQAA+gUAABMAAAAAAAAAAAAAAAAA
-IhoAAFtDb250ZW50X1R5cGVzXS54bWxQSwUGAAAAAAwADAAMAwAAxRsAAAAA
+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
 REPORTING_XLSX_END
 REPORTING_FILE=/evidence/normal/sample_2.xlsx
-df2e659d17d315674c58f2dfe29bcbea2e24b2b99904b17c3a02afc7838fec42  /evidence/normal/sample_2.xlsx
+e7977f42b9eaa513874b381eafb30d0daf1adb43e3646907491316609ffa9b5d  /evidence/normal/sample_2.xlsx
 REPORTING_XLSX_BEGIN
 UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1sfJVP
 j5swFMTv/RSW740xGEIq49W220q998+ZgneDFuPIZkM+fsWmNe85gQty8hsPk+GZyIeL6clZO9/Z
@@ -391,64 +391,64 @@ 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
-cy54bWx8lM9uGzcQxu99CkJ37ZKr1f5xZaWq4wIBUhuw5EsvwogcaYnukhtyVpV77qlAgF5yaXrp
-CxR9gaJP46SPUUiBY4C0c/19u0PON/Nx9uLQtWyPzmtrzkci4SOGRlqlze58dLv6blyNXsy/mnlP
-7NC1xp+PGqL+LE29bLADn9gezaFrt9Z1QD6xbpf63iEo3yBS16YZ50XagTYjJu1g6HyUlyM2GP1m
-wIvPYD7zej6j+cf3f338/Zf79//MUprP0iP8JHz44+39r3+G9L9/f7t/++7Du79D4eIqJHjoHXof
-4przUtR1Ns3LnNf1JNRfXobEExgFToW8DEGH5LSM7wGS1ntoBwwlOTiHRt6FfDCaols0uu/QUHIy
-9UtdCc55qD9XLeQKCNayhdi3i+ur1c3iYsWWr76/fb1YXd+wlF1dr9jN5eI1+/Z2+erqcrlkLxer
-RXSYgd43ltY68rDeYlGWVS2LrchqxWED04kqeFVjJaoy6kMbwp0D0tY8Ue2hq7G0hhxIGivs7FM9
-enzWYJ8o0O3dNyLhSXQ++LXdhjDjWTEWfJwVoUK6w5+tiQa/8BrSZQNm14AOxTcDurt1A76J9kWK
-vBBZlZUbrMucZ9NM8kmxAVQFYFVhucknhSxzgbXISrGpNxUqmWWwqaEoom68HZzE9U9A6DpwP4b6
-Vh9ocDjei2f+/DxZh5ErYivkRNWy2Micy7qosmlVVqVSWV6iyuCJvGqHfg3RZB79XfHiTIizaflD
-+E3vUOrjoxZZ3bbsFD7PwCE7pZERHohJbFufsFuPDPre2T0qRnc9Kqa73jrybGsdA6ep6ZC0/JoZ
-e0Td0IJnOzTogFAlsWvYRqt5LByZKKGN4UPOFXrS5tOqnzLvonfCk9NmF9J4zA8lPbq9lriWVkXn
-npKF7hGn3tP8/wAAAP//UEsHCPyd2Ny2AgAAMAYAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAA
-GgAAAHhsL19yZWxzL3dvcmtib29rLnhtbC5yZWxzxNLNSsNAEMDxu0+xzN1Mk2oRSdKLCL1qfIAl
-mWSX7kfYWTV9eyGCSbGFCAEvCXv5z4+dzfeDNeKDAmvvCkiTDQhytW+06wp4q55vH2Bf3uQvZGTU
-3rHSPYvBGscFqBj7R0SuFVnJie/JDda0PlgZOfGhw17WR9kRZpvNDsO8AeVZUxyaAsKhSUFUMnQU
-C/j04ciKKDKOvzQZrAFRnXpaMtq3ra7pydfvlly8IMCfAVDmOMdcpmUTjePJEK/t+a4uw2wnTFRk
-Ccfv6lc0VpeJ7q5vLlub9cfN3V+nbf+ZtptoOBhkJQM1rzFo163/vubx37yzI5dfAQAA//9QSwcI
-lawthvsAAAAaBAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZG9jUHJvcHMvY29yZS54
-bWykkU1LAzEQhu/+iiX33cm2UDSk6UHpSUGwongLybQNbj5IUjf+e+m23VbsTchp3mce3iR8UWxX
-fWFMxrs5aRtKKnTKa+M2c/K6Wta3ZCFuuApM+YjP0QeM2WCqiu1cYirMyTbnwACS2qKVqfEBXbHd
-2kcrc2p83ECQ6lNuECaUzsBillpmCXthHUYjOSq1GpVhF7tBoBVghxZdTtA2LZzZjNGmqwtDckFa
-k78DXkVP4UiXZEaw7/umnw7ohNIW3p8eX4ar1salLJ1CIrhWTEWU2UdRdtFwuBjwY8vDAHVVkmGH
-LqfkbXr/sFoSsX+gmt7V7WxFKRvOx971a/8stF6btfmH8SQQHP78sPgJAAD//1BLBwhF30CoEAEA
-ABwCAABQSwMEFAAIAAgAAAAAAAAAAAAAAAAAAAAAABAAAABkb2NQcm9wcy9hcHAueG1snM8/SwQx
-EAXw3k+xpL+d1ULkyOYQ/NNarPZLMns3kMyEzHhEP72I4FlbPh78eM8fesnDGZuS8Oyux8kNyFES
-8XF2r8vT7s4dwpV/aVKxGaEOvWTW2Z3M6h5A4wnLqqNU5F7yJq2spqO0I8i2UcQHie8F2eBmmm4B
-uyEnTLv6C7ofcX+2/6JJ4vc+fVs+KqoLfhFb80IFw+ThEvx9rZniaiQcnmV47BEzfaKHv4WHy9nw
-FQAA//9QSwcI4jggCbYAAAAgAQAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAALAAAAX3JlbHMv
-LnJlbHOU0MFK/DAQBvD7/ylC7tt09w8isuleRNibSH2AmEzb0CQTJqPGtxe9uMWK9jgwfN+P73iq
-MYgXoOIxablvWikgWXQ+jVo+9ne7a3nq/h0fIBj2mMrkcxE1hlS0nJjzjVLFThBNaTBDqjEMSNFw
-aZBGlY2dzQjq0LZXii4zZLfIFGenJZ3dfyl6QyOwlg7tPWEuyuTc1Bik6N8y/KUVh8FbuEX7HCHx
-SrmCypAcuF0mzEDs4QOkLkXrvsOKzyLBNuDPs6gIbJxh85m6mbf/4tWgXpHmJ8R5G+739ZYf32WL
-s3TvAQAA//9QSwcIt8x7k+cAAABkAgAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAATAAAAW0Nv
-bnRlbnRfVHlwZXNdLnhtbMSUz27UMBDG7zxF5Ctae1skhFCSHvhzhEqUBzD2JLHW9lgz0yV9e5Sk
-W0HZol1tJC7xZfL9fvrkcX0zpljtgThgbtSV3qoKskMfct+o73efN+/UTfuqvnsowNWYYuZGDSLl
-vTHsBkiWNRbIY4odUrLCGqk3xbqd7cFcb7dvjcMskGUjU4Zq64/Q2fso1adRIC9cgsiq+rAMTqxG
-2VJicFYCZrPP/hll80jQBHGe4SEUfj2mqNraPBKOoqaRl0nPA77ugSh4qG4tyReboFFmjEYGSLB8
-r/S/E4+4Y9cFBx7dfYIseo45qB+AL6JZHiLwxVAuBNbzACAp6iX0ZIefSLsfiLu1LaZTJxvyaSYe
-3S1hYWNLuVgFpiviwW8KYQGScGYfszyb+bj8TvxZzFP+aUZPvTgkOF/lsFrT32u0cX2+wpptHDF6
-89+NeLAE/ptQyP3qy/x79t9GZn7L218BAAD//1BLBwhxqLoPYgEAAPoFAABQSwECFAAUAAgACAAA
-AAAA+TQqMNoBAAAfBwAAGAAAAAAAAAAAAAAAAAAAAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1s
-UEsBAhQAFAAIAAgAAAAAAJ9n6eoZAQAASQIAABgAAAAAAAAAAAAAAAAAIAIAAHhsL3dvcmtzaGVl
-dHMvc2hlZXQyLnhtbFBLAQIUABQACAAIAAAAAACO5eSVnAEAAGcDAAAYAAAAAAAAAAAAAAAAAH8D
-AAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWxQSwECFAAUAAgACAAAAAAA7g/97qUBAABaAwAADwAA
-AAAAAAAAAAAAAABhBQAAeGwvd29ya2Jvb2sueG1sUEsBAhQAFAAIAAgAAAAAALCinXt9BQAAZRwA
-ABMAAAAAAAAAAAAAAAAAQwcAAHhsL3RoZW1lL3RoZW1lMS54bWxQSwECFAAUAAgACAAAAAAAFTvN
-hxIFAAAUFwAADQAAAAAAAAAAAAAAAAABDQAAeGwvc3R5bGVzLnhtbFBLAQIUABQACAAIAAAAAAD8
-ndjctgIAADAGAAAUAAAAAAAAAAAAAAAAAE4SAAB4bC9zaGFyZWRTdHJpbmdzLnhtbFBLAQIUABQA
-CAAIAAAAAACVrC2G+wAAABoEAAAaAAAAAAAAAAAAAAAAAEYVAAB4bC9fcmVscy93b3JrYm9vay54
-bWwucmVsc1BLAQIUABQACAAIAAAAAABF30CoEAEAABwCAAARAAAAAAAAAAAAAAAAAIkWAABkb2NQ
-cm9wcy9jb3JlLnhtbFBLAQIUABQACAAIAAAAAADiOCAJtgAAACABAAAQAAAAAAAAAAAAAAAAANgX
-AABkb2NQcm9wcy9hcHAueG1sUEsBAhQAFAAIAAgAAAAAALfMe5PnAAAAZAIAAAsAAAAAAAAAAAAA
-AAAAzBgAAF9yZWxzLy5yZWxzUEsBAhQAFAAIAAgAAAAAAHGoug9iAQAA+gUAABMAAAAAAAAAAAAA
-AAAA7BkAAFtDb250ZW50X1R5cGVzXS54bWxQSwUGAAAAAAwADAAMAwAAjxsAAAAA
+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
 REPORTING_XLSX_END
 REPORTING_FILE=/evidence/race/sample_1.xlsx
-f750e559e6fcba390fc7411ccdd928cca54e0c79d25e03c9f5eb6ca4c56d374f  /evidence/race/sample_1.xlsx
+fc7c40aedfea6ace8fb9282b3a7d27dc13c085b3f1225767b7a9d5c67072feb5  /evidence/race/sample_1.xlsx
 REPORTING_XLSX_BEGIN
 UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1sfJVf
 b5swFMXf9yksv6/GxBAyGVfdukl7359nRtwGFePIpiEff6LZzL23IS/Iye/4cHK4Jvr+7Hp2siF2
@@ -533,65 +533,65 @@ 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
-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
+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
 REPORTING_XLSX_END
 REPORTING_FILE=/evidence/race/sample_2.xlsx
-c94ad15ad700723be6c63cca00637c6108ed7de35484da440e0b4bc2035a27db  /evidence/race/sample_2.xlsx
+e40e94abb692e62a0754a2605e202c20212f17b96569606050d0c28360505a37  /evidence/race/sample_2.xlsx
 REPORTING_XLSX_BEGIN
 UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1sfJVP
 j5swFMTv/RSW740xGEIq49W220q998+ZgneDFuPIZkM+fsWmNe85gQty8hsPk+GZyIeL6clZO9/Z
@@ -676,19 +676,19 @@ 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
-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
+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
@@ -723,8 +723,8 @@ cy9zaGVldDIueG1sUEsBAhQAFAAIAAgAAAAAAI7l5JWcAQAAZwMAABgAAAAAAAAAAAAAAAAAfwMA
 AHhsL3dvcmtzaGVldHMvc2hlZXQxLnhtbFBLAQIUABQACAAIAAAAAADuD/3upQEAAFoDAAAPAAAA
 AAAAAAAAAAAAAGEFAAB4bC93b3JrYm9vay54bWxQSwECFAAUAAgACAAAAAAAsKKde30FAABlHAAA
 EwAAAAAAAAAAAAAAAABDBwAAeGwvdGhlbWUvdGhlbWUxLnhtbFBLAQIUABQACAAIAAAAAAAVO82H
-EgUAABQXAAANAAAAAAAAAAAAAAAAAAENAAB4bC9zdHlsZXMueG1sUEsBAhQAFAAIAAgAAAAAANBX
-bpO1AgAAMAYAABQAAAAAAAAAAAAAAAAAThIAAHhsL3NoYXJlZFN0cmluZ3MueG1sUEsBAhQAFAAI
+EgUAABQXAAANAAAAAAAAAAAAAAAAAAENAAB4bC9zdHlsZXMueG1sUEsBAhQAFAAIAAgAAAAAALco
+biO1AgAAMAYAABQAAAAAAAAAAAAAAAAAThIAAHhsL3NoYXJlZFN0cmluZ3MueG1sUEsBAhQAFAAI
 AAgAAAAAAJWsLYb7AAAAGgQAABoAAAAAAAAAAAAAAAAARRUAAHhsL19yZWxzL3dvcmtib29rLnht
 bC5yZWxzUEsBAhQAFAAIAAgAAAAAAEXfQKgQAQAAHAIAABEAAAAAAAAAAAAAAAAAiBYAAGRvY1By
 b3BzL2NvcmUueG1sUEsBAhQAFAAIAAgAAAAAAOI4IAm2AAAAIAEAABAAAAAAAAAAAAAAAAAA1xcA
@@ -733,18 +733,18 @@ AADLGAAAX3JlbHMvLnJlbHNQSwECFAAUAAgACAAAAAAAcai6D2IBAAD6BQAAEwAAAAAAAAAAAAAA
 AADrGQAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLBQYAAAAADAAMAAwDAACOGwAAAAA=
 REPORTING_XLSX_END
 REPORTING_PG_LOG_BEGIN
-2026-10-26 06:01:55.090 UTC [110] LOG:  starting PostgreSQL 16.14 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit
-2026-10-26 06:01:55.098 UTC [110] LOG:  listening on IPv4 address "127.0.0.1", port 55432
-2026-10-26 06:01:55.107 UTC [110] LOG:  listening on Unix socket "/tmp/.s.PGSQL.55432"
-2026-10-26 06:01:55.136 UTC [113] LOG:  database system was shut down at 2026-10-26 06:01:54 UTC
-2026-10-26 06:01:55.317 UTC [110] LOG:  database system is ready to accept connections
-2026-10-26 06:02:16.233 UTC [110] LOG:  received fast shutdown request
-2026-10-26 06:02:16.233 UTC [110] LOG:  aborting any active transactions
-2026-10-26 06:02:16.246 UTC [110] LOG:  background worker "logical replication launcher" (PID 116) exited with exit code 1
-2026-10-26 06:02:16.252 UTC [111] LOG:  shutting down
-2026-10-26 06:02:16.253 UTC [111] LOG:  checkpoint starting: shutdown immediate
-2026-10-26 06:02:16.310 UTC [111] LOG:  checkpoint complete: wrote 156 buffers (7.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.024 s, sync=0.013 s, total=0.056 s; sync files=447, longest=0.001 s, average=0.001 s; distance=1138 kB, estimate=1138 kB; lsn=0/1E3E298, redo lsn=0/1E3E298
-2026-10-26 06:02:16.335 UTC [110] LOG:  database system is shut down
+2026-10-26 06:13:40.438 UTC [109] LOG:  starting PostgreSQL 16.14 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit
+2026-10-26 06:13:40.446 UTC [109] LOG:  listening on IPv4 address "127.0.0.1", port 55432
+2026-10-26 06:13:40.448 UTC [109] LOG:  listening on Unix socket "/tmp/.s.PGSQL.55432"
+2026-10-26 06:13:40.481 UTC [112] LOG:  database system was shut down at 2026-10-26 06:13:40 UTC
+2026-10-26 06:13:40.644 UTC [109] LOG:  database system is ready to accept connections
+2026-10-26 06:14:01.127 UTC [109] LOG:  received fast shutdown request
+2026-10-26 06:14:01.127 UTC [109] LOG:  aborting any active transactions
+2026-10-26 06:14:01.143 UTC [109] LOG:  background worker "logical replication launcher" (PID 115) exited with exit code 1
+2026-10-26 06:14:01.158 UTC [110] LOG:  shutting down
+2026-10-26 06:14:01.161 UTC [110] LOG:  checkpoint starting: shutdown immediate
+2026-10-26 06:14:01.226 UTC [110] LOG:  checkpoint complete: wrote 156 buffers (7.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.021 s, sync=0.017 s, total=0.066 s; sync files=447, longest=0.001 s, average=0.001 s; distance=1139 kB, estimate=1139 kB; lsn=0/1E3E2A8, redo lsn=0/1E3E2A8
+2026-10-26 06:14:01.250 UTC [109] LOG:  database system is shut down
 REPORTING_PG_LOG_END
 REPORTING_VM_COMPLETED
-[   40.809225] reboot: Power down
+[   42.739545] reboot: Power down

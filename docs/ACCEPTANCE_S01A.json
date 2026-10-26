@@ -1,0 +1,152 @@
+{
+  "baseline": "S00-1.0",
+  "phase": "S01-A",
+  "qualification": "CONTRACT_SIMULATORS_ONLY",
+  "production_approved": false,
+  "cases": [
+    {
+      "id": "I01",
+      "phase": "S01-A",
+      "category": "independence",
+      "expectation": "移除 Brant 仓库后，平台从干净目录构建与启动；依赖图没有产品私有包",
+      "status": "PASS_S01A",
+      "current_evidence": "干净项目副本独立构建/启动与两条HTTP链路；无产品私有导入/replace。"
+    },
+    {
+      "id": "I02",
+      "phase": "S01-A",
+      "category": "independence",
+      "expectation": "第二个不同领域合同适配器接入时，通用核心无需修改或添加该产品字段",
+      "status": "PASS_SIMULATOR",
+      "current_evidence": "第二领域模拟器接入提交不修改通用核心，前后哈希与提交历史保留。"
+    },
+    {
+      "id": "I03",
+      "phase": "S01-B",
+      "category": "isolation",
+      "expectation": "同名原租户/用户/资源在不同产品中不能相互查询、复用幂等键或下载文件",
+      "status": "PARTIAL",
+      "current_evidence": "模拟器与PG fixture覆盖产品权限、同名源ID和私有文件；完整S01-B仍待验。"
+    },
+    {
+      "id": "I04",
+      "phase": "S01-B",
+      "category": "isolation",
+      "expectation": "同一产品不同租户、同一租户不同产品均隔离；共享平台租户中的跨产品访问需显式授权",
+      "status": "PARTIAL",
+      "current_evidence": "平台租户/产品/发行方绑定已测；生产角色、RLS与完整存储矩阵未验。"
+    },
+    {
+      "id": "I05",
+      "phase": "S01-B",
+      "category": "authorization",
+      "expectation": "篡改 integration/company/actor/tenant/roles 选择或声明不会扩大服务端授权",
+      "status": "PARTIAL",
+      "current_evidence": "严格JSON、产品与公司选择器越权拒绝已测；真实身份合同在S02。"
+    },
+    {
+      "id": "I06",
+      "phase": "S01-B",
+      "category": "snapshot",
+      "expectation": "多页来源结果在同一 source_snapshot_ref/query_hash/watermark 中稳定；源快照失效拒绝",
+      "status": "PARTIAL",
+      "current_evidence": "多来源页/冻结版本与水位错误拒绝已测；来源句柄持久化及重启未验。"
+    },
+    {
+      "id": "I07",
+      "phase": "S01-B",
+      "category": "authorization",
+      "expectation": "排队、执行、发布、已完成读取与下载各阶段撤权后，原快照整份拒绝",
+      "status": "PARTIAL",
+      "current_evidence": "排队、最后一页、完成读取和下载撤权已测；远程来源撤权时效需S02合同。"
+    },
+    {
+      "id": "I08",
+      "phase": "S01-B",
+      "category": "authorization",
+      "expectation": "授权扩大不扩大原任务；原币种/时区政策变化后不能旁路读取或导出",
+      "status": "PARTIAL",
+      "current_evidence": "权限扩大不扩旧范围、币种/时区变化阻断旧输出已测；真实产品政策尚未接入。"
+    },
+    {
+      "id": "I09",
+      "phase": "S01-B",
+      "category": "fencing",
+      "expectation": "并发领取、重领旧代次、取消与最终 CAS 竞争不生成重复或部分产物",
+      "status": "PARTIAL",
+      "current_evidence": "真实PG并发领取、代次、失租约与取消拒绝发布已测；完整故障竞争矩阵属S01-B。"
+    },
+    {
+      "id": "I10",
+      "phase": "S01-B",
+      "category": "idempotency",
+      "expectation": "租户/产品/主体/操作内同 key 同 payload 复用；异 payload 冲突；不同作用域不串用",
+      "status": "PARTIAL",
+      "current_evidence": "幂等重放、异载荷冲突、产品/租户命名空间已测；完整主体/操作组合矩阵待补。"
+    },
+    {
+      "id": "I11",
+      "phase": "S01-B",
+      "category": "runtime",
+      "expectation": "普通与 race 真实 PG 用例均无被跳过的数据库验收入口；记录完整用例集",
+      "status": "PASS_SIMULATOR_PG16",
+      "current_evidence": "17个真实PG子场景普通/race各18个父子通过事件，无数据库跳过或失败。"
+    },
+    {
+      "id": "I12",
+      "phase": "S01-B",
+      "category": "recovery",
+      "expectation": "真实停止/重启 PG 后恢复待处理任务并校验快照和文件 SHA；崩溃恢复另验",
+      "status": "NOT_RUN",
+      "current_evidence": "新独立平台未执行真实停止/重启或故障恢复；不得沿用旧Brant证据替代。"
+    },
+    {
+      "id": "I13",
+      "phase": "S01-B",
+      "category": "precision",
+      "expectation": "财务小数、负数、数量和大整数在屏幕/JSON/XLSX 中保持批准口径与精度",
+      "status": "PARTIAL",
+      "current_evidence": "JSON/XLSX金额、负数、大整数精确保留；没有屏幕UI资格。"
+    },
+    {
+      "id": "I14",
+      "phase": "S02",
+      "category": "products",
+      "expectation": "Brant 与第二个真实产品分别用真实已授权合同完成查询/导出对账，不能仅把模拟器改名",
+      "status": "NOT_RUN",
+      "current_evidence": "尚未取得并接入两个真实产品的授权数据合同。"
+    },
+    {
+      "id": "I15",
+      "phase": "S02",
+      "category": "identity",
+      "expectation": "验证发行方/主体/目标受众/令牌用途；不同产品不以相同邮箱或用户名自动合并身份",
+      "status": "NOT_RUN",
+      "current_evidence": "演示认证不是OIDC；尚未验证真实令牌发行方/受众/用途。"
+    },
+    {
+      "id": "I16",
+      "phase": "S02",
+      "category": "authorization",
+      "expectation": "服务账号不能代替最终用户授权；授权源不可用时不披露缓存结果或原件",
+      "status": "PARTIAL",
+      "current_evidence": "模拟授权源不可用时拒绝披露已测；真实服务账号委托主体合同未验。"
+    },
+    {
+      "id": "I17",
+      "phase": "S03",
+      "category": "experience",
+      "expectation": "同一平台同时提供独立控制台与嵌入入口；共享布局不携带作者数据权限",
+      "status": "NOT_RUN",
+      "current_evidence": "独立控制台、嵌入和三个设计器尚未交付。"
+    },
+    {
+      "id": "I18",
+      "phase": "S04",
+      "category": "operations",
+      "expectation": "平台可独立升级回滚，支持的适配器版本通过兼容回归；生产存储/容量/恢复有独立证据",
+      "status": "NOT_RUN",
+      "current_evidence": "生产升级回滚、容量、私有对象存储、清理与备份恢复尚未验。"
+    }
+  ]
+}

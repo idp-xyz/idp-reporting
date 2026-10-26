@@ -62,3 +62,5 @@ mistakenly treated the dynamic `completed_` test prefix as a literal case.
 The verifier was corrected and the entire guest run repeated successfully.
 The earlier diagnostic is retained under evidence/first_verifier_failure and is
 not the current validation result.
+
+Final host checks: 16 top-level passes / 33 parent+child pass events in each ordinary/race run, with one explicit DB skip per host run. All 5 command groups and static checks passed. Independent OOXML readback passed for 6 actual files. Final PostgreSQL rerun after both review fixes passed all 17 child scenarios in each ordinary/race binary. Full structured result: evidence/verification_summary.json.

@@ -1,0 +1,6 @@
+tests 0
+race 0
+vet 0
+build 0
+mod_verify 0
+Python syntax, Go formatting, source whitespace PASS

@@ -1,0 +1,60 @@
+{
+  "status": "PASS",
+  "reader": "Python standard-library OOXML/ZIP/XML independent of Excelize",
+  "workbooks": [
+    {
+      "file": "pg16_normal_sample_1.xlsx",
+      "sha256": "e65ed139765d2217622fc345076efcdf1f597c7e88f9a37ed23f60ff9bfb686a",
+      "bytes": 7912,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_normal_sample_2.xlsx",
+      "sha256": "e7977f42b9eaa513874b381eafb30d0daf1adb43e3646907491316609ffa9b5d",
+      "bytes": 7858,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_race_sample_1.xlsx",
+      "sha256": "fc7c40aedfea6ace8fb9282b3a7d27dc13c085b3f1225767b7a9d5c67072feb5",
+      "bytes": 7909,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_race_sample_2.xlsx",
+      "sha256": "e40e94abb692e62a0754a2605e202c20212f17b96569606050d0c28360505a37",
+      "bytes": 7856,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "independent_sample_1.xlsx",
+      "sha256": "9daefab6dc9c281d4d8a55251cb12897f6e05b1d00dad7d2265822ac060ecfa7",
+      "bytes": 7915,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "independent_sample_2.xlsx",
+      "sha256": "ff2890bfb07984636d569a96a38e0e8c86106b3ef9f6ffdb2e60899194cda26a",
+      "bytes": 7858,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    }
+  ]
+}

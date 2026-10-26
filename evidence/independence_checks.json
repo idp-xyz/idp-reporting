@@ -28,15 +28,15 @@
     {
       "integration": "brant-contract-demo",
       "expected_total": "9007199254740993.01",
-      "sha256": "c5652c4f59af5804213d38f2ac50e9d0b62e06d74abaf87508e3687a2051033d",
-      "bytes": 7912,
+      "sha256": "9daefab6dc9c281d4d8a55251cb12897f6e05b1d00dad7d2265822ac060ecfa7",
+      "bytes": 7915,
       "file": "independent_sample_1.xlsx"
     },
     {
       "integration": "shipment-contract-demo",
       "expected_total": "9007199254741000",
-      "sha256": "ebad9d46db892169d4a6c30806f7b675eee2b2c6b25849924cbde16a80de273e",
-      "bytes": 7861,
+      "sha256": "ff2890bfb07984636d569a96a38e0e8c86106b3ef9f6ffdb2e60899194cda26a",
+      "bytes": 7858,
       "file": "independent_sample_2.xlsx"
     }
   ],

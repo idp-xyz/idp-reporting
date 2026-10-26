@@ -9,6 +9,7 @@ work = Path(tempfile.mkdtemp(prefix='reporting-independent-'))
 env = os.environ.copy()
 env.update({'GOWORK': 'off', 'GOTOOLCHAIN': 'local', 'GOMAXPROCS': '2'})
 process = None
+(repo / 'evidence/independence_checks.json').write_text(json.dumps({'status': 'RUNNING', 'production_approved': False}) + '\n')
 try:
     source = work / 'standalone'
     shutil.copytree(repo, source, ignore=shutil.ignore_patterns('.git', 'bin', '__pycache__', 'evidence'))
@@ -93,6 +94,9 @@ try:
     result = {'status': 'PASS', 'profile': 'S01-A contract simulators with ephemeral repository', 'build': 'fresh project-only copy, GOWORK=off, no Brant source or local replace', 'core_imports': imports, 'product_private_dependencies': [], 'http_chains': proofs, 'production_approved': False}
     (repo / 'evidence/independence_checks.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
+except BaseException as exc:
+    (repo / 'evidence/independence_checks.json').write_text(json.dumps({'status': 'FAIL', 'error': str(exc), 'production_approved': False}) + '\n')
+    raise
 finally:
     if process is not None:
         process.terminate()

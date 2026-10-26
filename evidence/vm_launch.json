@@ -31,15 +31,15 @@
     "-kernel",
     "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/boot/vmlinuz-6.8.0-147-generic",
     "-initrd",
-    "/tmp/reporting-s01-vm-qu7o4v7z/initrd.gz",
+    "/tmp/reporting-s01-vm-yk6slee_/initrd.gz",
     "-append",
     "console=ttyS0 rdinit=/init panic=1 random.trust_cpu=on quiet"
   ],
   "go": "go version go1.26.5 linux/amd64",
   "postgres": "postgres (PostgreSQL) 16.14",
   "guest_tests": {
-    "normal.test": "a7779a580125430b34767659e41de0e5e17a6cc99f3e7fb82a6b4d1185bf8a65",
-    "race.test": "e46c02af46533d4b51da5790481ffc62c6a1e8e8b8e274d2035cbcbf8a5842f4"
+    "normal.test": "71c22ec29fbf8d31d6dfaeffe4a3dec729f0ae087ff779da4650db95338970eb",
+    "race.test": "b11b4b882d149d5b9bc9f38768b0f5ef06b975549d8118abd62f27f6aa12afc1"
   },
   "host_uid_map": "         0          0          1\n",
   "inputs": {
