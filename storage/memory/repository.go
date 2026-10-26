@@ -127,6 +127,15 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e := r.ValidatePublication(j, p); e != nil {
 		return e
 	}
+	p = clone(p)
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	// Materialization can consume the remaining lease. Fence at the mutation
+	// point as well as admission to this critical section.
+	if !r.ClaimValid(j, c, s.now()) {
+		return r.ErrLease
+	}
 	if !s.now().Before(j.Prepared.ExpiresAt) {
 		return r.ErrDenied
 	}
@@ -134,14 +143,14 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 		if _, exists := s.snapshots[p.Snapshot.ID]; exists {
 			return r.ErrConflict
 		}
-		s.snapshots[p.Snapshot.ID] = clone(*p.Snapshot)
+		s.snapshots[p.Snapshot.ID] = *p.Snapshot
 		j.SnapshotID = p.Snapshot.ID
 	}
 	if p.Artifact != nil {
 		if _, exists := s.artifacts[p.Artifact.ID]; exists {
 			return r.ErrConflict
 		}
-		s.artifacts[p.Artifact.ID] = clone(*p.Artifact)
+		s.artifacts[p.Artifact.ID] = *p.Artifact
 		j.ArtifactID = p.Artifact.ID
 	}
 	j.State = "succeeded"
