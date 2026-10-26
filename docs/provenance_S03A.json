@@ -1,0 +1,42 @@
+{
+  "project": "IDP Reporting Platform S03-A",
+  "date": "2026-10-26 Asia/Shanghai",
+  "module": "idp.local/reporting",
+  "phase": "S03-A",
+  "external_repository_created": false,
+  "remote_product_writes": false,
+  "architecture_baseline_library_file_id": "libfile_cf8ffdfc630c819183329ce21ee561fd",
+  "architecture_contract_package": "libfile_cfa9051c01748191970842d2a8e190e1",
+  "review_fixed_point": "6f782bd7b4b7b2b4b554cd934e86b41609d0fb6b",
+  "reviewed_code_commit": "7403fdbd23ad7fa8f6ba75cc2984aa777cd65b5c",
+  "qualified_go_checkpoint": "7403fdbd23ad7fa8f6ba75cc2984aa777cd65b5c",
+  "qualification": "Standalone embedded console; real existing Go loopback HTTP; software DOM, not browser qualification",
+  "sources_are_simulated": true,
+  "real_identity_provider_qualified": false,
+  "real_product_adapters_qualified": false,
+  "production_approved": false,
+  "real_pg_rerun": false,
+  "parent_s01b_library_file_id": "libfile_6b29371804488191905c3717df503a15",
+  "parent_s01b_archive_sha256": "2663c7b96e11f5a57b7d0e9adeecd7dac8f086137011d0a29b30bd9d680fd3de",
+  "parent_s01b_commit": "f425c0d69e0b687565b04a48ca347f9781aa9bea",
+  "historical_provenance": "docs/provenance_S02A.json",
+  "historical_runtime_evidence": [
+    "evidence/s01b_baseline",
+    "evidence/s02a_baseline"
+  ],
+  "current_runtime_evidence": "evidence/s03a",
+  "source_discovery": "evidence/s02a_baseline/source_discovery.json",
+  "relationship": "Continue independent S00 platform at existing protected HTTP seams. UI and session composition only; generic core/adapters/storage/modules unchanged. Three designers, templates/PDF, embedding and production operations remain subsequent slices.",
+  "parent_s02a_library_file_id": "libfile_8b25e23088088191b902e3a5250a0171",
+  "parent_s02a_archive_sha256": "349fb3306c443794dab3a78bbbec3f574c1dcf2d6bc4f2625ee93248bd3d08fc",
+  "parent_s02a_commit": "6f782bd7b4b7b2b4b554cd934e86b41609d0fb6b",
+  "pre_review_checkpoint": "evidence/s03a_pre_review",
+  "negative_controls": "evidence/s03a_diagnostics",
+  "browser_qa": "NOT_VERIFIED_ENVIRONMENT_ROUTE_AND_URL_POLICY_BLOCK",
+  "real_integration_order": "LAST_BY_USER_REQUEST",
+  "superseded_checkpoints": [
+    "evidence/s03a_pre_review",
+    "evidence/s03a_paging_catalog_checkpoint",
+    "evidence/s03a_task_row_checkpoint"
+  ]
+}

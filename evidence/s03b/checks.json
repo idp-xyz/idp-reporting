@@ -1,0 +1,28 @@
+{
+  "phase": "S03-B1",
+  "date": "2026-10-27 Asia/Shanghai",
+  "baseline": "e1c2fcefde05ca4935c7c8bd7843f5b2cdd943c3",
+  "code_commit": "f97c4696cf6077e67e1e77c13b375997273a68e4",
+  "dom_pass": 23,
+  "go_normal": "PASS",
+  "go_race": "PASS",
+  "real_pg_rerun": false,
+  "browser_qa": "NOT_VERIFIED",
+  "standards_review": "PASS",
+  "spec_review": "PASS",
+  "independent_layout_tests_each_axis": 2,
+  "closed_finding": "P2 JSON binding property-order comparison; semantic fields now compared",
+  "source_hashes": {
+    "console/assets/app.js": "ba7feed1555b81e0cc60682c8a8aa0d810d50759d2529f5c386c6a42f04c8fd7",
+    "console/assets/index.html": "8a7a996d4537d42bccbef0fdae92e5f06b40bd42df213860bfc3cb9ef41bb694",
+    "console/assets/styles.css": "922517a23edaec9cc1ad98c0f242722d5aa5bcc7c8a948d03d3f46af7451a20b",
+    "console/dom.test.mjs": "c06c0e653383ce5b46e4a720ac364b681f92057b2fd946d13e4e652f8facc921"
+  },
+  "remaining": [
+    "server durable layout/template versions and publication",
+    "Dashboard Composer",
+    "pdfme document designer/PDF",
+    "embedding and operations",
+    "real product/enterprise identity integration last"
+  ]
+}

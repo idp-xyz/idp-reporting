@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: real Go console workflow preserves precision, frozen pages, export and logout
+ok 1 - real Go console workflow preserves precision, frozen pages, export and logout
+  ---
+  duration_ms: 1687.522283
+  type: 'test'
+  ...
+# Subtest: invalid login and company selector escalation are rejected without cached rows
+ok 2 - invalid login and company selector escalation are rejected without cached rows
+  ---
+  duration_ms: 90.745122
+  type: 'test'
+  ...
+# Subtest: unconfirmed snapshot submission reuses its idempotency key
+ok 3 - unconfirmed snapshot submission reuses its idempotency key
+  ---
+  duration_ms: 387.668884
+  type: 'test'
+  ...
+# Subtest: late preview cannot replace a changed query
+ok 4 - late preview cannot replace a changed query
+  ---
+  duration_ms: 59.884275
+  type: 'test'
+  ...
+# Subtest: authorization outage clears previously displayed results
+ok 5 - authorization outage clears previously displayed results
+  ---
+  duration_ms: 124.792957
+  type: 'test'
+  ...
+# Subtest: text cells cannot create elements or execute injected markup
+ok 6 - text cells cannot create elements or execute injected markup
+  ---
+  duration_ms: 62.819305
+  type: 'test'
+  ...
+# Subtest: 401 during a query clears the active session and visible private references
+ok 7 - 401 during a query clears the active session and visible private references
+  ---
+  duration_ms: 71.500623
+  type: 'test'
+  ...
+# Subtest: logout aborts an in-flight response without repopulating the page
+ok 8 - logout aborts an in-flight response without repopulating the page
+  ---
+  duration_ms: 127.433767
+  type: 'test'
+  ...
+# Subtest: a mismatched workbook digest never starts a file download
+ok 9 - a mismatched workbook digest never starts a file download
+  ---
+  duration_ms: 697.02459
+  type: 'test'
+  ...
+# Subtest: overlapping next-page actions consume a frozen cursor only once
+ok 10 - overlapping next-page actions consume a frozen cursor only once
+  ---
+  duration_ms: 433.298879
+  type: 'test'
+  ...
+# Subtest: page size stays consistent while a frozen cursor request is pending
+ok 11 - page size stays consistent while a frozen cursor request is pending
+  ---
+  duration_ms: 415.068394
+  type: 'test'
+  ...
+# Subtest: overlapping same-product catalog refreshes replace rather than duplicate options
+ok 12 - overlapping same-product catalog refreshes replace rather than duplicate options
+  ---
+  duration_ms: 122.311222
+  type: 'test'
+  ...
+# Subtest: an old product catalog failure cannot clear a newer product preview
+ok 13 - an old product catalog failure cannot clear a newer product preview
+  ---
+  duration_ms: 133.670274
+  type: 'test'
+  ...
+# Subtest: an old task refresh error cannot clear a changed-query preview
+ok 14 - an old task refresh error cannot clear a changed-query preview
+  ---
+  duration_ms: 436.72045
+  type: 'test'
+  ...
+# Subtest: a task denial affects its snapshot rather than an unrelated current preview
+ok 15 - a task denial affects its snapshot rather than an unrelated current preview
+  ---
+  duration_ms: 444.000315
+  type: 'test'
+  ...
+# Subtest: a current task denial clears the corresponding visible snapshot
+ok 16 - a current task denial clears the corresponding visible snapshot
+  ---
+  duration_ms: 379.876772
+  type: 'test'
+  ...
+# Subtest: an old task cancellation error cannot replace a changed-query result
+ok 17 - an old task cancellation error cannot replace a changed-query result
+  ---
+  duration_ms: 456.214244
+  type: 'test'
+  ...
+# Subtest: bulk task refresh keeps an unrelated product preview after a task denial
+ok 18 - bulk task refresh keeps an unrelated product preview after a task denial
+  ---
+  duration_ms: 408.976086
+  type: 'test'
+  ...
+# Subtest: restoring an unknown task leaves the current preview intact
+ok 19 - restoring an unknown task leaves the current preview intact
+  ---
+  duration_ms: 71.589257
+  type: 'test'
+  ...
+# Subtest: task file download denial preserves an unrelated current preview
+ok 20 - task file download denial preserves an unrelated current preview
+  ---
+  duration_ms: 708.778461
+  type: 'test'
+  ...
+# Subtest: task snapshot viewing denial preserves the previous unrelated preview
+ok 21 - task snapshot viewing denial preserves the previous unrelated preview
+  ---
+  duration_ms: 391.631275
+  type: 'test'
+  ...
+# Subtest: report layout reorders and hides columns without changing exact values or query scope
+ok 22 - report layout reorders and hides columns without changing exact values or query scope
+  ---
+  duration_ms: 63.327678
+  type: 'test'
+  ...
+# Subtest: layout import rejects foreign binding, duplicate/unknown fields, empty columns and extra authority
+ok 23 - layout import rejects foreign binding, duplicate/unknown fields, empty columns and extra authority
+  ---
+  duration_ms: 54.97983
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8339.844217
