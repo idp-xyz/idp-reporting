@@ -34,3 +34,12 @@ capacity remain explicitly deferred. Pending verification was not treated as
 an implementation defect.
 
 Summary: Standards 2 findings fixed, 0 open; Spec 0 confirmed findings, 0 open.
+
+## Final evidence delta
+
+Both reviewers separately rechecked `084fc87...65ec201`: new host/independence/
+workbook verification scripts, acceptance statuses, raw logs and source hashes.
+Standards PASS through `65ec201`, Spec no confirmed findings. Each independently
+confirmed host16/33/one explicit PG skip, real PG17 children/no skips, six matching
+workbook hashes, three worksheets/file, explicit string cells and zero formulas.
+No application Go changes followed the reviewed `084fc87` fixes.

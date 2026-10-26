@@ -69,3 +69,7 @@ S03：独立控制台/嵌入与三个设计器。S04：生产迁移、容量、�
 
 实现范围与限制以 `docs/S01A_SCOPE.md`、`docs/VALIDATION.md` 和原始证据为准，
 `docs/s00/acceptance.json` 保留原设计状态，当前逐项进度另记 `docs/ACCEPTANCE_S01A.json`。
+
+交付压缩包另附 SOURCE_HISTORY.bundle。直接解压的项目可构建/运行；要复核提交差异或
+运行含 git diff 的 scripts/verify_host.py，请先用 bundle 还原仓库：
+`git clone SOURCE_HISTORY.bundle reporting-history`。历史包含规格基点和第二适配器零核心改动的提交。
