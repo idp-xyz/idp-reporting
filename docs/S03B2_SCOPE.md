@@ -22,3 +22,6 @@ binding. Old version save conflicts instead of overwrite. Async actions obey exi
 view-generation rules; errors must not clear unrelated query results.
 Real identity/products last. Browser qualification still open. No complete template
 publication, Dashboard Composer or PDF designer claim. Verify public Store/HTTP/DOM.
+
+New-layout saves have no idempotency key. A lost response must instruct the user
+to reconcile the server list before resubmitting; no automatic save retries.
