@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"idp.local/reporting/internal/fixturedb"
 	r "idp.local/reporting/reporting"
-	"net"
 	"time"
 )
 
@@ -21,22 +21,7 @@ var fixtureSQL string
 type Store struct{ pool *pgxpool.Pool }
 
 func Open(ctx context.Context, dsn string, initialize bool) (*Store, error) {
-	c, e := pgxpool.ParseConfig(dsn)
-	if e != nil {
-		return nil, r.ErrInvalid
-	}
-	if (c.ConnConfig.Database != "reporting_test_s01" && c.ConnConfig.Database != "reporting_test_s01_race") || net.ParseIP(c.ConnConfig.Host) == nil || !net.ParseIP(c.ConnConfig.Host).IsLoopback() {
-		return nil, r.ErrDenied
-	}
-	for _, fallback := range c.ConnConfig.Fallbacks {
-		if net.ParseIP(fallback.Host) == nil || !net.ParseIP(fallback.Host).IsLoopback() {
-			return nil, r.ErrDenied
-		}
-	}
-	c.MaxConns = 8
-	c.MinConns = 0
-	c.ConnConfig.ConnectTimeout = 5 * time.Second
-	p, e := pgxpool.NewWithConfig(ctx, c)
+	p, e := fixturedb.Open(ctx, dsn, "reporting_test_s01", "reporting_test_s01_race")
 	if e != nil {
 		return nil, e
 	}
@@ -46,13 +31,16 @@ func Open(ctx context.Context, dsn string, initialize bool) (*Store, error) {
 		if _, e = p.Exec(ctx, fixtureSQL); e != nil {
 			return fail(e)
 		}
+		if e = upgradeFixture(ctx, p); e != nil {
+			return fail(e)
+		}
 	}
 	var profile string
 	var version int
 	if e = p.QueryRow(ctx, "SELECT profile,version FROM reporting_s01.profile WHERE singleton").Scan(&profile, &version); e != nil {
 		return fail(e)
 	}
-	if profile != "contract-simulator-only" || version != 1 {
+	if profile != "contract-simulator-only" || version != 2 {
 		return fail(r.ErrDenied)
 	}
 	return s, nil
@@ -67,22 +55,26 @@ func (s *Store) ResetFixture(ctx context.Context) error {
 
 type scanner interface{ Scan(...any) error }
 
-const jobFields = "data,state,generation,lease_until,snapshot_id,artifact_id,error_code"
+const jobFields = "id,tenant,integration,issuer,subject,kind,idem_key,request_hash,data::text,data_sha256,state,generation,lease_until,snapshot_id,artifact_id,error_code"
 
 func scanJob(row scanner) (r.Job, error) {
 	var j r.Job
 	var b []byte
-	var state, snapshot, artifact, code string
+	var state, snapshot, artifact, code, digest, id, kind, key, requestHash string
+	var owner r.Owner
 	var gen int64
 	var lease *time.Time
-	if e := row.Scan(&b, &state, &gen, &lease, &snapshot, &artifact, &code); e != nil {
+	if e := row.Scan(&id, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject, &kind, &key, &requestHash, &b, &digest, &state, &gen, &lease, &snapshot, &artifact, &code); e != nil {
 		if errors.Is(e, pgx.ErrNoRows) {
 			return j, r.ErrNotFound
 		}
 		return j, e
 	}
-	if e := json.Unmarshal(b, &j); e != nil {
+	if e := fixturedb.Decode(b, digest, &j); e != nil {
 		return j, r.ErrIntegrity
+	}
+	if j.ID != id || j.Owner != owner || j.Kind != kind || j.Key != key || j.RequestHash != requestHash || r.ValidateAdmission(j) != nil {
+		return r.Job{}, r.ErrIntegrity
 	}
 	j.State = state
 	j.Generation = gen
@@ -103,8 +95,8 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if e != nil {
 		return r.Job{}, e
 	}
-	v, e := scanJob(s.pool.QueryRow(ctx, `INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,snapshot_id)
-VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11)
+	v, e := scanJob(s.pool.QueryRow(ctx, `INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,snapshot_id,data_sha256)
+VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,encode(sha256(convert_to($10::jsonb::text,'UTF8')),'hex'))
 ON CONFLICT(tenant,integration,issuer,subject,kind,idem_key) DO UPDATE SET request_hash=reporting_s01.jobs.request_hash
 RETURNING `+jobFields, j.ID, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, j.Kind, j.Key, j.RequestHash, j.Prepared.ExpiresAt, b, j.SnapshotID))
 	var pgerr *pgconn.PgError
@@ -183,7 +175,7 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e != nil {
 		return e
 	}
-	if _, e = tx.Exec(ctx, "INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data) VALUES($1,$2,$3,$4,$5,$6,$7)", id, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, kind, b); e != nil {
+	if _, e = tx.Exec(ctx, "INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,encode(sha256(convert_to($7::jsonb::text,'UTF8')),'hex'))", id, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, kind, b); e != nil {
 		return e
 	}
 	result, e := tx.Exec(ctx, `UPDATE reporting_s01.jobs SET state='succeeded',lease_until=NULL,snapshot_id=$1,artifact_id=$2
@@ -208,14 +200,28 @@ func (s *Store) Fail(ctx context.Context, c r.Claim, code string) error {
 }
 func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out any) error {
 	var b []byte
-	e := s.pool.QueryRow(ctx, "SELECT data FROM reporting_s01.assets WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 AND kind=$5", id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b)
+	var digest, resourceID, resourceKind string
+	var owner r.Owner
+	e := s.pool.QueryRow(ctx, "SELECT data::text,data_sha256,id,kind,tenant,integration,issuer,subject FROM reporting_s01.assets WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 AND kind=$5", id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b, &digest, &resourceID, &resourceKind, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return r.ErrNotFound
 	}
 	if e != nil {
 		return e
 	}
-	if e = json.Unmarshal(b, out); e != nil {
+	if e = fixturedb.Decode(b, digest, out); e != nil {
+		return e
+	}
+	switch v := out.(type) {
+	case *r.Snapshot:
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "snapshot" || v.Prepared.Context.Owner != v.Owner || v.Prepared.QueryHash != r.QueryHash(v.Query) {
+			return r.ErrIntegrity
+		}
+	case *r.Artifact:
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "artifact" {
+			return r.ErrIntegrity
+		}
+	default:
 		return r.ErrIntegrity
 	}
 	return nil

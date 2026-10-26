@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/adapters/contractsim/pgsource"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -34,6 +35,7 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
 	useMemory := flag.Bool("memory", false, "explicit ephemeral demonstration; loses all data on restart")
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
+	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -49,11 +51,20 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var repo r.Repository
+	p := contractsim.DemoPrincipal()
+	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
+	var finance, shipment r.Adapter
 	if *useMemory {
 		if *initialize {
 			return r.ErrInvalid
 		}
 		repo = memory.New(time.Now)
+		a, b := contractsim.Financial(), contractsim.Shipment()
+		a.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
+		grant := contractsim.DefaultGrant()
+		grant.CurrencyPolicy = nil
+		b.Grant(contractsim.DemoOwner(p, contractsim.ShipmentIntegration), grant)
+		finance, shipment = a, b
 	} else {
 		dsn := os.Getenv("REPORTING_S01_TEST_DSN")
 		if dsn == "" {
@@ -67,16 +78,28 @@ func run() error {
 		}
 		defer store.Close()
 		repo = store
+		source, e := pgsource.Open(dbctx, os.Getenv("REPORTING_S01_SOURCE_DSN"), *initialize)
+		if e != nil {
+			return fmt.Errorf("separate durable source fixture could not be opened")
+		}
+		defer source.Close()
+		for i, seed := range []contractsim.Fixture{contractsim.Financial().Fixture(), contractsim.Shipment().Fixture()} {
+			id := []string{contractsim.FinanceIntegration, contractsim.ShipmentIntegration}[i]
+			if e = source.EnsureFixture(dbctx, id, "tenant_a", seed); e != nil {
+				return fmt.Errorf("source fixture could not be ensured")
+			}
+			grant := contractsim.DefaultGrant()
+			if i == 1 {
+				grant.CurrencyPolicy = nil
+			}
+			if e = source.EnsureGrant(dbctx, r.SourceContext{Owner: contractsim.DemoOwner(p, id), SourceTenant: "tenant_a"}, grant); e != nil {
+				return fmt.Errorf("source fixture grant could not be ensured")
+			}
+		}
+		finance, shipment = source, source
 	}
-	p := contractsim.DemoPrincipal()
-	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
-	a, b := contractsim.Financial(), contractsim.Shipment()
-	a.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
-	grant := contractsim.DefaultGrant()
-	grant.CurrencyPolicy = nil
-	b.Grant(contractsim.DemoOwner(p, contractsim.ShipmentIntegration), grant)
 	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + secret))
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: a}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: b}}, CursorKey: key[:], Writer: xlsx.Writer{}})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}})
 	if e != nil {
 		return e
 	}
@@ -95,29 +118,31 @@ func run() error {
 	}
 	defer listener.Close()
 	var workers sync.WaitGroup
-	workers.Add(1)
-	go func() {
-		defer workers.Done()
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if _, e := s.RunOne(ctx); e != nil && !errors.Is(e, context.Canceled) {
-					log.Print("contract-simulator task stopped; inspect the private job error code")
+	if !*pauseWorkers {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if _, e := s.RunOne(ctx); e != nil && !errors.Is(e, context.Canceled) {
+						log.Print("contract-simulator task stopped; inspect the private job error code")
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("S01-A CONTRACT SIMULATORS ONLY; memory=%t; listening at http://%s", *useMemory, listener.Addr())
+	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, os.Getpid(), listener.Addr())
 	e = server.Serve(listener)
 	stop()
 	workers.Wait()

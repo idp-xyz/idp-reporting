@@ -1,0 +1,191 @@
+{
+  "status": "PASS",
+  "production_approved": false,
+  "go": "go version go1.26.5 linux/amd64",
+  "postgres": "postgres (PostgreSQL) 16.14",
+  "elapsed_seconds": 109.82,
+  "phases": {
+    "normal": {
+      "passed": [
+        "TestPostgresContract/two_domains_full_chain",
+        "TestPostgresContract/admission_does_not_read",
+        "TestPostgresContract/idempotency_conflict_and_owner_axes",
+        "TestPostgresContract/same_user_id_different_issuer",
+        "TestPostgresContract/cross_tenant_source_ids_not_equivalent",
+        "TestPostgresContract/cross_product_requires_explicit_grant",
+        "TestPostgresContract/company_selector_is_not_authority",
+        "TestPostgresContract/frozen_source_not_live_refresh",
+        "TestPostgresContract/scope_expansion_does_not_widen",
+        "TestPostgresContract/queued_revocation_and_cleanup",
+        "TestPostgresContract/completed_revocation_all_disclosures",
+        "TestPostgresContract/completed_currency_change",
+        "TestPostgresContract/completed_timezone_change",
+        "TestPostgresContract/authority_outage_is_distinct_and_closed",
+        "TestPostgresContract/cancelled_claim_cannot_publish",
+        "TestPostgresContract/concurrent_admission_and_claim",
+        "TestPostgresContract/lease_expiry_generation_and_atomicity",
+        "TestPostgresContract",
+        "TestDurablePostgresContract/source_metadata_admission_no_fact_projection",
+        "TestDurablePostgresContract/durable_handles_and_old_source_version",
+        "TestDurablePostgresContract/seed_never_resurrects_revocation",
+        "TestDurablePostgresContract/owner_matrix_and_idempotency_namespaces",
+        "TestDurablePostgresContract/durable_source_scope_and_policy_binding",
+        "TestDurablePostgresContract/source_handle_cannot_cross_owner_or_product",
+        "TestDurablePostgresContract/durable_outage_blocks_cached_file",
+        "TestDurablePostgresContract/duplicate_publication_has_one_asset",
+        "TestDurablePostgresContract/cancel_publish_race_is_atomic",
+        "TestDurablePostgresContract/rollback_after_asset_insert",
+        "TestDurablePostgresContract/lease_expires_inside_publication_transaction",
+        "TestDurablePostgresContract/corrupt_asset_payload_fails_before_disclosure",
+        "TestDurablePostgresContract/sql_payload_owner_mismatch_fails_even_with_hash",
+        "TestDurablePostgresContract/job_payload_hash_rejects_corruption",
+        "TestDurablePostgresContract/fixture_v1_upgrade_preserves_existing_assets",
+        "TestDurablePostgresContract"
+      ],
+      "test_pass_events": 34,
+      "skips": 0,
+      "failures": 0
+    },
+    "race": {
+      "passed": [
+        "TestPostgresContract/two_domains_full_chain",
+        "TestPostgresContract/admission_does_not_read",
+        "TestPostgresContract/idempotency_conflict_and_owner_axes",
+        "TestPostgresContract/same_user_id_different_issuer",
+        "TestPostgresContract/cross_tenant_source_ids_not_equivalent",
+        "TestPostgresContract/cross_product_requires_explicit_grant",
+        "TestPostgresContract/company_selector_is_not_authority",
+        "TestPostgresContract/frozen_source_not_live_refresh",
+        "TestPostgresContract/scope_expansion_does_not_widen",
+        "TestPostgresContract/queued_revocation_and_cleanup",
+        "TestPostgresContract/completed_revocation_all_disclosures",
+        "TestPostgresContract/completed_currency_change",
+        "TestPostgresContract/completed_timezone_change",
+        "TestPostgresContract/authority_outage_is_distinct_and_closed",
+        "TestPostgresContract/cancelled_claim_cannot_publish",
+        "TestPostgresContract/concurrent_admission_and_claim",
+        "TestPostgresContract/lease_expiry_generation_and_atomicity",
+        "TestPostgresContract",
+        "TestDurablePostgresContract/source_metadata_admission_no_fact_projection",
+        "TestDurablePostgresContract/durable_handles_and_old_source_version",
+        "TestDurablePostgresContract/seed_never_resurrects_revocation",
+        "TestDurablePostgresContract/owner_matrix_and_idempotency_namespaces",
+        "TestDurablePostgresContract/durable_source_scope_and_policy_binding",
+        "TestDurablePostgresContract/source_handle_cannot_cross_owner_or_product",
+        "TestDurablePostgresContract/durable_outage_blocks_cached_file",
+        "TestDurablePostgresContract/duplicate_publication_has_one_asset",
+        "TestDurablePostgresContract/cancel_publish_race_is_atomic",
+        "TestDurablePostgresContract/rollback_after_asset_insert",
+        "TestDurablePostgresContract/lease_expires_inside_publication_transaction",
+        "TestDurablePostgresContract/corrupt_asset_payload_fails_before_disclosure",
+        "TestDurablePostgresContract/sql_payload_owner_mismatch_fails_even_with_hash",
+        "TestDurablePostgresContract/job_payload_hash_rejects_corruption",
+        "TestDurablePostgresContract/fixture_v1_upgrade_preserves_existing_assets",
+        "TestDurablePostgresContract"
+      ],
+      "test_pass_events": 34,
+      "skips": 0,
+      "failures": 0
+    }
+  },
+  "recovery": {
+    "status": "PASS",
+    "processes": [
+      {
+        "PID": 256,
+        "StartTicks": "9911"
+      },
+      {
+        "PID": 286,
+        "StartTicks": "10164"
+      },
+      {
+        "PID": 320,
+        "StartTicks": "10360"
+      },
+      {
+        "PID": 354,
+        "StartTicks": "10562"
+      }
+    ],
+    "postgres_start_before": "2026-10-26T06:54:53.058366Z",
+    "postgres_start_after": "2026-10-26T06:56:10.72823Z",
+    "offline_http_status": 500,
+    "reclaimed_generation": 2,
+    "checks": [
+      "isolated fixture initialized",
+      "two completed HTTP snapshot/export chains before restart",
+      "queued snapshot/export, abandoned claim and cancellation persisted",
+      "actual PostgreSQL stop: existing artifact fails closed",
+      "changed PostgreSQL start time and HTTP server process",
+      "old files/cursors/source watermark survive restart",
+      "queued snapshot/export complete",
+      "abandoned generation reclaimed; old generation fenced",
+      "cancelled job and idempotency survive restart",
+      "revocation persists across reinitializing server restart",
+      "other product remains authorized"
+    ]
+  },
+  "exports": [
+    {
+      "file": "pg16_normal_sample_1.xlsx",
+      "sha256": "a4f73e1dbbdc5d48cf963ba65f666fec52d6e56a2efbb8f2357382f35915a479",
+      "bytes": 7909
+    },
+    {
+      "file": "pg16_normal_sample_2.xlsx",
+      "sha256": "2f0e9dd6e26af48d340a96d029c5476eda4b9f5e7c4e58bf34752bc4a8e3aa70",
+      "bytes": 7857
+    },
+    {
+      "file": "pg16_race_sample_1.xlsx",
+      "sha256": "9f0e80566edc6642c9ef770c02d759c617211ae16452a81183abe8d24dde70a1",
+      "bytes": 7914
+    },
+    {
+      "file": "pg16_race_sample_2.xlsx",
+      "sha256": "02cddbc5c3c83ab285f69c3191e8ad0863615e4c506390360d0a1a0f254f3561",
+      "bytes": 7858
+    },
+    {
+      "file": "pg16_recovery_before_1.xlsx",
+      "sha256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
+      "bytes": 7930
+    },
+    {
+      "file": "pg16_recovery_before_2.xlsx",
+      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
+      "bytes": 7875
+    },
+    {
+      "file": "pg16_recovery_database_restart_1.xlsx",
+      "sha256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
+      "bytes": 7930
+    },
+    {
+      "file": "pg16_recovery_database_restart_2.xlsx",
+      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
+      "bytes": 7875
+    },
+    {
+      "file": "pg16_recovery_other_product.xlsx",
+      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
+      "bytes": 7875
+    },
+    {
+      "file": "pg16_recovery_pending_export.xlsx",
+      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
+      "bytes": 7875
+    },
+    {
+      "file": "pg16_recovery_process_restart_1.xlsx",
+      "sha256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
+      "bytes": 7930
+    },
+    {
+      "file": "pg16_recovery_process_restart_2.xlsx",
+      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
+      "bytes": 7875
+    }
+  ]
+}

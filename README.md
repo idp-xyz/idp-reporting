@@ -1,23 +1,27 @@
-# IDP Reporting Platform · S01-A
+# IDP Reporting Platform · S01-B
 
-独立 Go 报表后端的首个工程切片，日期 2026-10-26（上海时间）。
-提供两个**合同模拟器**：应收账龄、非财务运单统计。它们使用合成的预汇总数据，
-不连接真实 Brant/Parcel，也不证明真实财务算法、权限映射或单据出具已接入。
+独立 Go 报表后端，2026-10-26（上海时间）。S01-B 增加持久来源合同、真实服务进程/PG
+重启验证与完整性/竞争测试。应收账龄与运单统计均为合同模拟器的合成预汇总数据，
+不连接真实 Brant/Parcel，不代表真实业务口径、SSO 或生产准入。
 
-## 当前可运行链路
+## 当前链路
 
-版本化目录 → 有界预览 → 异步快照 → 冻结分页 → 异步 XLSX → 私有下载。
-任务支持取消、幂等键、租约代次与原子发布。原授权范围冻结；每次结果披露及发布前
-重新确认当前来源权限。权限收缩、币种/时区变化、TTL 和授权服务不可用均拒绝披露。
+目录 → 有界查询 → 异步快照 → 冻结分页 → 异步 XLSX → 当前授权下私有下载。
+通用核心 reporting/ 与 S01-A 完全相同，仅依赖标准库；来源字段/口径位于适配器。
+没有产品私有导入、local replace 或 BIP/MCP/EER 依赖。idp.local/reporting 是本地模块名，
+未创建外部仓库或发布模块。
 
-`reporting/` 只依赖标准库；没有 Brant 私有导入、本地 replace 或来源业务表。
-`storage/postgres` 只拥有平台任务/快照/产物；`adapters/contractsim` 是来源合同模拟器。
-`transport/httpapi` 绑定可替换认证口；`export/xlsx` 使用原有固定版本 Excelize。
-模块路径 `idp.local/reporting` 是本地工程命名，尚未注册外部仓库或发布模块。
+平台 PG 只保存任务、快照、产物。adapters/contractsim/pgsource 在另一个数据库持久保存
+来源版本、句柄、原范围与当前授权。准备读取不选择来源事实行；后台按同一来源版本读页。
+新来源版本和授权扩大不改变旧任务。撤权、币种/时区变化、过期、授权不可用或完整性
+失败均拒绝披露。启动只补充缺失模拟配置，已有授权变化、停用和撤权墓碑不会被覆盖。
 
-## 本地启动
+平台 fixture v1→v2 增加元数据 SHA-256 与 SQL/JSON 资源身份校验，保留任务/文件 ID。
+它不能恢复 S01-A 从未持久化的来源句柄，也不是生产迁移资格。
 
-需要 Go **1.26.5**。依赖版本由 go.mod/go.sum 固定；首次构建需要公共 Go 模块缓存或网络。
+## 构建与启动
+
+固定 Go 1.26.5、pgx 5.10.0、Excelize 2.11.0；依赖由 go.mod/go.sum 固定。
 
 ```bash
 go build -o bin/reporting-demo ./cmd/reporting-demo
@@ -25,27 +29,26 @@ export REPORTING_DEMO_TOKEN="$(openssl rand -hex 32)"
 ./bin/reporting-demo -profile contract-simulator -memory
 ```
 
-仅监听 `127.0.0.1:7810`。所有接口需要 `Authorization: Bearer $REPORTING_DEMO_TOKEN`。
-`-memory` 必须显式选择，重启丢失全部资产。没有生产模式、默认密码或远程监听开关。
-启动不打印令牌；本演示令牌不是 OIDC/SSO。
+-memory 是显式临时演示，重启丢失全部状态。默认仅监听 127.0.0.1:7810，所有 API 需要
+Authorization: Bearer $REPORTING_DEMO_TOKEN；演示认证不是 OIDC。
 
-PG 模式仅允许数字回环地址和指定隔离库 `reporting_test_s01` / `reporting_test_s01_race`：
+持久模式需要两个预先创建、专用于测试的数据库和数字回环地址：
 
 ```bash
 export REPORTING_S01_TEST_DSN='postgresql://postgres@127.0.0.1:55432/reporting_test_s01?sslmode=disable'
+export REPORTING_S01_SOURCE_DSN='postgresql://postgres@127.0.0.1:55432/reporting_source_test_s01?sslmode=disable'
 ./bin/reporting-demo -profile contract-simulator -initialize-fixture
 ```
 
-数据库须预先存在且专用于隔离测试。不要在真实业务库运行 fixture。
-SQL 为测试配置，尚未提供生产角色/RLS、升级回滚、私有对象存储或备份策略。
-模拟器的来源句柄和授权状态在进程内，**PG 资产持久化不等于端到端重启恢复已通过**；
-服务重启后旧来源句柄可能失效并拒绝访问，S01-B 将验证可恢复的来源合同。
+普通/race 平台库为 reporting_test_s01 / reporting_test_s01_race，来源库为
+reporting_source_test_s01 / reporting_source_test_s01_race。生产库名及非回环地址拒绝。
+再次初始化不会重授已撤权限。-pause-workers 只用于恢复夹具，使任务排队而不执行；
+没有 HTTP 调度或授权管理后门。游标连续性验证保留同一演示令牌；生产密钥生命周期属S04。
 
-## API 与复现
+资产目前在 PostgreSQL 内。测试平台/来源共用一个 PG 实例、分别使用两个库，
+不宣称独立主机故障域、生产角色/RLS 或对象存储已验收。
 
-真实实现范围见 [docs/API.md](docs/API.md)，两个请求示例在
-`docs/s00/contracts/query-examples.json`。固定公司为 `company_demo`。
-请求不得提交 tenant、actor、roles、permissions 或 budget；未知字段/重复键/null 拒绝。
+## 测试与证据
 
 ```bash
 go test ./... -count=1
@@ -56,20 +59,23 @@ go mod verify
 GO_BIN=go python3 scripts/verify_independence.py
 ```
 
-普通主机测试未提供 PG DSN 时，真实数据库入口明确 SKIP，不能据此宣称 PG 通过。
-设置 `REPORTING_S01_REQUIRE_PG=1` 后，缺少 DSN 会直接失败。
-`scripts/run_pg16_vm.py` 在预置工具下运行无网络的完整 Linux 客体和真实 PG16 普通/race 测试。
-工具变量见 [docs/VALIDATION.md](docs/VALIDATION.md)；工具是独立输入，不需要任何来源产品代码。
+主机缺少 DSN 时，两个真实数据库入口明确 SKIP，不能计为数据库通过。设置
+REPORTING_S01_REQUIRE_PG=1 后缺少必需 DSN 直接失败。
 
-## 后续验收
+通过 Service、四个 Adapter 操作、Repository、HTTP 与 XLSX 接口验证。故障夹具只在
+受保护测试库注入最终更新失败、发布期间失租约和字节损坏。scripts/run_pg16_vm.py
+执行真实PG普通/race和真实HTTP进程/PG停止启动；工具变量见docs/VALIDATION.md。
+cmd/reporting-recovery-probe 是本地验收客户端，显式 bootstrap 会清空受保护夹具；
+业务服务不导入它，也不在 HTTP 上开放其控制能力。
 
-S01-B：补齐真实重启、故障与完整存储验收。S02：真实身份及两个真实产品授权数据对账。
-S03：独立控制台/嵌入与三个设计器。S04：生产迁移、容量、最小权限、对象存储和恢复。
-本轮没有 PDF、正式单据、通用 SQL/表达式、跨产品关联、自动重试或心跳续租。
+当前逐条状态见 docs/ACCEPTANCE_S01B.json；原始日志、文件与摘要在 evidence/，
+S01-A 历史证据保留在 evidence/s01a_baseline/，审查在docs/CODE_REVIEW_S01A.md。
+压缩包附 SOURCE_HISTORY.bundle，可 git clone SOURCE_HISTORY.bundle restored-reporting
+还原全部本地提交。直接解压源码可构建；含git diff的检查应在还原仓库运行。
 
-实现范围与限制以 `docs/S01A_SCOPE.md`、`docs/VALIDATION.md` 和原始证据为准，
-`docs/s00/acceptance.json` 保留原设计状态，当前逐项进度另记 `docs/ACCEPTANCE_S01A.json`。
+## 后续范围
 
-交付压缩包另附 SOURCE_HISTORY.bundle。直接解压的项目可构建/运行；要复核提交差异或
-运行含 git diff 的 scripts/verify_host.py，请先用 bundle 还原仓库：
-`git clone SOURCE_HISTORY.bundle reporting-history`。历史包含规格基点和第二适配器零核心改动的提交。
+S02：真实身份、Brant与第二真实产品授权合同和数据对账。S03：独立控制台、嵌入、
+三个设计器/PDF。S04：生产迁移/回滚、最小权限/RLS、对象存储、配额、清理、备份与容量。
+当前不承诺自动重试、心跳、跨产品关联或跨系统撤权/提交原子性。实际优雅重启证据
+不等于崩溃、断电或备份恢复资格。

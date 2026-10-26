@@ -1,0 +1,5 @@
+# idp.local/reporting/adapters/contractsim_test [idp.local/reporting/adapters/contractsim.test]
+adapters/contractsim/fixture_test.go:11:32: contractsim.Financial().Fixture undefined (type *contractsim.Simulator has no field or method Fixture)
+adapters/contractsim/fixture_test.go:14:22: undefined: contractsim.ReadFrozenPage
+FAIL	idp.local/reporting/adapters/contractsim [build failed]
+FAIL

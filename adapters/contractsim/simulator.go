@@ -176,53 +176,10 @@ func (s *Simulator) ReadPage(ctx context.Context, sc r.SourceContext, p r.Prepar
 	if e != nil {
 		return r.SourcePage{}, e
 	}
-	if limit < 1 || limit > 100 {
-		return r.SourcePage{}, r.ErrInvalid
-	}
-	start := 0
-	if cursor != "" {
-		parts := strings.Split(cursor, ":")
-		if len(parts) != 2 || parts[0] != p.Ref {
-			return r.SourcePage{}, r.ErrInvalid
-		}
-		start, e = strconv.Atoi(parts[1])
-		if e != nil || start < 0 {
-			return r.SourcePage{}, r.ErrInvalid
-		}
-	}
 	s.reads++
-	rows := [][]string{}
-	totals := map[string]string{}
-	metricCols := s.dataset.Columns[len(f.query.Dimensions):]
-	for _, record := range f.records {
-		if slices.Contains(f.query.Companies, record.Company) && slices.Contains(f.grant.Rows, record.Key) {
-			rows = append(rows, slices.Clone(record.Values))
-		}
-	}
-	for i, m := range f.query.Metrics {
-		values := []string{}
-		for _, row := range rows {
-			if len(row) != len(s.dataset.Columns) {
-				return r.SourcePage{}, r.ErrIntegrity
-			}
-			values = append(values, row[len(f.query.Dimensions)+i])
-		}
-		v, e := sum(values, metricCols[i].Scale)
-		if e != nil {
-			return r.SourcePage{}, e
-		}
-		totals[m.ID] = v
-	}
-	if start > len(rows) {
-		return r.SourcePage{}, r.ErrInvalid
-	}
-	end := min(start+limit, len(rows))
-	page := r.SourcePage{Ref: p.Ref, QueryHash: p.QueryHash, Watermark: p.Watermark, Rows: rows[start:end], Totals: totals}
-	if end < len(rows) {
-		page.NextCursor = p.Ref + ":" + strconv.Itoa(end)
-	}
-	return page, nil
+	return ReadFrozenPage(ctx, Fixture{Dataset: s.dataset, Records: f.records}, f.query, f.grant, p, cursor, limit)
 }
+
 func sum(values []string, scale int) (string, error) {
 	total := new(big.Int)
 	for _, v := range values {

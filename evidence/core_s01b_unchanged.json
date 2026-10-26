@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "baseline": "ec09065dc024419dc2e2e6e9cc2d1dcae6ee7132",
+  "unchanged_core_files": {
+    "reporting/repository_contract.go": "4a27dea8b9a3eb44b531eb96b6ae2741ecc90c3562f548ff80e65cbe1dee14b6",
+    "reporting/service.go": "26ae26f3aa7fd948049e4b61f3da897891b665850d82b1f970d99e82af9f3762",
+    "reporting/types.go": "6ec9bf8667b47474ecf32f893001999978491e8c42d433b5fe00c5c3808da968",
+    "reporting/validation.go": "76141dbaf2afe60a83c7203d45456417e806c19ae11a75087004e90fac16b79e"
+  }
+}

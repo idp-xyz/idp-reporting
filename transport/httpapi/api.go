@@ -1,4 +1,4 @@
-// Package httpapi exposes the S01-A contract-simulator profile, not production SSO.
+// Package httpapi exposes the contract-simulator profile, not production SSO.
 package httpapi
 
 import (
@@ -53,7 +53,7 @@ func Handler(service *r.Service, authenticate Authenticate) (http.Handler, error
 	}
 	const base = "/api/reporting/v1"
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, map[string]any{"profile": "S01-A-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": []string{"xlsx"}, "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content"}})
+		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": []string{"xlsx"}, "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content"}})
 	})
 	bind("GET "+base+"/catalog", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		values := req.URL.Query()
