@@ -1,0 +1,6 @@
+{
+  "reporting/repository_contract.go": "b12c8d027165e6de79105e2918c2bb7c8098411d60d827576306d9d6784b5d87",
+  "reporting/service.go": "e97c8301a7c034dbcf424b114fb48479d1b183ef3be6a99f675af2a09fddb12a",
+  "reporting/types.go": "779da0b69da0e5381881d70b9f052ecc8b84f0f2f28dcb57d4671b560c2b1451",
+  "reporting/validation.go": "76141dbaf2afe60a83c7203d45456417e806c19ae11a75087004e90fac16b79e"
+}
