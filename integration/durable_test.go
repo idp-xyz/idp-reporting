@@ -600,4 +600,33 @@ func TestDurablePostgresContract(t *testing.T) {
 		_, e = v.s.Download(ctx, v.p, ex.ArtifactID)
 		mustError(t, e, r.ErrIntegrity)
 	})
+	t.Run("multiple_source_pages_stay_on_original_durable_version", func(t *testing.T) {
+		v := newDurable(t)
+		data, g := records(60)
+		seed := contractsim.Financial().Fixture()
+		seed.Records = data
+		if e := v.source.ReplaceFixture(ctx, contractsim.FinanceIntegration, "tenant_a", seed); e != nil {
+			t.Fatal(e)
+		}
+		if e := v.source.SetGrant(ctx, sourceContext(v.p, contractsim.FinanceIntegration), g); e != nil {
+			t.Fatal(e)
+		}
+		var once sync.Once
+		wrapped := intercept{Adapter: v.source, afterRead: func() {
+			once.Do(func() {
+				changed := contractsim.Financial().Fixture()
+				changed.Records = []contractsim.Record{{Company: "company_demo", Key: "row_0000", Values: []string{"changed", "current", "999.00"}}}
+				if e := v.source.ReplaceFixture(ctx, contractsim.FinanceIntegration, "tenant_a", changed); e != nil {
+					t.Fatal(e)
+				}
+			})
+		}}
+		s := durableService(t, v.repo, wrapped)
+		q := contractsim.FinancialQuery()
+		q.Page.Limit = 100
+		result, e := s.Query(ctx, v.p, q)
+		if e != nil || len(result.Rows) != 60 || result.Rows[59][0] != "row_0059" || result.Totals["ar.open_balance"] != "60.00" || v.source.ReadCalls() != 2 {
+			t.Fatal(len(result.Rows), result.Totals, v.source.ReadCalls(), e)
+		}
+	})
 }
