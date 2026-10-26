@@ -253,8 +253,11 @@ func (s *Service) Rows(ctx context.Context, p Principal, id string, limit int, c
 		return RowsPage{}, ErrInvalid
 	}
 	end := min(start+limit, len(snap.Result.Rows))
-	out := RowsPage{SnapshotID: id, Result: snap.Result, ExpiresAt: snap.ExpiresAt}
+	out := RowsPage{SnapshotID: id, TotalRows: len(snap.Result.Rows), Result: snap.Result, ExpiresAt: snap.ExpiresAt}
 	out.Rows = snap.Result.Rows[start:end]
+	if start > 0 || end < len(snap.Result.Rows) {
+		out.Completeness = "page"
+	}
 	if end < len(snap.Result.Rows) {
 		out.NextCursor = s.encodeCursor(snap, end)
 		out.Completeness = "page"
@@ -311,7 +314,14 @@ func (s *Service) Cancel(ctx context.Context, p Principal, id string) (JobView, 
 	if !p.Identity.Valid() || !validID(id) {
 		return JobView{}, ErrNotFound
 	}
-	j, e := s.repo.Cancel(ctx, p.Identity, id)
+	j, e := s.repo.Job(ctx, p.Identity, id)
+	if e != nil {
+		return JobView{}, e
+	}
+	if _, _, e = s.source(p, j.Owner.Integration); e != nil {
+		return JobView{}, e
+	}
+	j, e = s.repo.Cancel(ctx, p.Identity, id)
 	if e != nil {
 		return JobView{}, e
 	}

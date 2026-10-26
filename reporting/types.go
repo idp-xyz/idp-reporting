@@ -212,6 +212,7 @@ type Config struct {
 }
 type RowsPage struct {
 	SnapshotID string `json:"snapshot_id"`
+	TotalRows  int    `json:"total_row_count"`
 	Result
 	NextCursor string    `json:"next_cursor,omitempty"`
 	ExpiresAt  time.Time `json:"expires_at"`

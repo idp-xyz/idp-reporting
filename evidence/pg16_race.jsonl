@@ -1,0 +1,75 @@
+{"Time":"2026-10-26T06:02:00.9930665Z","Action":"start","Package":"idp.local/reporting/integration"}
+{"Time":"2026-10-26T06:02:01.61326545Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
+{"Time":"2026-10-26T06:02:01.61529467Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
+{"Time":"2026-10-26T06:02:01.96629335Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
+{"Time":"2026-10-26T06:02:01.96727615Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
+{"Time":"2026-10-26T06:02:03.98127756Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (2.01s)\n"}
+{"Time":"2026-10-26T06:02:03.98423478Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":2.01}
+{"Time":"2026-10-26T06:02:03.98584891Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
+{"Time":"2026-10-26T06:02:03.98671069Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
+{"Time":"2026-10-26T06:02:04.07470193Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.09s)\n"}
+{"Time":"2026-10-26T06:02:04.07628139Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.09}
+{"Time":"2026-10-26T06:02:04.07857635Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
+{"Time":"2026-10-26T06:02:04.0787981Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
+{"Time":"2026-10-26T06:02:04.24314859Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.16s)\n"}
+{"Time":"2026-10-26T06:02:04.24377823Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.16}
+{"Time":"2026-10-26T06:02:04.24555324Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
+{"Time":"2026-10-26T06:02:04.24656921Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
+{"Time":"2026-10-26T06:02:05.45719215Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (1.21s)\n"}
+{"Time":"2026-10-26T06:02:05.45963266Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":1.21}
+{"Time":"2026-10-26T06:02:05.46032554Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
+{"Time":"2026-10-26T06:02:05.46111616Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
+{"Time":"2026-10-26T06:02:05.68922905Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.22s)\n"}
+{"Time":"2026-10-26T06:02:05.69196685Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.22}
+{"Time":"2026-10-26T06:02:05.69529833Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
+{"Time":"2026-10-26T06:02:05.69712163Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
+{"Time":"2026-10-26T06:02:07.0242617Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (1.33s)\n"}
+{"Time":"2026-10-26T06:02:07.02587633Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":1.33}
+{"Time":"2026-10-26T06:02:07.02817033Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
+{"Time":"2026-10-26T06:02:07.02887934Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
+{"Time":"2026-10-26T06:02:07.07999562Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.05s)\n"}
+{"Time":"2026-10-26T06:02:07.08399399Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.05}
+{"Time":"2026-10-26T06:02:07.08492498Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
+{"Time":"2026-10-26T06:02:07.08567778Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
+{"Time":"2026-10-26T06:02:07.34601259Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.26s)\n"}
+{"Time":"2026-10-26T06:02:07.34723928Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.26}
+{"Time":"2026-10-26T06:02:07.35024103Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
+{"Time":"2026-10-26T06:02:07.3506323Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
+{"Time":"2026-10-26T06:02:07.56831084Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.22s)\n"}
+{"Time":"2026-10-26T06:02:07.56995602Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.22}
+{"Time":"2026-10-26T06:02:07.57047135Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
+{"Time":"2026-10-26T06:02:07.57105345Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
+{"Time":"2026-10-26T06:02:07.73405785Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.16s)\n"}
+{"Time":"2026-10-26T06:02:07.73491443Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.16}
+{"Time":"2026-10-26T06:02:07.74043084Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
+{"Time":"2026-10-26T06:02:07.74072706Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
+{"Time":"2026-10-26T06:02:08.49285683Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (0.75s)\n"}
+{"Time":"2026-10-26T06:02:08.49494908Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":0.75}
+{"Time":"2026-10-26T06:02:08.49575075Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
+{"Time":"2026-10-26T06:02:08.49711337Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
+{"Time":"2026-10-26T06:02:09.93600653Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (1.44s)\n"}
+{"Time":"2026-10-26T06:02:09.93727794Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":1.44}
+{"Time":"2026-10-26T06:02:09.93781664Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
+{"Time":"2026-10-26T06:02:09.9381912Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
+{"Time":"2026-10-26T06:02:12.05089458Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (2.11s)\n"}
+{"Time":"2026-10-26T06:02:12.05319756Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":2.11}
+{"Time":"2026-10-26T06:02:12.05518375Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
+{"Time":"2026-10-26T06:02:12.05661681Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
+{"Time":"2026-10-26T06:02:12.79874469Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.74s)\n"}
+{"Time":"2026-10-26T06:02:12.79968737Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":0.74}
+{"Time":"2026-10-26T06:02:12.80016381Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
+{"Time":"2026-10-26T06:02:12.80129387Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
+{"Time":"2026-10-26T06:02:12.96294713Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.16s)\n"}
+{"Time":"2026-10-26T06:02:12.96447107Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.16}
+{"Time":"2026-10-26T06:02:12.96502837Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
+{"Time":"2026-10-26T06:02:12.96579039Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
+{"Time":"2026-10-26T06:02:13.71204185Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.74s)\n"}
+{"Time":"2026-10-26T06:02:13.71683974Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.74}
+{"Time":"2026-10-26T06:02:13.72017044Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
+{"Time":"2026-10-26T06:02:13.72112285Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
+{"Time":"2026-10-26T06:02:15.05689421Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.34s)\n"}
+{"Time":"2026-10-26T06:02:15.05901388Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.34}
+{"Time":"2026-10-26T06:02:15.10587589Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (13.47s)\n"}
+{"Time":"2026-10-26T06:02:15.11390748Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":13.47}
+{"Time":"2026-10-26T06:02:15.13483664Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
+{"Time":"2026-10-26T06:02:16.16197828Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":15.169}

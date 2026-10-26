@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"encoding/json"
 	"reflect"
 	"time"
 )
@@ -35,6 +36,10 @@ func ValidatePublication(j Job, p Publication) error {
 		}
 		if len(v.Result.Rows) > MaxRows || validateRows(v.Result.Rows, j.Columns) != nil || validateTotals(v.Result.Totals, j.Query, j.Columns) != nil {
 			return ErrIntegrity
+		}
+		b, err := json.Marshal(v.Result)
+		if err != nil || len(b) > MaxResultBytes {
+			return ErrBudget
 		}
 	case "export":
 		v := p.Artifact

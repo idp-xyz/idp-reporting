@@ -1,0 +1,44 @@
+{
+  "status": "PASS",
+  "profile": "S01-A contract simulators with ephemeral repository",
+  "build": "fresh project-only copy, GOWORK=off, no Brant source or local replace",
+  "core_imports": [
+    "bytes",
+    "context",
+    "crypto/hmac",
+    "crypto/rand",
+    "crypto/sha256",
+    "encoding/base64",
+    "encoding/hex",
+    "encoding/json",
+    "errors",
+    "fmt",
+    "io",
+    "reflect",
+    "regexp",
+    "slices",
+    "sort",
+    "strconv",
+    "strings",
+    "time",
+    "unicode/utf8"
+  ],
+  "product_private_dependencies": [],
+  "http_chains": [
+    {
+      "integration": "brant-contract-demo",
+      "expected_total": "9007199254740993.01",
+      "sha256": "c5652c4f59af5804213d38f2ac50e9d0b62e06d74abaf87508e3687a2051033d",
+      "bytes": 7912,
+      "file": "independent_sample_1.xlsx"
+    },
+    {
+      "integration": "shipment-contract-demo",
+      "expected_total": "9007199254741000",
+      "sha256": "ebad9d46db892169d4a6c30806f7b675eee2b2c6b25849924cbde16a80de273e",
+      "bytes": 7861,
+      "file": "independent_sample_2.xlsx"
+    }
+  ],
+  "production_approved": false
+}

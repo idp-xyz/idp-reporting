@@ -1,0 +1,81 @@
+{
+  "status": "PASS",
+  "production_approved": false,
+  "go": "go version go1.26.5 linux/amd64",
+  "postgres": "postgres (PostgreSQL) 16.14",
+  "elapsed_seconds": 43.9,
+  "phases": {
+    "normal": {
+      "passed": [
+        "TestPostgresContract/two_domains_full_chain",
+        "TestPostgresContract/admission_does_not_read",
+        "TestPostgresContract/idempotency_conflict_and_owner_axes",
+        "TestPostgresContract/same_user_id_different_issuer",
+        "TestPostgresContract/cross_tenant_source_ids_not_equivalent",
+        "TestPostgresContract/cross_product_requires_explicit_grant",
+        "TestPostgresContract/company_selector_is_not_authority",
+        "TestPostgresContract/frozen_source_not_live_refresh",
+        "TestPostgresContract/scope_expansion_does_not_widen",
+        "TestPostgresContract/queued_revocation_and_cleanup",
+        "TestPostgresContract/completed_revocation_all_disclosures",
+        "TestPostgresContract/completed_currency_change",
+        "TestPostgresContract/completed_timezone_change",
+        "TestPostgresContract/authority_outage_is_distinct_and_closed",
+        "TestPostgresContract/cancelled_claim_cannot_publish",
+        "TestPostgresContract/concurrent_admission_and_claim",
+        "TestPostgresContract/lease_expiry_generation_and_atomicity",
+        "TestPostgresContract"
+      ],
+      "test_pass_events": 18,
+      "skips": 0,
+      "failures": 0
+    },
+    "race": {
+      "passed": [
+        "TestPostgresContract/two_domains_full_chain",
+        "TestPostgresContract/admission_does_not_read",
+        "TestPostgresContract/idempotency_conflict_and_owner_axes",
+        "TestPostgresContract/same_user_id_different_issuer",
+        "TestPostgresContract/cross_tenant_source_ids_not_equivalent",
+        "TestPostgresContract/cross_product_requires_explicit_grant",
+        "TestPostgresContract/company_selector_is_not_authority",
+        "TestPostgresContract/frozen_source_not_live_refresh",
+        "TestPostgresContract/scope_expansion_does_not_widen",
+        "TestPostgresContract/queued_revocation_and_cleanup",
+        "TestPostgresContract/completed_revocation_all_disclosures",
+        "TestPostgresContract/completed_currency_change",
+        "TestPostgresContract/completed_timezone_change",
+        "TestPostgresContract/authority_outage_is_distinct_and_closed",
+        "TestPostgresContract/cancelled_claim_cannot_publish",
+        "TestPostgresContract/concurrent_admission_and_claim",
+        "TestPostgresContract/lease_expiry_generation_and_atomicity",
+        "TestPostgresContract"
+      ],
+      "test_pass_events": 18,
+      "skips": 0,
+      "failures": 0
+    }
+  },
+  "exports": [
+    {
+      "file": "pg16_normal_sample_1.xlsx",
+      "sha256": "4273bfb415d9e59567cc700fb3e5fe8d17e269bca089866b3c0527aaa8b445ea",
+      "bytes": 7911
+    },
+    {
+      "file": "pg16_normal_sample_2.xlsx",
+      "sha256": "df2e659d17d315674c58f2dfe29bcbea2e24b2b99904b17c3a02afc7838fec42",
+      "bytes": 7857
+    },
+    {
+      "file": "pg16_race_sample_1.xlsx",
+      "sha256": "f750e559e6fcba390fc7411ccdd928cca54e0c79d25e03c9f5eb6ca4c56d374f",
+      "bytes": 7910
+    },
+    {
+      "file": "pg16_race_sample_2.xlsx",
+      "sha256": "c94ad15ad700723be6c63cca00637c6108ed7de35484da440e0b4bc2035a27db",
+      "bytes": 7856
+    }
+  ]
+}

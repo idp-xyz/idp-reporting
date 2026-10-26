@@ -1,0 +1,53 @@
+{
+  "command": [
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "--library-path",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/lib/x86_64-linux-gnu",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/bin/qemu-system-x86_64",
+    "-machine",
+    "pc",
+    "-accel",
+    "tcg,thread=multi",
+    "-cpu",
+    "max",
+    "-smp",
+    "2",
+    "-m",
+    "1024",
+    "-nodefaults",
+    "-display",
+    "none",
+    "-serial",
+    "stdio",
+    "-monitor",
+    "none",
+    "-nic",
+    "none",
+    "-no-reboot",
+    "-L",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/share/qemu",
+    "-bios",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/share/seabios/bios-256k.bin",
+    "-kernel",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/boot/vmlinuz-6.8.0-147-generic",
+    "-initrd",
+    "/tmp/reporting-s01-vm-qu7o4v7z/initrd.gz",
+    "-append",
+    "console=ttyS0 rdinit=/init panic=1 random.trust_cpu=on quiet"
+  ],
+  "go": "go version go1.26.5 linux/amd64",
+  "postgres": "postgres (PostgreSQL) 16.14",
+  "guest_tests": {
+    "normal.test": "a7779a580125430b34767659e41de0e5e17a6cc99f3e7fb82a6b4d1185bf8a65",
+    "race.test": "e46c02af46533d4b51da5790481ffc62c6a1e8e8b8e274d2035cbcbf8a5842f4"
+  },
+  "host_uid_map": "         0          0          1\n",
+  "inputs": {
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/go/bin/go": "8da5fd321795754b994c64e3eb8a5a14ff47bd285559a7e876f3c79abafc67f9",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/pg/package/native/bin/postgres": "1c34196d6ade1b0a5d7bf23bd3d17a961aafc31699b13fe5de8846a09b7c3a28",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/boot/vmlinuz-6.8.0-147-generic": "41ba36d860aa0b0cd995f4ca8856d80249b244577e704929b55be13fbd1ebd2f",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/bin/busybox": "dbac288c29ba568459550a2da9e7ae0ded6b1fc728ee9fad3044c44e62d6ac14",
+    "/workspace/scratch/c179a7054698/internal/r01d_runtime/tools/usr/bin/qemu-system-x86_64": "8a35ccba41582fc6c38b9df85fc9e35fa1d42f414d2d7d8090ee9b2f5e7c0854"
+  },
+  "qualification": "contract simulators, ordinary/race real PG; no production/restart/crash/capacity qualification"
+}

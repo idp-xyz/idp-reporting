@@ -1,0 +1,750 @@
+REPORTING_VM_BOOT
+Linux (none) 6.8.0-147-generic #147-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 24 11:33:16 UTC 2026 x86_64 GNU/Linux
+uid=65534(nobody) gid=65534(nobody) groups=65534(nobody)
+postgres (PostgreSQL) 16.14
+waiting for server to start.... done
+server started
+REPORTING_JSON_normal_BEGIN
+{"Time":"2026-10-26T06:00:20.23104645Z","Action":"start","Package":"idp.local/reporting/integration"}
+{"Time":"2026-10-26T06:00:20.51677555Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
+{"Time":"2026-10-26T06:00:20.51740458Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
+{"Time":"2026-10-26T06:00:21.02162698Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
+{"Time":"2026-10-26T06:00:21.02343452Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
+{"Time":"2026-10-26T06:00:21.88719386Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (0.86s)\n"}
+{"Time":"2026-10-26T06:00:21.89092947Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":0.86}
+{"Time":"2026-10-26T06:00:21.89526847Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
+{"Time":"2026-10-26T06:00:21.89579622Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
+{"Time":"2026-10-26T06:00:21.93201621Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.05s)\n"}
+{"Time":"2026-10-26T06:00:21.93306142Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.05}
+{"Time":"2026-10-26T06:00:21.93707565Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
+{"Time":"2026-10-26T06:00:21.93726095Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
+{"Time":"2026-10-26T06:00:22.00668451Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.07s)\n"}
+{"Time":"2026-10-26T06:00:22.00710343Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.07}
+{"Time":"2026-10-26T06:00:22.01046009Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
+{"Time":"2026-10-26T06:00:22.0110749Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
+{"Time":"2026-10-26T06:00:22.23429619Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (0.22s)\n"}
+{"Time":"2026-10-26T06:00:22.23474072Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":0.22}
+{"Time":"2026-10-26T06:00:22.23733391Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
+{"Time":"2026-10-26T06:00:22.23862306Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
+{"Time":"2026-10-26T06:00:22.35107005Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.12s)\n"}
+{"Time":"2026-10-26T06:00:22.35189987Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.12}
+{"Time":"2026-10-26T06:00:22.35219016Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
+{"Time":"2026-10-26T06:00:22.35525715Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
+{"Time":"2026-10-26T06:00:22.55398391Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (0.20s)\n"}
+{"Time":"2026-10-26T06:00:22.55522901Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":0.2}
+{"Time":"2026-10-26T06:00:22.55866391Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
+{"Time":"2026-10-26T06:00:22.55881379Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
+{"Time":"2026-10-26T06:00:22.58585817Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.03s)\n"}
+{"Time":"2026-10-26T06:00:22.58962551Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.03}
+{"Time":"2026-10-26T06:00:22.58982706Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
+{"Time":"2026-10-26T06:00:22.59082309Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
+{"Time":"2026-10-26T06:00:22.6919382Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.10s)\n"}
+{"Time":"2026-10-26T06:00:22.69238601Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.1}
+{"Time":"2026-10-26T06:00:22.6936619Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
+{"Time":"2026-10-26T06:00:22.69377745Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
+{"Time":"2026-10-26T06:00:22.78907641Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.09s)\n"}
+{"Time":"2026-10-26T06:00:22.78979485Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.09}
+{"Time":"2026-10-26T06:00:22.79025077Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
+{"Time":"2026-10-26T06:00:22.7911753Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
+{"Time":"2026-10-26T06:00:22.87836805Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.09s)\n"}
+{"Time":"2026-10-26T06:00:22.87929406Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.09}
+{"Time":"2026-10-26T06:00:22.88282015Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
+{"Time":"2026-10-26T06:00:22.8856467Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
+{"Time":"2026-10-26T06:00:23.14284131Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (0.26s)\n"}
+{"Time":"2026-10-26T06:00:23.14457816Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":0.26}
+{"Time":"2026-10-26T06:00:23.14563102Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
+{"Time":"2026-10-26T06:00:23.14630281Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
+{"Time":"2026-10-26T06:00:23.34883411Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (0.21s)\n"}
+{"Time":"2026-10-26T06:00:23.35072561Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":0.21}
+{"Time":"2026-10-26T06:00:23.35105696Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
+{"Time":"2026-10-26T06:00:23.35288106Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
+{"Time":"2026-10-26T06:00:23.55226229Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (0.20s)\n"}
+{"Time":"2026-10-26T06:00:23.55690247Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":0.2}
+{"Time":"2026-10-26T06:00:23.55897094Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
+{"Time":"2026-10-26T06:00:23.56009415Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
+{"Time":"2026-10-26T06:00:23.90048223Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.34s)\n"}
+{"Time":"2026-10-26T06:00:23.90315501Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":0.34}
+{"Time":"2026-10-26T06:00:23.9055306Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
+{"Time":"2026-10-26T06:00:23.9067274Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
+{"Time":"2026-10-26T06:00:23.97599636Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.08s)\n"}
+{"Time":"2026-10-26T06:00:23.97790505Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.08}
+{"Time":"2026-10-26T06:00:23.97956195Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
+{"Time":"2026-10-26T06:00:23.98064606Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
+{"Time":"2026-10-26T06:00:24.36675946Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.39s)\n"}
+{"Time":"2026-10-26T06:00:24.36880188Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.39}
+{"Time":"2026-10-26T06:00:24.37056602Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
+{"Time":"2026-10-26T06:00:24.37131903Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
+{"Time":"2026-10-26T06:00:25.60799475Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.24s)\n"}
+{"Time":"2026-10-26T06:00:25.61488759Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.24}
+{"Time":"2026-10-26T06:00:25.67074683Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (5.15s)\n"}
+{"Time":"2026-10-26T06:00:25.67209563Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":5.15}
+{"Time":"2026-10-26T06:00:25.67821742Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
+{"Time":"2026-10-26T06:00:25.77881672Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":5.548}
+REPORTING_EXIT_normal=0
+REPORTING_JSON_normal_END
+REPORTING_JSON_race_BEGIN
+{"Time":"2026-10-26T06:00:25.81711063Z","Action":"start","Package":"idp.local/reporting/integration"}
+{"Time":"2026-10-26T06:00:26.36597954Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
+{"Time":"2026-10-26T06:00:26.3675881Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
+{"Time":"2026-10-26T06:00:26.71354156Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain"}
+{"Time":"2026-10-26T06:00:26.71411722Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"=== RUN   TestPostgresContract/two_domains_full_chain\n"}
+{"Time":"2026-10-26T06:00:29.17664395Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Output":"--- PASS: TestPostgresContract/two_domains_full_chain (2.46s)\n"}
+{"Time":"2026-10-26T06:00:29.18073063Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/two_domains_full_chain","Elapsed":2.46}
+{"Time":"2026-10-26T06:00:29.18299298Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read"}
+{"Time":"2026-10-26T06:00:29.18311225Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"=== RUN   TestPostgresContract/admission_does_not_read\n"}
+{"Time":"2026-10-26T06:00:29.28068466Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Output":"--- PASS: TestPostgresContract/admission_does_not_read (0.09s)\n"}
+{"Time":"2026-10-26T06:00:29.28290308Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/admission_does_not_read","Elapsed":0.09}
+{"Time":"2026-10-26T06:00:29.28550574Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes"}
+{"Time":"2026-10-26T06:00:29.28620007Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes\n"}
+{"Time":"2026-10-26T06:00:29.49180256Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.20s)\n"}
+{"Time":"2026-10-26T06:00:29.49231092Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/idempotency_conflict_and_owner_axes","Elapsed":0.2}
+{"Time":"2026-10-26T06:00:29.49466796Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer"}
+{"Time":"2026-10-26T06:00:29.49483582Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"=== RUN   TestPostgresContract/same_user_id_different_issuer\n"}
+{"Time":"2026-10-26T06:00:30.31711312Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Output":"--- PASS: TestPostgresContract/same_user_id_different_issuer (0.82s)\n"}
+{"Time":"2026-10-26T06:00:30.31781707Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/same_user_id_different_issuer","Elapsed":0.82}
+{"Time":"2026-10-26T06:00:30.31956187Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent"}
+{"Time":"2026-10-26T06:00:30.32011142Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent\n"}
+{"Time":"2026-10-26T06:00:30.56997692Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.25s)\n"}
+{"Time":"2026-10-26T06:00:30.57235851Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_tenant_source_ids_not_equivalent","Elapsed":0.25}
+{"Time":"2026-10-26T06:00:30.5747803Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant"}
+{"Time":"2026-10-26T06:00:30.57665582Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestPostgresContract/cross_product_requires_explicit_grant\n"}
+{"Time":"2026-10-26T06:00:31.31841814Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestPostgresContract/cross_product_requires_explicit_grant (0.74s)\n"}
+{"Time":"2026-10-26T06:00:31.32008621Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cross_product_requires_explicit_grant","Elapsed":0.74}
+{"Time":"2026-10-26T06:00:31.32149355Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority"}
+{"Time":"2026-10-26T06:00:31.32164743Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"=== RUN   TestPostgresContract/company_selector_is_not_authority\n"}
+{"Time":"2026-10-26T06:00:31.36967877Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Output":"--- PASS: TestPostgresContract/company_selector_is_not_authority (0.05s)\n"}
+{"Time":"2026-10-26T06:00:31.37000118Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/company_selector_is_not_authority","Elapsed":0.05}
+{"Time":"2026-10-26T06:00:31.3721975Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh"}
+{"Time":"2026-10-26T06:00:31.37267699Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"=== RUN   TestPostgresContract/frozen_source_not_live_refresh\n"}
+{"Time":"2026-10-26T06:00:31.59524628Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Output":"--- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.22s)\n"}
+{"Time":"2026-10-26T06:00:31.5982163Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/frozen_source_not_live_refresh","Elapsed":0.22}
+{"Time":"2026-10-26T06:00:31.59968017Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen"}
+{"Time":"2026-10-26T06:00:31.60117208Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"=== RUN   TestPostgresContract/scope_expansion_does_not_widen\n"}
+{"Time":"2026-10-26T06:00:31.78428772Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Output":"--- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.19s)\n"}
+{"Time":"2026-10-26T06:00:31.7851784Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/scope_expansion_does_not_widen","Elapsed":0.19}
+{"Time":"2026-10-26T06:00:31.78741864Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup"}
+{"Time":"2026-10-26T06:00:31.78764063Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"=== RUN   TestPostgresContract/queued_revocation_and_cleanup\n"}
+{"Time":"2026-10-26T06:00:31.92949743Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Output":"--- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.14s)\n"}
+{"Time":"2026-10-26T06:00:31.93308508Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/queued_revocation_and_cleanup","Elapsed":0.14}
+{"Time":"2026-10-26T06:00:31.93461228Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures"}
+{"Time":"2026-10-26T06:00:31.93554847Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"=== RUN   TestPostgresContract/completed_revocation_all_disclosures\n"}
+{"Time":"2026-10-26T06:00:32.98448399Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Output":"--- PASS: TestPostgresContract/completed_revocation_all_disclosures (1.05s)\n"}
+{"Time":"2026-10-26T06:00:32.98701909Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_revocation_all_disclosures","Elapsed":1.05}
+{"Time":"2026-10-26T06:00:32.98828487Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change"}
+{"Time":"2026-10-26T06:00:32.98905583Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"=== RUN   TestPostgresContract/completed_currency_change\n"}
+{"Time":"2026-10-26T06:00:34.00457047Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Output":"--- PASS: TestPostgresContract/completed_currency_change (1.02s)\n"}
+{"Time":"2026-10-26T06:00:34.00665847Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_currency_change","Elapsed":1.02}
+{"Time":"2026-10-26T06:00:34.00854548Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change"}
+{"Time":"2026-10-26T06:00:34.00865588Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"=== RUN   TestPostgresContract/completed_timezone_change\n"}
+{"Time":"2026-10-26T06:00:34.9445322Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Output":"--- PASS: TestPostgresContract/completed_timezone_change (0.93s)\n"}
+{"Time":"2026-10-26T06:00:34.94773404Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/completed_timezone_change","Elapsed":0.93}
+{"Time":"2026-10-26T06:00:34.94836553Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed"}
+{"Time":"2026-10-26T06:00:34.94889923Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed\n"}
+{"Time":"2026-10-26T06:00:35.90583854Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.96s)\n"}
+{"Time":"2026-10-26T06:00:35.90909702Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/authority_outage_is_distinct_and_closed","Elapsed":0.96}
+{"Time":"2026-10-26T06:00:35.91080804Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish"}
+{"Time":"2026-10-26T06:00:35.91186427Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestPostgresContract/cancelled_claim_cannot_publish\n"}
+{"Time":"2026-10-26T06:00:36.05047858Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.14s)\n"}
+{"Time":"2026-10-26T06:00:36.05229778Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/cancelled_claim_cannot_publish","Elapsed":0.14}
+{"Time":"2026-10-26T06:00:36.05383594Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim"}
+{"Time":"2026-10-26T06:00:36.05396022Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"=== RUN   TestPostgresContract/concurrent_admission_and_claim\n"}
+{"Time":"2026-10-26T06:00:36.58359528Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Output":"--- PASS: TestPostgresContract/concurrent_admission_and_claim (0.53s)\n"}
+{"Time":"2026-10-26T06:00:36.58581895Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/concurrent_admission_and_claim","Elapsed":0.53}
+{"Time":"2026-10-26T06:00:36.5860313Z","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity"}
+{"Time":"2026-10-26T06:00:36.58649283Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity\n"}
+{"Time":"2026-10-26T06:00:37.90766694Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.32s)\n"}
+{"Time":"2026-10-26T06:00:37.90827218Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract/lease_expiry_generation_and_atomicity","Elapsed":1.32}
+{"Time":"2026-10-26T06:00:37.94096018Z","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- PASS: TestPostgresContract (11.56s)\n"}
+{"Time":"2026-10-26T06:00:37.95222336Z","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":11.56}
+{"Time":"2026-10-26T06:00:37.96598897Z","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
+{"Time":"2026-10-26T06:00:39.0098739Z","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":13.193}
+REPORTING_EXIT_race=0
+REPORTING_JSON_race_END
+waiting for server to shut down.... done
+server stopped
+REPORTING_FILE=/evidence/normal/sample_1.xlsx
+ef0f96b58295fee407d618cc444b066090b6312c72b5f58cbafae582f74505ef  /evidence/normal/sample_1.xlsx
+REPORTING_XLSX_BEGIN
+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
+REPORTING_XLSX_END
+REPORTING_FILE=/evidence/normal/sample_2.xlsx
+7fc0efa166337d26cfd25d15cf39cc40dc80f6a2364a282ebf37672462b7bf21  /evidence/normal/sample_2.xlsx
+REPORTING_XLSX_BEGIN
+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
+REPORTING_XLSX_END
+REPORTING_FILE=/evidence/race/sample_1.xlsx
+8814d5fdd1bd28921e66f360ede79c2ef49b58381e296cde7b0b82bbcbe78977  /evidence/race/sample_1.xlsx
+REPORTING_XLSX_BEGIN
+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
+REPORTING_XLSX_END
+REPORTING_FILE=/evidence/race/sample_2.xlsx
+b98ac61dae81a638c0a80f426ffa0c9af6d2c692b0ebe606c107a6aa621dcecf  /evidence/race/sample_2.xlsx
+REPORTING_XLSX_BEGIN
+UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1sfJVP
+j5swFMTv/RSW740xGEIq49W220q998+ZgneDFuPIZkM+fsWmNe85gQty8hsPk+GZyIeL6clZO9/Z
+oaJ8l1Cih8a23fBS0Z8/vn0s6YP6ICfrXv1R65FcTD/4ih7H8fSJMd8ctan9zp70cDH9s3WmHv3O
+uhfmT07X7fsm07M0SQpm6m6gSrad0cN8Q+L0c0UfOVWShS+VfN/zq9OTB2syR/hj7ev84Xtb0WTe
+FTBceyUb21+vpHnzozW/u3Y8VnR0b5oSU18qWlBiuvknUzJdYVrOjo3tr9f/N3+qx1pJZyfiZrWS
+zbx45JSMFfVUybPie8nO865/8DOCZYDM2SlYpcEqhepDZAVhmty3yoJVBtU8skIwvW8lgpWA6iyy
+QlDct8qDVQ7VeWSFYHHfqghWBVTHtSO4Uvs+WO2hOq4dwmyl9jJYlVAd147gSu2HYHWA6rh2BFdq
+58kyownUx8VjutI8BxMPpzq7GXlEV8rny9BzONhZXD+iIsH0C6ZR30+I8oh+xXTlcfDlRHF4akQa
+50Q0i3MiKuKckPI8zrlCcc7luHJ4JMXNsxabOcVmTrGZc4XinMu7gMPzzuMBR1QUcc58M2e+mRPR
+eNoZeNWz8Gen/gYAAP//UEsHCPk0KjDaAQAAHwcAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAA
+GAAAAHhsL3dvcmtzaGVldHMvc2hlZXQyLnhtbFySzW7rIBBG9/cp0OxvsN02SisgShtV6r4/a2qT
+GAWYCEjsx6+IW2S8GY195vMcI9h2tIZclQ8aHYd6VQFRrsVOuyOHj/fX/xvYin9sQH8KvVKRjNa4
+wKGP8fxEaWh7ZWVY4Vm50ZoDeitjWKE/0nD2Sna3kDW0qao1tVI7EKzTVrm0kHh14LCrQTCaXwp2
+y3xqNYRZT5LCN+IpPbx1HKqUynjeB8FaNFMl7SVEtF+6iz2H6C8KiJUjhzUQq9MvAxkm2GzSF1s0
+U/1bvpdRCuZxID5NC9amZlcDiRwCCHYVj4xeU+iXPc9ZXZXwpYB1CfcFbDKkHofs0GSHZj59t5Ao
+4P1CooAPC4kCrhcSdHYoNF8L8RMAAP//UEsHCJ9n6eoZAQAASQIAAFBLAwQUAAgACAAAAAAAAAAA
+AAAAAAAAAAAAGAAAAHhsL3dvcmtzaGVldHMvc2hlZXQxLnhtbIyTzW7bMBCE730KYu81bblxjUBU
+4CYIWqCHoOnPmaZWFhGSK5Bry+3TF5RrQVV66IUgOLPzDSmovDt7J04Yk6WgYLVYgsBgqLbhoODb
+18e3W7ir3pQ9xZfUIrI4exeSgpa5u5UymRa9TgvqMJy9ayh6zWlB8SBTF1HXw5B3slguN9JrG+CS
+cBv/J4Oaxhp8IHP0GPgSEtFpthRSa7sEVVlbjyHXFxEbBbsVVKUcD6tyaPDdYp8me8F6/4wODWOt
+gOMRQeQ77olesv6pVrCEqux0QKEN2xM+6YAK9sRM/jM2DCKxZlTQRPqFAQRTl8/v0TkFuwLEz+fO
+WVYwNMpJVSnHBtP9tdnjcPWnKGps9NHxF+o/oj20OeMGrhNXV1UacmlYhTkmJv/D1txer+P1WcEG
+hLf5w4LoL2KxzUGG3GW9oh8066qM1It4KWzyZrcCkYZpVpAf+1QtS3nKo38cH147Vn877l87itEh
+I/UjthixxcS8ngGn2rsZaqrd/BuyHiHriXkzg0y19zPIVNvOIHLymHL8aarfAQAA//9QSwcIjuXk
+lZwBAABnAwAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAPAAAAeGwvd29ya2Jvb2sueG1sjJFP
+j5swEMXv/RTW3DfYNImiCLNSta2aQ6sc0t2zYw/Biv8g2yzk21dA6RKtVtrTmBm937x5FI+9NeQV
+Q9TecWArCgSd9Eq7C4c/px8PO3gsvxSdD9ez91fSW+MihzqlZp9lUdZoRVz5Bl1vTeWDFSmufLhk
+sQkoVKwRkzVZTuk2s0I7mAj78BmGryot8cnL1qJLEySgEUl7F2vdxJlm5WdwVoRr2zxIbxuR9Fkb
+nW4jFIiV+8PF+SDOBjn0bDOTe7Z5h7ZaBh99lVbS238m393LaMbYdHJZVNrg8xQyEU3zW9hhiwFi
+REzflU6oOGyBGN/hXSO0zbdWG8WBrdc5hbLIFqzy/385BlJpkzAcg34V8sYhhRaBKKxEa9KpRjuL
+OLDtmjI2sN7kZTHUZ41dfKMOn6R/0U75jgMFclu8u/H5olWqB3c7upl7P1Ff6sRhRxldbhlwZZEt
+Fo1xzZW4MZYnkQSQsXMY7gYS9lpxCAc1eh4n95KTT8LEhShfiNYfiH5hEup+19eFbLOQZbNPKYw8
+BjKU0Vue51OQ02Bxa/k3AAD//1BLBwjuD/3upQEAAFoDAABQSwMEFAAIAAgAAAAAAAAAAAAAAAAA
+AAAAABMAAAB4bC90aGVtZS90aGVtZTEueG1s7JnPb9s2FMfv+ysI3lfJP2THQZUiseN2a9IWTdqh
+x2eJlthQpEDSSXwb2tMuAwZ0wy4DdtthGFZgBVbssj8mQIut+yMG/UhM2RITtC5WDE0Okcj3ee/7
+Him+WL5+4zRh6JhIRQX3ceuaixHhgQgpj3z84HD86Qa+sfXJddjUMUkIOk0YV5vg41jrdNNxVBCT
+BNQ1kRJ+mrCpkAlodU3IyAklnFAeJcxpu27PSYByXPLyKryYTmlARiKYJYTrwokkDDQVXMU0VRhx
+SIiP7+aG6DATiLfOpe4yknEqGwiYPAhy/SaR24ZHreyPmqshk+gYmI9PKA/FySE51RgxUHrIpI/d
+/AdvXXfOjfPLEme6wYvhYZz/rHgo0fConXuQ0eTCRbfrdXvbJVFMlEHbRdBVZLe/29vtrSKlLQQB
+4aVWE/N2BjsjbxUz7IvLmoij/qjTakKNqJ0VdNvLfpvQzgLtrqDj8XCxHCtod4F6NVXtt4fdJtRb
+oL0VtO9uj7r9JjS3jxnlRyug6/U6w5oiXVhPBbtVSw687rjfXiUXgGPs78IV1027PYHHQo4F1/n+
+AU050vOUTCEgPh4CoxNJ0R6NYo1RClwo4mO37Y7djtvOf7v5VVm93EHmiYDhppgjkD94amUiUOci
+kQokTbWPP0+BY8Pw1cuXZ09enD35/ezp07Mnv5aCyrQL7RX+FvDI5N/89M0/P3yJ/v7txzfPvrVz
+yuRe//LV6z/+vEo4XZH73fPXL56/+v7rv35+ZsG2JUxM7JAmRKE75ATdFwlwW0AykW9HHsZAKyTE
+IgELsKvjCnBnDsxmv0OqpX8oKQ9twM3Z40ouB7GcaWoBbsdJBdgXgu0IaU37dqbBTHvGI7soOTPt
+7wMc2zQNlzbO7iyNSUJtIYYxqaRxjwHXEBFONMrmxBEhFvwRpZV12aeBFEpMNXpE0Q5QawkP6UTX
+w7doAgzmNuGHMVRquf8Q7QhmCzcix1UCeATMFoKwSvlvwkxDYs0IEmYSe6BjWxIHcxlUFkxpCTwi
+TKDdkChlY+/KeSWd28CofTvts3lSJaSmRzZiD4QwiZE4GsaQpNacKI9N5jN1JAQDdE9oqzhRfWKz
+e8Eo8Eu30UNK9NsdQw9oFNdvwGxmJm2PJhHV82LOpkAqwZylvpZQfmmTW2pv3n/Y3uydZo2NzQ6s
+o6VtS2p90Jcb2WX2/8P2NYIZv0d4bEM+dq+P3etj96oXt7buddnZ8/571qJNlcPGZ7ik8SPclDJ2
+oOeM7Kk8shKMhmPKWH6TQxcfHtN4yCR28gAVu0hCfo2k0F9QHR/EkBIft/IIkSpdRwqlQvnYxY2+
+swk2S/ZFWIy2WvlrEicHQC/GXe9iXFOui9Fevxx0DPf5XaRMAV757uWqIoxgVRGdGhH9ztVEtNx1
+qRjUqNho2VQ4xqowyhHwyMdet1CEVACMhNk6Ffz56q59pZuKWU27XZPeoHu1Il9hpSsijO1WFWFs
+wxhCsjy85rUeDOqXul0ro7/xPtbaWT0bGK/eoRMf9zqei1EAqY+nDDRGQZKGPlbZuQos4j4OdFno
+tzlZUqn0CFRcmOVTRf4J1UQiRhMfb5jLwPhCW6vddz9ccQP3w6ucs7zIZDolgW4YWdzuKV04qZ19
+R+PsRsw0kQdxeIImbCbvQ+hjr9/KChhSpS+qGVJpbO5FFZeOq/JRrLxSXTyiwNIYyo5iHubG69IL
+OUYeudLlrJy6Ek6i8Tq67uXQVvXQbGgg/cZT7P01eUNVp16VV3vWDTYu6RLv3hAMaRv10jr10pp6
+xxr/ITDC9Rrq1rb2pHfoBsu71jH+r8zvVr4nE5PHJNAjMoUZ00Xw5SHYJKdawvD8G4eLh6h2NI+w
+9W8AAAD//1BLBwiwop17fQUAAGUcAABQSwMEFAAIAAgAAAAAAAAAAAAAAAAAAAAAAA0AAAB4bC9z
+dHlsZXMueG1spJhvj5s4E8DfP5/C4v0umE2y2Qio+rRaqVLvtFJ7Ut86YIi1/oNsk3N6uu9+sgFD
+lmRLCdKCM3h+9ozHM3iTD4ZRcMRSEcHTAN5HAcA8FwXhVRr89f35bht8yP6XKH2i+NsBYw2AYZSr
+NDhoXe/CUOUHzJC6FzXmhtFSSIa0uheyClUtMSqU1WI0jKNoEzJEeNASdqieAxFlSXL8WeQNw1y3
+FGw05gUu7mopaiw1waqHisXQvFFasAtINIdYSPQ34dUlO/MF+vkBSe0BhVyK+NzKPEmwWf55ixKs
+RprsCSX61LOKii1AFQRVErEeQpc4h4r8FRefED8iv0g1WUKqSa4biXuIWeToUZi/cfcs2qVYlJgi
+TQRXB1J7E4tZm+56aP9gtEfNWrlLJIb0wXtrDuQXOUDRWRD36ivZSyRPUwibtfQMydemvjuLZcfy
+9nA84TCSS6FEqe9zwTqPhNjk+IItTIl5+k4zgt2yNMQnmqlHr+ujXJMj/uF3dl1Po+26di6OWL6g
+Cr9IMURYXpBpengH4ubfB8gX3nqbCP6COPaxluvfQDKsUYE0CnPBNeb6+6n2u5PrC2VnDqqNfuUX
+iv6OkR5DBa9eJsWBTavDDNZQZJzso9aS7Bs9wirCX39BJvw1jCMYnRcbuJo3oS6J2Yk9htswnpSc
+3wfB6GLRQYtIY6NqssAsGE3S+1zIJGk9hU9nEzLz3dMnCxi9UygMXKFpEps/N5QPRWJmcI/Wf/u2
+KjMl5prnJhA9TnJZUbG5iLMlezMTA9fzIG/dAqMQwvM1g/FSH0MYwpGPDVwvJrlpjVAzk/aEswol
+PhL71T6g4oWstWfFA+xhIWzjYQ8DbGYkvANbDbClETHA1gNsczNs+H6QjzfDHgfY9mbYdoA93Qx7
+GmAwupkGoxEO3o6DI9zSbTDCjfYBvH0jwNFOmJsU38ON9sLi9DjCDbsBLt0Nq2my3dyQjqK4g7F8
+96XiQqI9xWmQwxVwHyYAwRVwHwXA2D8nczUUFKoGrnwBV4GAgWvgMj9wWRsYCYyMgZEPwMgVMHIN
+jNwAIx+BkVtg5BOwAW5v0N5sV2j7WpZ0MPu3Ac5CwARgBrAjEODoq+fMYwBD+aiKbs/PEjOPApbh
+jyNvEMc0aCTfdfp3Xt8egXYM5bvjcCAU7/Vtx+oevca79JYsdw0p0uCfqLvuoiiCd32rvfXXv0GW
+lIJrBXLRcJ0GcSfIEo4YBkdE0+ATomQvSZAloRVmSYkYoaf2pVUIW0GW5IIKCfQBM5wG0L5xkixR
+P9ve0AnVT6vjRunu14D7Ts3K9j1fVvs0eO6u0SAd0j1UlpSEUm/XQ9AKsqRGWmPJnwmloGvb404a
+cMGxpY06WJh7/EK1kugE4/VCbSUoKez8qk9j++Dj6uP2/84b7YsrdPdQWbIXssDSW2x91oqyhOLS
+OqZ9SFId7K/uqUWdJaG774XWgllXdw37WSg4soOMmj21a6gsyTGl3/SJ4h/l2fimBLxhz0x/KdIg
+CoBdmb5JKO2aLab9kSWhKe2Sjogtf4SOF6GBKc/GuEaAAyG+QgCorunpWdjJaNngXkAoPRN8pKTi
+9pSeBiWiyoYX6kVZEo7b3mpvsDP/zJ1eCuw+TIM/7cmfjqa1bwjVhHszvcK4rbKkMIMzXUcryBJt
+E/75sFEAClyihuoXchTavUyDof3VBhHc+F7fPSINhvYfuCANczt7NIbNBP4f3Nl/AQAA//9QSwcI
+FTvNhxIFAAAUFwAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAUAAAAeGwvc2hhcmVkU3RyaW5n
+cy54bWx8lM9uGzcQxu99CkJ37XLp1f5xZaWq4wIBUhuw5Esvwoic1RLdJTfkrCr33FOBAL3k0vTS
+Fyj6AkWfxkkfo7CCJABp5fr7doecb+bj/Nmh79gendfWXEyyhE8YGmmVNruLyd36u2k1ebb4au49
+sUPfGX8xaYmG8zT1ssUefGIHNIe+a6zrgXxi3S71g0NQvkWkvksF50XagzYTJu1o6GKSlxM2Gv1q
+xMtPYDH3ejGnxfu3f73//ZeHt//MU1rM00f4QXj3x+uHX/8M6X///vbw+s27N3+HwuV1SPAwOPQ+
+xDXnZVbXYpaXOa/rs1B/fhUST2AUOBXyMgQ9ktMyvgdI2uyhGzGU5OgcGnkf8tFoim7R6qFHQ8nR
+1C91lXHOQ/1UtZArINjIDmLfLm+u17fLyzVbvfj+7uVyfXPLUnZ9s2a3V8uX7Nu71Yvrq9WKPV+u
+l9FhBgbfWtroyEN+JiUobBpVYK74DBqVlQgFZrwQTTULv9eGcOeAtDVPVPvY1VRaQw4kTRX29qke
+PZ402CcKdHf/TZbwJPIR/MY2IRRcFNOMT0URKqR7/NmaaPBLryFdtWB2LehQfDWiu9+04NtoX2SW
+F5moRLnFusy5mAnJz4otoCoAqwrLbX5WyDLPsM5EmW3rbYVKCgHbGooi6sbb0Unc/ASErgf3Y6g3
++kCjw+k+O/Hnp8k6jFxpZqKCuqqUUrzaVlXB82Y2U1lVFnIrMEoPHgbt0G8gmsxnf9e8OM/4uah+
+CL8ZHEr9+KhFVncdO4bPM3DIjmlkhAdiErvOJ+zOI4NhcHaPitH9gIrpfrCOPGusY+A0tT2Sll8z
+Yx9RP3bg2Q4NOiBUSewadtFqPhaOTJTQxfBjzhV60ubDqh8z76J3wpPTZhdl6mRJj26vJW6kVdG5
+x2Sh+4xT72nxfwAAAP//UEsHCDgaIRm2AgAAMAYAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAA
+GgAAAHhsL19yZWxzL3dvcmtib29rLnhtbC5yZWxzxNLNSsNAEMDxu0+xzN1Mk2oRSdKLCL1qfIAl
+mWSX7kfYWTV9eyGCSbGFCAEvCXv5z4+dzfeDNeKDAmvvCkiTDQhytW+06wp4q55vH2Bf3uQvZGTU
+3rHSPYvBGscFqBj7R0SuFVnJie/JDda0PlgZOfGhw17WR9kRZpvNDsO8AeVZUxyaAsKhSUFUMnQU
+C/j04ciKKDKOvzQZrAFRnXpaMtq3ra7pydfvlly8IMCfAVDmOMdcpmUTjePJEK/t+a4uw2wnTFRk
+Ccfv6lc0VpeJ7q5vLlub9cfN3V+nbf+ZtptoOBhkJQM1rzFo163/vubx37yzI5dfAQAA//9QSwcI
+lawthvsAAAAaBAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZG9jUHJvcHMvY29yZS54
+bWykkU1LAzEQhu/+iiX33cm2UDSk6UHpSUGwongLybQNbj5IUjf+e+m23VbsTchp3mce3iR8UWxX
+fWFMxrs5aRtKKnTKa+M2c/K6Wta3ZCFuuApM+YjP0QeM2WCqiu1cYirMyTbnwACS2qKVqfEBXbHd
+2kcrc2p83ECQ6lNuECaUzsBillpmCXthHUYjOSq1GpVhF7tBoBVghxZdTtA2LZzZjNGmqwtDckFa
+k78DXkVP4UiXZEaw7/umnw7ohNIW3p8eX4ar1salLJ1CIrhWTEWU2UdRdtFwuBjwY8vDAHVVkmGH
+LqfkbXr/sFoSsX+gmt7V7WxFKRvOx971a/8stF6btfmH8SQQHP78sPgJAAD//1BLBwhF30CoEAEA
+ABwCAABQSwMEFAAIAAgAAAAAAAAAAAAAAAAAAAAAABAAAABkb2NQcm9wcy9hcHAueG1snM8/SwQx
+EAXw3k+xpL+d1ULkyOYQ/NNarPZLMns3kMyEzHhEP72I4FlbPh78eM8fesnDGZuS8Oyux8kNyFES
+8XF2r8vT7s4dwpV/aVKxGaEOvWTW2Z3M6h5A4wnLqqNU5F7yJq2spqO0I8i2UcQHie8F2eBmmm4B
+uyEnTLv6C7ofcX+2/6JJ4vc+fVs+KqoLfhFb80IFw+ThEvx9rZniaiQcnmV47BEzfaKHv4WHy9nw
+FQAA//9QSwcI4jggCbYAAAAgAQAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAALAAAAX3JlbHMv
+LnJlbHOU0MFK/DAQBvD7/ylC7tt09w8isuleRNibSH2AmEzb0CQTJqPGtxe9uMWK9jgwfN+P73iq
+MYgXoOIxablvWikgWXQ+jVo+9ne7a3nq/h0fIBj2mMrkcxE1hlS0nJjzjVLFThBNaTBDqjEMSNFw
+aZBGlY2dzQjq0LZXii4zZLfIFGenJZ3dfyl6QyOwlg7tPWEuyuTc1Bik6N8y/KUVh8FbuEX7HCHx
+SrmCypAcuF0mzEDs4QOkLkXrvsOKzyLBNuDPs6gIbJxh85m6mbf/4tWgXpHmJ8R5G+739ZYf32WL
+s3TvAQAA//9QSwcIt8x7k+cAAABkAgAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAATAAAAW0Nv
+bnRlbnRfVHlwZXNdLnhtbMSUz27UMBDG7zxF5Ctae1skhFCSHvhzhEqUBzD2JLHW9lgz0yV9e5Sk
+W0HZol1tJC7xZfL9fvrkcX0zpljtgThgbtSV3qoKskMfct+o73efN+/UTfuqvnsowNWYYuZGDSLl
+vTHsBkiWNRbIY4odUrLCGqk3xbqd7cFcb7dvjcMskGUjU4Zq64/Q2fso1adRIC9cgsiq+rAMTqxG
+2VJicFYCZrPP/hll80jQBHGe4SEUfj2mqNraPBKOoqaRl0nPA77ugSh4qG4tyReboFFmjEYGSLB8
+r/S/E4+4Y9cFBx7dfYIseo45qB+AL6JZHiLwxVAuBNbzACAp6iX0ZIefSLsfiLu1LaZTJxvyaSYe
+3S1hYWNLuVgFpiviwW8KYQGScGYfszyb+bj8TvxZzFP+aUZPvTgkOF/lsFrT32u0cX2+wpptHDF6
+89+NeLAE/ptQyP3qy/x79t9GZn7L218BAAD//1BLBwhxqLoPYgEAAPoFAABQSwECFAAUAAgACAAA
+AAAA+TQqMNoBAAAfBwAAGAAAAAAAAAAAAAAAAAAAAAAAeGwvd29ya3NoZWV0cy9zaGVldDMueG1s
+UEsBAhQAFAAIAAgAAAAAAJ9n6eoZAQAASQIAABgAAAAAAAAAAAAAAAAAIAIAAHhsL3dvcmtzaGVl
+dHMvc2hlZXQyLnhtbFBLAQIUABQACAAIAAAAAACO5eSVnAEAAGcDAAAYAAAAAAAAAAAAAAAAAH8D
+AAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWxQSwECFAAUAAgACAAAAAAA7g/97qUBAABaAwAADwAA
+AAAAAAAAAAAAAABhBQAAeGwvd29ya2Jvb2sueG1sUEsBAhQAFAAIAAgAAAAAALCinXt9BQAAZRwA
+ABMAAAAAAAAAAAAAAAAAQwcAAHhsL3RoZW1lL3RoZW1lMS54bWxQSwECFAAUAAgACAAAAAAAFTvN
+hxIFAAAUFwAADQAAAAAAAAAAAAAAAAABDQAAeGwvc3R5bGVzLnhtbFBLAQIUABQACAAIAAAAAAA4
+GiEZtgIAADAGAAAUAAAAAAAAAAAAAAAAAE4SAAB4bC9zaGFyZWRTdHJpbmdzLnhtbFBLAQIUABQA
+CAAIAAAAAACVrC2G+wAAABoEAAAaAAAAAAAAAAAAAAAAAEYVAAB4bC9fcmVscy93b3JrYm9vay54
+bWwucmVsc1BLAQIUABQACAAIAAAAAABF30CoEAEAABwCAAARAAAAAAAAAAAAAAAAAIkWAABkb2NQ
+cm9wcy9jb3JlLnhtbFBLAQIUABQACAAIAAAAAADiOCAJtgAAACABAAAQAAAAAAAAAAAAAAAAANgX
+AABkb2NQcm9wcy9hcHAueG1sUEsBAhQAFAAIAAgAAAAAALfMe5PnAAAAZAIAAAsAAAAAAAAAAAAA
+AAAAzBgAAF9yZWxzLy5yZWxzUEsBAhQAFAAIAAgAAAAAAHGoug9iAQAA+gUAABMAAAAAAAAAAAAA
+AAAA7BkAAFtDb250ZW50X1R5cGVzXS54bWxQSwUGAAAAAAwADAAMAwAAjxsAAAAA
+REPORTING_XLSX_END
+REPORTING_PG_LOG_BEGIN
+2026-10-26 06:00:19.793 UTC [109] LOG:  starting PostgreSQL 16.14 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit
+2026-10-26 06:00:19.801 UTC [109] LOG:  listening on IPv4 address "127.0.0.1", port 55432
+2026-10-26 06:00:19.805 UTC [109] LOG:  listening on Unix socket "/tmp/.s.PGSQL.55432"
+2026-10-26 06:00:19.834 UTC [112] LOG:  database system was shut down at 2026-10-26 06:00:19 UTC
+2026-10-26 06:00:20.022 UTC [109] LOG:  database system is ready to accept connections
+2026-10-26 06:00:39.089 UTC [109] LOG:  received fast shutdown request
+2026-10-26 06:00:39.090 UTC [109] LOG:  aborting any active transactions
+2026-10-26 06:00:39.112 UTC [109] LOG:  background worker "logical replication launcher" (PID 115) exited with exit code 1
+2026-10-26 06:00:39.114 UTC [110] LOG:  shutting down
+2026-10-26 06:00:39.117 UTC [110] LOG:  checkpoint starting: shutdown immediate
+2026-10-26 06:00:39.183 UTC [110] LOG:  checkpoint complete: wrote 156 buffers (7.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.026 s, sync=0.016 s, total=0.067 s; sync files=447, longest=0.001 s, average=0.001 s; distance=1139 kB, estimate=1139 kB; lsn=0/1E3E2E0, redo lsn=0/1E3E2E0
+2026-10-26 06:00:39.208 UTC [109] LOG:  database system is shut down
+REPORTING_PG_LOG_END
+REPORTING_VM_COMPLETED
+[   42.116094] reboot: Power down
