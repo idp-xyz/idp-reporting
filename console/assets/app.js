@@ -167,7 +167,7 @@
     if(!result||!Array.isArray(result.columns)||result.columns.length>100||!result.columns.every(c=>typeof c.id==='string'&&typeof c.label==='string'&&typeof c.type==='string')||!Array.isArray(result.rows)||result.rows.length>1000||!result.rows.every(row=>Array.isArray(row)&&row.length===result.columns.length&&row.every(value=>typeof value==='string'))||!result.totals||typeof result.totals!=='object'||!Object.values(result.totals).every(v=>typeof v==='string'))throw new Failure(0,'INVALID_RESPONSE');
   }
   function layoutBinding() {return {integration_id:state.query.integration_id,dataset:copy(state.query.dataset)};}
-  function matchingLayout() {return state.layout&&JSON.stringify(state.layout.binding)===JSON.stringify(layoutBinding());}
+  function matchingLayout() {const binding=state.layout?.binding;return binding&&binding.integration_id===state.query.integration_id&&binding.dataset.id===state.query.dataset.id&&binding.dataset.version===state.query.dataset.version;}
   function visibleColumns(result) {return matchingLayout()?state.layout.columns:result.columns.map(c=>({id:c.id,align:['decimal','integer'].includes(c.type)?'right':'left'}));}
   function renderTable(result) {
     const columns=visibleColumns(result);const header=node('tr');const body=$('result-table').tBodies[0];body.replaceChildren();
@@ -192,9 +192,9 @@
       const align=node('select');align.setAttribute('aria-label',c.label+' 对齐');for(const [value,text] of [['left','左对齐'],['right','右对齐']]){const option=node('option',text);option.value=value;align.append(option);}align.value=entries[index]?.align||'left';align.disabled=index<0;align.addEventListener('change',()=>update(cols=>{cols[index].align=align.value;}));row.append(align);target.append(row);
     }
   }
-  function layoutAction(fn) {try{if(!state.lastResult||!state.session||state.catalogLoading||state.busy)throw new Failure(400,'INVALID_REQUEST');fn();}catch(error){$('layout-status').textContent=errorMessage(error);}}
+  function layoutAction(fn) {try{if(!state.lastResult||!state.session||typeof state.query?.integration_id!=='string'||state.catalogLoading||state.busy)throw new Failure(400,'INVALID_REQUEST');fn();}catch(error){$('layout-status').textContent=errorMessage(error);}}
   $('layout-reset').addEventListener('click',()=>layoutAction(()=>{state.layout=null;renderDesigner();renderTable(state.lastResult);$('layout-status').textContent='已恢复全部列。';}));
-  $('layout-save').addEventListener('click',()=>layoutAction(()=>{$('layout-json').value=JSON.stringify(state.layout,null,2);const url=URL.createObjectURL(new Blob([$('layout-json').value],{type:'application/json'}));const link=node('a');link.href=url;link.download='report-layout.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);$('layout-status').textContent='布局文件已生成，不含业务行或访问令牌。';}));
+  $('layout-save').addEventListener('click',()=>layoutAction(()=>{const text=JSON.stringify(state.layout,null,2);if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');$('layout-json').value=text;const url=URL.createObjectURL(new Blob([$('layout-json').value],{type:'application/json'}));const link=node('a');link.href=url;link.download='report-layout.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);$('layout-status').textContent='布局文件已生成，不含业务行或访问令牌。';}));
   $('layout-open').addEventListener('click',()=>layoutAction(()=>{const text=$('layout-json').value;if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');let layout;try{layout=JSON.parse(text);}catch(_){throw new Failure(400,'INVALID_REQUEST');}applyLayout(layout);}));
   function renderResult(result,query,meta) {
     checkResult(result);state.lastResult=result;state.query=copy(query);
