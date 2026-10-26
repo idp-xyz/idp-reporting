@@ -25,6 +25,8 @@ def main():
     root = Path(__file__).resolve().parents[1]
     out = root / 'evidence/s03a'
     out.mkdir(parents=True, exist_ok=True)
+    (out / 'host_checks.json').write_text(json.dumps({'phase': 'S03-A', 'status': 'RUNNING',
+        'baseline': BASELINE, 'production_approved': False}, indent=2) + '\n')
     env = os.environ.copy()
     for name in ['REPORTING_S01_REQUIRE_PG', 'REPORTING_S01_TEST_DSN', 'REPORTING_S01_SOURCE_DSN']:
         env.pop(name, None)

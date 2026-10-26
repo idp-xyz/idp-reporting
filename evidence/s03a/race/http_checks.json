@@ -12,18 +12,18 @@
   "identity": "locally signed RSA access JWT; no deployed IdP",
   "outputs": {
     "finance": {
-      "Snapshot": "b7e5bf8174faf4f1d9fd1b6f6d16f47b",
-      "Artifact": "cd171960e5d2d4baeeeb7ed38dada4f3",
-      "Job": "f15f29c99a1e9d65091dfda5720efb89",
-      "SHA256": "e1cc982639190fecd412c0f54ff3115ea0bdd2873284e7d9450a33d3c05df456",
-      "Bytes": 7916
+      "Snapshot": "8cf8d51bd9081c69803c5d00f9e8e92b",
+      "Artifact": "71434a920c2b9c44af309950d23913df",
+      "Job": "bd906ebc8239d3cdaeb9bc0191e12930",
+      "SHA256": "574b971f186b976020461687f01207255df12c8de6872cd761d2a963351a5851",
+      "Bytes": 7915
     },
     "shipments": {
-      "Snapshot": "d0ce2297778afa882c6c7e9a231c25e3",
-      "Artifact": "482345e81fc5e2683eea557c4f536efd",
-      "Job": "1872e25367e510fc55cd665e0363137e",
-      "SHA256": "b109bcfcf0206cb9b65e554363988324376b2609f1ff4af3c0c5293f9d118e94",
-      "Bytes": 7858
+      "Snapshot": "0e0ae38748a961d8cb2553c11054594d",
+      "Artifact": "a69e85b6aadbd4d3320433b6af5157b0",
+      "Job": "c357f7ef47c5d30d0bfd7be98c00882a",
+      "SHA256": "612d9018a0183ba467c9b629e017e668d07fd61035d6b4f68622234dbd3ade3e",
+      "Bytes": 7859
     }
   },
   "source": "two in-memory contract simulators",

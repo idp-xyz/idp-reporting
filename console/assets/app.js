@@ -3,7 +3,7 @@
   const base = '/api/reporting/v1';
   const $ = (id) => document.getElementById(id);
   const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',tasks:'任务工作区',system:'能力与环境'};
-  const state = {token:'',epoch:0,view:0,session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
+  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   class Failure extends Error { constructor(status,code) { super(code); this.status=status; this.code=code; } }
   class Stale extends Error {}
@@ -14,7 +14,14 @@
   function current(mark) { return mark.epoch===state.epoch && mark.view===state.view; }
   function mark() { return {epoch:state.epoch,view:state.view}; }
   function notify(message,type) { $('notice').textContent=message; $('notice').className='notice'+(type?' '+type:''); $('notice').hidden=false; }
-  function busy(change) { state.busy=Math.max(0,state.busy+change); document.querySelectorAll('.action').forEach(b=>b.disabled=!state.session||state.busy>0); $('export').disabled=!state.snapshot||state.busy>0; }
+  function busy(change) {
+    state.busy=Math.max(0,state.busy+change);
+    const blocked=!state.session||state.busy>0||state.catalogLoading;
+    document.querySelectorAll('.action').forEach(b=>b.disabled=blocked);
+    $('export').disabled=blocked||!state.snapshot;
+    $('next-page').disabled=blocked||!state.cursor;$('first-page').disabled=blocked||state.page<=1;$('page-size').disabled=blocked||!state.snapshot;
+    for(const id of ['query-dataset','query-companies','query-date','refresh-catalog'])$(id).disabled=!state.session||state.catalogLoading;
+  }
   function clearResult() {
     state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
@@ -24,7 +31,7 @@
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;
   }
   function disconnect(message) {
-    state.epoch++;state.view++;for(const c of state.controllers)c.abort();state.controllers.clear();
+    state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';
@@ -100,11 +107,11 @@
   function datasetTitle(d) { const labels=d.columns.filter(c=>['decimal','integer'].includes(c.type)).map(c=>c.label);return labels.length?labels.join(' / '):d.dataset.id; }
   function validDataset(d) { return d && typeof d.dataset?.id==='string'&&typeof d.dataset.version==='string'&&Array.isArray(d.columns)&&d.columns.length<=100&&d.columns.every(c=>typeof c.id==='string'&&typeof c.label==='string'&&typeof c.type==='string')&&Array.isArray(d.metrics)&&Array.isArray(d.dimensions)&&typeof d.timezone==='string'; }
   function dateInZone(zone) { try {const parts=new Intl.DateTimeFormat('en',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>parts.find(p=>p.type===t).value;return get('year')+'-'+get('month')+'-'+get('day');}catch(_){return '';} }
-  function queryChanged() {state.view++;clearResult();const d=selected();$('query-timezone').textContent=d?.timezone||'—';$('query-currency').textContent=d?.currency_policy?d.currency_policy.id+' @ '+d.currency_policy.version:'无换算政策';$('query-shape').textContent=d?d.dimensions.length+' 个维度 / '+d.metrics.length+' 个指标':'选择数据集后显示批准组合';}
+  function queryChanged() {if(state.catalogLoading)return;state.view++;clearResult();const d=selected();$('query-timezone').textContent=d?.timezone||'—';$('query-currency').textContent=d?.currency_policy?d.currency_policy.id+' @ '+d.currency_policy.version:'无换算政策';$('query-shape').textContent=d?d.dimensions.length+' 个维度 / '+d.metrics.length+' 个指标':'选择数据集后显示批准组合';}
   function renderCatalog() {
-    $('overview-datasets').textContent=String(state.datasets.length);
+    $('overview-datasets').textContent=state.catalogLoading?'—':String(state.datasets.length);
     const overview=$('overview-catalog');overview.replaceChildren();const catalog=$('catalog-grid');catalog.replaceChildren();
-    if(!state.datasets.length){overview.append(node('div','当前身份尚无可用数据集。','empty compact'));catalog.append(node('div','当前身份尚无可用数据集。','empty compact'));return;}
+    if(!state.datasets.length){const message=state.catalogLoading?'正在读取当前授权目录…':'当前身份尚无可用数据集。';overview.append(node('div',message,'empty compact'));catalog.append(node('div',message,'empty compact'));return;}
     for(const d of state.datasets) {
       const row=node('div',undefined,'dataset-row');const info=node('div',undefined,'dataset-info');info.append(node('span','▤','dataset-icon'));
       const label=node('div');label.append(node('h3',datasetTitle(d)),node('p',d.dataset.id+' · v'+d.dataset.version));info.append(label);
@@ -117,14 +124,18 @@
   }
   function chooseDataset(d) {$('query-dataset').value=d.dataset.id+'@'+d.dataset.version;queryChanged();$('query-date').value=dateInZone(d.timezone);openPage('workspace');}
   async function loadProduct(id,refresh) {
-    const epoch=state.epoch;state.product=id;state.view++;clearResult();$('catalog-product').value=id;$('query-product').value=id;state.datasets=[];renderCatalog();$('query-dataset').replaceChildren();
-    let datasets=state.catalogs.get(id);
-    if(!datasets||refresh)datasets=await request('/catalog?integration_id='+encodeURIComponent(id));
-    if(epoch!==state.epoch||id!==state.product)throw new Stale();
-    if(!Array.isArray(datasets)||datasets.length>100||!datasets.every(validDataset))throw new Failure(0,'INVALID_RESPONSE');
-    state.catalogs.set(id,datasets);state.datasets=datasets;
-    for(const d of datasets){const option=node('option',datasetTitle(d)+' · v'+d.dataset.version);option.value=d.dataset.id+'@'+d.dataset.version;$('query-dataset').append(option);}
-    renderCatalog();queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';
+    const epoch=state.epoch,operation=++state.catalogOperation;state.product=id;state.view++;state.catalogLoading=true;clearResult();busy(0);$('catalog-product').value=id;$('query-product').value=id;state.datasets=[];renderCatalog();$('query-dataset').replaceChildren();
+    const active=()=>epoch===state.epoch&&operation===state.catalogOperation&&id===state.product;
+    try {
+      let datasets=state.catalogs.get(id);
+      if(!datasets||refresh)datasets=await request('/catalog?integration_id='+encodeURIComponent(id));
+      if(!active())throw new Stale();
+      if(!Array.isArray(datasets)||datasets.length>100||!datasets.every(validDataset))throw new Failure(0,'INVALID_RESPONSE');
+      state.catalogs.set(id,datasets);state.datasets=datasets;$('query-dataset').replaceChildren();
+      for(const d of datasets){const option=node('option',datasetTitle(d)+' · v'+d.dataset.version);option.value=d.dataset.id+'@'+d.dataset.version;$('query-dataset').append(option);}
+      state.catalogLoading=false;renderCatalog();queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';
+    } catch(error) {if(!active())throw new Stale();throw error;}
+    finally {if(active()){state.catalogLoading=false;busy(0);}}
   }
   function addDetails(id,pairs) {const target=$(id);target.replaceChildren();for(const [label,value] of pairs){const row=node('div');row.append(node('dt',label),node('dd',String(value)));target.append(row);}}
   async function connect(event) {
@@ -198,16 +209,18 @@
     for(let i=0;i<100;i++){if(!current(m))throw new Stale();const job=await refreshJob(id);if(!current(m))throw new Stale();if(!['queued','running'].includes(job.state))return job;await new Promise(resolve=>setTimeout(resolve,300));}
     notify('任务仍在服务器执行，可在任务工作区继续查看。');return null;
   }
-  async function perform(fn) {const m=mark();busy(1);try{await fn(m);}catch(error){fail(error,m);}finally{if(m.epoch===state.epoch)busy(-1);}}
+  async function perform(fn) {if(state.busy||state.catalogLoading)return;const m=mark();busy(1);try{await fn(m);}catch(error){fail(error,m);}finally{if(m.epoch===state.epoch)busy(-1);}}
   async function preview(m) {const q=buildQuery();clearResult();const result=await request('/queries',{method:'POST',body:q});if(!current(m))throw new Stale();renderResult(result,q,null);notify('预览已更新。完整冻结导出请先创建快照。','success');}
   async function loadSnapshot(id,query,m,first) {
     if(!isID(id))throw new Failure(400,'INVALID_REQUEST');
-    const next=!first&&state.snapshot===id?state.cursor:'';
-    const limit=$('page-size').value;const page=await request('/snapshots/'+id+'/rows?limit='+encodeURIComponent(limit)+(next?'&cursor='+encodeURIComponent(next):''));
+    if(!first&&(state.snapshot!==id||!state.cursor))throw new Failure(400,'INVALID_REQUEST');
+    const next=first?'':state.cursor,targetPage=first?1:state.page+1;
+    const limit=$('page-size').value;if(!['2','25','50'].includes(limit))throw new Failure(400,'INVALID_REQUEST');state.pageLimit=limit;
+    const page=await request('/snapshots/'+id+'/rows?limit='+encodeURIComponent(limit)+(next?'&cursor='+encodeURIComponent(next):''));
     if(!current(m))throw new Stale();checkResult(page);if(page.snapshot_id!==id||!Number.isSafeInteger(page.total_row_count)||page.total_row_count<0||page.total_row_count>1000||(page.next_cursor&&typeof page.next_cursor!=='string'))throw new Failure(0,'INVALID_RESPONSE');
     if(!query){const known=Array.from(state.jobs.values()).find(j=>j.snapshot_id===id);query=known?.query;}
     if(!query){query={dataset:{id:'已保存的快照',version:''},as_of:'原数据时点',timezone:'原快照时区'};}
-    state.snapshot=id;state.cursor=page.next_cursor||'';state.page=first?1:state.page+1;renderResult(page,query,{total:page.total_row_count});busy(0);
+    state.snapshot=id;state.cursor=page.next_cursor||'';state.page=targetPage;renderResult(page,query,{total:page.total_row_count});busy(0);
   }
   async function createSnapshot(m) {
     const q=buildQuery();clearResult();const job=await submit('snapshot',q,{query:copy(q),integration:q.integration_id});if(!current(m))throw new Stale();
@@ -236,7 +249,7 @@
   $('preview').addEventListener('click',()=>perform(preview));$('snapshot').addEventListener('click',()=>perform(createSnapshot));$('export').addEventListener('click',()=>perform(createExport));
   $('refresh-result').addEventListener('click',()=>perform(m=>state.snapshot?loadSnapshot(state.snapshot,state.query,m,true):preview(m)));
   $('first-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,true)));$('next-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,false)));
-  $('page-size').addEventListener('change',()=>{if(state.snapshot)perform(m=>loadSnapshot(state.snapshot,state.query,m,true));});
+  $('page-size').addEventListener('change',()=>{if(state.busy||state.catalogLoading){$('page-size').value=state.pageLimit;return;}if(state.snapshot){state.view++;perform(m=>loadSnapshot(state.snapshot,state.query,m,true));}});
   $('restore-job').addEventListener('click',()=>perform(async()=>{const id=$('restore-id').value.trim();if(!isID(id))throw new Failure(400,'INVALID_REQUEST');await refreshJob(id);notify('已恢复当前身份可访问的任务。','success');}));
   $('refresh-tasks').addEventListener('click',()=>perform(async()=>{for(const id of state.jobs.keys())await refreshJob(id);notify('已知任务状态已刷新。','success');}));
   $('connection-overlay').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const first=$('access-token'),last=$('connect-button');if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});

@@ -4,7 +4,7 @@
 快照分页、任务跟踪/取消、恢复私有任务与 Excel 下载均调用既有同源 API。用户已明确
 真实接入放在最后；后续先推进三类设计器、模板/PDF与平台运行能力。
 
-实现通过 API 和9项软件DOM回归，但浏览器预览路由被当前环境/URL策略阻断，真实
+实现通过 API 和13项软件DOM回归，但浏览器预览路由被当前环境/URL策略阻断，真实
 浏览器/移动视觉/下载验收尚未完成。见 docs/CONSOLE.md、docs/VALIDATION.md。
 首次运行后在本机打开 http://127.0.0.1:7810/console/ 并输入当前配置的令牌。
 
@@ -13,7 +13,7 @@ S02-A已交付配置化 RS256 访问令牌认证模块 identity/accessjwt，以�
 issuer/audience/公钥/scope/主体映射，不自动替换下方 reporting-demo 的演示身份。
 本地签名令牌及 HTTPS/合成来源验证不等于真实 IdP、两个真实业务来源或生产准入。
 组合与限制见 docs/ACCESS_JWT.md，真实接入缺口见 docs/REAL_SOURCE_DISCOVERY_S02A.md，
-下一步合同见 docs/REAL_SOURCE_ONBOARDING.md。
+后续真实接入合同见 docs/REAL_SOURCE_ONBOARDING.md。
 
 独立 Go 报表后端，2026-10-26（上海时间）。已通过的 S01-B 基线增加持久来源合同、真实服务进程/PG
 重启验证与完整性/竞争测试。应收账龄与运单统计均为合同模拟器的合成预汇总数据，

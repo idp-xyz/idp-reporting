@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: real Go console workflow preserves precision, frozen pages, export and logout
+ok 1 - real Go console workflow preserves precision, frozen pages, export and logout
+  ---
+  duration_ms: 2230.844143
+  type: 'test'
+  ...
+# Subtest: invalid login and company selector escalation are rejected without cached rows
+ok 2 - invalid login and company selector escalation are rejected without cached rows
+  ---
+  duration_ms: 112.877756
+  type: 'test'
+  ...
+# Subtest: unconfirmed snapshot submission reuses its idempotency key
+ok 3 - unconfirmed snapshot submission reuses its idempotency key
+  ---
+  duration_ms: 395.333302
+  type: 'test'
+  ...
+# Subtest: late preview cannot replace a changed query
+ok 4 - late preview cannot replace a changed query
+  ---
+  duration_ms: 89.571478
+  type: 'test'
+  ...
+# Subtest: authorization outage clears previously displayed results
+ok 5 - authorization outage clears previously displayed results
+  ---
+  duration_ms: 97.817569
+  type: 'test'
+  ...
+# Subtest: text cells cannot create elements or execute injected markup
+ok 6 - text cells cannot create elements or execute injected markup
+  ---
+  duration_ms: 65.528678
+  type: 'test'
+  ...
+# Subtest: 401 during a query clears the active session and visible private references
+ok 7 - 401 during a query clears the active session and visible private references
+  ---
+  duration_ms: 79.117794
+  type: 'test'
+  ...
+# Subtest: logout aborts an in-flight response without repopulating the page
+ok 8 - logout aborts an in-flight response without repopulating the page
+  ---
+  duration_ms: 131.083369
+  type: 'test'
+  ...
+# Subtest: a mismatched workbook digest never starts a file download
+ok 9 - a mismatched workbook digest never starts a file download
+  ---
+  duration_ms: 699.483952
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4712.786458

@@ -18,7 +18,12 @@ The software-DOM suite executes the actual app.js and index.html, drives public
 form/button events, and calls an actual Go demo over 127.0.0.1 HTTP. It covers
 precision, snapshots/pages/export, company denial, invalid login, ambiguous
 submission/idempotency, stale response suppression, authorization outage, literal
-XSS text, 401 cleanup, logout during flight and checksum failure. Network fault
+XSS text, 401 cleanup, logout during flight, checksum failure, serialized frozen
+paging, page-limit consistency, repeated catalog refresh, and stale product errors.
+The 4 async regressions fail against the pre-fix application at 00b37668; the
+negative-control log is kept separately in evidence/s03a_diagnostics and is not
+a qualification run. The initial 9-test checkpoint is historical in
+evidence/s03a_pre_review. Current evidence/s03a contains the fixed 13-test suite. Network fault
 injections are test-only fetch-boundary controls; no private application state is
 read. OS file download is a test port: captured bytes are written as one actual
 XLSX and independently read with Python ZIP/XML. It does not qualify an actual

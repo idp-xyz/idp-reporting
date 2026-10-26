@@ -116,3 +116,69 @@ test('a mismatched workbook digest never starts a file download',async()=>{
   const a=app(async(path,options)=>{if(path.includes('/artifacts/')&&path.endsWith('/content')){const original=await fetch(url+path,options);const bytes=await original.arrayBuffer();return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','X-Content-SHA256':'0'.repeat(64)}});}});
   try{await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'ready snapshot');a.click('export');await until(()=>a.$('notice').textContent.includes('完整性'),'digest failure');assert.equal(a.downloads.length,0);assert.equal(a.$('result-table').tBodies[0].rows.length,0);}finally{a.close();}
 });
+
+test('overlapping next-page actions consume a frozen cursor only once',async()=>{
+  let entered=0,release;const blocked=new Promise(resolve=>release=resolve);
+  const a=app(async(path)=>{if(path.includes('/rows?')&&path.includes('&cursor=')){entered++;await blocked;}});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    a.$('page-size').value='2';a.$('page-size').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+    await until(()=>a.$('result-table').tBodies[0].rows.length===2&&!a.$('next-page').disabled,'first frozen page');
+    a.click('next-page');a.click('next-page');await until(()=>entered>0,'one next request');await sleep(30);
+    assert.equal(entered,1,'one in-flight cursor request only');release();
+    await until(()=>a.$('page-info').textContent.includes('第 2 页'),'second frozen page');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,1);assert.equal(a.$('next-page').disabled,true);
+  }finally{release();a.close();}
+});
+
+test('page size stays consistent while a frozen cursor request is pending',async()=>{
+  let entered=0,release;const blocked=new Promise(resolve=>release=resolve);
+  const a=app(async(path)=>{if(path.includes('/rows?')&&path.includes('&cursor=')){entered++;await blocked;}});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    a.$('page-size').value='2';a.$('page-size').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+    await until(()=>a.$('result-table').tBodies[0].rows.length===2&&!a.$('next-page').disabled,'two-row first page');
+    a.click('next-page');await until(()=>entered===1,'next request in flight');
+    assert.equal(a.$('page-size').disabled,true);assert.equal(a.$('first-page').disabled,true);
+    a.$('page-size').value='25';a.$('page-size').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+    assert.equal(a.$('page-size').value,'2','a queued change cannot replace an in-flight page limit');
+    release();await until(()=>a.$('page-info').textContent.includes('第 2 页')&&!a.$('page-size').disabled,'second page settled');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,1);assert.equal(entered,1);
+    a.$('page-size').value='25';a.$('page-size').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+    await until(()=>a.$('result-table').tBodies[0].rows.length===3&&!a.$('page-size').disabled,'new page size after completion');
+    assert.ok(a.$('page-info').textContent.includes('第 1 页'));
+  }finally{release();a.close();}
+});
+
+test('overlapping same-product catalog refreshes replace rather than duplicate options',async()=>{
+  let holding=false,entered=0;const releases=[];
+  const a=app(async(path,options)=>{
+    if(holding&&path.includes('/catalog?')){const response=await fetch(url+path,options);entered++;await new Promise(resolve=>releases.push(resolve));return response;}
+  });
+  try{
+    await a.login();const original=a.$('query-dataset').options[0].value;holding=true;
+    a.$('refresh-catalog').dispatchEvent(new a.w.Event('click',{bubbles:true}));
+    a.$('refresh-catalog').dispatchEvent(new a.w.Event('click',{bubbles:true}));
+    await until(()=>entered===2&&releases.length===2,'both queued catalog responses');
+    assert.equal(a.$('preview').disabled,true);releases[1]();
+    await until(()=>a.$('query-dataset').options.length===1&&!a.$('preview').disabled,'newer catalog response');
+    releases[0]();await sleep(50);
+    assert.equal(a.$('query-dataset').options.length,1);assert.equal(a.$('query-dataset').value,original);
+  }finally{for(const release of releases)release();a.close();}
+});
+
+test('an old product catalog failure cannot clear a newer product preview',async()=>{
+  let oldProduct='',holding=false,entered=false,release;const blocked=new Promise(resolve=>release=resolve);
+  const a=app(async(path)=>{if(holding&&path.includes('/catalog?integration_id='+encodeURIComponent(oldProduct))){entered=true;await blocked;return problem(403,'ACCESS_DENIED');}});
+  try{
+    await a.login();oldProduct=a.$('query-product').value;const oldDataset=a.$('query-dataset').value;holding=true;
+    a.click('refresh-catalog');await until(()=>entered,'old product refresh in flight');
+    a.$('query-product').value=a.$('query-product').options[1].value;
+    a.$('query-product').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+    await until(()=>a.$('query-dataset').options.length===1&&a.$('query-dataset').value!==oldDataset&&!a.$('preview').disabled,'new product catalog');
+    a.configure();a.click('preview');await until(()=>a.$('result-table').tBodies[0].rows.length===2&&!a.$('preview').disabled,'new product preview');
+    const current=a.$('result-table').textContent;const notice=a.$('notice').textContent;
+    release();await sleep(60);
+    assert.equal(a.$('result-table').textContent,current);assert.equal(a.$('notice').textContent,notice);assert.equal(a.$('result-table').tBodies[0].rows.length,2);
+  }finally{release();a.close();}
+});

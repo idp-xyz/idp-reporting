@@ -1,0 +1,9 @@
+{
+  "status": "EXPECTED_FAILURE",
+  "unfixed_commit": "00b37668ebb477fd46562ac1a8aa518fb973afb4",
+  "targeted_tests": 4,
+  "expected_failures": 4,
+  "fixed_source_restored": true,
+  "acceptance_result": false,
+  "purpose": "Public-DOM regressions detect the two reviewed async defects; not a qualification run."
+}
