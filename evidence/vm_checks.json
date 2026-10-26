@@ -3,7 +3,7 @@
   "production_approved": false,
   "go": "go version go1.26.5 linux/amd64",
   "postgres": "postgres (PostgreSQL) 16.14",
-  "elapsed_seconds": 109.82,
+  "elapsed_seconds": 117.04,
   "phases": {
     "normal": {
       "passed": [
@@ -40,9 +40,13 @@
         "TestDurablePostgresContract/sql_payload_owner_mismatch_fails_even_with_hash",
         "TestDurablePostgresContract/job_payload_hash_rejects_corruption",
         "TestDurablePostgresContract/fixture_v1_upgrade_preserves_existing_assets",
+        "TestDurablePostgresContract/company_selection_is_never_authority",
+        "TestDurablePostgresContract/currency_change_survives_source_reopen",
+        "TestDurablePostgresContract/corrupt_source_handle_denies_cached_artifact",
+        "TestDurablePostgresContract/multiple_source_pages_stay_on_original_durable_version",
         "TestDurablePostgresContract"
       ],
-      "test_pass_events": 34,
+      "test_pass_events": 38,
       "skips": 0,
       "failures": 0
     },
@@ -81,9 +85,13 @@
         "TestDurablePostgresContract/sql_payload_owner_mismatch_fails_even_with_hash",
         "TestDurablePostgresContract/job_payload_hash_rejects_corruption",
         "TestDurablePostgresContract/fixture_v1_upgrade_preserves_existing_assets",
+        "TestDurablePostgresContract/company_selection_is_never_authority",
+        "TestDurablePostgresContract/currency_change_survives_source_reopen",
+        "TestDurablePostgresContract/corrupt_source_handle_denies_cached_artifact",
+        "TestDurablePostgresContract/multiple_source_pages_stay_on_original_durable_version",
         "TestDurablePostgresContract"
       ],
-      "test_pass_events": 34,
+      "test_pass_events": 38,
       "skips": 0,
       "failures": 0
     }
@@ -92,24 +100,24 @@
     "status": "PASS",
     "processes": [
       {
-        "PID": 256,
-        "StartTicks": "9911"
+        "PID": 279,
+        "StartTicks": "10692"
       },
       {
-        "PID": 286,
-        "StartTicks": "10164"
+        "PID": 309,
+        "StartTicks": "10953"
       },
       {
-        "PID": 320,
-        "StartTicks": "10360"
+        "PID": 344,
+        "StartTicks": "11146"
       },
       {
-        "PID": 354,
-        "StartTicks": "10562"
+        "PID": 380,
+        "StartTicks": "11373"
       }
     ],
-    "postgres_start_before": "2026-10-26T06:54:53.058366Z",
-    "postgres_start_after": "2026-10-26T06:56:10.72823Z",
+    "postgres_start_before": "2026-10-26T07:19:00.092918Z",
+    "postgres_start_after": "2026-10-26T07:20:24.074794Z",
     "offline_http_status": 500,
     "reclaimed_generation": 2,
     "checks": [
@@ -129,63 +137,63 @@
   "exports": [
     {
       "file": "pg16_normal_sample_1.xlsx",
-      "sha256": "a4f73e1dbbdc5d48cf963ba65f666fec52d6e56a2efbb8f2357382f35915a479",
-      "bytes": 7909
+      "sha256": "708646a527e0624fa351b454aaaf8df707bfb2b7a7e696a6810116b05f385bdd",
+      "bytes": 7913
     },
     {
       "file": "pg16_normal_sample_2.xlsx",
-      "sha256": "2f0e9dd6e26af48d340a96d029c5476eda4b9f5e7c4e58bf34752bc4a8e3aa70",
+      "sha256": "6c623de723385a89906091ce24507e2c42b530231da6df02ec16d9dfdf2c0d81",
       "bytes": 7857
     },
     {
       "file": "pg16_race_sample_1.xlsx",
-      "sha256": "9f0e80566edc6642c9ef770c02d759c617211ae16452a81183abe8d24dde70a1",
-      "bytes": 7914
+      "sha256": "b79d81e5118f5e93fbbfbe63ff5d6b2bc2f01e09c374e1e4f31bc63060821001",
+      "bytes": 7912
     },
     {
       "file": "pg16_race_sample_2.xlsx",
-      "sha256": "02cddbc5c3c83ab285f69c3191e8ad0863615e4c506390360d0a1a0f254f3561",
-      "bytes": 7858
+      "sha256": "a5ba182b0129e0bc2c2ef1846acb939cdedf269f1676d916bf7d837b4381dc39",
+      "bytes": 7857
     },
     {
       "file": "pg16_recovery_before_1.xlsx",
-      "sha256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
-      "bytes": 7930
+      "sha256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
+      "bytes": 7933
     },
     {
       "file": "pg16_recovery_before_2.xlsx",
-      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
-      "bytes": 7875
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879
     },
     {
       "file": "pg16_recovery_database_restart_1.xlsx",
-      "sha256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
-      "bytes": 7930
+      "sha256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
+      "bytes": 7933
     },
     {
       "file": "pg16_recovery_database_restart_2.xlsx",
-      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
-      "bytes": 7875
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879
     },
     {
       "file": "pg16_recovery_other_product.xlsx",
-      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
-      "bytes": 7875
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879
     },
     {
       "file": "pg16_recovery_pending_export.xlsx",
-      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
-      "bytes": 7875
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879
     },
     {
       "file": "pg16_recovery_process_restart_1.xlsx",
-      "sha256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
-      "bytes": 7930
+      "sha256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
+      "bytes": 7933
     },
     {
       "file": "pg16_recovery_process_restart_2.xlsx",
-      "sha256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
-      "bytes": 7875
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879
     }
   ]
 }

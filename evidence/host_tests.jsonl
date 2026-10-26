@@ -1,0 +1,189 @@
+{"Time":"2026-10-26T15:18:55.304032905+08:00","Action":"start","Package":"idp.local/reporting/adapters/contractsim"}
+{"Time":"2026-10-26T15:18:55.31081377+08:00","Action":"run","Package":"idp.local/reporting/adapters/contractsim","Test":"TestPersistableFixtureProjectsOriginalScope"}
+{"Time":"2026-10-26T15:18:55.310916965+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim","Test":"TestPersistableFixtureProjectsOriginalScope","Output":"=== RUN   TestPersistableFixtureProjectsOriginalScope\n"}
+{"Time":"2026-10-26T15:18:55.311674805+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim","Test":"TestPersistableFixtureProjectsOriginalScope","Output":"--- PASS: TestPersistableFixtureProjectsOriginalScope (0.00s)\n"}
+{"Time":"2026-10-26T15:18:55.311698601+08:00","Action":"pass","Package":"idp.local/reporting/adapters/contractsim","Test":"TestPersistableFixtureProjectsOriginalScope","Elapsed":0}
+{"Time":"2026-10-26T15:18:55.3117046+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim","Output":"PASS\n"}
+{"Time":"2026-10-26T15:18:55.318070476+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim","Output":"ok  \tidp.local/reporting/adapters/contractsim\t0.014s\n"}
+{"Time":"2026-10-26T15:18:55.318306821+08:00","Action":"pass","Package":"idp.local/reporting/adapters/contractsim","Elapsed":0.014}
+{"Time":"2026-10-26T15:18:55.817823296+08:00","Action":"start","Package":"idp.local/reporting/adapters/contractsim/pgsource"}
+{"Time":"2026-10-26T15:18:55.829827618+08:00","Action":"run","Package":"idp.local/reporting/adapters/contractsim/pgsource","Test":"TestDurableSourceRejectsPlatformDBAndRemoteFallback"}
+{"Time":"2026-10-26T15:18:55.829868559+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim/pgsource","Test":"TestDurableSourceRejectsPlatformDBAndRemoteFallback","Output":"=== RUN   TestDurableSourceRejectsPlatformDBAndRemoteFallback\n"}
+{"Time":"2026-10-26T15:18:55.829899356+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim/pgsource","Test":"TestDurableSourceRejectsPlatformDBAndRemoteFallback","Output":"--- PASS: TestDurableSourceRejectsPlatformDBAndRemoteFallback (0.00s)\n"}
+{"Time":"2026-10-26T15:18:55.82990203+08:00","Action":"pass","Package":"idp.local/reporting/adapters/contractsim/pgsource","Test":"TestDurableSourceRejectsPlatformDBAndRemoteFallback","Elapsed":0}
+{"Time":"2026-10-26T15:18:55.829906516+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim/pgsource","Output":"PASS\n"}
+{"Time":"2026-10-26T15:18:55.830116903+08:00","Action":"output","Package":"idp.local/reporting/adapters/contractsim/pgsource","Output":"ok  \tidp.local/reporting/adapters/contractsim/pgsource\t0.012s\n"}
+{"Time":"2026-10-26T15:18:55.830130063+08:00","Action":"pass","Package":"idp.local/reporting/adapters/contractsim/pgsource","Elapsed":0.012}
+{"Time":"2026-10-26T15:18:55.831057418+08:00","Action":"start","Package":"idp.local/reporting/cmd/reporting-demo"}
+{"Time":"2026-10-26T15:18:55.831066722+08:00","Action":"output","Package":"idp.local/reporting/cmd/reporting-demo","Output":"?   \tidp.local/reporting/cmd/reporting-demo\t[no test files]\n"}
+{"Time":"2026-10-26T15:18:55.831070547+08:00","Action":"skip","Package":"idp.local/reporting/cmd/reporting-demo","Elapsed":0}
+{"Time":"2026-10-26T15:18:55.831077478+08:00","Action":"start","Package":"idp.local/reporting/cmd/reporting-recovery-probe"}
+{"Time":"2026-10-26T15:18:55.831080392+08:00","Action":"output","Package":"idp.local/reporting/cmd/reporting-recovery-probe","Output":"?   \tidp.local/reporting/cmd/reporting-recovery-probe\t[no test files]\n"}
+{"Time":"2026-10-26T15:18:55.831083777+08:00","Action":"skip","Package":"idp.local/reporting/cmd/reporting-recovery-probe","Elapsed":0}
+{"Time":"2026-10-26T15:18:55.831090347+08:00","Action":"start","Package":"idp.local/reporting/export/xlsx"}
+{"Time":"2026-10-26T15:18:55.831093973+08:00","Action":"output","Package":"idp.local/reporting/export/xlsx","Output":"?   \tidp.local/reporting/export/xlsx\t[no test files]\n"}
+{"Time":"2026-10-26T15:18:55.831106952+08:00","Action":"skip","Package":"idp.local/reporting/export/xlsx","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.488077628+08:00","Action":"start","Package":"idp.local/reporting/integration"}
+{"Time":"2026-10-26T15:18:56.494681818+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract"}
+{"Time":"2026-10-26T15:18:56.494731964+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract","Output":"=== RUN   TestMemoryContract\n"}
+{"Time":"2026-10-26T15:18:56.494779315+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/two_domains_full_chain"}
+{"Time":"2026-10-26T15:18:56.494784583+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/two_domains_full_chain","Output":"=== RUN   TestMemoryContract/two_domains_full_chain\n"}
+{"Time":"2026-10-26T15:18:56.509233017+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/two_domains_full_chain","Output":"--- PASS: TestMemoryContract/two_domains_full_chain (0.01s)\n"}
+{"Time":"2026-10-26T15:18:56.509292857+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/two_domains_full_chain","Elapsed":0.01}
+{"Time":"2026-10-26T15:18:56.509298665+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/admission_does_not_read"}
+{"Time":"2026-10-26T15:18:56.509301359+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/admission_does_not_read","Output":"=== RUN   TestMemoryContract/admission_does_not_read\n"}
+{"Time":"2026-10-26T15:18:56.509699438+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/admission_does_not_read","Output":"--- PASS: TestMemoryContract/admission_does_not_read (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.509708502+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/admission_does_not_read","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.509861232+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/idempotency_conflict_and_owner_axes"}
+{"Time":"2026-10-26T15:18:56.509864436+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/idempotency_conflict_and_owner_axes","Output":"=== RUN   TestMemoryContract/idempotency_conflict_and_owner_axes\n"}
+{"Time":"2026-10-26T15:18:56.510926033+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/idempotency_conflict_and_owner_axes","Output":"--- PASS: TestMemoryContract/idempotency_conflict_and_owner_axes (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.510935047+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/idempotency_conflict_and_owner_axes","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.510938172+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/same_user_id_different_issuer"}
+{"Time":"2026-10-26T15:18:56.510940575+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/same_user_id_different_issuer","Output":"=== RUN   TestMemoryContract/same_user_id_different_issuer\n"}
+{"Time":"2026-10-26T15:18:56.515860931+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/same_user_id_different_issuer","Output":"--- PASS: TestMemoryContract/same_user_id_different_issuer (0.01s)\n"}
+{"Time":"2026-10-26T15:18:56.515884266+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/same_user_id_different_issuer","Elapsed":0.01}
+{"Time":"2026-10-26T15:18:56.515902173+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_tenant_source_ids_not_equivalent"}
+{"Time":"2026-10-26T15:18:56.515905278+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_tenant_source_ids_not_equivalent","Output":"=== RUN   TestMemoryContract/cross_tenant_source_ids_not_equivalent\n"}
+{"Time":"2026-10-26T15:18:56.518124882+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_tenant_source_ids_not_equivalent","Output":"--- PASS: TestMemoryContract/cross_tenant_source_ids_not_equivalent (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.518141778+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_tenant_source_ids_not_equivalent","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.518145603+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_product_requires_explicit_grant"}
+{"Time":"2026-10-26T15:18:56.518148127+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_product_requires_explicit_grant","Output":"=== RUN   TestMemoryContract/cross_product_requires_explicit_grant\n"}
+{"Time":"2026-10-26T15:18:56.523240237+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_product_requires_explicit_grant","Output":"--- PASS: TestMemoryContract/cross_product_requires_explicit_grant (0.01s)\n"}
+{"Time":"2026-10-26T15:18:56.523264934+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cross_product_requires_explicit_grant","Elapsed":0.01}
+{"Time":"2026-10-26T15:18:56.523269611+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/company_selector_is_not_authority"}
+{"Time":"2026-10-26T15:18:56.523272075+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/company_selector_is_not_authority","Output":"=== RUN   TestMemoryContract/company_selector_is_not_authority\n"}
+{"Time":"2026-10-26T15:18:56.523476702+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/company_selector_is_not_authority","Output":"--- PASS: TestMemoryContract/company_selector_is_not_authority (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.523483573+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/company_selector_is_not_authority","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.523486437+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/frozen_source_not_live_refresh"}
+{"Time":"2026-10-26T15:18:56.5234885+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/frozen_source_not_live_refresh","Output":"=== RUN   TestMemoryContract/frozen_source_not_live_refresh\n"}
+{"Time":"2026-10-26T15:18:56.524480387+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/frozen_source_not_live_refresh","Output":"--- PASS: TestMemoryContract/frozen_source_not_live_refresh (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.52449519+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/frozen_source_not_live_refresh","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.524500027+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/scope_expansion_does_not_widen"}
+{"Time":"2026-10-26T15:18:56.524502771+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/scope_expansion_does_not_widen","Output":"=== RUN   TestMemoryContract/scope_expansion_does_not_widen\n"}
+{"Time":"2026-10-26T15:18:56.525248693+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/scope_expansion_does_not_widen","Output":"--- PASS: TestMemoryContract/scope_expansion_does_not_widen (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.52525969+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/scope_expansion_does_not_widen","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.525263876+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/queued_revocation_and_cleanup"}
+{"Time":"2026-10-26T15:18:56.525276725+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/queued_revocation_and_cleanup","Output":"=== RUN   TestMemoryContract/queued_revocation_and_cleanup\n"}
+{"Time":"2026-10-26T15:18:56.525853522+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/queued_revocation_and_cleanup","Output":"--- PASS: TestMemoryContract/queued_revocation_and_cleanup (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.525866542+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/queued_revocation_and_cleanup","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.525869847+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_revocation_all_disclosures"}
+{"Time":"2026-10-26T15:18:56.5258719+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_revocation_all_disclosures","Output":"=== RUN   TestMemoryContract/completed_revocation_all_disclosures\n"}
+{"Time":"2026-10-26T15:18:56.531296661+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_revocation_all_disclosures","Output":"--- PASS: TestMemoryContract/completed_revocation_all_disclosures (0.01s)\n"}
+{"Time":"2026-10-26T15:18:56.531320927+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_revocation_all_disclosures","Elapsed":0.01}
+{"Time":"2026-10-26T15:18:56.531326356+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_currency_change"}
+{"Time":"2026-10-26T15:18:56.53132931+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_currency_change","Output":"=== RUN   TestMemoryContract/completed_currency_change\n"}
+{"Time":"2026-10-26T15:18:56.535664226+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_currency_change","Output":"--- PASS: TestMemoryContract/completed_currency_change (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.535692168+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_currency_change","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.535698438+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_timezone_change"}
+{"Time":"2026-10-26T15:18:56.535702864+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_timezone_change","Output":"=== RUN   TestMemoryContract/completed_timezone_change\n"}
+{"Time":"2026-10-26T15:18:56.553968625+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_timezone_change","Output":"--- PASS: TestMemoryContract/completed_timezone_change (0.02s)\n"}
+{"Time":"2026-10-26T15:18:56.558222585+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/completed_timezone_change","Elapsed":0.02}
+{"Time":"2026-10-26T15:18:56.558345139+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/authority_outage_is_distinct_and_closed"}
+{"Time":"2026-10-26T15:18:56.558349776+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/authority_outage_is_distinct_and_closed","Output":"=== RUN   TestMemoryContract/authority_outage_is_distinct_and_closed\n"}
+{"Time":"2026-10-26T15:18:56.560853542+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/authority_outage_is_distinct_and_closed","Output":"--- PASS: TestMemoryContract/authority_outage_is_distinct_and_closed (0.01s)\n"}
+{"Time":"2026-10-26T15:18:56.560873802+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/authority_outage_is_distinct_and_closed","Elapsed":0.01}
+{"Time":"2026-10-26T15:18:56.561081695+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cancelled_claim_cannot_publish"}
+{"Time":"2026-10-26T15:18:56.561088435+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cancelled_claim_cannot_publish","Output":"=== RUN   TestMemoryContract/cancelled_claim_cannot_publish\n"}
+{"Time":"2026-10-26T15:18:56.561777683+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cancelled_claim_cannot_publish","Output":"--- PASS: TestMemoryContract/cancelled_claim_cannot_publish (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.561793076+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/cancelled_claim_cannot_publish","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.561797673+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/concurrent_admission_and_claim"}
+{"Time":"2026-10-26T15:18:56.561800587+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/concurrent_admission_and_claim","Output":"=== RUN   TestMemoryContract/concurrent_admission_and_claim\n"}
+{"Time":"2026-10-26T15:18:56.563314084+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/concurrent_admission_and_claim","Output":"--- PASS: TestMemoryContract/concurrent_admission_and_claim (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.563329397+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/concurrent_admission_and_claim","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.563334154+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/lease_expiry_generation_and_atomicity"}
+{"Time":"2026-10-26T15:18:56.563336978+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/lease_expiry_generation_and_atomicity","Output":"=== RUN   TestMemoryContract/lease_expiry_generation_and_atomicity\n"}
+{"Time":"2026-10-26T15:18:56.645001978+08:00","Action":"start","Package":"idp.local/reporting/internal/fixturedb"}
+{"Time":"2026-10-26T15:18:56.64530928+08:00","Action":"output","Package":"idp.local/reporting/internal/fixturedb","Output":"?   \tidp.local/reporting/internal/fixturedb\t[no test files]\n"}
+{"Time":"2026-10-26T15:18:56.645317052+08:00","Action":"skip","Package":"idp.local/reporting/internal/fixturedb","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.645329731+08:00","Action":"start","Package":"idp.local/reporting/reporting"}
+{"Time":"2026-10-26T15:18:56.655360995+08:00","Action":"run","Package":"idp.local/reporting/reporting","Test":"TestExportPreservesPreciseTextAndNoFormulas"}
+{"Time":"2026-10-26T15:18:56.655400364+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestExportPreservesPreciseTextAndNoFormulas","Output":"=== RUN   TestExportPreservesPreciseTextAndNoFormulas\n"}
+{"Time":"2026-10-26T15:18:56.664582326+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestExportPreservesPreciseTextAndNoFormulas","Output":"--- PASS: TestExportPreservesPreciseTextAndNoFormulas (0.01s)\n"}
+{"Time":"2026-10-26T15:18:56.664618631+08:00","Action":"pass","Package":"idp.local/reporting/reporting","Test":"TestExportPreservesPreciseTextAndNoFormulas","Elapsed":0.01}
+{"Time":"2026-10-26T15:18:56.664625371+08:00","Action":"run","Package":"idp.local/reporting/reporting","Test":"TestFinancialSnapshot"}
+{"Time":"2026-10-26T15:18:56.664628576+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestFinancialSnapshot","Output":"=== RUN   TestFinancialSnapshot\n"}
+{"Time":"2026-10-26T15:18:56.664635466+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestFinancialSnapshot","Output":"--- PASS: TestFinancialSnapshot (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.664639302+08:00","Action":"pass","Package":"idp.local/reporting/reporting","Test":"TestFinancialSnapshot","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.664643689+08:00","Action":"run","Package":"idp.local/reporting/reporting","Test":"TestShipmentUsesSameCore"}
+{"Time":"2026-10-26T15:18:56.664654946+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestShipmentUsesSameCore","Output":"=== RUN   TestShipmentUsesSameCore\n"}
+{"Time":"2026-10-26T15:18:56.664712963+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestShipmentUsesSameCore","Output":"--- PASS: TestShipmentUsesSameCore (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.664715998+08:00","Action":"pass","Package":"idp.local/reporting/reporting","Test":"TestShipmentUsesSameCore","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.664718121+08:00","Action":"run","Package":"idp.local/reporting/reporting","Test":"TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots"}
+{"Time":"2026-10-26T15:18:56.664720214+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots","Output":"=== RUN   TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots\n"}
+{"Time":"2026-10-26T15:18:56.66472419+08:00","Action":"output","Package":"idp.local/reporting/reporting","Test":"TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots","Output":"--- PASS: TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.664726403+08:00","Action":"pass","Package":"idp.local/reporting/reporting","Test":"TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.664728166+08:00","Action":"output","Package":"idp.local/reporting/reporting","Output":"PASS\n"}
+{"Time":"2026-10-26T15:18:56.665081883+08:00","Action":"output","Package":"idp.local/reporting/reporting","Output":"ok  \tidp.local/reporting/reporting\t0.020s\n"}
+{"Time":"2026-10-26T15:18:56.665104827+08:00","Action":"pass","Package":"idp.local/reporting/reporting","Elapsed":0.02}
+{"Time":"2026-10-26T15:18:56.665995918+08:00","Action":"start","Package":"idp.local/reporting/storage/memory"}
+{"Time":"2026-10-26T15:18:56.666008597+08:00","Action":"output","Package":"idp.local/reporting/storage/memory","Output":"?   \tidp.local/reporting/storage/memory\t[no test files]\n"}
+{"Time":"2026-10-26T15:18:56.666013034+08:00","Action":"skip","Package":"idp.local/reporting/storage/memory","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.666697163+08:00","Action":"start","Package":"idp.local/reporting/storage/postgres"}
+{"Time":"2026-10-26T15:18:56.672290806+08:00","Action":"run","Package":"idp.local/reporting/storage/postgres","Test":"TestFixtureRefusesOtherDatabaseAndRemoteHost"}
+{"Time":"2026-10-26T15:18:56.672318057+08:00","Action":"output","Package":"idp.local/reporting/storage/postgres","Test":"TestFixtureRefusesOtherDatabaseAndRemoteHost","Output":"=== RUN   TestFixtureRefusesOtherDatabaseAndRemoteHost\n"}
+{"Time":"2026-10-26T15:18:56.672350396+08:00","Action":"output","Package":"idp.local/reporting/storage/postgres","Test":"TestFixtureRefusesOtherDatabaseAndRemoteHost","Output":"--- PASS: TestFixtureRefusesOtherDatabaseAndRemoteHost (0.00s)\n"}
+{"Time":"2026-10-26T15:18:56.672354052+08:00","Action":"pass","Package":"idp.local/reporting/storage/postgres","Test":"TestFixtureRefusesOtherDatabaseAndRemoteHost","Elapsed":0}
+{"Time":"2026-10-26T15:18:56.672360261+08:00","Action":"output","Package":"idp.local/reporting/storage/postgres","Output":"PASS\n"}
+{"Time":"2026-10-26T15:18:56.672757604+08:00","Action":"output","Package":"idp.local/reporting/storage/postgres","Output":"ok  \tidp.local/reporting/storage/postgres\t0.006s\n"}
+{"Time":"2026-10-26T15:18:56.672772045+08:00","Action":"pass","Package":"idp.local/reporting/storage/postgres","Elapsed":0.006}
+{"Time":"2026-10-26T15:18:57.157850928+08:00","Action":"start","Package":"idp.local/reporting/transport/httpapi"}
+{"Time":"2026-10-26T15:18:57.164171821+08:00","Action":"run","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPAsynchronousAdmission"}
+{"Time":"2026-10-26T15:18:57.164198931+08:00","Action":"output","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPAsynchronousAdmission","Output":"=== RUN   TestHTTPAsynchronousAdmission\n"}
+{"Time":"2026-10-26T15:18:57.165762739+08:00","Action":"output","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPAsynchronousAdmission","Output":"--- PASS: TestHTTPAsynchronousAdmission (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.165806144+08:00","Action":"pass","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPAsynchronousAdmission","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.165812013+08:00","Action":"run","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON"}
+{"Time":"2026-10-26T15:18:57.165814296+08:00","Action":"output","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON","Output":"=== RUN   TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON\n"}
+{"Time":"2026-10-26T15:18:57.166185405+08:00","Action":"output","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON","Output":"--- PASS: TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.166192445+08:00","Action":"pass","Package":"idp.local/reporting/transport/httpapi","Test":"TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.166195099+08:00","Action":"output","Package":"idp.local/reporting/transport/httpapi","Output":"PASS\n"}
+{"Time":"2026-10-26T15:18:57.167105654+08:00","Action":"output","Package":"idp.local/reporting/transport/httpapi","Output":"ok  \tidp.local/reporting/transport/httpapi\t0.009s\n"}
+{"Time":"2026-10-26T15:18:57.167124452+08:00","Action":"pass","Package":"idp.local/reporting/transport/httpapi","Elapsed":0.009}
+{"Time":"2026-10-26T15:18:57.666051701+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/lease_expiry_generation_and_atomicity","Output":"--- PASS: TestMemoryContract/lease_expiry_generation_and_atomicity (1.10s)\n"}
+{"Time":"2026-10-26T15:18:57.666114886+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract/lease_expiry_generation_and_atomicity","Elapsed":1.1}
+{"Time":"2026-10-26T15:18:57.66612425+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestMemoryContract","Output":"--- PASS: TestMemoryContract (1.17s)\n"}
+{"Time":"2026-10-26T15:18:57.666129357+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestMemoryContract","Elapsed":1.17}
+{"Time":"2026-10-26T15:18:57.666134315+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestPostgresContract"}
+{"Time":"2026-10-26T15:18:57.666138191+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"=== RUN   TestPostgresContract\n"}
+{"Time":"2026-10-26T15:18:57.666143969+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"    contracts_test.go:412: real PostgreSQL gate not run; use scripts/run_pg16_vm.py or REPORTING_S01_TEST_DSN\n"}
+{"Time":"2026-10-26T15:18:57.666152512+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Output":"--- SKIP: TestPostgresContract (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.666156438+08:00","Action":"skip","Package":"idp.local/reporting/integration","Test":"TestPostgresContract","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.666161075+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestDurablePostgresContract"}
+{"Time":"2026-10-26T15:18:57.666164951+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestDurablePostgresContract","Output":"=== RUN   TestDurablePostgresContract\n"}
+{"Time":"2026-10-26T15:18:57.666168947+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestDurablePostgresContract","Output":"    durable_test.go:144: durable PostgreSQL gate not run: two isolated DB DSNs required\n"}
+{"Time":"2026-10-26T15:18:57.666173975+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestDurablePostgresContract","Output":"--- SKIP: TestDurablePostgresContract (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.666186954+08:00","Action":"skip","Package":"idp.local/reporting/integration","Test":"TestDurablePostgresContract","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.666190199+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestLeaseGenerationAndAtomicPublication"}
+{"Time":"2026-10-26T15:18:57.666192723+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestLeaseGenerationAndAtomicPublication","Output":"=== RUN   TestLeaseGenerationAndAtomicPublication\n"}
+{"Time":"2026-10-26T15:18:57.66699565+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestLeaseGenerationAndAtomicPublication","Output":"--- PASS: TestLeaseGenerationAndAtomicPublication (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.667008199+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestLeaseGenerationAndAtomicPublication","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.667012646+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestCancelPublicationRaceHasOneOutcome"}
+{"Time":"2026-10-26T15:18:57.667015771+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestCancelPublicationRaceHasOneOutcome","Output":"=== RUN   TestCancelPublicationRaceHasOneOutcome\n"}
+{"Time":"2026-10-26T15:18:57.667554491+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestCancelPublicationRaceHasOneOutcome","Output":"--- PASS: TestCancelPublicationRaceHasOneOutcome (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.667565528+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestCancelPublicationRaceHasOneOutcome","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.667569564+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestRevocationAtFinalReadDoesNotPublish"}
+{"Time":"2026-10-26T15:18:57.667572508+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestRevocationAtFinalReadDoesNotPublish","Output":"=== RUN   TestRevocationAtFinalReadDoesNotPublish\n"}
+{"Time":"2026-10-26T15:18:57.667974483+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestRevocationAtFinalReadDoesNotPublish","Output":"--- PASS: TestRevocationAtFinalReadDoesNotPublish (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.667984688+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestRevocationAtFinalReadDoesNotPublish","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.667988193+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestSourceBindingMismatchRejected"}
+{"Time":"2026-10-26T15:18:57.667990887+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestSourceBindingMismatchRejected","Output":"=== RUN   TestSourceBindingMismatchRejected\n"}
+{"Time":"2026-10-26T15:18:57.668175475+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestSourceBindingMismatchRejected","Output":"--- PASS: TestSourceBindingMismatchRejected (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.668183918+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestSourceBindingMismatchRejected","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.668187613+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestExpiredAssetsCannotDisclose"}
+{"Time":"2026-10-26T15:18:57.668190598+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestExpiredAssetsCannotDisclose","Output":"=== RUN   TestExpiredAssetsCannotDisclose\n"}
+{"Time":"2026-10-26T15:18:57.67250632+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestExpiredAssetsCannotDisclose","Output":"--- PASS: TestExpiredAssetsCannotDisclose (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.672580552+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestExpiredAssetsCannotDisclose","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.672591338+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestSourceMultiplePagesUseSameFrozenVersion"}
+{"Time":"2026-10-26T15:18:57.672593541+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestSourceMultiplePagesUseSameFrozenVersion","Output":"=== RUN   TestSourceMultiplePagesUseSameFrozenVersion\n"}
+{"Time":"2026-10-26T15:18:57.673012201+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestSourceMultiplePagesUseSameFrozenVersion","Output":"--- PASS: TestSourceMultiplePagesUseSameFrozenVersion (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.673018911+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestSourceMultiplePagesUseSameFrozenVersion","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.673022937+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestSourceBudgetRejectsWholeResult"}
+{"Time":"2026-10-26T15:18:57.673025931+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestSourceBudgetRejectsWholeResult","Output":"=== RUN   TestSourceBudgetRejectsWholeResult\n"}
+{"Time":"2026-10-26T15:18:57.785035077+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestSourceBudgetRejectsWholeResult","Output":"--- PASS: TestSourceBudgetRejectsWholeResult (0.11s)\n"}
+{"Time":"2026-10-26T15:18:57.785140045+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestSourceBudgetRejectsWholeResult","Elapsed":0.11}
+{"Time":"2026-10-26T15:18:57.785146715+08:00","Action":"run","Package":"idp.local/reporting/integration","Test":"TestInvalidTypedSourceCellRejected"}
+{"Time":"2026-10-26T15:18:57.785149479+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestInvalidTypedSourceCellRejected","Output":"=== RUN   TestInvalidTypedSourceCellRejected\n"}
+{"Time":"2026-10-26T15:18:57.785268438+08:00","Action":"output","Package":"idp.local/reporting/integration","Test":"TestInvalidTypedSourceCellRejected","Output":"--- PASS: TestInvalidTypedSourceCellRejected (0.00s)\n"}
+{"Time":"2026-10-26T15:18:57.785271994+08:00","Action":"pass","Package":"idp.local/reporting/integration","Test":"TestInvalidTypedSourceCellRejected","Elapsed":0}
+{"Time":"2026-10-26T15:18:57.785279465+08:00","Action":"output","Package":"idp.local/reporting/integration","Output":"PASS\n"}
+{"Time":"2026-10-26T15:18:57.786294577+08:00","Action":"output","Package":"idp.local/reporting/integration","Output":"ok  \tidp.local/reporting/integration\t1.298s\n"}
+{"Time":"2026-10-26T15:18:57.786390631+08:00","Action":"pass","Package":"idp.local/reporting/integration","Elapsed":1.298}

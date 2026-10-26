@@ -1,66 +1,46 @@
-# S01-A verification record
+# S01-B verification record
 
-2026-10-26 Asia/Shanghai. Independent engineering slice; no production approval.
+2026-10-26 Asia/Shanghai. Protected contract-simulator fixtures only.
 
-## Evidence already obtained
+Final reviewed source: 17 original platform cases + 19 durable-source/storage cases.
+Ordinary and actual race binaries each passed36 child cases +2 parents, zero DB
+skips/failures. Host ordinary/race each passed18 top-level/35 parent+child events,
+with two explicit missing-DSN DB skips per host run. All5 host command groups and
+static checks passed. Actual4-process/PG recovery,14 independent workbook readbacks
+and3 missing-DSN negative controls passed. Current structured evidence is
+evidence/verification_summary.json.
 
-- Independent project-only copy with GOWORK=off built and started, then completed
-  both HTTP chains (catalog/query/snapshot/pages/export/private download).
-  `evidence/independence_checks.json`, exact output XLSX and run log.
-- Adding the shipment simulator changed **zero core files** at that implementation
-  step: commits 206ca85 → 1801a8a, `evidence/second_adapter_proof.json`.
-  Later generic API/integrity hardening is reviewed separately; this proof is not
-  a claim that core files never change in the remainder of the project.
-- Real, unmodified PostgreSQL 16.14 in an isolated Linux guest, Go 1.26.5:
-  17 SQL-backed child scenarios + parent passed in ordinary and actual race
-  binaries, zero DB failures/skips. `evidence/vm_checks.json`, both JSONL files,
-  original serial output, command/tool hashes, and four transferred XLSX files.
-- Public Service/Repository/source Adapter/HTTP tests cover exact values,
-  final-read revocation, stable multiple source pages, malformed bindings, budgets,
-  cancellation, generation fencing, strict JSON and formula-safe XLSX.
+The recovery probe verifies changed server process PID/start ticks and PostgreSQL
+start time, old artifact SHA/bytes, old cursor/source binding, queued snapshot and
+export completion, an intentionally abandoned claim's next generation, old-claim
+fencing, cancelled state/idempotency, actual DB outage non-disclosure and source
+revocation after another initializing startup. Platform and source are separate
+DBs on one guest PostgreSQL instance; independent-host failure domains are not
+qualified. The abandoned claim is made by the fixture probe, not a power-loss or
+worker-crash qualification.
 
-Host full-suite commands, independent workbook readback and final review are
-recorded in the final `evidence/verification_summary.json` and docs/CODE_REVIEW.md.
-Unexecuted gates remain NOT_RUN/PARTIAL in docs/ACCEPTANCE_S01A.json.
+For direct PG tests use both guarded local DSNs:
+REPORTING_S01_TEST_DSN=postgresql://postgres@127.0.0.1:55432/reporting_test_s01?sslmode=disable
+REPORTING_S01_SOURCE_DSN=postgresql://postgres@127.0.0.1:55432/reporting_source_test_s01?sslmode=disable
+Set REPORTING_S01_REQUIRE_PG=1. Run go test ./integration -count=1 and the same
+with -race. Each destructive setup is restricted to the named fixture databases.
+Missing required DSNs fail; host runs without DSNs explicitly skip both DB entries.
 
-## Running real PostgreSQL tests
+Full guest runner: python3 scripts/run_pg16_vm.py. Provide existing paths GO_BIN,
+REPORTING_PG_BUNDLE (bin/lib/share PostgreSQL), QEMU_BIN, REPORTING_VM_KERNEL,
+REPORTING_VM_BUSYBOX (static), REPORTING_QEMU_DATA and REPORTING_VM_BIOS. Optional
+private QEMU dependencies: REPORTING_QEMU_LOADER, REPORTING_QEMU_LIBRARY_PATH,
+REPORTING_QEMU_MODULE_DIR. PG must resolve its own shared libraries. No tools are
+downloaded by the runner. Go1.26.5/PG16 are required; no source-product repo needed.
 
-Use an isolated local DB named `reporting_test_s01` or `reporting_test_s01_race`.
-The fixture role currently has write/schema privileges; least privilege/RLS is
-not qualified. The test resets platform fixture tables; never use a business DB.
+The fixture upgrade adds canonical JSONB payload checksums. Those detect damaged
+or mismatched records; a privileged DB writer able to change both payload/hash is
+outside this integrity guarantee. SQL/payload owner mismatch is separately denied.
+Production roles/RLS and migration/rollback qualification remain S04. Fixture v1
+layout tests preserve durable-source assets; they do not recreate old S01-A
+in-memory handles that were never stored.
 
-```bash
-export REPORTING_S01_TEST_DSN='postgresql://postgres@127.0.0.1:55432/reporting_test_s01?sslmode=disable'
-export REPORTING_S01_REQUIRE_PG=1
-go test ./integration -run '^TestPostgresContract$' -count=1
-go test -race ./integration -run '^TestPostgresContract$' -count=1
-```
-
-For the full guest runner provide existing tool paths: GO_BIN, REPORTING_PG_BUNDLE
-(bin/lib/share PostgreSQL bundle), QEMU_BIN, REPORTING_VM_KERNEL (Linux),
-REPORTING_VM_BUSYBOX (static), REPORTING_QEMU_DATA and REPORTING_VM_BIOS.
-Optional private QEMU dependencies use REPORTING_QEMU_LOADER,
-REPORTING_QEMU_LIBRARY_PATH and REPORTING_QEMU_MODULE_DIR. The host PostgreSQL
-bundle must resolve its own shared libraries; do not globally substitute QEMU's
-private libc for PostgreSQL. Run `python3 scripts/run_pg16_vm.py`.
-
-The guest has no NIC; PostgreSQL runs as UID 65534 under the normal upstream
-root restriction. Ordinary/race use separate databases. No Docker or hosted CI
-was run. Shared public Go dependency caches are allowed; no Brant source tree
-or product private module is present in the independent build.
-
-## Limits and next gates
-
-Persistent platform assets are implemented, but simulator handles/grants are
-process-local. Real source and platform restart, crash/power loss, cleanup,
-backup/restore, production roles, TLS/SSO, real product reconciliation, UI/PDF,
-formal document confirmation, migration upgrades and capacity are NOT qualified.
-Final authorization and platform commit are separate source/system events.
-
-The first guest execution's raw ordinary/race tests passed; its summary verifier
-mistakenly treated the dynamic `completed_` test prefix as a literal case.
-The verifier was corrected and the entire guest run repeated successfully.
-The earlier diagnostic is retained under evidence/first_verifier_failure and is
-not the current validation result.
-
-Final host checks: 16 top-level passes / 33 parent+child pass events in each ordinary/race run, with one explicit DB skip per host run. All 5 command groups and static checks passed. Independent OOXML readback passed for 6 actual files. Final PostgreSQL rerun after both review fixes passed all 17 child scenarios in each ordinary/race binary. Full structured result: evidence/verification_summary.json.
+No Docker/hosted CI, real SSO/product adapters, UI/PDF/designers, capacity, object
+storage, backup, crash/power loss or cross-system atomic revocation is claimed.
+S01-A evidence and review are retained under evidence/s01a_baseline/ and
+corresponding *_S01A.md documents.

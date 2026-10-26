@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "note": "Intentional missing-configuration negatives; not database passes or ordinary-suite failures.",
+  "cases": [
+    {
+      "case": "both_missing",
+      "status": "EXPECTED_FAILURE_CONFIRMED",
+      "exit_code": 1
+    },
+    {
+      "case": "source_missing",
+      "status": "EXPECTED_FAILURE_CONFIRMED",
+      "exit_code": 1
+    },
+    {
+      "case": "platform_missing",
+      "status": "EXPECTED_FAILURE_CONFIRMED",
+      "exit_code": 1
+    }
+  ]
+}

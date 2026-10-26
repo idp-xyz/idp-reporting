@@ -1,0 +1,5 @@
+--- FAIL: TestDurablePostgresContract (0.00s)
+    durable_test.go:142: required platform/source PostgreSQL DSNs missing
+FAIL
+FAIL	idp.local/reporting/integration	0.009s
+FAIL

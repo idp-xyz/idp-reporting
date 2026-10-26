@@ -1,0 +1,132 @@
+{
+  "status": "PASS",
+  "reader": "Python standard-library OOXML/ZIP/XML independent of Excelize",
+  "workbooks": [
+    {
+      "file": "pg16_normal_sample_1.xlsx",
+      "sha256": "708646a527e0624fa351b454aaaf8df707bfb2b7a7e696a6810116b05f385bdd",
+      "bytes": 7913,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_normal_sample_2.xlsx",
+      "sha256": "6c623de723385a89906091ce24507e2c42b530231da6df02ec16d9dfdf2c0d81",
+      "bytes": 7857,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_race_sample_1.xlsx",
+      "sha256": "b79d81e5118f5e93fbbfbe63ff5d6b2bc2f01e09c374e1e4f31bc63060821001",
+      "bytes": 7912,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_race_sample_2.xlsx",
+      "sha256": "a5ba182b0129e0bc2c2ef1846acb939cdedf269f1676d916bf7d837b4381dc39",
+      "bytes": 7857,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "independent_sample_1.xlsx",
+      "sha256": "da19776ddb58726751da8bb01fc850ae284a1dea6e54181ac53e2a3913b0e8b6",
+      "bytes": 7915,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "independent_sample_2.xlsx",
+      "sha256": "3019cdcf850b131b9cd7dfdae231e6bbf9f159a8a1bed457011662cbbd1bb450",
+      "bytes": 7857,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_before_1.xlsx",
+      "sha256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
+      "bytes": 7933,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_before_2.xlsx",
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_database_restart_1.xlsx",
+      "sha256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
+      "bytes": 7933,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_database_restart_2.xlsx",
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_other_product.xlsx",
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_pending_export.xlsx",
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_process_restart_1.xlsx",
+      "sha256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
+      "bytes": 7933,
+      "exact_total": "9007199254740993.01",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    },
+    {
+      "file": "pg16_recovery_process_restart_2.xlsx",
+      "sha256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
+      "bytes": 7879,
+      "exact_total": "9007199254741000",
+      "all_cells": "explicit text",
+      "formulas": 0,
+      "CRC": "PASS"
+    }
+  ]
+}

@@ -28,6 +28,12 @@ try:
     pgversion = subprocess.check_output([str(native / 'bin/postgres'), '--version'], text=True).strip()
     if 'go1.26.5 ' not in goversion or not pgversion.startswith('postgres (PostgreSQL) 16.'):
         raise ValueError('pinned Go 1.26.5 and a PostgreSQL 16 bundle required')
+    source_hashes={str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(repo.rglob('*.go'))}
+    expected_by_parent={}
+    for parent,filename in [('TestPostgresContract','contracts_test.go'),('TestDurablePostgresContract','durable_test.go')]:
+        cases=set(re.findall(r't\.Run\("([^"]+)"\s*,',(repo/'integration'/filename).read_text()))
+        if parent=='TestPostgresContract': cases|={'completed_currency_change','completed_timezone_change'}
+        expected_by_parent[parent]={parent+'/'+n for n in cases}
     env = os.environ.copy()
     env.update({'GOTOOLCHAIN': 'local', 'CGO_ENABLED': '0'})
     for name, args, cwd in [
@@ -191,7 +197,7 @@ poweroff -f
     if os.environ.get('REPORTING_QEMU_LOADER'):
         prefix = [os.environ['REPORTING_QEMU_LOADER'], '--library-path', os.environ['REPORTING_QEMU_LIBRARY_PATH']]
     cmd = prefix + [str(qemu), '-machine', 'pc', '-accel', 'tcg,thread=multi', '-cpu', 'max', '-smp', '2', '-m', '1024', '-nodefaults', '-display', 'none', '-serial', 'stdio', '-monitor', 'none', '-nic', 'none', '-no-reboot', '-L', str(qdata), '-bios', str(bios), '-kernel', str(kernel), '-initrd', str(initrd), '-append', 'console=ttyS0 rdinit=/init panic=1 random.trust_cpu=on quiet']
-    launch = {'command': cmd, 'go': goversion, 'postgres': pgversion, 'guest_tests': {n: hashlib.sha256((work / n).read_bytes()).hexdigest() for n in ['normal.test', 'race.test','reporting-demo','recovery-probe']}, 'host_uid_map': Path('/proc/self/uid_map').read_text(), 'inputs': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in [go, native / 'bin/postgres', kernel, busybox, qemu]}, 'qualification': 'contract simulators, ordinary/race real PG, graceful PG/server restart; no production/crash/capacity qualification'}
+    launch = {'command': cmd, 'go': goversion, 'postgres': pgversion, 'guest_tests': {n: hashlib.sha256((work / n).read_bytes()).hexdigest() for n in ['normal.test', 'race.test','reporting-demo','recovery-probe']}, 'host_uid_map': Path('/proc/self/uid_map').read_text(), 'inputs': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in [go, native / 'bin/postgres', kernel, busybox, qemu]}, 'source_go_hashes':source_hashes,'qualification': 'contract simulators, ordinary/race real PG, graceful PG/server restart; no production/crash/capacity qualification'}
     (evidence / 'vm_launch.json').write_text(json.dumps(launch, indent=2) + '\n')
     vm_env = os.environ.copy()
     if os.environ.get('REPORTING_QEMU_MODULE_DIR'): vm_env['QEMU_MODULE_DIR'] = os.environ['REPORTING_QEMU_MODULE_DIR']
@@ -211,11 +217,7 @@ poweroff -f
         terminal = [e for e in events if e.get('Test') and e.get('Action') in ['pass', 'fail', 'skip']]
         passed = [e['Test'] for e in terminal if e['Action'] == 'pass']
         if any(e['Action'] != 'pass' for e in terminal) or not {'TestPostgresContract','TestDurablePostgresContract'}.issubset(set(passed)): raise ValueError('incomplete ' + phase + ' gate')
-        expected=set()
-        for parent,filename in [('TestPostgresContract','contracts_test.go'),('TestDurablePostgresContract','durable_test.go')]:
-            cases=set(re.findall(r't\.Run\("([^"]+)"\s*,', (repo/'integration'/filename).read_text()))
-            if parent=='TestPostgresContract': cases|={'completed_currency_change','completed_timezone_change'}
-            expected|={parent+'/'+n for n in cases}
+        expected=set().union(*expected_by_parent.values())
         if not expected.issubset(set(passed)): raise ValueError('missing tests: ' + repr(expected - set(passed)))
         summary['phases'][phase] = {'passed': passed, 'test_pass_events': len(passed), 'skips': 0, 'failures': 0}
     recovery_match=re.search(r'REPORTING_RECOVERY_JSON_BEGIN\n(.*?)REPORTING_RECOVERY_JSON_END',serial,re.S)
@@ -234,6 +236,7 @@ poweroff -f
         exports.append({'file':path.name,'sha256':match.group(2),'bytes':len(b)})
     if len(exports)!=12: raise ValueError('twelve ordinary/race/recovery XLSX artifacts required')
     summary['exports'] = exports
+    if source_hashes!={str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(repo.rglob('*.go'))}: raise ValueError('Go source changed during qualification')
     status.write_text(json.dumps(summary, indent=2) + '\n')
     print(json.dumps(summary, indent=2), flush=True)
 except BaseException as exc:

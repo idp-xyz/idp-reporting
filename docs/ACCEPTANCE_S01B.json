@@ -1,0 +1,152 @@
+{
+  "baseline": "S00-1.0",
+  "phase": "S01-B",
+  "qualification": "DURABLE_CONTRACT_SIMULATORS_AND_PROTECTED_FIXTURES",
+  "production_approved": false,
+  "cases": [
+    {
+      "id": "I01",
+      "phase": "S01-A",
+      "category": "independence",
+      "expectation": "移除 Brant 仓库后，平台从干净目录构建与启动；依赖图没有产品私有包",
+      "status": "PASS_S01B",
+      "current_evidence": "干净项目副本独立构建/启动与两个HTTP链路通过；不依赖产品私有包或local replace。"
+    },
+    {
+      "id": "I02",
+      "phase": "S01-A",
+      "category": "independence",
+      "expectation": "第二个不同领域合同适配器接入时，通用核心无需修改或添加该产品字段",
+      "status": "PASS_SIMULATORS",
+      "current_evidence": "两个领域共用核心；本轮四个核心实现文件相对S01-A逐字节不变，四个来源操作不变。"
+    },
+    {
+      "id": "I03",
+      "phase": "S01-B",
+      "category": "isolation",
+      "expectation": "同名原租户/用户/资源在不同产品中不能相互查询、复用幂等键或下载文件",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "6种租户/产品/发行方/主体上下文互查任务、行、文件与取消均被隔离；同key不串用。"
+    },
+    {
+      "id": "I04",
+      "phase": "S01-B",
+      "category": "isolation",
+      "expectation": "同一产品不同租户、同一租户不同产品均隔离；共享平台租户中的跨产品访问需显式授权",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "平台及来源分别绑定租户/产品/发行方/主体；平台与来源分库。生产角色/RLS仍属S04。"
+    },
+    {
+      "id": "I05",
+      "phase": "S01-B",
+      "category": "authorization",
+      "expectation": "篡改 integration/company/actor/tenant/roles 选择或声明不会扩大服务端授权",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "严格JSON拒绝伪造身份/权限；公司选择器越权在准入拒绝，未读取事实。"
+    },
+    {
+      "id": "I06",
+      "phase": "S01-B",
+      "category": "snapshot",
+      "expectation": "多页来源结果在同一 source_snapshot_ref/query_hash/watermark 中稳定；源快照失效拒绝",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "持久来源版本/句柄可重开；60行分两页时更新来源，仍保留原60行与60.00合计。"
+    },
+    {
+      "id": "I07",
+      "phase": "S01-B",
+      "category": "authorization",
+      "expectation": "排队、执行、发布、已完成读取与下载各阶段撤权后，原快照整份拒绝",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "准入、执行、发布前、完成结果/下载均检查当前授权；实际重启/初始化后撤权仍生效。"
+    },
+    {
+      "id": "I08",
+      "phase": "S01-B",
+      "category": "authorization",
+      "expectation": "授权扩大不扩大原任务；原币种/时区政策变化后不能旁路读取或导出",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "授权扩大不扩旧范围，时区及重开后的币种政策变化均阻断旧结果/文件/导出。"
+    },
+    {
+      "id": "I09",
+      "phase": "S01-B",
+      "category": "fencing",
+      "expectation": "并发领取、重领旧代次、取消与最终 CAS 竞争不生成重复或部分产物",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "普通/race真实PG验证并发领取、重复发布、取消竞争、事务内失租约与插入后回滚，无半成品。"
+    },
+    {
+      "id": "I10",
+      "phase": "S01-B",
+      "category": "idempotency",
+      "expectation": "租户/产品/主体/操作内同 key 同 payload 复用；异 payload 冲突；不同作用域不串用",
+      "status": "PASS_FIXTURE",
+      "current_evidence": "主体/产品/租户/操作内幂等隔离、异载荷冲突及实际重启后复用原任务ID通过。"
+    },
+    {
+      "id": "I11",
+      "phase": "S01-B",
+      "category": "runtime",
+      "expectation": "普通与 race 真实 PG 用例均无被跳过的数据库验收入口；记录完整用例集",
+      "status": "PASS_FIXTURE_PG16",
+      "current_evidence": "36个真实PG子场景普通/race各通过，0跳过/失败；3个故意缺DSN的否定控制按预期失败。"
+    },
+    {
+      "id": "I12",
+      "phase": "S01-B",
+      "category": "recovery",
+      "expectation": "真实停止/重启 PG 后恢复待处理任务并校验快照和文件 SHA；崩溃恢复另验",
+      "status": "PASS_GRACEFUL_FIXTURE",
+      "current_evidence": "4个实际服务实例及PG fast-stop/start；排队快照/导出、旧文件/游标、取消与遗留租约恢复。非崩溃/断电资格。"
+    },
+    {
+      "id": "I13",
+      "phase": "S01-B",
+      "category": "precision",
+      "expectation": "财务小数、负数、数量和大整数在屏幕/JSON/XLSX 中保持批准口径与精度",
+      "status": "PARTIAL",
+      "current_evidence": "14份实际XLSX和JSON金额/负数/大整数精确保留；屏幕UI未交付。"
+    },
+    {
+      "id": "I14",
+      "phase": "S02",
+      "category": "products",
+      "expectation": "Brant 与第二个真实产品分别用真实已授权合同完成查询/导出对账，不能仅把模拟器改名",
+      "status": "NOT_RUN",
+      "current_evidence": "Brant及第二真实产品数据合同、字段映射与对账尚未接入。"
+    },
+    {
+      "id": "I15",
+      "phase": "S02",
+      "category": "identity",
+      "expectation": "验证发行方/主体/目标受众/令牌用途；不同产品不以相同邮箱或用户名自动合并身份",
+      "status": "NOT_RUN",
+      "current_evidence": "当前为演示身份，未完成真实OIDC/SSO发行方、受众和令牌用途资格。"
+    },
+    {
+      "id": "I16",
+      "phase": "S02",
+      "category": "authorization",
+      "expectation": "服务账号不能代替最终用户授权；授权源不可用时不披露缓存结果或原件",
+      "status": "PARTIAL",
+      "current_evidence": "模拟授权源不可用及实际PG停机均拒绝原件披露；真实服务账号委托主体仍待S02。"
+    },
+    {
+      "id": "I17",
+      "phase": "S03",
+      "category": "experience",
+      "expectation": "同一平台同时提供独立控制台与嵌入入口；共享布局不携带作者数据权限",
+      "status": "NOT_RUN",
+      "current_evidence": "独立控制台、嵌入与三个设计器未交付。"
+    },
+    {
+      "id": "I18",
+      "phase": "S04",
+      "category": "operations",
+      "expectation": "平台可独立升级回滚，支持的适配器版本通过兼容回归；生产存储/容量/恢复有独立证据",
+      "status": "PARTIAL",
+      "current_evidence": "平台fixture v1→v2保持文件/任务身份并核验摘要；生产升级回滚、容量、对象存储和备份恢复未验。"
+    }
+  ]
+}

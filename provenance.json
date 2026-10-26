@@ -9,7 +9,14 @@
   "R01D_source_sha256": "61820e2ee3938587f4703297f32eea19e3294d488bfe188883c5c26da5b2fd13",
   "R01D_frozen_commit": "6074954d059af4e2485d0dcc3e12163990906038",
   "relationship": "Neutral implementation of the accepted S00 contract, using the R01-D orchestration and isolation lessons; no product module import, local replacement or business table dependency. Original Brant checkout unchanged.",
-  "review_fixed_point": "465d2c2efa9a725092de603d862503b34340430f",
+  "review_fixed_point": "ec09065dc024419dc2e2e6e9cc2d1dcae6ee7132",
   "reviewed_code_commit": "084fc87feeedf37c3d569003cc17fc1b945ae415",
-  "sources_are_simulated": true
+  "sources_are_simulated": true,
+  "phase": "S01-B",
+  "parent_s01a_library_file_id": "libfile_f8b77d27f4008191921b3bfea86165f7",
+  "parent_s01a_archive_sha256": "77df7f7e86183462e0ec96a82b438622a97ecb87e957974367560e2894744c36",
+  "parent_s01a_commit": "ec09065dc024419dc2e2e6e9cc2d1dcae6ee7132",
+  "qualified_go_checkpoint": "829a9bf",
+  "reviewed_fix_commit": "fe7729f94ca853150da535a51eaae00c96760b1e",
+  "qualification": "protected durable simulators, ordinary/race PG, actual graceful process/PG restart"
 }

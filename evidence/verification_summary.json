@@ -1,0 +1,111 @@
+{
+  "phase": "S01-B",
+  "date": "2026-10-26 Asia/Shanghai",
+  "status": "PASS_WITHIN_DURABLE_SIMULATOR_FIXTURE_SCOPE",
+  "code_checkpoint": "829a9bf",
+  "generic_core": "unchanged from ec09065",
+  "go": "go version go1.26.5 linux/amd64",
+  "postgres": "postgres (PostgreSQL) 16.14",
+  "host": {
+    "ordinary_top_level_passes": 18,
+    "ordinary_pass_events": 35,
+    "race_top_level_passes": 18,
+    "race_pass_events": 35,
+    "explicit_db_entry_skips_per_host_run": 2,
+    "command_groups": 5
+  },
+  "real_pg": {
+    "original_platform_cases": 17,
+    "durable_source_storage_cases": 19,
+    "child_cases_per_run": 36,
+    "ordinary_pass_events": 38,
+    "race_pass_events": 38,
+    "skips": 0,
+    "failures": 0,
+    "separate_fixture_databases": 4
+  },
+  "recovery": {
+    "status": "PASS",
+    "processes": [
+      {
+        "PID": 279,
+        "StartTicks": "10692"
+      },
+      {
+        "PID": 309,
+        "StartTicks": "10953"
+      },
+      {
+        "PID": 344,
+        "StartTicks": "11146"
+      },
+      {
+        "PID": 380,
+        "StartTicks": "11373"
+      }
+    ],
+    "postgres_start_before": "2026-10-26T07:19:00.092918Z",
+    "postgres_start_after": "2026-10-26T07:20:24.074794Z",
+    "offline_http_status": 500,
+    "reclaimed_generation": 2,
+    "checks": [
+      "isolated fixture initialized",
+      "two completed HTTP snapshot/export chains before restart",
+      "queued snapshot/export, abandoned claim and cancellation persisted",
+      "actual PostgreSQL stop: existing artifact fails closed",
+      "changed PostgreSQL start time and HTTP server process",
+      "old files/cursors/source watermark survive restart",
+      "queued snapshot/export complete",
+      "abandoned generation reclaimed; old generation fenced",
+      "cancelled job and idempotency survive restart",
+      "revocation persists across reinitializing server restart",
+      "other product remains authorized"
+    ]
+  },
+  "workbooks": {
+    "count": 14,
+    "ordinary_race_fixture_files": 4,
+    "persistent_http_recovery_files": 8,
+    "independent_memory_http_files": 2,
+    "CRC": "PASS",
+    "exact_money_negative_integer": "PASS",
+    "formula_count": 0,
+    "byte_continuity_across_process_and_pg_restart": "PASS"
+  },
+  "negative_configuration_controls": [
+    {
+      "case": "both_missing",
+      "status": "EXPECTED_FAILURE_CONFIRMED",
+      "exit_code": 1
+    },
+    {
+      "case": "source_missing",
+      "status": "EXPECTED_FAILURE_CONFIRMED",
+      "exit_code": 1
+    },
+    {
+      "case": "platform_missing",
+      "status": "EXPECTED_FAILURE_CONFIRMED",
+      "exit_code": 1
+    }
+  ],
+  "reviews": {
+    "standards_fixed": 1,
+    "standards_open": 0,
+    "spec_confirmed_findings": 0,
+    "spec_open": 0
+  },
+  "production_approved": false,
+  "not_qualified": [
+    "real product data and identity",
+    "delegated service account contract",
+    "production roles/RLS",
+    "independent-host failure domains",
+    "power loss/crash",
+    "backup recovery",
+    "production migration/rollback",
+    "UI/embedding/designers/PDF",
+    "object storage/quota/capacity",
+    "cross-system atomic revocation/commit"
+  ]
+}

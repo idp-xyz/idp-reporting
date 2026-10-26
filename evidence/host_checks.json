@@ -1,0 +1,123 @@
+{
+  "status": "PASS",
+  "commands": [
+    {
+      "name": "tests",
+      "command": [
+        "/workspace/scratch/c179a7054698/internal/r01d_runtime/go/bin/go",
+        "test",
+        "-json",
+        "./...",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.898,
+      "log": "host_tests.jsonl",
+      "test_pass_events": 35,
+      "passed_top_level": [
+        "idp.local/reporting/adapters/contractsim/TestPersistableFixtureProjectsOriginalScope",
+        "idp.local/reporting/adapters/contractsim/pgsource/TestDurableSourceRejectsPlatformDBAndRemoteFallback",
+        "idp.local/reporting/reporting/TestExportPreservesPreciseTextAndNoFormulas",
+        "idp.local/reporting/reporting/TestFinancialSnapshot",
+        "idp.local/reporting/reporting/TestShipmentUsesSameCore",
+        "idp.local/reporting/reporting/TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots",
+        "idp.local/reporting/storage/postgres/TestFixtureRefusesOtherDatabaseAndRemoteHost",
+        "idp.local/reporting/transport/httpapi/TestHTTPAsynchronousAdmission",
+        "idp.local/reporting/transport/httpapi/TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON",
+        "idp.local/reporting/integration/TestMemoryContract",
+        "idp.local/reporting/integration/TestLeaseGenerationAndAtomicPublication",
+        "idp.local/reporting/integration/TestCancelPublicationRaceHasOneOutcome",
+        "idp.local/reporting/integration/TestRevocationAtFinalReadDoesNotPublish",
+        "idp.local/reporting/integration/TestSourceBindingMismatchRejected",
+        "idp.local/reporting/integration/TestExpiredAssetsCannotDisclose",
+        "idp.local/reporting/integration/TestSourceMultiplePagesUseSameFrozenVersion",
+        "idp.local/reporting/integration/TestSourceBudgetRejectsWholeResult",
+        "idp.local/reporting/integration/TestInvalidTypedSourceCellRejected"
+      ],
+      "skipped": [
+        "idp.local/reporting/integration/TestPostgresContract",
+        "idp.local/reporting/integration/TestDurablePostgresContract"
+      ],
+      "failed": []
+    },
+    {
+      "name": "race",
+      "command": [
+        "/workspace/scratch/c179a7054698/internal/r01d_runtime/go/bin/go",
+        "test",
+        "-race",
+        "-json",
+        "./...",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 7.188,
+      "log": "host_race.jsonl",
+      "test_pass_events": 35,
+      "passed_top_level": [
+        "idp.local/reporting/adapters/contractsim/TestPersistableFixtureProjectsOriginalScope",
+        "idp.local/reporting/adapters/contractsim/pgsource/TestDurableSourceRejectsPlatformDBAndRemoteFallback",
+        "idp.local/reporting/reporting/TestExportPreservesPreciseTextAndNoFormulas",
+        "idp.local/reporting/reporting/TestFinancialSnapshot",
+        "idp.local/reporting/reporting/TestShipmentUsesSameCore",
+        "idp.local/reporting/reporting/TestStrictJSONRejectsAuthorityNullDuplicatesAndExtraRoots",
+        "idp.local/reporting/integration/TestMemoryContract",
+        "idp.local/reporting/integration/TestLeaseGenerationAndAtomicPublication",
+        "idp.local/reporting/integration/TestCancelPublicationRaceHasOneOutcome",
+        "idp.local/reporting/integration/TestRevocationAtFinalReadDoesNotPublish",
+        "idp.local/reporting/integration/TestSourceBindingMismatchRejected",
+        "idp.local/reporting/integration/TestExpiredAssetsCannotDisclose",
+        "idp.local/reporting/integration/TestSourceMultiplePagesUseSameFrozenVersion",
+        "idp.local/reporting/storage/postgres/TestFixtureRefusesOtherDatabaseAndRemoteHost",
+        "idp.local/reporting/integration/TestSourceBudgetRejectsWholeResult",
+        "idp.local/reporting/integration/TestInvalidTypedSourceCellRejected",
+        "idp.local/reporting/transport/httpapi/TestHTTPAsynchronousAdmission",
+        "idp.local/reporting/transport/httpapi/TestHTTPRejectsUntrustedAuthorityAndAmbiguousJSON"
+      ],
+      "skipped": [
+        "idp.local/reporting/integration/TestPostgresContract",
+        "idp.local/reporting/integration/TestDurablePostgresContract"
+      ],
+      "failed": []
+    },
+    {
+      "name": "vet",
+      "command": [
+        "/workspace/scratch/c179a7054698/internal/r01d_runtime/go/bin/go",
+        "vet",
+        "./..."
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.308,
+      "log": "host_vet.log"
+    },
+    {
+      "name": "build",
+      "command": [
+        "/workspace/scratch/c179a7054698/internal/r01d_runtime/go/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.32,
+      "log": "host_build.log"
+    },
+    {
+      "name": "mod_verify",
+      "command": [
+        "/workspace/scratch/c179a7054698/internal/r01d_runtime/go/bin/go",
+        "mod",
+        "verify"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.954,
+      "log": "host_mod_verify.log"
+    }
+  ],
+  "static_checks": [
+    "Python AST",
+    "Go formatting",
+    "source whitespace"
+  ],
+  "note": "Host has no DB DSN. The two explicit PostgreSQL entry skips is not database evidence; see vm_checks.json."
+}

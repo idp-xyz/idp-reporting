@@ -1,55 +1,55 @@
 {
   "Status": "PASS",
   "ProductionApproved": false,
-  "PGStartBefore": "2026-10-26T06:54:53.058366Z",
-  "PGStartAfter": "2026-10-26T06:56:10.72823Z",
+  "PGStartBefore": "2026-10-26T07:19:00.092918Z",
+  "PGStartAfter": "2026-10-26T07:20:24.074794Z",
   "Processes": [
     {
-      "PID": 256,
-      "StartTicks": "9911"
+      "PID": 279,
+      "StartTicks": "10692"
     },
     {
-      "PID": 286,
-      "StartTicks": "10164"
+      "PID": 309,
+      "StartTicks": "10953"
     },
     {
-      "PID": 320,
-      "StartTicks": "10360"
+      "PID": 344,
+      "StartTicks": "11146"
     },
     {
-      "PID": 354,
-      "StartTicks": "10562"
+      "PID": 380,
+      "StartTicks": "11373"
     }
   ],
   "Existing": [
     {
-      "SnapshotJob": "437fd79a26bdbf87f5ba28c43563f865",
-      "Snapshot": "1f2b2adb0a3b960ce7e7fe01f116342f",
-      "ExportJob": "b61ea6b5faa14cb54bed45670d4f3ada",
-      "Artifact": "6d4c6309a6c25d5749242e89ac456de5",
-      "SHA256": "272acbd5e7b3d4c547ec65ef9301a3a7b417056089fcbcd66d62304034d621f7",
+      "SnapshotJob": "6246c637695c9abb68b3b407fd677d55",
+      "Snapshot": "32b308b9d71b7807149489f37d9ccb42",
+      "ExportJob": "0f512a0177102b1e664a3e6ca468897f",
+      "Artifact": "46db7b783ee4e464b9d8c1e3ff320514",
+      "SHA256": "3bbf7cbca9091009513808f2d42b4e9becc0fda0ce01dcb521622aecd943eddc",
       "Total": "9007199254740993.01",
-      "Cursor": "MWYyYjJhZGIwYTNiOTYwY2U3ZTdmZTAxZjExNjM0MmY6OGJlOTYzNTYyMTgzZDk3Mzg3YzQwNjQ3MDY1NTZlNzAwZGNmOGI0ZmEzYmI3MTQwYjJkMjcyNWYzMmFiOGMwMTo1N2VmNDVmY2I0MTRlOGI5ZDRhNzViN2E4M2E2MDQ2YThjNjEyMTZkMzVmOGUxYTBiY2E0ZGJhZmU5ZjMzZDI1OjE.5B5J7LWm7m0jp1far8VkQ5A9SFdjLywSUa0BXkU4bws",
+      "Cursor": "MzJiMzA4YjlkNzFiNzgwNzE0OTQ4OWYzN2Q5Y2NiNDI6OGJlOTYzNTYyMTgzZDk3Mzg3YzQwNjQ3MDY1NTZlNzAwZGNmOGI0ZmEzYmI3MTQwYjJkMjcyNWYzMmFiOGMwMTo1N2VmNDVmY2I0MTRlOGI5ZDRhNzViN2E4M2E2MDQ2YThjNjEyMTZkMzVmOGUxYTBiY2E0ZGJhZmU5ZjMzZDI1OjE.iKGWlp_F81xSbrFOfVBZa5Ky7IT1oy7AMTc4cl_Yvok",
       "SecondValue": "customer_b",
-      "SourceRef": "5b0ed5986c93ff70abdd838fa754b956",
-      "Watermark": "fixture-6e3e03ac3957cd6355248d768b047313"
+      "SourceRef": "31c8373ebab1d5f3ba5f1d0891fffb9a",
+      "Watermark": "fixture-45461faf38548510c9cb1c7fd5b8e860"
     },
     {
-      "SnapshotJob": "ab5b4e598a1fe9a69760a4d14723f249",
-      "Snapshot": "76ece24ad0759909318c82b175d388f4",
-      "ExportJob": "f544eeac10698772340326c8bacf155b",
-      "Artifact": "742fadb9b6f79284aa489e3e730d33be",
-      "SHA256": "56cafc44b0b3d4cda872572bfe82a239a1a54a46864f3c27a1c4b7a5da3a39c8",
+      "SnapshotJob": "d603c480dcbde9ff1c64dd8b0d894210",
+      "Snapshot": "a90465869c529e00c05a4519e5a5199c",
+      "ExportJob": "0ddb0772aee058f920c6f7a593632c7b",
+      "Artifact": "d627df8b12cc23f6c45745e2454b94aa",
+      "SHA256": "4c911650bc1706cf40dfe13bc4c23ef02b2abea8e6e5086945368a23d134cb07",
       "Total": "9007199254741000",
-      "Cursor": "NzZlY2UyNGFkMDc1OTkwOTMxOGM4MmIxNzVkMzg4ZjQ6OTg1NzJiNzYyZThhNTM3ZDQyMWQ3MTczMGM5MmQwMmYyZTEwNTU1ZjZlYmJiMTI2MjkwMmUyZDU0NGMxNDk3MTpjYzE0NjEyODI3YmU5NzQwMjUyYzAzNmJhZWQ2YWU4OGU3YjQzNmM3NDFlOTEyNzFiOWI4ZWRjMjJhYjlhNjYwOjE.jQla4Is0SG24QjSJT0T8v7v2nA7QNEP-47R2LzT5zb0",
+      "Cursor": "YTkwNDY1ODY5YzUyOWUwMGMwNWE0NTE5ZTVhNTE5OWM6OTg1NzJiNzYyZThhNTM3ZDQyMWQ3MTczMGM5MmQwMmYyZTEwNTU1ZjZlYmJiMTI2MjkwMmUyZDU0NGMxNDk3MTpjYzE0NjEyODI3YmU5NzQwMjUyYzAzNmJhZWQ2YWU4OGU3YjQzNmM3NDFlOTEyNzFiOWI4ZWRjMjJhYjlhNjYwOjE.iJVYrLW3DoTrO5GUiyd40a3G8igf85rVzBfgzbrGkao",
       "SecondValue": "DE",
-      "SourceRef": "1da242e45be7b43a4ac9902c018df801",
-      "Watermark": "fixture-b1346103b2c666a20810c7cb7787b1d9"
+      "SourceRef": "188889a07e4b87d24ad36175a262f56c",
+      "Watermark": "fixture-6532f31877572f3f06077b84a1f695a5"
     }
   ],
   "Abandoned": {
     "Job": {
-      "ID": "df6deceecb05d4fa20aa087cb5af5b13",
+      "ID": "2da22813979d638407433ed7fdd8bcb3",
       "Owner": {
         "Tenant": "platform_demo",
         "Issuer": "urn:idp:contract-demo",
@@ -102,8 +102,8 @@
           },
           "SourceTenant": "tenant_a"
         },
-        "Ref": "44b19aa8109ca8e7e914b769f2ea3edb",
-        "ScopeHandle": "56df5a13ce4512153df33a331b25f88f",
+        "Ref": "6a1fc55e4492134809aad6459170c623",
+        "ScopeHandle": "2370f1d6583a2765ab4c3126bfebf588",
         "QueryHash": "57ef45fcb414e8b9d4a75b7a83a6046a8c61216d35f8e1a0bca4dbafe9f33d25",
         "Dataset": {
           "id": "receivables.aging",
@@ -117,8 +117,8 @@
           "id": "ledger_base",
           "version": "1.0.0"
         },
-        "Watermark": "fixture-6e3e03ac3957cd6355248d768b047313",
-        "ExpiresAt": "2026-10-26T07:06:09.408587Z"
+        "Watermark": "fixture-45461faf38548510c9cb1c7fd5b8e860",
+        "ExpiresAt": "2026-10-26T07:30:22.76539Z"
       },
       "Columns": [
         {
@@ -143,24 +143,24 @@
       "ArtifactID": "",
       "ErrorCode": "",
       "Generation": 1,
-      "LeaseUntil": "2026-10-26T06:56:10.578192Z"
+      "LeaseUntil": "2026-10-26T07:20:23.926515Z"
     }
   },
   "PendingSnapshot": {
-    "job_id": "c087abaaca9b4f7a8fd35a32147fdc9e",
+    "job_id": "ec7bf6984fcf8932272400789120de2e",
     "kind": "snapshot",
     "state": "succeeded",
-    "snapshot_id": "244adbeb1c10481b5a98308a114769ad"
+    "snapshot_id": "08e3a95db985c5b43492fcf1d29e31d4"
   },
   "PendingExport": {
-    "job_id": "fdbf1d2c8972531702093e6e92ac9162",
+    "job_id": "53c941a4242956e2896e7f9db3083bd9",
     "kind": "export",
     "state": "succeeded",
-    "snapshot_id": "76ece24ad0759909318c82b175d388f4",
-    "artifact_id": "54757d140e585cd006f0b920e2bd25f0"
+    "snapshot_id": "a90465869c529e00c05a4519e5a5199c",
+    "artifact_id": "6a4d4f0efdfc2cf3e64f7403fa28bc9c"
   },
   "Cancelled": {
-    "job_id": "90e99f4550e72354701809130fe288df",
+    "job_id": "1df58d317cda2b86af7e8e2f976a8cd0",
     "kind": "snapshot",
     "state": "cancelled"
   },

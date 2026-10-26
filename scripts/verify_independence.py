@@ -91,7 +91,7 @@ try:
         target = repo / 'evidence' / f'independent_sample_{index+1}.xlsx'
         target.write_bytes(content)
         proofs.append({'integration': query['integration_id'], 'expected_total': expected, 'sha256': digest, 'bytes': len(content), 'file': target.name})
-    result = {'status': 'PASS', 'profile': 'S01-A contract simulators with ephemeral repository', 'build': 'fresh project-only copy, GOWORK=off, no Brant source or local replace', 'core_imports': imports, 'product_private_dependencies': [], 'http_chains': proofs, 'production_approved': False}
+    result = {'status': 'PASS', 'profile': 'S01-B contract simulators with ephemeral repository', 'build': 'fresh project-only copy, GOWORK=off, no Brant source or local replace', 'core_imports': imports, 'product_private_dependencies': [], 'http_chains': proofs, 'production_approved': False}
     (repo / 'evidence/independence_checks.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
 except BaseException as exc:
