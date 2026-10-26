@@ -227,12 +227,39 @@ func (p *probe) file(id, name string) (string, error) {
 	if e != nil {
 		return "", e
 	}
+	if len(z.File) > 64 {
+		return "", r.ErrBudget
+	}
+	remaining := int64(32 << 20)
+	buffer := make([]byte, 32<<10)
 	for _, f := range z.File {
+		if f.UncompressedSize64 > uint64(remaining) {
+			return "", r.ErrBudget
+		}
 		reader, e := f.Open()
 		if e != nil {
 			return "", e
 		}
-		_, e = io.Copy(io.Discard, reader)
+		limited := io.LimitReader(reader, remaining+1)
+		for {
+			if e = p.ctx.Err(); e != nil {
+				break
+			}
+			var n int
+			n, e = limited.Read(buffer)
+			remaining -= int64(n)
+			if remaining < 0 {
+				e = r.ErrBudget
+				break
+			}
+			if e == io.EOF {
+				e = nil
+				break
+			}
+			if e != nil {
+				break
+			}
+		}
 		reader.Close()
 		if e != nil {
 			return "", e
