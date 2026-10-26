@@ -1,0 +1,5 @@
+--- FAIL: TestPublicationChecksTargetColumnsAfterCatalogChange (0.00s)
+    release_catalog_test.go:81: invalid target columns published
+FAIL
+FAIL	idp.local/reporting/transport/httpapi	0.010s
+FAIL

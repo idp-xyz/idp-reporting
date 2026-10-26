@@ -1,31 +1,34 @@
 {
-  "phase": "S03-B2",
+  "phase": "S03-B3",
   "date": "2026-10-27 Asia/Shanghai",
-  "baseline": "77297f7f49cb4b38e33e2a5944ae6d2ca5dd46e6",
-  "code_commit": "21f4876556f2d5646fb4f71ce550c2682e00747b",
+  "baseline": "5c5556d14b72d23f9a57ca8063be55d0fc0a33fa",
+  "code_commit": "10d5e96756c2252cd3f740302151920c404e4ab7",
   "go_checks": {
     "go": {
-      "top_level_passes": 37,
-      "pass_events": 172,
-      "database_skips": [
+      "top_level_passes": 38,
+      "pass_events": 173,
+      "explicit_skips": [
         "TestPostgresContract",
         "TestDurablePostgresContract"
       ]
     },
     "race": {
-      "top_level_passes": 37,
-      "pass_events": 172,
-      "database_skips": [
+      "top_level_passes": 40,
+      "pass_events": 175,
+      "explicit_skips": [
         "TestPostgresContract",
         "TestDurablePostgresContract"
       ]
     }
   },
-  "dom_pass": 25,
+  "dom_pass": 26,
   "standards_review": "PASS",
   "spec_review": "PASS",
-  "independent_targeted_dom_each_axis": 2,
-  "closed_P2": "Damaged null/empty owner history must not be overwritten",
+  "independent_targeted_publication_dom_each_axis": 1,
+  "closed_P2": "Publish must authorize actual target version, not initial version1 columns",
+  "negative_control": "old2872cab API with current HTTP regression fails as expected via Go overlay",
+  "schema_migration": "legacy [][]Entry -> schema2 on next write; preserves IDs and definitions; old binaries cannot read schema2",
+  "publication_scope": "private owner only; no sharing or approvals",
   "browser_qa": "NOT_VERIFIED",
   "real_pg_rerun": false,
   "production_approved": false,
@@ -39,10 +42,10 @@
     "adapters/contractsim/simulator.go": "85f0fd380af74c4a36306a2d48cb3072fd4db4528265f2c25e20e18f0e3ae3a9",
     "cmd/reporting-demo/main.go": "5757fbcf7d00a23636e58a1dbcc500e4a19b5f19a7b251863036d2c102b25454",
     "cmd/reporting-recovery-probe/main.go": "e3628ccc42cf77ce01be5bbd532ee92314a0f5576eeaf5abd2dcdfe87a0a08e4",
-    "console/assets/app.js": "0dec28fe565d058cb09c50e731f094fbffac804d3247d8b7a4b134ee82f84e7f",
-    "console/assets/index.html": "17807512a3d1100e7e64ae0ea98748561e18f9ab4074f55736be3434fee91f87",
+    "console/assets/app.js": "35b563dbe6beccf8247dcb076cbf6394184d6aa95de198c9be24bb816d699b2e",
+    "console/assets/index.html": "cb47baa963648f128e6568c93b012dde20cdeea16e6f9dab5d4caa577558d640",
     "console/assets/styles.css": "922517a23edaec9cc1ad98c0f242722d5aa5bcc7c8a948d03d3f46af7451a20b",
-    "console/dom.test.mjs": "eac325e472506b94732a14073e49a6f25e6792e0110279e0e908f56101bdd6f0",
+    "console/dom.test.mjs": "bd98c0389390cbbdcb2d7ee8f30efde7279bb11871c79cd9d1c50c09a4c82e39",
     "console/handler.go": "3c5d0b83320469a8806ba06a6589f5a1673e4c0e2f02952bb6e80a8095dab9b3",
     "console/handler_test.go": "83c9fb8a08f716565a3168416a9b5860bb8beac10e564d1202be4e7e63b5d7e4",
     "export/xlsx/writer.go": "71ed51e6c9d92926586d75699deddaeffbb269c37af9fdaaa2a633595a3de0a8",
@@ -58,7 +61,8 @@
     "integration/fencing_test.go": "da787070a776a2086fec7a2e44ff6bd9c872ee649797ccd985303b268be05273",
     "integration/paging_test.go": "b3837ef4dd1b6d4ecb3f0a7db8260659e24e4b3cbe782a62415ece9caf312488",
     "internal/fixturedb/db.go": "c0d043ec52141ec762f94b50e5e85d1f4034c3cf4e63140db2904370669b7207",
-    "layouts/store.go": "620ad3a926b75aa2542bccd755576f4e9e119389de644f5e259696de33709afc",
+    "layouts/release_test.go": "6f3604e7f3d1b942d1c8507be5c2772caed2e86d8b003877dc9ab1ef4c155075",
+    "layouts/store.go": "c69ab49ccafbee94f3cb15b428277d360944f52106872edc4e1916c62f6a0f80",
     "layouts/store_test.go": "51b3999848bfa1bcbbdadccb0f88898e09eae1e4ddb0196056394b7bdf416a03",
     "package-lock.json": "c22511b439514794ec2c50ed65ed9bb5d9663f4c75b7be6d40216ae132e18e9c",
     "package.json": "4843d3597102580c2aaedb93ecac71509813e267fabfe3715f4bce6bbb0697c2",
@@ -74,10 +78,11 @@
     "storage/postgres/guard_test.go": "1e919c6080938051c2534c03aaf2d1fae597565dafb9e51ec843f506a920d18c",
     "storage/postgres/repository.go": "c2544646d78993b0abcfee2d29234f2747bc6734ffad870697f85614143019f5",
     "storage/postgres/upgrade.go": "5b8168fc12eb63e178f1ebb1d63673880ef75ce88edb33aa6e9ccec8ddd24a3a",
-    "transport/httpapi/api.go": "0339b8be09b3209da0c49e203ab5356d178e52fcc80bdae7e749b0e18df0de68",
+    "transport/httpapi/api.go": "322f4a4d1360858a48d0e91b5d09f31b57fa392452d34e9f3256454b991ade3d",
     "transport/httpapi/api_test.go": "480bb129cdb0605413366fe7415a66abadd0b46548dec161a1ea74d7da4665d2",
     "transport/httpapi/authentication_test.go": "bc5287b130129bf8d61a751d4245d4cd03e87c3c1de8245f8e65b73b748672af",
-    "transport/httpapi/layouts_test.go": "4f72e81671edea249621d3dd9a76d45859085aaaf05e860918c29da48c2550c3",
+    "transport/httpapi/layouts_test.go": "f5149fab42fa0b02513da398548a07dbb32e3182b880cdc548ebffeac60e3825",
+    "transport/httpapi/release_catalog_test.go": "289e57b90acec3755d02af4e76317683cbdab770c5fe8418a4f0be322149b9fc",
     "transport/httpapi/session_test.go": "c8b5266618a38c372da59f872e3153c55bbce1a81c8c64bb7dac2e63605a82a5"
   }
 }
