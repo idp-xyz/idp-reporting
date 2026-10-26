@@ -1,0 +1,13 @@
+{
+  "name": "idp-reporting-console",
+  "private": true,
+  "version": "0.3.0",
+  "scripts": {
+    "dev": "python3 scripts/console_preview.py",
+    "check:console": "node --check console/assets/app.js",
+    "test:console": "node --test console/dom.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.3"
+  }
+}

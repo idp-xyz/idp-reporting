@@ -12,3 +12,9 @@ S02-A continuation: docs/S02A_SCOPE.md, ACCESS_JWT.md and REAL_SOURCE_ONBOARDING
 Fixed point is accepted S01-B f425c0d69e0b687565b04a48ca347f9781aa9bea.
 The user's continuation keeps the existing identity/HTTP/public source seams.
 No remote issues, commits, pull requests or product repository changes are created.
+
+S03-A: docs/S03A_SCOPE.md and docs/CONSOLE.md. Fixed point is accepted S02-A
+6f782bd7b4b7b2b4b554cd934e86b41609d0fb6b. User explicitly deferred real product
+and enterprise identity integration until the platform's own capabilities.
+Existing HTTP/Service seams plus public DOM controls are the UI test boundary.
+The managed browser route was blocked; no browser/visual PASS is claimed.

@@ -1,45 +1,48 @@
-# S02-A validation
+# S03-A verification and remaining browser gate
 
-Pinned Go 1.26.5. No dependency or generic reporting core changes.
+Pinned Go 1.26.5 and Node 24.22.1. Production UI is buildless HTML/CSS/JavaScript
+embedded in the Go binary. jsdom 30.1.3 is a locked development-only test tool.
 
-```sh
-python3 scripts/run_s02a_checks.py --go /path/to/go1.26.5/bin/go
-python3 scripts/verify_s02a_workbooks.py --negative-controls
-```
+    npm ci --ignore-scripts --no-audit --no-fund
+    python3 scripts/run_s03a_checks.py --go /path/to/go1.26.5/bin/go
+    python3 scripts/verify_s03a_workbooks.py
 
-The runner executes the ordinary and race full host suites, vet, build and mod
-verify. It explicitly removes S01 PG requirement/DSNs from its child environment:
-this phase qualifies the identity/HTTP seam, not another database run. The two
-DB entry tests must be reported as SKIP; packages with no test files are listed
-separately. Pass events include parent tests and their subtests, not independent
-extra scenarios. Inspect evidence/s02a/host_checks.json plus raw JSONL.
+Current evidence lives in evidence/s03a. Ordinary/race host suites include the
+static asset and authenticated session tests plus existing API/service/storage
+contract tests. Two PostgreSQL entry tests are explicitly SKIP: no PG/VM run is
+claimed. Core/adapters/storage/modules remain byte-identical to the accepted
+S02-A baseline. S01-B evidence remains in evidence/s01b_baseline and S02-A in
+evidence/s02a_baseline; those historical runs are not current qualification.
 
-Both full runs exercise actual TLS loopback HTTP with a local RSA signer and two
-in-memory synthetic sources: snapshot jobs, worker execution, frozen pagination,
-XLSX tasks/download, other-subject/tenant denial, issuer/audience/scope validation,
-source revocation and binding removal. Four downloaded workbooks (two per run)
-are independently read through Python ZIP/XML using a literal filename-bound
-dataset/row/total oracle; producing-run digests must match. A temporary-copy
-negative control swaps finance/shipment bytes and rebinds those digests; the
-semantic oracle must still reject it. Original outputs are never modified.
+The software-DOM suite executes the actual app.js and index.html, drives public
+form/button events, and calls an actual Go demo over 127.0.0.1 HTTP. It covers
+precision, snapshots/pages/export, company denial, invalid login, ambiguous
+submission/idempotency, stale response suppression, authorization outage, literal
+XSS text, 401 cleanup, logout during flight and checksum failure. Network fault
+injections are test-only fetch-boundary controls; no private application state is
+read. OS file download is a test port: captured bytes are written as one actual
+XLSX and independently read with Python ZIP/XML. It does not qualify an actual
+browser or its download manager. Four current authenticated HTTP workbooks are
+verified separately; the five files are not five browser downloads.
 
-No actual Keycloak, real product ledger, enterprise membership authority, remote
-delegated identity, production key refresh/rotation or source contract was
-qualified. Current genuine-source inspection is recorded separately in
-source_discovery.json and REAL_SOURCE_DISCOVERY_S02A.md.
+## Browser limitation observed
 
-S01-B ordinary/race 36-case PG and graceful recovery results remain historical
-evidence in evidence/s01b_baseline/. Its launch/source hashes apply to that
-accepted baseline only. It includes the older s01a_baseline evidence. Do not
-combine those PG passes with the current host suite or call them a current VM
-rerun. Historical commands/limitations remain in VALIDATION_S01B.md.
+The managed Sites preview could start the prebuilt Go demo at the exact supplied
+URL, http://terminal.local:4173/. The cloud browser returned ERR_CONNECTION_REFUSED.
+After status verification, its error-page reload was rejected by the URL policy
+(frame protocol). We stopped preview and browser interaction. No alternate route,
+network permission change, browser installation, security exception or bypass
+was used. No browser success, screenshot, mobile layout or pixel QA is claimed.
+Software-DOM tests are additional code validation, not a workaround to control
+that browser. Browser/visual/accessibility verification remains open.
 
-The only old production Go file touched is transport/httpapi/api.go (Bearer
-challenges); identity/accessjwt is new. The four generic core files, all source
-adapters, storage implementations and go.mod/go.sum remain byte-for-byte as
-accepted S01-B. Full source hashes are captured before the qualification run and
-must be unchanged afterward. Source discovery hashes pin each inspected file.
+The first preview attempt lacked the Go toolchain in the separate preview
+container. The standard local preview runner now supports a prebuilt binary and
+the CLI's port flags. Runtime Go/app network safeguards remain loopback-only.
+Private local preview config, binaries and node_modules are ignored and must not
+appear in release archives or commit history.
 
-Real-source I14 and real-issuer I15 remain unqualified; current state is tracked
-in ACCEPTANCE_S02A.json. HTML structural/link validation and isolated extracted
-build are packaging checks, not browser visual or production runtime acceptance.
+Current API profile still declares synthetic sources, production_approved=false.
+Real source and enterprise identity integration are deferred by the user's
+explicit instruction. Three designers, template release/PDF, embedding, complete
+durable task-history listing and production operations remain future slices.

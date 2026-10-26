@@ -1,6 +1,14 @@
-# IDP Reporting Platform · S02-A
+# IDP Reporting Platform · S03-A
 
-本轮交付配置化 RS256 访问令牌认证模块 identity/accessjwt，以及 Brant/Parcel 真实
+本轮新增独立控制台与基础报表查看器，由 Go 服务直接提供 /console/。目录、预览、
+快照分页、任务跟踪/取消、恢复私有任务与 Excel 下载均调用既有同源 API。用户已明确
+真实接入放在最后；后续先推进三类设计器、模板/PDF与平台运行能力。
+
+实现通过 API 和9项软件DOM回归，但浏览器预览路由被当前环境/URL策略阻断，真实
+浏览器/移动视觉/下载验收尚未完成。见 docs/CONSOLE.md、docs/VALIDATION.md。
+首次运行后在本机打开 http://127.0.0.1:7810/console/ 并输入当前配置的令牌。
+
+S02-A已交付配置化 RS256 访问令牌认证模块 identity/accessjwt，以及 Brant/Parcel 真实
 接入资料核对。模块通过现有 httpapi.Authenticate 入口组合；须由可信宿主提供
 issuer/audience/公钥/scope/主体映射，不自动替换下方 reporting-demo 的演示身份。
 本地签名令牌及 HTTPS/合成来源验证不等于真实 IdP、两个真实业务来源或生产准入。
@@ -58,8 +66,9 @@ reporting_source_test_s01 / reporting_source_test_s01_race。生产库名及非�
 ## 测试与证据
 
 ```bash
-python3 scripts/run_s02a_checks.py --go /path/to/go1.26.5/bin/go
-python3 scripts/verify_s02a_workbooks.py --negative-controls
+npm ci --ignore-scripts --no-audit --no-fund
+python3 scripts/run_s03a_checks.py --go /path/to/go1.26.5/bin/go
+python3 scripts/verify_s03a_workbooks.py
 ```
 
 主机缺少 DSN 时，两个真实数据库入口明确 SKIP，不能计为数据库通过。设置
@@ -71,7 +80,8 @@ REPORTING_S01_REQUIRE_PG=1 后缺少必需 DSN 直接失败。
 cmd/reporting-recovery-probe 是本地验收客户端，显式 bootstrap 会清空受保护夹具；
 业务服务不导入它，也不在 HTTP 上开放其控制能力。
 
-当前逐条状态见 docs/ACCEPTANCE_S02A.json；本轮原始日志、文件与摘要在 evidence/s02a/。
+当前逐条状态见 docs/ACCEPTANCE_S03A.json；本轮原始日志、文件与摘要在 evidence/s03a/。
+S02-A历史证据在 evidence/s02a_baseline/；此前审查见 docs/CODE_REVIEW_S02A.md。
 S01-B 历史证据完整保留在 evidence/s01b_baseline/，其中含原 S01-A 历史证据；
 历次审查见 docs/CODE_REVIEW_S01A.md、docs/CODE_REVIEW_S01B.md。本轮不重跑 PG/VM。
 压缩包附 SOURCE_HISTORY.bundle，可 git clone SOURCE_HISTORY.bundle restored-reporting
@@ -79,7 +89,8 @@ S01-B 历史证据完整保留在 evidence/s01b_baseline/，其中含原 S01-A �
 
 ## 后续范围
 
-S02 后续：真实发行方/企业身份、Brant与第二真实产品授权合同和数据对账。S03：独立控制台、嵌入、
-三个设计器/PDF。S04：生产迁移/回滚、最小权限/RLS、对象存储、配额、清理、备份与容量。
+当前顺序：控制台/查看器后继续三类设计器、模板/PDF及嵌入，再推进生产迁移/回滚、
+最小权限/RLS、对象存储、配额、清理、备份与容量。最后接真实发行方/企业身份、
+Brant与第二真实产品授权合同并完成数据对账。各项未验能力仍保留其验收门槛。
 当前不承诺自动重试、心跳、跨产品关联或跨系统撤权/提交原子性。实际优雅重启证据
 不等于崩溃、断电或备份恢复资格。

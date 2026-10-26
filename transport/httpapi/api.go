@@ -63,6 +63,9 @@ func Handler(service *r.Service, authenticate Authenticate) (http.Handler, error
 		})
 	}
 	const base = "/api/reporting/v1"
+	bind("GET "+base+"/session", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": slices.Clone(p.Integrations)})
+	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": []string{"xlsx"}, "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content"}})
 	})

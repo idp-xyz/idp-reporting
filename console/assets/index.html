@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="IDP Reporting 独立报表工作区">
+  <title>IDP Reporting · 报表工作区</title>
+  <link rel="stylesheet" href="/console/styles.css">
+  <script src="/console/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主内容</a>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="IDP Reporting 首页"><span class="brand-symbol" aria-hidden="true">▥</span><span><b>IDP <em>Reporting</em></b><small>独立报表与单据平台</small></span></a>
+    <div class="nav-label">工作空间</div>
+    <nav aria-label="主导航">
+      <button class="nav-item active" data-page="overview" aria-current="page"><span aria-hidden="true">◫</span>工作区概览</button>
+      <button class="nav-item" data-page="catalog"><span aria-hidden="true">▦</span>数据目录</button>
+      <button class="nav-item" data-page="workspace"><span aria-hidden="true">▤</span>报表工作台</button>
+      <button class="nav-item" data-page="tasks"><span aria-hidden="true">◷</span>任务工作区<span id="task-count" class="nav-count">0</span></button>
+      <div class="nav-label second">平台</div>
+      <button class="nav-item" data-page="system"><span aria-hidden="true">⚙</span>能力与环境</button>
+    </nav>
+    <div class="sidebar-bottom"><span class="status-dot" id="connection-dot"></span><div><b id="connection-label">尚未连接</b><small id="tenant-label">访问令牌仅保留在本次会话</small></div></div>
+  </aside>
+  <div class="body">
+    <header class="topbar">
+      <div class="breadcrumb">工作空间 <span>/</span> <b id="breadcrumb-title">工作区概览</b></div>
+      <div class="top-actions"><span class="environment">合同模拟器</span><span id="actor-label" class="actor">未连接</span><button id="logout" class="button quiet small" disabled>退出工作区</button></div>
+    </header>
+    <main id="main" tabindex="-1">
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section class="page" id="page-overview">
+        <div class="page-heading"><div><div class="eyebrow">REPORTING WORKSPACE</div><h1>让每一份数据，有据可查。</h1><p>从已发布的数据集出发，完成查询、冻结与导出。</p></div><button class="button primary" data-open="workspace">开始查询 <span aria-hidden="true">↗</span></button></div>
+        <div class="metric-grid">
+          <article class="metric-card"><div class="metric-label">当前产品连接 <span>↗</span></div><strong id="overview-products">—</strong><small>服务端为当前身份配置</small></article>
+          <article class="metric-card"><div class="metric-label">所选产品的数据集 <span>▦</span></div><strong id="overview-datasets">—</strong><small>来自当前授权数据目录</small></article>
+          <article class="metric-card"><div class="metric-label">本次会话任务 <span>◷</span></div><strong id="overview-jobs">0</strong><small>刷新后可通过任务 ID 恢复查看</small></article>
+          <article class="metric-card"><div class="metric-label">当前导出格式 <span>↓</span></div><strong id="overview-formats" class="text-metric">—</strong><small>由平台能力接口返回</small></article>
+        </div>
+        <div class="overview-grid">
+          <article class="panel"><div class="panel-heading"><div><h2>可用数据集</h2><p>固定口径与版本，明确每一列的含义。</p></div><button class="button quiet small" data-open="catalog">查看目录 →</button></div><div id="overview-catalog" class="dataset-list"><div class="empty compact">连接工作区后加载当前授权目录。</div></div></article>
+          <article class="panel guide-panel"><div class="panel-heading"><div><span class="section-kicker">工作流程</span><h2>从查询到原件</h2></div></div><ol class="steps"><li><span>01</span><div><b>选择已发布数据集</b><p>确认版本、公司范围与数据时点。</p></div></li><li><span>02</span><div><b>预览并创建快照</b><p>后台生成冻结结果，分页保持同一内容。</p></div></li><li><span>03</span><div><b>生成 Excel 并下载</b><p>导出任务完成后，重新校验权限和文件摘要。</p></div></li></ol><div class="subtle-note">当前为合成数据环境；真实业务接入后再单独验收。</div></article>
+        </div>
+      </section>
+      <section class="page" id="page-catalog" hidden>
+        <div class="page-heading"><div><div class="eyebrow">DATA CATALOG</div><h1>数据目录</h1><p>浏览当前身份可用的数据集、字段与已发布查询组合。</p></div><button id="refresh-catalog" class="button secondary">刷新目录</button></div>
+        <div class="filter-bar"><label for="catalog-product">产品连接</label><select id="catalog-product" aria-label="目录产品连接"></select><span class="help">数据目录按当前主体授权返回</span></div>
+        <div id="catalog-grid" class="catalog-grid"></div>
+      </section>
+      <section class="page" id="page-workspace" hidden>
+        <div class="page-heading"><div><div class="eyebrow">REPORT WORKBENCH</div><h1>报表工作台</h1><p>预览授权结果，或创建可稳定分页和导出的快照。</p></div><span id="result-kind" class="badge neutral">尚未查询</span></div>
+        <article class="panel query-panel">
+          <div class="query-fields">
+            <div class="field"><label for="query-product">产品连接</label><select id="query-product"></select></div>
+            <div class="field"><label for="query-dataset">已发布数据集</label><select id="query-dataset"></select></div>
+            <div class="field"><label for="query-companies">公司范围</label><input id="query-companies" placeholder="输入公司 ID，多个以逗号分隔" autocomplete="off"><small>当前本地演示可使用 company_demo；输入仍需服务器授权。</small></div>
+            <div class="field"><label for="query-date">数据时点</label><input type="date" id="query-date"></div>
+          </div>
+          <div class="query-meta"><span>时区 <b id="query-timezone">—</b></span><span>币种政策 <b id="query-currency">—</b></span><span id="query-shape">选择数据集后显示批准组合</span></div>
+          <div class="query-actions"><span class="help">当前仅支持目录已发布的组合；未开放自定义筛选、排序或公式。</span><div><button id="preview" class="button secondary action">查询预览</button><button id="snapshot" class="button primary action">创建快照</button></div></div>
+        </article>
+        <div id="result-summary" class="result-summary" hidden></div>
+        <article class="panel result-panel">
+          <div class="panel-heading"><div><h2 id="result-title">查询结果</h2><p id="result-subtitle">选择数据集并填写公司范围后开始查询。</p></div><div class="result-actions"><button id="refresh-result" class="button quiet small" disabled>重新校验</button><button id="export" class="button secondary small action" disabled>↓ 导出 Excel</button></div></div>
+          <div id="result-empty" class="empty"><span class="empty-icon" aria-hidden="true">▤</span><b>从一个已发布的数据集开始</b><p>金额与大整数按原始精度显示。</p></div>
+          <div id="result-table-wrap" class="table-wrap" hidden><table id="result-table"><thead></thead><tbody></tbody></table></div>
+          <div id="result-pager" class="pager" hidden><span id="page-info"></span><div><label for="page-size" class="help">每页</label><select id="page-size" aria-label="快照每页行数"><option value="2">2 行</option><option value="25" selected>25 行</option><option value="50">50 行</option></select><button id="first-page" class="button quiet small">第一页</button><button id="next-page" class="button secondary small" disabled>下一页 →</button></div></div>
+          <div id="result-evidence" class="evidence" hidden></div>
+        </article>
+      </section>
+      <section class="page" id="page-tasks" hidden>
+        <div class="page-heading"><div><div class="eyebrow">BACKGROUND TASKS</div><h1>任务工作区</h1><p>跟踪本次会话已知任务；使用任务 ID 恢复服务器上的私有任务。</p></div><button id="refresh-tasks" class="button secondary">刷新状态</button></div>
+        <article class="panel restore-panel"><label for="restore-id">恢复查看</label><input id="restore-id" placeholder="粘贴完整任务 ID" autocomplete="off"><button id="restore-job" class="button secondary">打开任务</button><span class="help">仅可读取当前身份有权访问的任务。</span></article>
+        <article class="panel"><div class="panel-heading"><div><h2>本次会话任务</h2><p>任务记录保存在服务器；此列表仅包含本会话创建或恢复的任务。</p></div><span id="tasks-note" class="badge neutral">0 项</span></div><div id="tasks-empty" class="empty"><span class="empty-icon" aria-hidden="true">◷</span><b>尚无已知任务</b><p>创建快照或导出后，可在这里跟踪进度。</p></div><div class="table-wrap" id="tasks-table-wrap" hidden><table class="tasks-table"><thead><tr><th>任务</th><th>任务 ID</th><th>状态</th><th>操作</th></tr></thead><tbody id="tasks-body"></tbody></table></div></article>
+      </section>
+      <section class="page" id="page-system" hidden>
+        <div class="page-heading"><div><div class="eyebrow">PLATFORM CAPABILITIES</div><h1>能力与环境</h1><p>以服务端声明的能力为准，明确当前交付范围。</p></div><span class="badge warning">合成数据环境</span></div>
+        <div class="system-grid"><article class="panel"><div class="panel-heading"><h2>当前身份</h2></div><dl id="identity-details" class="details"></dl></article><article class="panel"><div class="panel-heading"><h2>当前平台能力</h2></div><dl id="capability-details" class="details"></dl></article></div>
+        <div class="scope-note"><b>后续平台功能</b><p>三类设计器、模板发布与 PDF、嵌入入口及生产运维资格继续推进；真实产品与企业身份接入按当前约定放在最后。</p></div>
+      </section>
+      <footer><span>IDP Reporting · S03-A</span><span>当前为合同模拟器。布局与访问入口不携带业务权限。</span></footer>
+    </main>
+  </div>
+</div>
+<div class="connection-overlay" id="connection-overlay">
+  <div class="connection-card" role="dialog" aria-modal="true" aria-labelledby="connect-title">
+    <div class="connection-mark" aria-hidden="true">▥</div><div class="eyebrow">IDP REPORTING</div><h1 id="connect-title">进入报表工作区</h1><p>连接当前独立服务，查看授权数据与私有任务。</p>
+    <form id="connect-form" autocomplete="off"><label for="access-token">访问令牌</label><input type="password" id="access-token" autocomplete="off" placeholder="粘贴当前环境的访问令牌" required spellcheck="false"><p id="connect-error" class="connect-error" role="alert" hidden></p><button type="submit" id="connect-button" class="button primary full">连接工作区 →</button></form>
+    <div class="connection-hint"><span class="status-dot"></span><p>当前环境使用合同模拟器。令牌仅在内存中使用，退出后清除。</p></div>
+  </div>
+</div>
+<noscript><div class="noscript">此控制台需要 JavaScript；请启用后重新打开。访问令牌不会通过表单发送。</div></noscript>
+</body>
+</html>

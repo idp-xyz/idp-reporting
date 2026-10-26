@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/adapters/contractsim/pgsource"
+	"idp.local/reporting/console"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -108,6 +109,10 @@ func run() error {
 		return e
 	}
 	handler, e := httpapi.Handler(s, auth)
+	if e != nil {
+		return e
+	}
+	handler, e = console.Handler(handler)
 	if e != nil {
 		return e
 	}

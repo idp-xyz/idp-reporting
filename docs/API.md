@@ -1,4 +1,4 @@
-# API · S01-B source profile with S02-A composable authentication
+# API · S03-A console composition over the existing protected source profile
 
 Base: `/api/reporting/v1`. This is the implemented subset, not a complete
 production OpenAPI, OIDC profile or designer API. Bearer authentication is a
@@ -8,6 +8,7 @@ it does not change the simulator data classification or qualify a real issuer.
 
 | Method and path | Request / response |
 |---|---|
+| GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials |
 | GET /capabilities | Exact simulator capability profile; production_approved=false |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
@@ -17,6 +18,9 @@ it does not change the simulator data classification or qualify a real issuer.
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
 | POST /exports | `{ "snapshot_id": "…" }` + one Idempotency-Key; asynchronous XLSX only |
 | GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX, exact byte length and SHA-256 |
+
+The standalone HTML/CSS/JS console is served at /console/. Static assets contain
+no credentials or private rows; they do not bypass protected API routes.
 
 JSON POST bodies require application/json. Unknown/case-mismatched fields,
 duplicate keys, null, extra roots, excessive nesting and >1 MiB bodies are rejected.
