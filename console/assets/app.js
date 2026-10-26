@@ -189,8 +189,8 @@
     $('tasks-empty').hidden=!!values.length;$('tasks-table-wrap').hidden=!values.length;const body=$('tasks-body');body.replaceChildren();
     for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?'Excel 导出':j.kind==='snapshot'?'报表快照':'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',statuses[j.state]||'待刷新','badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
       actions.append(button('刷新',()=>refreshTask(j.job_id)));
-      if(j.snapshot_id&&j.state==='succeeded')actions.append(button('查看结果',()=>perform(async m=>{await loadSnapshot(j.snapshot_id,j.query||null,m,true);if(current(m))openPage('workspace');})));
-      if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m))));
+      if(j.snapshot_id&&j.state==='succeeded')actions.append(button('查看结果',()=>perform(async m=>{await loadSnapshot(j.snapshot_id,j.query||null,m,true);if(current(m))openPage('workspace');},taskContext(j.job_id,'任务查看'))));
+      if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m),taskContext(j.job_id,'任务下载'))));
       if(['queued','running'].includes(j.state))actions.append(button('取消',()=>cancelJob(j.job_id),'danger'));
       row.append(title,id,status,actions);body.append(row);
     }
@@ -198,8 +198,9 @@
   function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id)))throw new Failure(0,'INVALID_RESPONSE');}
   function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
   async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
-  async function refreshTask(id) {const m=mark(),context={snapshot:state.jobs.get(id)?.snapshot_id,label:'任务刷新'};try{await refreshJob(id);}catch(error){fail(error,m,context);}}
-  async function cancelJob(id) {const m=mark(),context={snapshot:state.jobs.get(id)?.snapshot_id,label:'任务取消'};try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
+  function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
+  async function refreshTask(id,m=mark()) {const context=taskContext(id,'任务刷新');try{await refreshJob(id);return true;}catch(error){fail(error,m,context);return false;}}
+  async function cancelJob(id) {const m=mark(),context=taskContext(id,'任务取消');try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
   async function submit(kind,payload,context) {
     const fingerprint=kind+JSON.stringify(payload);
     if(!state.pending||state.pending.fingerprint!==fingerprint)state.pending={fingerprint:fingerprint,key:crypto.randomUUID()};
@@ -211,7 +212,7 @@
     for(let i=0;i<100;i++){if(!current(m))throw new Stale();const job=await refreshJob(id);if(!current(m))throw new Stale();if(!['queued','running'].includes(job.state))return job;await new Promise(resolve=>setTimeout(resolve,300));}
     if(!current(m))throw new Stale();notify('任务仍在服务器执行，可在任务工作区继续查看。');return null;
   }
-  async function perform(fn) {if(state.busy||state.catalogLoading)return;const m=mark();busy(1);try{await fn(m);}catch(error){fail(error,m);}finally{if(m.epoch===state.epoch)busy(-1);}}
+  async function perform(fn,context) {if(state.busy||state.catalogLoading)return;const m=mark();busy(1);try{await fn(m);}catch(error){fail(error,m,context);}finally{if(m.epoch===state.epoch)busy(-1);}}
   async function preview(m) {const q=buildQuery();clearResult();const result=await request('/queries',{method:'POST',body:q});if(!current(m))throw new Stale();renderResult(result,q,null);notify('预览已更新。完整冻结导出请先创建快照。','success');}
   async function loadSnapshot(id,query,m,first) {
     if(!isID(id))throw new Failure(400,'INVALID_REQUEST');
@@ -252,8 +253,8 @@
   $('refresh-result').addEventListener('click',()=>perform(m=>state.snapshot?loadSnapshot(state.snapshot,state.query,m,true):preview(m)));
   $('first-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,true)));$('next-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,false)));
   $('page-size').addEventListener('change',()=>{if(state.busy||state.catalogLoading){$('page-size').value=state.pageLimit;return;}if(state.snapshot){state.view++;perform(m=>loadSnapshot(state.snapshot,state.query,m,true));}});
-  $('restore-job').addEventListener('click',()=>perform(async m=>{const id=$('restore-id').value.trim();if(!isID(id))throw new Failure(400,'INVALID_REQUEST');await refreshJob(id);if(current(m))notify('已恢复当前身份可访问的任务。','success');}));
-  $('refresh-tasks').addEventListener('click',()=>perform(async m=>{for(const id of state.jobs.keys())await refreshJob(id);if(current(m))notify('已知任务状态已刷新。','success');}));
+  $('restore-job').addEventListener('click',()=>{const id=$('restore-id').value.trim();perform(async m=>{if(!isID(id))throw new Failure(400,'INVALID_REQUEST');await refreshJob(id);if(current(m))notify('已恢复当前身份可访问的任务。','success');},taskContext(id,'任务恢复'));});
+  $('refresh-tasks').addEventListener('click',()=>perform(async m=>{let complete=true;for(const id of Array.from(state.jobs.keys())){if(!current(m))throw new Stale();if(!await refreshTask(id,m))complete=false;}if(complete&&current(m))notify('已知任务状态已刷新。','success');},{label:'任务刷新'}));
   $('connection-overlay').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const first=$('access-token'),last=$('connect-button');if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
   window.addEventListener('hashchange',()=>openPage(location.hash.slice(1)));
   openPage(location.hash.slice(1));disconnect();

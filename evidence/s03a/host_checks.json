@@ -8,7 +8,7 @@
     {
       "name": "normal",
       "exit_code": 0,
-      "elapsed_seconds": 2.029,
+      "elapsed_seconds": 2.434,
       "log": "normal.jsonl",
       "pass_events": 164,
       "top_level_passes": 33,
@@ -28,7 +28,7 @@
     {
       "name": "race",
       "exit_code": 0,
-      "elapsed_seconds": 3.94,
+      "elapsed_seconds": 3.947,
       "log": "race.jsonl",
       "pass_events": 164,
       "top_level_passes": 33,
@@ -41,41 +41,41 @@
         "idp.local/reporting/cmd/reporting-demo",
         "idp.local/reporting/cmd/reporting-recovery-probe",
         "idp.local/reporting/export/xlsx",
-        "idp.local/reporting/internal/fixturedb",
-        "idp.local/reporting/storage/memory"
+        "idp.local/reporting/storage/memory",
+        "idp.local/reporting/internal/fixturedb"
       ]
     },
     {
       "name": "vet",
       "exit_code": 0,
-      "elapsed_seconds": 0.317,
+      "elapsed_seconds": 0.267,
       "log": "vet.log"
     },
     {
       "name": "build",
       "exit_code": 0,
-      "elapsed_seconds": 1.182,
+      "elapsed_seconds": 0.879,
       "log": "build.log"
     },
     {
       "name": "mod_verify",
       "exit_code": 0,
-      "elapsed_seconds": 0.32,
+      "elapsed_seconds": 0.27,
       "log": "mod_verify.log"
     },
     {
       "name": "javascript_syntax",
       "exit_code": 0,
-      "elapsed_seconds": 0.115,
+      "elapsed_seconds": 0.065,
       "log": "javascript_syntax.log"
     },
     {
       "name": "dom",
       "exit_code": 0,
-      "elapsed_seconds": 7.699,
+      "elapsed_seconds": 8.702,
       "log": "dom.log",
-      "tests": 17,
-      "pass": 17,
+      "tests": 21,
+      "pass": 21,
       "fail": 0,
       "cancelled": 0,
       "skipped": 0,
@@ -121,10 +121,10 @@
     "transport/httpapi/api_test.go": "480bb129cdb0605413366fe7415a66abadd0b46548dec161a1ea74d7da4665d2",
     "transport/httpapi/authentication_test.go": "bc5287b130129bf8d61a751d4245d4cd03e87c3c1de8245f8e65b73b748672af",
     "transport/httpapi/session_test.go": "c8b5266618a38c372da59f872e3153c55bbce1a81c8c64bb7dac2e63605a82a5",
-    "console/assets/app.js": "aa32017ac88fd1c6a169c768974348899584eae39f0c5d36e401febb25dabf8e",
+    "console/assets/app.js": "3d79faeb524b0e20a26e09625f926290407ba9485e3dfa0b3288c93ee161c953",
     "console/assets/index.html": "3f8be0921c7ab1be2d0a61e25484305b2abee2f326a0693b0d40a393d71216bc",
     "console/assets/styles.css": "6ba07df224d33881d2ee6eb640c801206d532593f98e1439b414930e947bdcb0",
-    "console/dom.test.mjs": "81e3c5a24ec9b7db73890caa0b4b32500ee2323745292e22b7a1d1ed38b1997a",
+    "console/dom.test.mjs": "6e365f2a9213e88984ec5f992958964960227a09988c6945c17f675db4ae8d1c",
     "package.json": "4843d3597102580c2aaedb93ecac71509813e267fabfe3715f4bce6bbb0697c2",
     "package-lock.json": "c22511b439514794ec2c50ed65ed9bb5d9663f4c75b7be6d40216ae132e18e9c"
   },

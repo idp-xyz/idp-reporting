@@ -1,0 +1,1 @@
+Intermediate 647b28a run: 17 local passes. Later independent review reproduced a catalog test latch flake and unscoped bulk/restore/download/view errors. This is not final acceptance. Current evidence/s03a supersedes it.

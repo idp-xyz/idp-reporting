@@ -153,7 +153,7 @@ test('page size stays consistent while a frozen cursor request is pending',async
 test('overlapping same-product catalog refreshes replace rather than duplicate options',async()=>{
   let holding=false,entered=0;const releases=[];
   const a=app(async(path,options)=>{
-    if(holding&&path.includes('/catalog?')){const response=await fetch(url+path,options);entered++;await new Promise(resolve=>releases.push(resolve));return response;}
+    if(holding&&path.includes('/catalog?')){const invocation=entered++;const blocked=new Promise(resolve=>releases[invocation]=resolve);const response=await fetch(url+path,options);await blocked;return response;}
   });
   try{
     await a.login();const original=a.$('query-dataset').options[0].value;holding=true;
@@ -237,4 +237,48 @@ test('an old task cancellation error cannot replace a changed-query result',asyn
     const notice=a.$('notice').textContent;release();await sleep(60);
     assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.equal(a.$('notice').textContent,notice);
   }finally{release();a.close();}
+});
+
+test('bulk task refresh keeps an unrelated product preview after a task denial',async()=>{
+  let denied=false;const a=app(async(path)=>{if(denied&&/\/jobs\/[a-f0-9]{32}$/.test(path))return problem(403,'ACCESS_DENIED');});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'original snapshot');
+    const original=a.$('query-dataset').value;a.$('query-product').value=a.$('query-product').options[1].value;
+    a.$('query-product').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+    await until(()=>a.$('query-dataset').options.length===1&&a.$('query-dataset').value!==original&&!a.$('preview').disabled,'other product catalog');
+    a.configure();a.click('preview');await until(()=>a.$('result-table').tBodies[0].rows.length===2&&!a.$('preview').disabled,'other product preview');
+    denied=true;a.click('refresh-tasks');await until(()=>a.$('notice').textContent.includes('无权访问'),'bulk task denied');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,2);assert.ok(a.$('notice').textContent.startsWith('任务刷新：'));
+  }finally{a.close();}
+});
+
+test('restoring an unknown task leaves the current preview intact',async()=>{
+  const a=app();try{
+    await a.login();a.configure();a.click('preview');await until(()=>a.$('result-table').tBodies[0].rows.length===3&&!a.$('preview').disabled,'current preview');
+    a.input('restore-id','0'.repeat(32));a.click('restore-job');await until(()=>a.$('notice').textContent.includes('未找到'),'real unknown task response');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.ok(a.$('notice').textContent.startsWith('任务恢复：'));
+  }finally{a.close();}
+});
+
+test('task file download denial preserves an unrelated current preview',async()=>{
+  let denied=false;const a=app(async(path)=>{if(denied&&path.includes('/artifacts/')&&path.endsWith('/content'))return problem(403,'ACCESS_DENIED');});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    a.click('export');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'real export complete');
+    a.click('preview');await until(()=>a.$('result-kind').textContent==='查询预览'&&!a.$('preview').disabled,'unrelated preview');
+    denied=true;Array.from(a.$('tasks-body').querySelectorAll('button')).find(b=>b.textContent==='下载').click();
+    await until(()=>a.$('notice').textContent.includes('无权访问'),'task file denied');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.equal(a.downloads.length,1);assert.ok(a.$('notice').textContent.startsWith('任务下载：'));
+  }finally{a.close();}
+});
+
+test('task snapshot viewing denial preserves the previous unrelated preview',async()=>{
+  let denied=false;const a=app(async(path)=>{if(denied&&path.includes('/snapshots/')&&path.includes('/rows?'))return problem(403,'ACCESS_DENIED');});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    a.click('preview');await until(()=>a.$('result-kind').textContent==='查询预览'&&!a.$('preview').disabled,'unrelated preview');
+    denied=true;Array.from(a.$('tasks-body').querySelectorAll('button')).find(b=>b.textContent==='查看结果').click();
+    await until(()=>a.$('notice').textContent.includes('无权访问'),'task snapshot denied');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.ok(a.$('notice').textContent.startsWith('任务查看：'));
+  }finally{a.close();}
 });

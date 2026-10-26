@@ -1,0 +1,8 @@
+{
+  "status": "EXPECTED_FAILURE",
+  "unfixed_commit": "647b28a759dcbf00c3385ef089559a406e27702e",
+  "targeted_tests": 4,
+  "expected_failures": 4,
+  "acceptance_result": false,
+  "purpose": "Bulk refresh, unknown-task restore, artifact download and snapshot-view errors must affect only the matching visible resource."
+}

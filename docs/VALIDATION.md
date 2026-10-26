@@ -25,7 +25,7 @@ negative-control log is kept separately in evidence/s03a_diagnostics and is not
 a qualification run. The initial 9-test checkpoint is historical in
 evidence/s03a_pre_review. The intermediate 13-test checkpoint is in evidence/s03a_paging_catalog_checkpoint.
 Three further task refresh/cancel negative controls fail at 7f9aa7c; the current
-17-test suite also checks that a current denial clears its matching snapshot,
+21-test suite also checks that a current denial clears its matching snapshot,
 while a stale or unrelated task denial leaves a newer query intact. Network fault
 injections are test-only fetch-boundary controls; no private application state is
 read. OS file download is a test port: captured bytes are written as one actual
@@ -54,3 +54,10 @@ Current API profile still declares synthetic sources, production_approved=false.
 Real source and enterprise identity integration are deferred by the user's
 explicit instruction. Three designers, template release/PDF, embedding, complete
 durable task-history listing and production operations remain future slices.
+
+Additional task entrypoints: bulk refresh, restore, snapshot view and file download
+are resource-scoped as well. Four negative controls fail at 647b28a. The catalog
+test latch now records invocation order before awaiting HTTP; five repeated
+focused runs passed. Intermediate evidence/s03a_task_row_checkpoint was not
+final acceptance and records the later review limits. Current acceptance has
+21 DOM tests and 11 expected old-code failures in separate diagnostic logs.

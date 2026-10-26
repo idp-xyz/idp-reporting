@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: real Go console workflow preserves precision, frozen pages, export and logout
+ok 1 - real Go console workflow preserves precision, frozen pages, export and logout
+  ---
+  duration_ms: 1964.499933
+  type: 'test'
+  ...
+# Subtest: invalid login and company selector escalation are rejected without cached rows
+ok 2 - invalid login and company selector escalation are rejected without cached rows
+  ---
+  duration_ms: 125.785513
+  type: 'test'
+  ...
+# Subtest: unconfirmed snapshot submission reuses its idempotency key
+ok 3 - unconfirmed snapshot submission reuses its idempotency key
+  ---
+  duration_ms: 420.148649
+  type: 'test'
+  ...
+# Subtest: late preview cannot replace a changed query
+ok 4 - late preview cannot replace a changed query
+  ---
+  duration_ms: 63.786671
+  type: 'test'
+  ...
+# Subtest: authorization outage clears previously displayed results
+ok 5 - authorization outage clears previously displayed results
+  ---
+  duration_ms: 117.59751
+  type: 'test'
+  ...
+# Subtest: text cells cannot create elements or execute injected markup
+ok 6 - text cells cannot create elements or execute injected markup
+  ---
+  duration_ms: 92.33698
+  type: 'test'
+  ...
+# Subtest: 401 during a query clears the active session and visible private references
+ok 7 - 401 during a query clears the active session and visible private references
+  ---
+  duration_ms: 94.59162
+  type: 'test'
+  ...
+# Subtest: logout aborts an in-flight response without repopulating the page
+ok 8 - logout aborts an in-flight response without repopulating the page
+  ---
+  duration_ms: 135.120413
+  type: 'test'
+  ...
+# Subtest: a mismatched workbook digest never starts a file download
+ok 9 - a mismatched workbook digest never starts a file download
+  ---
+  duration_ms: 691.06443
+  type: 'test'
+  ...
+# Subtest: overlapping next-page actions consume a frozen cursor only once
+ok 10 - overlapping next-page actions consume a frozen cursor only once
+  ---
+  duration_ms: 441.838452
+  type: 'test'
+  ...
+# Subtest: page size stays consistent while a frozen cursor request is pending
+ok 11 - page size stays consistent while a frozen cursor request is pending
+  ---
+  duration_ms: 431.292377
+  type: 'test'
+  ...
+# Subtest: overlapping same-product catalog refreshes replace rather than duplicate options
+ok 12 - overlapping same-product catalog refreshes replace rather than duplicate options
+  ---
+  duration_ms: 151.387218
+  type: 'test'
+  ...
+# Subtest: an old product catalog failure cannot clear a newer product preview
+ok 13 - an old product catalog failure cannot clear a newer product preview
+  ---
+  duration_ms: 140.979417
+  type: 'test'
+  ...
+# Subtest: an old task refresh error cannot clear a changed-query preview
+ok 14 - an old task refresh error cannot clear a changed-query preview
+  ---
+  duration_ms: 481.344638
+  type: 'test'
+  ...
+# Subtest: a task denial affects its snapshot rather than an unrelated current preview
+ok 15 - a task denial affects its snapshot rather than an unrelated current preview
+  ---
+  duration_ms: 477.226476
+  type: 'test'
+  ...
+# Subtest: a current task denial clears the corresponding visible snapshot
+ok 16 - a current task denial clears the corresponding visible snapshot
+  ---
+  duration_ms: 389.511256
+  type: 'test'
+  ...
+# Subtest: an old task cancellation error cannot replace a changed-query result
+ok 17 - an old task cancellation error cannot replace a changed-query result
+  ---
+  duration_ms: 484.126801
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7497.896061

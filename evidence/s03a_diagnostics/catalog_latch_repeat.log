@@ -1,0 +1,54 @@
+RUN 1
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (1061.043426ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1626.348425
+
+RUN 2
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (1154.59257ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1696.888501
+
+RUN 3
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (1233.619335ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1824.316732
+
+RUN 4
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (1388.156296ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2029.724525
+
+RUN 5
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (1224.224371ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1956.05991
