@@ -1,0 +1,416 @@
+{
+  "base": "http://127.0.0.1:7811",
+  "viewports": [
+    [
+      "desktop",
+      1280,
+      900
+    ],
+    [
+      "tablet",
+      768,
+      1024
+    ],
+    [
+      "mobile",
+      390,
+      844
+    ]
+  ],
+  "passed": 49,
+  "failed": 22,
+  "checks": [
+    {
+      "name": "desktop: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "desktop: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "desktop: signed-duplicate-hostile renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: signed-duplicate-hostile has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4905,
+        "client": 1280,
+        "over": true
+      }
+    },
+    {
+      "name": "desktop: max-int-precision renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: max-int-precision has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: all-zero renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: all-zero has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: fifty-one-rows renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: fifty-one-rows has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: invalid-NaN renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: invalid-NaN has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop: empty renders as specified",
+      "ok": true
+    },
+    {
+      "name": "desktop: empty has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "tablet: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "tablet: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "tablet: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "tablet: dashboard page has no horizontal overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 753,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "tablet: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "tablet: report layout designer controls are not clipped",
+      "ok": false,
+      "detail": [
+        "button#layout-server-open@right=794"
+      ]
+    },
+    {
+      "name": "tablet: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "tablet: dashboard controls are not clipped",
+      "ok": false,
+      "detail": [
+        "button#board-server-open@right=841"
+      ]
+    },
+    {
+      "name": "tablet: signed-duplicate-hostile renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: signed-duplicate-hostile has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4354,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: max-int-precision renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: max-int-precision has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: all-zero renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: all-zero has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: fifty-one-rows renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: fifty-one-rows has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: invalid-NaN renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: invalid-NaN has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "tablet: empty renders as specified",
+      "ok": true
+    },
+    {
+      "name": "tablet: empty has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 841,
+        "client": 768,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mobile: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mobile: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard page has no horizontal overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mobile: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mobile: report layout designer controls are not clipped",
+      "ok": false,
+      "detail": [
+        "select#layout-server-listing@right=425",
+        "input#layout-server-version@right=463",
+        "button#layout-server-open@right=595",
+        "button#layout-release-open@right=519"
+      ]
+    },
+    {
+      "name": "mobile: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard controls are not clipped",
+      "ok": false,
+      "detail": [
+        "button#board-server-list@right=410",
+        "select#board-server-listing@right=448",
+        "input#board-server-version@right=486",
+        "button#board-server-open@right=642",
+        "button#board-release-withdraw@right=410",
+        "button#board-published-open@right=542"
+      ]
+    },
+    {
+      "name": "mobile: signed-duplicate-hostile renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: signed-duplicate-hostile has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4155,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: max-int-precision renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: max-int-precision has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: all-zero renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: all-zero has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: fifty-one-rows renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: fifty-one-rows has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: invalid-NaN renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: invalid-NaN has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "mobile: empty renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mobile: empty has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 390,
+        "over": true
+      }
+    },
+    {
+      "name": "no console errors, failed requests or exceptions",
+      "ok": false,
+      "detail": [
+        "http 404 http://127.0.0.1:7811/favicon.ico"
+      ]
+    },
+    {
+      "name": "no JavaScript dialogs (hostile text stayed text)",
+      "ok": true
+    }
+  ]
+}

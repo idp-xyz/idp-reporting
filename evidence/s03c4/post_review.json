@@ -17,7 +17,8 @@
   "added_files": [
     "scripts/browser_visual_s03c4.mjs",
     "docs/BROWSER_ACCEPTANCE_S03C4.md",
-    "evidence/s03c4/browser_visual/"
+    "evidence/s03c4/browser_visual/",
+    "evidence/s03c4/negative_control_802cc4a.json"
   ],
   "browser": {
     "name": "Chrome 155.0.8059.85 Windows headless=new",
@@ -38,7 +39,8 @@
     "passed": 49,
     "failed": 22,
     "total": 71,
-    "note": "download check skipped in this run"
+    "note": "download check skipped in this run",
+    "report": "evidence/s03c4/negative_control_802cc4a.json"
   },
   "regression": {
     "go_vet": "ok",
@@ -62,6 +64,7 @@
   "commits_on_reporting_s03a_after_reviewed_commit": [
     "Fix console layout overflow and form spacing found in browser acceptance",
     "Add real-browser acceptance script, screenshots and record",
+    "Keep the pre-fix negative control report as evidence",
     "Record independent review of the browser acceptance fixes"
   ],
   "review": "docs/CODE_REVIEW_S03C4_1.md"

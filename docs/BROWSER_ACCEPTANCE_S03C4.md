@@ -35,6 +35,9 @@ overflow; a real Chrome download of a verified .xlsx; no console errors, failed 
 
 The same script against a build of 802cc4a: 49 of 71 checks pass and 22 fail (the download check was skipped
 there). The failures are the overflow, clipped-control and favicon defects above, so the checks do detect them.
+Raw report: evidence/s03c4/negative_control_802cc4a.json. To reproduce, `git worktree add ../s03c4-pre 802cc4a`,
+build and start reporting-demo from it on another port, then run the script with --base pointing at that port and
+without the download arguments.
 
 ## Result
 
