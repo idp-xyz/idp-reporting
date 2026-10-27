@@ -137,7 +137,8 @@ issuer/audience/公钥/scope/主体映射，不自动替换下方 reporting-demo
 
 ## 构建与启动
 
-固定 Go 1.26.5、pgx 5.10.0、Excelize 2.11.0；依赖由 go.mod/go.sum 固定。
+固定 Go 1.26.10（go.mod 的 toolchain 行，CI 校验一致）、pgx 5.10.0、Excelize 2.11.0；依赖由 go.mod/go.sum 固定。
+此前各阶段的证据用 Go 1.26.5 生成，记录保持原样。
 
 ```bash
 go build -o bin/reporting-demo ./cmd/reporting-demo
@@ -168,7 +169,7 @@ reporting_source_test_s01 / reporting_source_test_s01_race。生产库名及非�
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
-python3 scripts/run_s03a_checks.py --go /path/to/go1.26.5/bin/go
+python3 scripts/run_s03a_checks.py --go /path/to/go1.26.10/bin/go
 python3 scripts/verify_s03a_workbooks.py
 ```
 

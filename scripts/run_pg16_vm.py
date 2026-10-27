@@ -26,8 +26,9 @@ try:
     busybox, qdata, bios = required('REPORTING_VM_BUSYBOX'), required('REPORTING_QEMU_DATA'), required('REPORTING_VM_BIOS')
     goversion = subprocess.check_output([str(go), 'version'], text=True).strip()
     pgversion = subprocess.check_output([str(native / 'bin/postgres'), '--version'], text=True).strip()
-    if 'go1.26.5 ' not in goversion or not pgversion.startswith('postgres (PostgreSQL) 16.'):
-        raise ValueError('pinned Go 1.26.5 and a PostgreSQL 16 bundle required')
+    pinned = re.search(r'(?m)^toolchain (go\S+)$', (repo / 'go.mod').read_text()).group(1)
+    if pinned + ' ' not in goversion or not pgversion.startswith('postgres (PostgreSQL) 16.'):
+        raise ValueError('pinned ' + pinned + ' and a PostgreSQL 16 bundle required')
     source_hashes={str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(repo.rglob('*.go'))}
     expected_by_parent={}
     for parent,filename in [('TestPostgresContract','contracts_test.go'),('TestDurablePostgresContract','durable_test.go')]:
