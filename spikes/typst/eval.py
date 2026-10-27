@@ -165,6 +165,17 @@ assert stress, err
 results["linebreak_stress"] = {**check_statement(stress), **check_typography(stress)}
 pymupdf.open(stress["pdf"])[0].get_pixmap(dpi=110).save(os.path.join(OUT, "linebreak-stress-p1.png"))
 
+# 2b. A row taller than a page (rows are unbreakable in the template): is anything lost silently?
+tall, err = render("tall-row", "-rows", "3", "-tall-row")
+results["row_taller_than_page"] = {"rendered": tall is not None, "message": (err or "")[-300:]}
+if tall:
+    checked = check_statement(tall)
+    long_text = tall["data"]["rows"][1]["desc"]
+    shown = sum(p.get_text().count("补充协议") for p in pymupdf.open(tall["pdf"]))
+    results["row_taller_than_page"].update({"pages": checked["pages"], "typst_output": tall["typst_output"],
+                                            "rows_not_rendered_literally": checked["rows_with_text_or_amount_not_rendered_literally"],
+                                            "clause_occurrences_shown": shown, "clause_occurrences_in_data": long_text.count("补充协议")})
+
 # 3. Determinism: same input and timestamp twice.
 again, err = render("sample-again", "-rows", "150", "-hostile")
 assert again, err

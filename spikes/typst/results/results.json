@@ -29,8 +29,8 @@
       "format": "PDF 1.7",
       "creationDate": "D:20261026160000Z"
     },
-    "typst_seconds": 0.156703428,
-    "typst_max_rss_kb": 54444
+    "typst_seconds": 0.158140248,
+    "typst_max_rss_kb": 54368
   },
   "linebreak_stress": {
     "pages": 32,
@@ -62,6 +62,17 @@
       "creationDate": "D:20261026160000Z"
     }
   },
+  "row_taller_than_page": {
+    "rendered": true,
+    "message": "",
+    "pages": 3,
+    "typst_output": "",
+    "rows_not_rendered_literally": [
+      "AR-000002"
+    ],
+    "clause_occurrences_shown": 38,
+    "clause_occurrences_in_data": 120
+  },
   "deterministic_bytes": true,
   "sample_sha256": "c843e5475f5e4ce6eda9a6e06a5fff783fe62e5ac142af5da17b7f9f67c15427",
   "verapdf_2b": {
@@ -75,7 +86,7 @@
       "rows": 5,
       "pages": 1,
       "bytes": 39615,
-      "typst_seconds": 0.027,
+      "typst_seconds": 0.026,
       "typst_max_rss_mb": 39.1,
       "rows_missing": [],
       "rows_duplicated": [],
@@ -92,7 +103,7 @@
       "rows": 3000,
       "pages": 84,
       "bytes": 3464025,
-      "typst_seconds": 0.824,
+      "typst_seconds": 0.854,
       "typst_max_rss_mb": 311.1,
       "rows_missing": [],
       "rows_duplicated": [],
@@ -109,8 +120,8 @@
       "rows": 30000,
       "pages": 831,
       "bytes": 35075759,
-      "typst_seconds": 8.509,
-      "typst_max_rss_mb": 2702.8,
+      "typst_seconds": 9.291,
+      "typst_max_rss_mb": 2702.7,
       "rows_missing": [],
       "rows_duplicated": [],
       "rows_in_order": true,
@@ -125,16 +136,16 @@
   "amounts": {
     "16_digit_total_rendered_exactly": true,
     "16_digit_capital": "玖仟玖佰玖拾玖万亿玖仟玖佰玖拾玖亿玖仟玖佰玖拾玖万玖仟玖佰玖拾玖元玖角玖分",
-    "30_digit_total_refused": "2026/10/26 21:55:09 total 123456789012345678901234567890.12: amount exceeds the 16 integer digits capital numerals support"
+    "30_digit_total_refused": "2026/10/26 22:06:06 total 123456789012345678901234567890.12: amount exceeds the 16 integer digits capital numerals support"
   },
   "safety": {
     "read_outside_root": {
       "rendered": false,
-      "message": "2026/10/26 21:55:09 typst failed: exit status 1\nerror: file not found (searched at /tmp/typst-spike-1230549034/etc/passwd)\n  ┌─ ../../../../../../tmp/typst-spike-1230549034/statement.typ:1:6\n  │\n1 │ #read(\"/etc/passwd\")\n  │       ^^^^^^^^^^^^^"
+      "message": "2026/10/26 22:06:06 typst failed: exit status 1\nerror: file not found (searched at /tmp/typst-spike-925604087/etc/passwd)\n  ┌─ ../../../../../../tmp/typst-spike-925604087/statement.typ:1:6\n  │\n1 │ #read(\"/etc/passwd\")\n  │       ^^^^^^^^^^^^^"
     },
     "package_import_isolated": {
       "rendered": false,
-      "message": "2026/10/26 21:55:14 typst failed: exit status 1\nerror: failed to download package (https://packages.typst.org/preview/cetz-0.3.4.tar.gz: Dns Failed: resolve dns name 'packages.typst.org:443': failed to lookup address information: Try again)\n  ┌─ ../../../../../../tmp/typst-spike-1181561017/statement.typ:1:8\n  │\n1 │ #import \"@preview/cetz:0.3.4\": *\n  │         ^^^^^^^^^^^^^^^^^^^^^"
+      "message": "2026/10/26 22:06:11 typst failed: exit status 1\nerror: failed to download package (https://packages.typst.org/preview/cetz-0.3.4.tar.gz: Dns Failed: resolve dns name 'packages.typst.org:443': failed to lookup address information: Try again)\n  ┌─ ../../../../../../tmp/typst-spike-1661170315/statement.typ:1:8\n  │\n1 │ #import \"@preview/cetz:0.3.4\": *\n  │         ^^^^^^^^^^^^^^^^^^^^^"
     },
     "package_import_with_network": {
       "rendered": true,
@@ -142,15 +153,15 @@
     },
     "infinite_loop": {
       "rendered": false,
-      "message": "2026/10/26 21:55:15 typst failed: exit status 1\nerror: condition is always true\n  ┌─ ../../../../../../tmp/typst-spike-365647485/statement.typ:1:7\n  │\n1 │ #while true {}\n  │        ^^^^"
+      "message": "2026/10/26 22:06:18 typst failed: exit status 1\nerror: condition is always true\n  ┌─ ../../../../../../tmp/typst-spike-97548583/statement.typ:1:7\n  │\n1 │ #while true {}\n  │        ^^^^"
     },
     "deep_recursion": {
       "rendered": false,
-      "message": "2026/10/26 21:55:15 typst failed: exit status 1\nerror: maximum function call depth exceeded\n  ┌─ ../../../../../../tmp/typst-spike-1946276702/statement.typ:1:12\n  │\n1 │ #let f(n) = f(n + 1)\n  │             ^^^^^^^^\n\n  while calling `f` at ../../../../../../tmp/typst-spike-1946276702/statement.typ:2:1\n    f(0)"
+      "message": "2026/10/26 22:06:18 typst failed: exit status 1\nerror: maximum function call depth exceeded\n  ┌─ ../../../../../../tmp/typst-spike-2627753299/statement.typ:1:12\n  │\n1 │ #let f(n) = f(n + 1)\n  │             ^^^^^^^^\n\n  while calling `f` at ../../../../../../tmp/typst-spike-2627753299/statement.typ:2:1\n    f(0)"
     },
     "slow_template_killed_by_timeout": {
       "rendered": false,
-      "message": "2026/10/26 21:55:18 typst killed after 3s"
+      "message": "2026/10/26 22:06:21 typst killed after 3s"
     },
     "about_100_pages_under_96mb_address_space": {
       "rendered": false,

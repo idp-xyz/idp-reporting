@@ -80,6 +80,7 @@ func run() error {
 	seed := flag.Uint64("seed", 7, "data seed")
 	hostile := flag.Bool("hostile", false, "mix markup-like and script-like strings into descriptions")
 	long := flag.Bool("long", false, "join several punctuation-dense phrases per description (line breaking stress)")
+	tall := flag.Bool("tall-row", false, "make the second row's description taller than a page")
 	first := flag.String("first-amount", "", "force the first row's amount (plain decimal string)")
 	draft := flag.Bool("draft", false, "draft watermark")
 	tmpl := flag.String("template", "", "use this template file instead of the embedded one (safety tests only)")
@@ -90,7 +91,7 @@ func run() error {
 		return errors.New("-fonts is required so that Typst cannot fall back to other fonts")
 	}
 
-	doc, e := build(*rows, *seed, *hostile, *long, *first, *draft)
+	doc, e := build(*rows, *seed, *hostile, *long, *tall, *first, *draft)
 	if e != nil {
 		return e
 	}
@@ -171,7 +172,7 @@ func run() error {
 }
 
 // build makes a deterministic statement; every amount and running total is exact cents.
-func build(n int, seed uint64, hostile, long bool, first string, draft bool) (statement, error) {
+func build(n int, seed uint64, hostile, long, tall bool, first string, draft bool) (statement, error) {
 	rnd := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
 	doc := statement{Meta: meta{Title: "应收账款对账单", Company: "示例集团华东有限公司", Customer: "某某医疗器械股份有限公司",
 		Period: "2026-09-01 至 2026-09-30", Snapshot: fmt.Sprintf("snap-%016x", seed), Template: "statement@spike-1", Draft: draft}}
@@ -188,6 +189,9 @@ func build(n int, seed uint64, hostile, long bool, first string, draft bool) (st
 		desc := phrases[rnd.IntN(len(phrases))]
 		for k := 2 + rnd.IntN(3); long && k > 0; k-- {
 			desc += phrases[rnd.IntN(len(phrases))]
+		}
+		if tall && i == 1 {
+			desc = strings.Repeat(phrases[2], 120)
 		}
 		if hostile && i%7 == 3 {
 			desc = hostiles[(i/7)%len(hostiles)] + " " + desc
