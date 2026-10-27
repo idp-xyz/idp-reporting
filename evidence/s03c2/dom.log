@@ -1,0 +1,196 @@
+TAP version 13
+# Subtest: real Go console workflow preserves precision, frozen pages, export and logout
+ok 1 - real Go console workflow preserves precision, frozen pages, export and logout
+  ---
+  duration_ms: 1681.620224
+  type: 'test'
+  ...
+# Subtest: invalid login and company selector escalation are rejected without cached rows
+ok 2 - invalid login and company selector escalation are rejected without cached rows
+  ---
+  duration_ms: 95.592632
+  type: 'test'
+  ...
+# Subtest: unconfirmed snapshot submission reuses its idempotency key
+ok 3 - unconfirmed snapshot submission reuses its idempotency key
+  ---
+  duration_ms: 81.521477
+  type: 'test'
+  ...
+# Subtest: late preview cannot replace a changed query
+ok 4 - late preview cannot replace a changed query
+  ---
+  duration_ms: 79.192334
+  type: 'test'
+  ...
+# Subtest: authorization outage clears previously displayed results
+ok 5 - authorization outage clears previously displayed results
+  ---
+  duration_ms: 92.955642
+  type: 'test'
+  ...
+# Subtest: text cells cannot create elements or execute injected markup
+ok 6 - text cells cannot create elements or execute injected markup
+  ---
+  duration_ms: 69.744802
+  type: 'test'
+  ...
+# Subtest: 401 during a query clears the active session and visible private references
+ok 7 - 401 during a query clears the active session and visible private references
+  ---
+  duration_ms: 81.38363
+  type: 'test'
+  ...
+# Subtest: logout aborts an in-flight response without repopulating the page
+ok 8 - logout aborts an in-flight response without repopulating the page
+  ---
+  duration_ms: 135.976205
+  type: 'test'
+  ...
+# Subtest: a mismatched workbook digest never starts a file download
+ok 9 - a mismatched workbook digest never starts a file download
+  ---
+  duration_ms: 699.065473
+  type: 'test'
+  ...
+# Subtest: overlapping next-page actions consume a frozen cursor only once
+ok 10 - overlapping next-page actions consume a frozen cursor only once
+  ---
+  duration_ms: 453.153241
+  type: 'test'
+  ...
+# Subtest: page size stays consistent while a frozen cursor request is pending
+ok 11 - page size stays consistent while a frozen cursor request is pending
+  ---
+  duration_ms: 417.627254
+  type: 'test'
+  ...
+# Subtest: overlapping same-product catalog refreshes replace rather than duplicate options
+ok 12 - overlapping same-product catalog refreshes replace rather than duplicate options
+  ---
+  duration_ms: 132.682378
+  type: 'test'
+  ...
+# Subtest: an old product catalog failure cannot clear a newer product preview
+ok 13 - an old product catalog failure cannot clear a newer product preview
+  ---
+  duration_ms: 145.594267
+  type: 'test'
+  ...
+# Subtest: an old task refresh error cannot clear a changed-query preview
+ok 14 - an old task refresh error cannot clear a changed-query preview
+  ---
+  duration_ms: 473.81161
+  type: 'test'
+  ...
+# Subtest: a task denial affects its snapshot rather than an unrelated current preview
+ok 15 - a task denial affects its snapshot rather than an unrelated current preview
+  ---
+  duration_ms: 456.941232
+  type: 'test'
+  ...
+# Subtest: a current task denial clears the corresponding visible snapshot
+ok 16 - a current task denial clears the corresponding visible snapshot
+  ---
+  duration_ms: 387.639317
+  type: 'test'
+  ...
+# Subtest: an old task cancellation error cannot replace a changed-query result
+ok 17 - an old task cancellation error cannot replace a changed-query result
+  ---
+  duration_ms: 456.950007
+  type: 'test'
+  ...
+# Subtest: bulk task refresh keeps an unrelated product preview after a task denial
+ok 18 - bulk task refresh keeps an unrelated product preview after a task denial
+  ---
+  duration_ms: 418.282747
+  type: 'test'
+  ...
+# Subtest: restoring an unknown task leaves the current preview intact
+ok 19 - restoring an unknown task leaves the current preview intact
+  ---
+  duration_ms: 94.093016
+  type: 'test'
+  ...
+# Subtest: task file download denial preserves an unrelated current preview
+ok 20 - task file download denial preserves an unrelated current preview
+  ---
+  duration_ms: 723.436605
+  type: 'test'
+  ...
+# Subtest: task snapshot viewing denial preserves the previous unrelated preview
+ok 21 - task snapshot viewing denial preserves the previous unrelated preview
+  ---
+  duration_ms: 398.543822
+  type: 'test'
+  ...
+# Subtest: report layout reorders and hides columns without changing exact values or query scope
+ok 22 - report layout reorders and hides columns without changing exact values or query scope
+  ---
+  duration_ms: 77.495649
+  type: 'test'
+  ...
+# Subtest: layout import rejects foreign binding, duplicate/unknown fields, empty columns and extra authority
+ok 23 - layout import rejects foreign binding, duplicate/unknown fields, empty columns and extra authority
+  ---
+  duration_ms: 64.073303
+  type: 'test'
+  ...
+# Subtest: server layouts save immutable revisions and reopen an earlier version
+ok 24 - server layouts save immutable revisions and reopen an earlier version
+  ---
+  duration_ms: 169.825608
+  type: 'test'
+  ...
+# Subtest: an uncertain layout save requires list reconciliation without automatic retry
+ok 25 - an uncertain layout save requires list reconciliation without automatic retry
+  ---
+  duration_ms: 87.727544
+  type: 'test'
+  ...
+# Subtest: publication pins a saved private layout until explicitly replaced or withdrawn
+ok 26 - publication pins a saved private layout until explicitly replaced or withdrawn
+  ---
+  duration_ms: 246.035436
+  type: 'test'
+  ...
+# Subtest: dashboard composes exact server totals and current-page tables with metadata-only reopen
+ok 27 - dashboard composes exact server totals and current-page tables with metadata-only reopen
+  ---
+  duration_ms: 69.794779
+  type: 'test'
+  ...
+# Subtest: dashboard rejects unauthorized bindings, unknown widgets, fields and configuration budgets
+ok 28 - dashboard rejects unauthorized bindings, unknown widgets, fields and configuration budgets
+  ---
+  duration_ms: 59.428268
+  type: 'test'
+  ...
+# Subtest: dashboard clears visible data on query changes, denial and logout
+ok 29 - dashboard clears visible data on query changes, denial and logout
+  ---
+  duration_ms: 151.4672
+  type: 'test'
+  ...
+# Subtest: server dashboard versions reopen exact metadata and reject stale updates
+ok 30 - server dashboard versions reopen exact metadata and reject stale updates
+  ---
+  duration_ms: 146.590046
+  type: 'test'
+  ...
+# Subtest: uncertain dashboard save requires list reconciliation and does not clear current data
+ok 31 - uncertain dashboard save requires list reconciliation and does not clear current data
+  ---
+  duration_ms: 90.802775
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 31
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9304.074679
