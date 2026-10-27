@@ -19,8 +19,17 @@ edges.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
 empty.pdf: ok
   negative control, a header changed: caught
   negative control, a footer fact changed: caught
@@ -60,8 +69,17 @@ financial.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with table text beside the table: caught
+  negative control, PDF with text after the last cell: caught
 hostile.pdf: ok
   negative control, a cell lost a character: caught
   negative control, a space dropped: caught
@@ -82,8 +100,80 @@ hostile.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+kerned.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a space dropped: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+mixed.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a space dropped: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
 nodims.pdf: ok
   negative control, a row duplicated: caught
   negative control, a header changed: caught
@@ -99,7 +189,10 @@ nodims.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
   negative control, PDF with the XMP metadata removed: caught
 punctuation.pdf: ok
   negative control, a cell lost a character: caught
@@ -121,8 +214,14 @@ punctuation.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
 rows1000.pdf: ok
   negative control, a cell lost a character: caught
   negative control, a line break the PDF lacks: caught
@@ -144,8 +243,18 @@ rows1000.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with table text beside the table: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
 wide.pdf: ok
   negative control, a cell lost a character: caught
   negative control, a line break the PDF lacks: caught
@@ -167,14 +276,22 @@ wide.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with text in white: caught
   negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
   negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
 console_finance.pdf: veraPDF PDF/A-2b PASS
 edges.pdf: veraPDF PDF/A-2b PASS
 empty.pdf: veraPDF PDF/A-2b PASS
 emptynodims.pdf: veraPDF PDF/A-2b PASS
 financial.pdf: veraPDF PDF/A-2b PASS
 hostile.pdf: veraPDF PDF/A-2b PASS
+kerned.pdf: veraPDF PDF/A-2b PASS
+mixed.pdf: veraPDF PDF/A-2b PASS
 nodims.pdf: veraPDF PDF/A-2b PASS
 punctuation.pdf: veraPDF PDF/A-2b PASS
 rows1000.pdf: veraPDF PDF/A-2b PASS

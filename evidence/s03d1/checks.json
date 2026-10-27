@@ -3,8 +3,8 @@
   "date": "2026-10-27 Asia/Shanghai",
   "baseline": "cf9960e",
   "go": {
-    "top_level_passes": 81,
-    "pass_events": 225,
+    "top_level_passes": 84,
+    "pass_events": 230,
     "failures": 0,
     "skips": [
       "TestDurablePostgresContract",
@@ -12,8 +12,8 @@
     ]
   },
   "race": {
-    "top_level_passes": 81,
-    "pass_events": 225,
+    "top_level_passes": 84,
+    "pass_events": 230,
     "failures": 0,
     "skips": [
       "TestDurablePostgresContract",
@@ -37,12 +37,13 @@
     "runner": "jsdom 30.1.3 + real Go loopback HTTP + pinned Typst; not a browser"
   },
   "pdf_documents": {
-    "checked": 9,
-    "negative_controls_caught": 162,
+    "checked": 11,
+    "negative_controls_caught": 275,
     "negative_controls_missed": 0,
-    "golden": "export/pdf/testdata/golden.json",
-    "verapdf_pass": 10,
-    "verapdf_negative_control": "FAIL"
+    "golden": "export/pdf/testdata/golden.json (matched)",
+    "verapdf_pass": 12,
+    "verapdf_negative_control": "FAIL",
+    "random_documents_outside_evidence": "90 documents of randomly mixed text, 2-10 columns, checked with the same checker before recording; all passed"
   },
   "tools": {
     "typst": "0.15.1 binary sha256 29273eaa04f6d00edd0c2bec578f565fc9c65be856bfbffc894567c68ed0b237",
@@ -56,7 +57,8 @@
     "GitHub Actions run of the pdf job",
     "real browser rendering of the PDF download",
     "hosts without unprivileged user namespaces (fails closed at startup by design)",
-    "PostgreSQL store with PDF jobs (format travels in the existing JSON records)"
+    "PostgreSQL store with PDF jobs (format travels in the existing JSON records)",
+    "filesystem isolation of Typst (no Landlock or mount namespace)"
   ],
   "source_hashes": {
     "adapters/contractsim/financial.go": "93aef5b39fb2ae473e9081fa5162ef91aec9c32c85b63194ac5c466b2e4f4855",
@@ -93,17 +95,17 @@
     "docs/s00/acceptance.json": "dd5939e7cb32c5a25974d6f4b6811ad44f887814b8f34554486b14dd591e6c9d",
     "docs/s00/contracts/adapter-interface.json": "ea0c0a65f4127ff14e5696b8f1700386fd9fe526e7c42a8b5e5b51a14c770dcb",
     "docs/s00/contracts/query-examples.json": "1d5728cfd2399f14c0a0b62df549401794201d4478694ddf116acfefde7bfb60",
-    "export/pdf/fonts.go": "ad566cd25eb334c6efcce7a76aa8aa08374067320193c5a688f3486f4cbc1ff1",
+    "export/pdf/fonts.go": "f17a06494b4c46b98b1c0b492e81aaca466cff7e0f7911f094dc2517f017c473",
     "export/pdf/fonts_test.go": "0c66680f872e8e5aefe7e629fefe3cb7c4b26a61350a421236ab8f8614662cad",
-    "export/pdf/layout.go": "f5739ece1abacd09f607cc24ce60452e01979423615a79b3da8ba709d002d608",
-    "export/pdf/layout_test.go": "e70c7e383cade406d966159d1440bad8963ec2fa9f157433605417a34537bc3a",
-    "export/pdf/run_linux.go": "e11bc92efa4cacebd47b1946a4a11a98609bda034b22e9a783fdb1ed9e10724f",
-    "export/pdf/run_linux_test.go": "4302753ce7d842be66cb2919304ad77e305e4593713928a6ead3f137a01e0fd1",
+    "export/pdf/layout.go": "6852362dc77e10b72320f04058d8f1e3be5db88be38406e673754e2b2fe0c493",
+    "export/pdf/layout_test.go": "87c3d9137a07b3d35b1acb984b2b615a4b4e7aac56a271a60834b906476fd80e",
+    "export/pdf/run_linux.go": "e7f4918a819b3206852cf8efaba1b77c766430277832a5e1872c1ac92de36952",
+    "export/pdf/run_linux_test.go": "784ea93d228212419a79ea87aae71d62f5a253fc722fbc7384ff6d496d1e2fde",
     "export/pdf/run_other.go": "2edd1592854bb2388b54cff516cd029376408d636a0a5e525f061334620e1a3c",
-    "export/pdf/template.typ": "31d56512ada02941c90a1a0d223660273ac9d86210d2477c3762ad1d01d7eddb",
-    "export/pdf/testdata/golden.json": "edb3d847b313a025a1e825b76e9fc64268e292bb1d7165509cc189809cc09cd7",
-    "export/pdf/typst_test.go": "10725ec1c5f478fddb81effec8d1a625dc4cf4e4b5ee2f50b24217dd583c792a",
-    "export/pdf/writer.go": "06dba24b9548db5719956db1440a7d42f7d314cb9e8611709c0805f43c84430c",
+    "export/pdf/template.typ": "bc3994d4c916a817a1d451e02162f1fa7ecf37a6ba3aaa71cdd57f839345ec97",
+    "export/pdf/testdata/golden.json": "82337af152fd7651542d25b49e1ffdbd57f193685efcdfb65eecde13630e64d7",
+    "export/pdf/typst_test.go": "dc4b5e9f58f7fbd60e020e567300541d18d2378a4b0528b505caea8d4a96f62e",
+    "export/pdf/writer.go": "6fbdc46c51eaf7f5ff16f20139722818dc113f9d45654ad03ef34d52ddbb330b",
     "export/xlsx/writer.go": "71ed51e6c9d92926586d75699deddaeffbb269c37af9fdaaa2a633595a3de0a8",
     "go.mod": "1ad4394d947412c84ab710f0f59e839856ceed459291a18de9a7d0560b05baa9",
     "go.sum": "2857e6a81e98cb0e6a47d13bd1ac503d1d04d8a2ee4b2a427cd4f1ee0409333a",
@@ -134,7 +136,7 @@
     "reporting/types.go": "4b0005034176b018f215f5acd49d85e3ff491d29997e9161bf34ad3fde84cca6",
     "reporting/validation.go": "76141dbaf2afe60a83c7203d45456417e806c19ae11a75087004e90fac16b79e",
     "scripts/browser_visual_s03c4.mjs": "6bd363ab0702b342f31278286ebb1b5408fc2bdfe941e5b9dfaf1eb8b5eed9f3",
-    "scripts/check_pdf_export.py": "b00f64761dc8872eb3fdb747888f48bacd19aaf78a12bb4492e51d9f96eabc86",
+    "scripts/check_pdf_export.py": "5470df34f4a57f2eefe46f81cb0c1d2cb35f06df194c2a29b6f3e69295b380e8",
     "scripts/console_preview.py": "c763428cc33fc449174981a6dd10677feb96dbc63c03e4918fe0da36f71a02fe",
     "scripts/fetch_pdf_tools.py": "c9d95b9c88b6dc7fac63429f457156cdf38c8816eb44679abc098bc5dfd2076e",
     "scripts/run_pg16_vm.py": "08f0298ebc58e54c7a13bada5ded91f2ad418b16b3e6af304f163c711b2f3708",

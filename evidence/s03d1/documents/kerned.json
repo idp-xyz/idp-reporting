@@ -1,0 +1,225 @@
+{
+ "file": "kerned.pdf",
+ "landscape": true,
+ "columns": [
+  [
+   34.02,
+   559.46
+  ],
+  [
+   559.46,
+   743.61
+  ],
+  [
+   743.61,
+   807.85
+  ]
+ ],
+ "margin": 34.02,
+ "inset": 4,
+ "min_pages": 1,
+ "title": "finance.ledger",
+ "labels": [
+  {
+   "label": "维度0",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "维度1",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "金额0",
+   "currency": "CNY",
+   "unit": ""
+  }
+ ],
+ "metric": [
+  false,
+  false,
+  true
+ ],
+ "dimensions": 2,
+ "rows": [
+  [
+   "长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。",
+   "(jfV",
+   "1.00"
+  ],
+  [
+   "",
+   "(j(jfVfV",
+   "2.00"
+  ],
+  [
+   "",
+   "(j(j(jfVfVfV",
+   "3.00"
+  ],
+  [
+   "",
+   "(j(j(j(jfVfVfVfV",
+   "4.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j",
+   "5.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(jfV",
+   "6.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(jfVfV",
+   "7.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(jfVfVfV",
+   "8.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(jfVfVfVfV",
+   "9.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j",
+   "10.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(jfV",
+   "11.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(jfVfV",
+   "12.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfV",
+   "13.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfVfV",
+   "14.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j",
+   "15.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfV",
+   "16.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfV",
+   "17.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfV",
+   "18.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfVfV",
+   "19.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j",
+   "20.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfV",
+   "21.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfV",
+   "22.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfV",
+   "23.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfVfV",
+   "24.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j",
+   "25.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfV",
+   "26.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfV",
+   "27.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfV",
+   "28.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(jfVfVfVfV",
+   "29.00"
+  ],
+  [
+   "",
+   "(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j(j",
+   "30.00"
+  ],
+  [
+   "\n前",
+   "\r\nabc",
+   "1.00"
+  ],
+  [
+   "   \nabc",
+   "ﬁ ﬂ ﬀ only",
+   "2.00"
+  ]
+ ],
+ "totals": [
+  "1234567.89"
+ ],
+ "meta": [
+  "finance.ledger@2026.10",
+  "截至 2026-10-27",
+  "Asia/Shanghai",
+  "c-east、c-west",
+  "32 行",
+  "生成于 2026-10-27 08:30:00 UTC"
+ ],
+ "footer": [
+  "合同模拟器 / 合成数据（非真实业务数据）",
+  "快照 0123456789abcdef0123456789abcdef",
+  "finance.ledger@2026.10",
+  "截至 2026-10-27",
+  "来源水位 wm-42"
+ ]
+}

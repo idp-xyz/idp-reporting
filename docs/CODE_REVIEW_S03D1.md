@@ -38,18 +38,44 @@ findings were verified by the author before any fix; every code fix below has a 
 | 10 | Minor: Linux-only tests not tagged; untested snapshot-job format, unknown stored format over HTTP, PDF download from the task list | Fixed |
 | 11 | Nits (names, comments, a map used as a ternary, declaration order in app.js, the WorkbookWriter name) | Fixed or documented |
 
-## Re-check of the surviving mutations after the fixes
+## Round 2
 
-Bold measured with the Regular face, text cut to its first line, newlines printed as spaces, no heading, white table
-text, an inherited environment, host or built-in fonts allowed, long runs cut only at 1.2 times the cell width,
-warnings ignored, the font listing not compared, punctuation treated as breakable, soft hyphens allowed and no gap
-between Chinese and Latin are each now caught by a Go test or the checker. Measuring with no slack (1.0 instead of
-1.03) still passes everything: the measurement is already conservative, and the slack is a margin, not a fix.
-RLIMIT_CORE 0 was not run as a mutation because it writes a real crash dump on this host; the core-limit test covers
-the decision instead.
+Both reviewers re-ran their reproductions and mutations against the round-1 fixes (1857a2b..f73ac6b) and closed every
+round-1 finding except as noted below. New findings:
+
+| Axis | Finding | Disposition |
+|------|---------|-------------|
+| Correctness A | Major: Typst also spaces Chinese text from symbols such as & and from "ー"; a piece measured as one line wrapped inside its box and the next box was drawn beside its first line, so the text read out of order | Fixed: pieces end their line with a line break instead of sitting in boxes, so an underestimated piece adds a line and nothing moves; the gap is counted beside every Chinese or Japanese character next to anything but a space or another such character. Fixture added |
+| Correctness B | ¡ and ¿ open like brackets; text after them and spaces overflowed | Fixed: ¡, ¿ and ⸘ count as opening punctuation. Fixture added |
+| Correctness C | ⸻ is wider than the narrowest cell | Fixed: a single character wider than its cell is unsupported |
+| Correctness D | Binary and font files owned by another user could be rewritten between check and use | Fixed: they must be owned by root or this user |
+| Correctness E, F | sweep globbed the work directory; the core-dump check ran only at startup | Fixed |
+| Correctness G | The checker counted kerned neighbours and the middle dot as overlap or overflow | Fixed |
+| Tests 1 | Major: the font kerns some Latin pairs outward ("(j", "fV"), which the measurement ignores; such runs overflowed into the next column | Fixed: kerning is off in the template (the measurement is now exact apart from the CJK gap, which it overestimates); overhang is off too, after random documents showed full stops at line ends hanging into the cell padding. A kerned document is in the evidence |
+| Tests 2 | Text hidden by render mode, a white box or clipping, or reordered on the line, passed | Fixed: the checker rasterises each page and requires ink where each glyph is drawn, requires every line to run left to right in drawing order, the header and total row in bold and metric numbers aligned right |
+| Tests 3 | The checker rejected values that start with a line break and ligature characters | Fixed |
+| Tests 4 | Nine checks had no negative control; New's host checks were tested only as helpers | Fixed: a PDF corruption for each (padding, size, column, order, title, footer, text after the last cell, left to right, ink); New is tested for parent directories and sweep. Refusing root is not testable without root |
+| Tests 5 | Zero-width characters are refused; golden rows used only the first column; no Close | Documented in docs/API.md; golden rows use the first cell drawn; Writer.Close added |
+
+## Mutations after round 2
+
+Caught now, by a Go test or the checker: bold measured with the Regular face, text cut to its first line, newlines
+printed as spaces, no heading, white text, a white box over every body cell, the header not bold, numbers aligned
+left, kerning or overhang turned back on, an inherited environment, host or built-in fonts allowed, long runs cut only
+at 1.2 times the cell width, warnings ignored, the font listing not compared, punctuation treated as breakable, soft
+hyphens allowed, no gap between Chinese and Latin. Measuring with no slack (1.0 instead of 1.03) passes everything: with
+kerning off the measurement is exact or larger, and the slack is a margin. RLIMIT_CORE 0 was not run as a mutation
+because it writes a real crash dump on this host; the core-limit test covers the decision. Beyond the evidence set,
+90 documents of randomly mixed text (Chinese, kana, punctuation, symbols, Latin, line breaks, ligatures, kerned pairs)
+in 2 to 10 columns passed the checker.
+
+Residual: an exploited Typst could read what the service user can read (no Landlock or mount namespace), and the
+unprivileged user namespaces the sandbox needs are forbidden by default on Ubuntu 24.04 (AppArmor); the CI job
+allows them on its throwaway runner, and a production host needs the same or an AppArmor profile for the service.
 
 ## Evidence
 
-evidence/s03d1/checks.json and the logs beside it: Go 81 top-level tests normal and race (only the two PostgreSQL
-entries skip), 41 DOM tests with the real Typst, 9 documents checked, 162 negative controls caught, the golden layout
-matched, veraPDF PDF/A-2b passed for all 10 PDFs (including the console download) and failed the negative control.
+evidence/s03d1/checks.json and the logs beside it: Go 84 top-level tests normal and race (only the two PostgreSQL
+entries skip), 41 DOM tests with the real Typst, 11 documents checked, 275 negative controls caught and none missed,
+the golden layout matched, veraPDF PDF/A-2b passed for all 12 PDFs (including the console download) and failed the
+negative control.
