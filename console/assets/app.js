@@ -12,6 +12,8 @@
   function button(text,fn,className) { const b=node('button',text,'button '+(className||'quiet small')); b.type='button'; b.addEventListener('click',fn); return b; }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   function isID(id) { return typeof id==='string' && /^[a-f0-9]{32}$/.test(id); }
+  // The workbook is the export without a format; other formats are named in the request.
+  const exportFormats={xlsx:{label:'Excel',media:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',extension:'xlsx',magic:'PK'},pdf:{label:'PDF',media:'application/pdf',extension:'pdf',magic:'%PDF-'}};
   function current(mark) { return mark.epoch===state.epoch && mark.view===state.view; }
   function mark() { return {epoch:state.epoch,view:state.view}; }
   function notify(message,type) { $('notice').textContent=message; $('notice').className='notice'+(type?' '+type:''); $('notice').hidden=false; }
@@ -279,11 +281,10 @@
     if(done.state==='succeeded'&&done.snapshot_id){await loadSnapshot(done.snapshot_id,q,m,true);if(current(m))notify('冻结快照已生成，可分页查看或导出。','success');}
     else notify(done.state==='cancelled'?'快照任务已取消。':'快照任务失败，请检查当前授权与查询范围。',done.state==='cancelled'?'':'error');
   }
-  // The workbook is the export without a format; other formats are named in the request.
-  const exportFormats={xlsx:{label:'Excel',media:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',extension:'xlsx',magic:'PK'},pdf:{label:'PDF',media:'application/pdf',extension:'pdf',magic:'%PDF-'}};
   async function createExport(m,format) {
     const id=state.snapshot;const query=copy(state.query);const kind=exportFormats[format];if(!id||!kind)throw new Failure(400,'INVALID_REQUEST');
     const job=await submit('export',format==='xlsx'?{snapshot_id:id}:{snapshot_id:id,format:format},{query:query,integration:query.integration_id});if(!current(m))throw new Stale();
+    if(job.kind!=='export'||(job.format||'xlsx')!==format)throw new Failure(0,'INVALID_RESPONSE');
     notify(kind.label+' 导出任务已提交。');const done=await poll(job.job_id,m);if(!done)return;
     if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m,done.format);
     else notify(done.state==='cancelled'?'导出任务已取消。':'导出任务失败，未生成可下载文件。',done.state==='cancelled'?'':'error');

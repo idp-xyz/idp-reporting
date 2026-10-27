@@ -415,8 +415,10 @@ function offeringPDF(content,{media='application/pdf',format='pdf',bodies=[]}={}
   let snapshot='';
   return async(path,options)=>{
     if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,options)).json();if(!caps.formats.includes('pdf'))caps.formats.push('pdf');return json(caps);}
-    if(path.endsWith('/exports')&&options?.method==='POST'){const body=JSON.parse(options.body);bodies.push(body);if(body.format!=='pdf')return;snapshot=body.snapshot_id;return json({job_id:pdfJob,kind:'export',state:'queued',snapshot_id:snapshot,format},202);}
-    if(path.endsWith('/jobs/'+pdfJob))return json({job_id:pdfJob,kind:'export',state:'succeeded',snapshot_id:snapshot,format,artifact_id:pdfArtifact});
+    // format 'absent' answers like a server that ignored the requested format.
+    const named=format==='absent'?{}:{format};
+    if(path.endsWith('/exports')&&options?.method==='POST'){const body=JSON.parse(options.body);bodies.push(body);if(body.format!=='pdf')return;snapshot=body.snapshot_id;return json({job_id:pdfJob,kind:'export',state:'queued',snapshot_id:snapshot,...named},202);}
+    if(path.endsWith('/jobs/'+pdfJob))return json({job_id:pdfJob,kind:'export',state:'succeeded',snapshot_id:snapshot,...named,artifact_id:pdfArtifact});
     if(path.endsWith('/artifacts/'+pdfArtifact+'/content'))return new Response(content,{headers:{'Content-Type':media,'X-Content-SHA256':createHash('sha256').update(content).digest('hex')}});
   };
 }
@@ -438,15 +440,18 @@ test('a PDF export names its format, verifies the file and labels the task',asyn
     assert.deepEqual(Object.keys(bodies[0]).sort(),['format','snapshot_id']);assert.equal(bodies[0].format,'pdf');
     assert.ok(a.$('notice').textContent.includes('PDF 已通过摘要校验'));
     assert.equal(a.$('tasks-body').rows[0].cells[0].textContent,'PDF 导出');
+    // The task list downloads the PDF again with the same checks.
+    const again=[...a.$('tasks-body').rows[0].cells[3].querySelectorAll('button')].find(b=>b.textContent==='下载');again.click();
+    await until(()=>a.downloads.length===2,'PDF download from the task list');assert.equal(a.downloads[1].name,'report-'+pdfArtifact+'.pdf');assert.equal(a.downloads[1].blob.type,'application/pdf');
     // The workbook request is unchanged: no format field.
-    await until(()=>!a.$('export').disabled,'idle');a.click('export');await until(()=>a.downloads.length===2,'workbook download');
-    assert.deepEqual(Object.keys(bodies[1]),['snapshot_id']);assert.equal(a.downloads[1].name.endsWith('.xlsx'),true);
+    await until(()=>!a.$('export').disabled,'idle');a.click('export');await until(()=>a.downloads.length===3,'workbook download');
+    assert.deepEqual(Object.keys(bodies[1]),['snapshot_id']);assert.equal(a.downloads[2].name.endsWith('.xlsx'),true);
     assert.equal(a.$('tasks-body').rows[0].cells[0].textContent,'Excel 导出');assert.equal(a.errors.length,0);
   }finally{a.close();}
 });
 
 test('a PDF with the wrong media type, signature or job format never downloads',async()=>{
-  for(const [label,content,options] of [['media type',Buffer.from('%PDF-1.7 fixture'),{media:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}],['signature',Buffer.from('<html>not a pdf</html>'),{}],['job format',Buffer.from('%PDF-1.7 fixture'),{format:'doc'}]]){
+  for(const [label,content,options] of [['media type',Buffer.from('%PDF-1.7 fixture'),{media:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}],['signature',Buffer.from('<html>not a pdf</html>'),{}],['job format',Buffer.from('%PDF-1.7 fixture'),{format:'doc'}],['ignored format',Buffer.from('%PDF-1.7 fixture'),{format:'absent'}],['workbook format',Buffer.from('%PDF-1.7 fixture'),{format:'xlsx'}]]){
     const a=app(offeringPDF(content,options));
     try{await snapshotReady(a);a.click('export-pdf');await until(()=>!a.$('notice').hidden&&a.$('notice').className.includes('error'),label+' refused');await sleep(50);assert.equal(a.downloads.length,0,label);}finally{a.close();}
   }
