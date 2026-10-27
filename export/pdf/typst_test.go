@@ -229,28 +229,41 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 		}
 		edge.Result.Rows = append(edge.Result.Rows, []string{long, strings.Repeat("W", k) + "（" + strings.Repeat("x", k) + "）", "-999999999999999999999999.99"})
 	}
-	// Text of every kind mixed at random, with a fixed seed, in narrow columns.
-	mixed := table(7, 1)
-	alphabet := []rune("甲乙丙丁文字表格数据汉ーあア、。，．！？：；（）「」《》“”‘’·…—#$%&*+-/<=>@[]{}~^|_ ¡¿Ⅰ①ＡＢａｂ０１abcxyzWMil.,;:!?'\"0123456789éü  ")
-	rnd := rand.New(rand.NewPCG(7, 1))
-	for range 25 {
-		row := make([]string, 8)
-		for j := range 7 {
-			b := make([]rune, rnd.IntN(60))
+	// Text of every kind mixed at random, with a fixed seed, in columns squeezed so narrow that
+	// numbers break across lines.
+	mixed := table(9, 1)
+	alphabet := []rune("甲乙丙丁文字表格数据汉ーあア、。，．！？：；（）「」《》“”‘’·…—#$%&*+-/<=>@[]{}~^|_ ¡¿Ⅰ①ＡＢａｂ０１abcxyzWMil.,;:!?'\"0123456789éü(jfVﬁ  \n")
+	rnd := rand.New(rand.NewPCG(11, 1))
+	for range 20 {
+		row := make([]string, 10)
+		for j := range 9 {
+			b := make([]rune, rnd.IntN(70))
 			for i := range b {
 				b[i] = alphabet[rnd.IntN(len(alphabet))]
 			}
 			row[j] = string(b)
 		}
-		row[7] = strconv.Itoa(rnd.IntN(1e9)) + ".00"
+		row[9] = strconv.Itoa(rnd.IntN(1e9)) + ".00"
 		mixed.Result.Rows = append(mixed.Result.Rows, row)
 	}
+	// Pairs the font kerns outward, values that start with a line break, and ligature
+	// characters.
+	kerned := table(2, 1)
+	for k := 1; k <= 30; k++ {
+		long := ""
+		if k == 1 {
+			long = strings.Repeat("长文本说明，迫使各列收窄。", 30)
+		}
+		kerned.Result.Rows = append(kerned.Result.Rows, []string{long, strings.Repeat("(j", k) + strings.Repeat("fV", k%5), strconv.Itoa(k) + ".00"})
+	}
+	kerned.Result.Rows = append(kerned.Result.Rows, []string{"\n前", "\r\nabc", "1.00"}, []string{"   \nabc", "ﬁ ﬂ ﬀ only", "2.00"})
 	docs := []struct {
 		name     string
 		s        r.Snapshot
 		minPages int
 	}{
 		{"mixed", mixed, 1},
+		{"kerned", kerned, 1},
 		{"hostile", hostile(), 3},
 		{"punctuation", marks, 1},
 		{"edges", edge, 1},
@@ -296,8 +309,8 @@ func TestTypstFailsClosed(t *testing.T) {
 	w := typstWriter(t, nil)
 	ctx := t.Context()
 
-	// An emoji and an Extension B ideograph that Noto Sans SC does not have.
-	for _, v := range []string{"笑脸 😀", "扩展B区 \U00020000"} {
+	// An emoji, an Extension B ideograph and a zero-width space that Noto Sans SC does not have.
+	for _, v := range []string{"笑脸 😀", "扩展B区 \U00020000", "零宽\u200b空格"} {
 		if _, err := w.Write(ctx, table(1, 1, []string{v, "1.00"})); !errors.Is(err, r.ErrUnsupported) {
 			t.Errorf("%q: %v; want unsupported", v, err)
 		}

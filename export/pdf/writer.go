@@ -137,6 +137,9 @@ func New(c Config) (*Writer, error) {
 	return w, nil
 }
 
+// Close releases the Typst binary. The Writer cannot render afterwards.
+func (w *Writer) Close() error { return w.exe.Close() }
+
 // sameFaces lists the fonts as Typst sees them and requires exactly the faces loadFonts found:
 // the same family names, files, styles and weights. A family name Typst does not know would
 // otherwise only be a warning, and the text would be laid out without any font.

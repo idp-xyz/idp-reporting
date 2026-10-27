@@ -16,7 +16,10 @@ suffixes, the total row or list, the empty-table label) and requires of each PDF
   - the totals list and the empty-table label after the table, below its last line;
   - every character inside the page margins and inside its cell's padding (CJK punctuation,
     which Typst may push into the padding, inside the column), table text above the footer,
-    text in a dark colour, no character drawn over another and no replacement character.
+    text in a dark colour with ink inside its box (not hidden, covered or clipped), the
+    characters of a line from left to right, no character drawn over another and no
+    replacement character;
+  - the header and the total row in bold, other cells not, and metric numbers aligned right.
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
@@ -41,7 +44,9 @@ import pymupdf
 TITLE, META, TABLE, FOOT = 13.0, 7.5, 8.0, 6.5
 BOTTOM_MARGIN = 18 / 25.4 * 72
 TOTAL, EMPTY = "合计", "无数据行"
-FLAGS = pymupdf.TEXT_INHIBIT_SPACES | pymupdf.TEXT_PRESERVE_WHITESPACE  # only drawn characters
+# Only characters the PDF draws, and ligature characters as they are.
+FLAGS = pymupdf.TEXT_INHIBIT_SPACES | pymupdf.TEXT_PRESERVE_WHITESPACE | pymupdf.TEXT_PRESERVE_LIGATURES
+INK_SCALE = 3  # pixels per point for the ink check
 
 
 def squash(s):
@@ -96,17 +101,35 @@ def characters(page, number):
                 light = (0.2126 * (rgb >> 16 & 255) + 0.7152 * (rgb >> 8 & 255) + 0.0722 * (rgb & 255)) / 255 > 0.6
                 for c in span["chars"]:
                     x0, y0, x1, y1 = c["bbox"]
-                    out.append({"c": c["c"], "page": number, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
-                                "base": c["origin"][1], "size": round(span["size"], 1), "light": light})
+                    out.append({"c": c["c"], "page": number, "x0": x0, "y0": y0, "x1": x1, "y1": y1, "x": c["origin"][0],
+                                "base": c["origin"][1], "size": round(span["size"], 1), "light": light,
+                                "bold": "Bold" in span["font"], "n": len(out)})
     return out
+
+
+def inkless(page, chars):
+    """Characters with no dark pixel where their glyph is drawn: invisible, covered or clipped.
+    The area looked at is the middle of the advance box, from cap height to below the baseline,
+    so that neighbours and the lines above and below do not lend it ink."""
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(INK_SCALE, INK_SCALE), colorspace=pymupdf.csGRAY)
+    buf, w, h = pix.samples, pix.width, pix.height
+    found = []
+    for c in chars:
+        if not c["c"].strip() or c["x1"] - c["x0"] < 0.5:
+            continue
+        inset = 0.1 * (c["x1"] - c["x0"])
+        xs = range(max(0, int((c["x0"] + inset) * INK_SCALE)), min(w, int((c["x1"] - inset) * INK_SCALE) + 1))
+        ys = range(max(0, int((c["base"] - 0.95 * c["size"]) * INK_SCALE)), min(h, int((c["base"] + 0.25 * c["size"]) * INK_SCALE) + 1))
+        if not any(buf[y * w + x] < 128 for y in ys for x in xs):
+            found.append(c)
+    return found
 
 
 def overlaps(chars):
     """Characters drawn over others. Neighbours drawn one after the other on one line may
     overlap: kerning and the compression of punctuation move their advance boxes together."""
     grid, found = {}, []
-    for n, a in enumerate(chars):
-        a["n"] = n
+    for a in chars:
         if not a["c"].strip() or cjk_punctuation(a["c"]):
             continue
         cells = {(gx, gy) for gx in range(int(a["x0"] // 12), int(a["x1"] // 12) + 1)
@@ -131,8 +154,11 @@ class Column:
         self.chars, self.at = chars, 0
 
     def take(self, text):
-        """Consumes text; returns (start (page, baseline) or None, problem or None)."""
+        """Consumes text; returns (start (page, baseline) or None, problem or None). Afterwards
+        taken holds the characters consumed, and leading whether text starts with a line break,
+        which puts its first character below the start of the row."""
         start, prev, gap = None, None, None
+        self.taken, self.leading = [], "\n" in text[:len(text) - len(text.lstrip())]
         for ch in text:
             if ch == "\n":
                 gap = "line"
@@ -159,6 +185,7 @@ class Column:
                 if gap is None and spaced:
                     return start, f"has a space before {ch!r} that the value lacks"
             prev, gap, self.at = got, None, self.at + 1
+            self.taken.append(got)
         return start, None
 
     def rest(self):
@@ -190,6 +217,18 @@ def check(directory, exp):
         chars = characters(page, i)
         for c in overlaps(chars):
             problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f},{c['y0']:.1f} is drawn over another character")
+        for c in inkless(page, chars)[:5]:
+            problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f},{c['y0']:.1f} has no ink")
+        # Each line, in drawing order, runs left to right.
+        lines = {}
+        for c in chars:
+            if c["c"].strip():
+                lines.setdefault((c["size"], round(c["base"], 1)), []).append(c)
+        for line in lines.values():
+            for a, b in zip(line, line[1:]):
+                if b["x"] < a["x"] - 0.5:
+                    problems.append(f"page {i + 1}: {b['c']!r} at {b['x']:.1f} is drawn after {a['c']!r} at {a['x']:.1f}, not left to right")
+                    break
         by_size = {}
         for c in chars:
             if c["c"] == "�":
@@ -232,6 +271,8 @@ def check(directory, exp):
             if problem:
                 problems.append(f"page {i + 1}: the header of column {j + 1} {problem}")
                 headers_ok = False
+            elif not all(c["bold"] for c in column.taken):
+                problems.append(f"page {i + 1}: the header of column {j + 1} is not bold")
             streams[j] += chunk[column.at:]
         first = [c for c in chars if c["size"] in (TITLE, META)]
         if i == 0:
@@ -254,30 +295,40 @@ def check(directory, exp):
                 problems.append(f"page {i + 1}: the footer lacks {fact!r}")
         if foot and table and min(c["base"] for c in foot) <= max(c["base"] for c in table):
             problems.append(f"page {i + 1}: the footer is not below the table")
-    starts = [[None] * len(cols) for _ in rows + ([total_row] if total_row else [])]
+    all_rows = rows + ([total_row] if total_row else [])
+    starts = [[None] * len(cols) for _ in all_rows]
     for j in range(len(cols)):
         if not headers_ok:
             break
         column = Column(streams[j])
-        for r, row in enumerate(rows + ([total_row] if total_row else [])):
-            starts[r][j], problem = column.take(row[j])
+        for r, row in enumerate(all_rows):
+            start, problem = column.take(row[j])
             if problem:
                 problems.append(f"column {j + 1}, row {r + 1}: the cell {problem}")
                 break
+            starts[r][j] = start and (start[0], start[1], column.leading)
+            bold = r == len(rows)  # the total row
+            if any(c["bold"] != bold for c in column.taken):
+                problems.append(f"column {j + 1}, row {r + 1}: the cell is {'not ' if bold else ''}bold")
+            if exp["metric"][j] and column.taken and max(c["x1"] for c in column.taken) < cols[j][1] - inset - 1:
+                problems.append(f"column {j + 1}, row {r + 1}: the number is not aligned right")
         else:
             if column.rest():
                 problems.append(f"column {j + 1} has text after its last cell: {column.rest()[:20]!r}")
+    row_start = []
     for r, row in enumerate(starts):
         seen = [s for s in row if s is not None]
-        if any(s[0] != seen[0][0] or abs(s[1] - seen[0][1]) > 0.5 for s in seen):
+        first = [s for s in seen if not s[2]] or seen
+        row_start.append(min(first)[:2] if first else None)
+        if any(s[0] != first[0][0] or abs(s[1] - first[0][1]) > 0.5 for s in first if not s[2]):
             problems.append(f"row {r + 1}: its cells do not start on one baseline")
+        if any(s[2] and (s[0], s[1]) <= min(first)[:2] for s in seen if [x for x in seen if not x[2]]):
+            problems.append(f"row {r + 1}: a value that starts with a line break does not start below the row")
     if squash("".join(c["c"] for c in tail)) != squash("".join(after)):
         problems.append("the totals or the empty-table label after the table differ")
     elif tail and min(c["base"] for c in tail) <= table_bottom:
         problems.append("the text after the table is not below it")
-    first_rows = []
-    for p in range(pages):
-        first_rows.append(next((r for r, s in enumerate(starts) if s[0] is not None and s[0][0] == p), None))
+    first_rows = [next((r for r, s in enumerate(row_start) if s and s[0] == p), None) for p in range(pages)]
     return problems, {"pages": pages, "first_rows": first_rows}
 
 
@@ -338,8 +389,18 @@ def corruptions(exp):
 
 
 def pdf_corruptions(directory, exp, scratch):
-    """Yields (name, problem the check must report, directory) for corrupted copies of one PDF."""
-    font = pymupdf.Font("cjk")  # embedded when inserted from its buffer
+    """Yields (name, problem the check must report, directory) for corrupted copies of one PDF.
+    Each corruption targets one check; inserted text uses an embedded font unless the
+    corruption is about embedding."""
+    font = pymupdf.Font("cjk")
+    original = pymupdf.open(os.path.join(directory, exp["file"]))
+    first = characters(original[0], 0)
+    table = [c for c in first if c["size"] == TABLE and c["c"].strip()]
+    foot = [c for c in first if c["size"] == FOOT and c["c"].isalnum()]
+    width, height = original[0].rect.width, original[0].rect.height
+    margin, inset, cols = exp["margin"], exp["inset"], exp["columns"]
+    head = min(c["base"] for c in table)
+    body = sorted({round(c["base"], 1) for c in table if c["base"] > head + 0.5})
 
     def copy_with(name, change):
         doc = pymupdf.open(os.path.join(directory, exp["file"]))
@@ -349,31 +410,51 @@ def pdf_corruptions(directory, exp, scratch):
         doc.save(os.path.join(target, exp["file"]))
         return target
 
-    def insert(text, where, size, color=(0, 0, 0), embedded=True):
+    def text(t, at, size, color=(0, 0, 0), embedded=True, page=0):
         def change(doc):
-            page = doc[0]
-            point = where(page)
+            p = doc[page]
             if embedded:
-                page.insert_font(fontname="Fx", fontbuffer=font.buffer)
-                page.insert_text(point, text, fontname="Fx", fontsize=size, color=color)
+                p.insert_font(fontname="Fx", fontbuffer=font.buffer)
+                p.insert_text(at, t, fontname="Fx", fontsize=size, color=color)
             else:
-                page.insert_text(point, text, fontname="helv", fontsize=size, color=color)
+                p.insert_text(at, t, fontname="helv", fontsize=size, color=color)
         return change
 
-    margin, (left, _) = exp["margin"], exp["columns"][0]
-    below = lambda p: (margin + 1, p.rect.height - 6)
-    yield "text outside the margins", "outside the margins", copy_with("margins", insert("X", lambda p: (3, p.rect.height - 6), FOOT))
-    yield "table text in the footer area", "footer area", copy_with("footer", insert("X", lambda p: (left + exp["inset"] + 1, p.rect.height - 30), TABLE))
-    yield "a font that is not embedded", "embedded as n/a", copy_with("font", insert("X", below, FOOT, embedded=False))
-    yield "text in white", "light colour", copy_with("white", insert("X", below, FOOT, color=(1, 1, 1)))
-    yield "a replacement character", "replacement character", copy_with("fffd", insert("�", below, FOOT))
-
-    def over(doc):
-        page = doc[0]
-        c = next(c for c in characters(page, 0) if c["size"] == FOOT and c["c"].isalnum())
-        insert("X", lambda p: (c["x0"], c["base"]), FOOT)(doc)
-    yield "a character drawn over another", "drawn over another", copy_with("over", over)
+    below = (margin + 1, height - 6)
+    left = cols[0][0] + inset
+    # In a document with text after the table, inserted table text is read as that text
+    # (and fails it); the corruptions aimed at the table itself run on the other documents.
+    plain = not printed(exp)[3]
+    yield "text outside the margins", "outside the margins", copy_with("margins", text("X", (3, height - 6), FOOT))
+    yield "table text in the footer area", "footer area", copy_with("footer", text("X", (left + 1, height - 30), TABLE))
+    yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", below, FOOT, embedded=False))
+    yield "text in white", "light colour", copy_with("white", text("X", below, FOOT, color=(1, 1, 1)))
+    yield "a replacement character", "replacement character", copy_with("fffd", text("\ufffd", below, FOOT))
+    yield "text of another size", "unexpected sizes", copy_with("size", text("X", below, 9))
+    yield "a character drawn over another", "drawn over another", copy_with("over", text("X", (foot[0]["x0"], foot[0]["base"]), FOOT))
+    yield "meta text above the title", "in that order", copy_with("meta", text("X", (margin + 1, 12), META))
+    yield "footer text inside the table", "footer is not below", copy_with("footerup", text("X", (width - margin - 6, head + 1), FOOT))
+    if plain:
+        yield "table text above its column", "top to bottom", copy_with("order", text("X", (left + 1, head - 9), TABLE))
     yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
+    if body and plain:
+        line = [c for c in table if abs(c["base"] - body[0]) < 0.5 and cols[0][0] <= c["x0"] < cols[0][1]]
+        if line:
+            yield "a character placed before its line", "left to right", copy_with("ltr", text("X", (line[0]["x0"], body[0]), TABLE))
+            yield "text in the cell padding", "leaves the cell", copy_with("pad", text("X", (cols[0][1] - inset + 1, body[-1]), TABLE))
+
+            def cover(doc):
+                c = line[0]
+                doc[0].draw_rect(pymupdf.Rect(c["x0"], c["base"] - c["size"], c["x1"], c["base"] + 0.3 * c["size"]), color=None, fill=(1, 1, 1), overlay=True)
+            yield "a character covered by a white box", "has no ink", copy_with("cover", cover)
+    if plain and cols[-1][1] + 20 < width - margin:
+        yield "table text beside the table", "in no column", copy_with("beside", text("X", (cols[-1][1] + 8, head), TABLE))
+    if original.page_count > 1:
+        yield "the title on another page", "repeated", copy_with("title", text("X", (margin + 1, 20), TITLE, page=1))
+    last = original[-1]
+    last_table = [c for c in characters(last, original.page_count - 1) if c["size"] == TABLE]
+    if last_table and plain and max(c["base"] for c in last_table) + 30 < last.rect.height - BOTTOM_MARGIN:
+        yield "text after the last cell", "after its last cell", copy_with("after", text("X", (left + 1, max(c["base"] for c in last_table) + 20), TABLE, page=original.page_count - 1))
 
 
 def verapdf(image, directory, names):

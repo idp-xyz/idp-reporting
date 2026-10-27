@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,6 +102,39 @@ func TestDirectoriesOthersCouldReplaceAreRefused(t *testing.T) {
 	}
 	if err := trustedAncestors(filepath.Join(sticky, "fonts", "x")); err != nil {
 		t.Errorf("a directory under a sticky one: %v", err)
+	}
+}
+
+func TestNewChecksTheHostBeforeAnythingElse(t *testing.T) {
+	// The binary is not even read: these checks come first.
+	bin := filepath.Join(t.TempDir(), "typst")
+	if err := os.WriteFile(bin, []byte("x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	open := filepath.Join(t.TempDir(), "open")
+	if err := os.MkdirAll(filepath.Join(open, "fonts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(open, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{Typst: bin, TypstSHA256: strings.Repeat("0", 64), FontDir: filepath.Join(open, "fonts")}); err == nil || !strings.Contains(err.Error(), "only root or this user") {
+		t.Errorf("a font directory under one that anyone may write: %v", err)
+	}
+	work := t.TempDir()
+	stale := filepath.Join(work, "reporting-pdf-old")
+	if err := os.Mkdir(stale, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-staleAfter - time.Minute)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{Typst: bin, TypstSHA256: strings.Repeat("0", 64), FontDir: t.TempDir(), WorkDir: work}); err == nil {
+		t.Fatal("a binary with the wrong checksum is accepted")
+	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("New left a stale render directory in place")
 	}
 }
 

@@ -12,7 +12,10 @@
 }
 
 #set document(title: d.title)
-#set text(font: d.fonts, fallback: false, size: 8pt, lang: "zh", region: "cn", hyphenate: false, ligatures: false)
+// No kerning: the server measures plain advances, and some pairs kern outward. No overhang:
+// a full stop or comma at the end of a line would hang into the cell padding, and numbers
+// must align exactly right.
+#set text(font: d.fonts, fallback: false, size: 8pt, lang: "zh", region: "cn", hyphenate: false, ligatures: false, kerning: false, overhang: false)
 #set par(justify: false)
 #set page(
   paper: "a4",

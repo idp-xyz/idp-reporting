@@ -2,7 +2,7 @@
  "edges.pdf": {
   "first_rows": [
    0,
-   40
+   26
   ],
   "pages": 2
  },
@@ -32,13 +32,21 @@
   ],
   "pages": 3
  },
+ "kerned.pdf": {
+  "first_rows": [
+   0,
+   32
+  ],
+  "pages": 2
+ },
  "mixed.pdf": {
   "first_rows": [
    0,
-   9,
-   18
+   5,
+   11,
+   17
   ],
-  "pages": 3
+  "pages": 4
  },
  "nodims.pdf": {
   "first_rows": [
