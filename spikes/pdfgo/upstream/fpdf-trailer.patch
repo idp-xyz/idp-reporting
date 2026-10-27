@@ -1,0 +1,147 @@
+From f9d92c28648a61502b6c737c3625e5e3cf36588e Mon Sep 17 00:00:00 2001
+From: fix <fix@invalid>
+Date: Mon, 26 Oct 2026 23:14:13 -0600
+Subject: [PATCH] Fix trailer /Info with output intents; add /ID for PDF/A
+
+---
+ def.go                                 |   1 +
+ fpdf.go                                |  12 ++++-
+ pdf/reference/Fpdf_AddOutputIntent.pdf | Bin 3946 -> 4022 bytes
+ trailer_test.go                        |  63 +++++++++++++++++++++++++
+ 4 files changed, 75 insertions(+), 1 deletion(-)
+ create mode 100644 trailer_test.go
+
+diff --git a/def.go b/def.go
+index 9c0c2f4..9e90f8a 100644
+--- a/def.go
++++ b/def.go
+@@ -712,6 +712,7 @@ type Fpdf struct {
+ 	spotColorMap           map[string]spotColorType // Map of named ink-based colors
+ 	outputIntents          []OutputIntentType       // OutputIntents
+ 	outputIntentStartN     int                      // Start object number for
++	infoObjNum             int                      // Object number of the document information dictionary
+ 	userUnderlineThickness float64                  // A custom user underline thickness multiplier.
+ 
+ 	fmt struct {
+diff --git a/fpdf.go b/fpdf.go
+index a815e72..fd6f604 100644
+--- a/fpdf.go
++++ b/fpdf.go
+@@ -27,6 +27,7 @@ package fpdf
+ 
+ import (
+ 	"bytes"
++	"crypto/md5"
+ 	"encoding/json"
+ 	"fmt"
+ 	"image"
+@@ -5111,10 +5112,18 @@ func (f *Fpdf) putheader() {
+ func (f *Fpdf) puttrailer() {
+ 	f.outf("/Size %d", f.n+1)
+ 	f.outf("/Root %d 0 R", f.n)
+-	f.outf("/Info %d 0 R", f.n-1)
++	// Output intent profiles are written between the information dictionary and the catalog,
++	// so the dictionary is not necessarily object n-1.
++	f.outf("/Info %d 0 R", f.infoObjNum)
+ 	if f.protect.encrypted {
+ 		f.outf("/Encrypt %d 0 R", f.protect.objNum)
+ 		f.out("/ID [()()]")
++	} else if len(f.outputIntents) > 0 {
++		// PDF/A (and PDF 2.0) require a file identifier. It is written only for documents with
++		// an output intent so that other output stays byte-identical. Deriving it from the
++		// bytes written so far keeps output reproducible when the creation date is fixed.
++		sum := md5.Sum(f.buffer.Bytes())
++		f.outf("/ID [<%X> <%X>]", sum, sum)
+ 	}
+ }
+ 
+@@ -5239,6 +5248,7 @@ func (f *Fpdf) enddoc() {
+ 	f.putxmp()
+ 	// 	Info
+ 	f.newobj()
++	f.infoObjNum = f.n
+ 	f.out("<<")
+ 	f.putinfo()
+ 	f.out(">>")
+diff --git a/pdf/reference/Fpdf_AddOutputIntent.pdf b/pdf/reference/Fpdf_AddOutputIntent.pdf
+index 9d9026f517efb203d52cc9f82236bf85e6242295..022ccb0009b867b0d909b9a1ef92aa8ab6648b6b 100644
+GIT binary patch
+delta 93
+zcmaDQw@rS74}YMUf`LL1m%gWqLbQ#Wk&B^=g`um9fw_~pk*Sf9o4K2tfu)g~v#YD4
+Qg|V5P0%0YwlLPrB0aKtBz5oCK
+
+delta 17
+Ycmdlc|4MFy4?nB9f`LNN<hlHk05!V>KL7v#
+
+diff --git a/trailer_test.go b/trailer_test.go
+new file mode 100644
+index 0000000..71a012f
+--- /dev/null
++++ b/trailer_test.go
+@@ -0,0 +1,63 @@
++package fpdf_test
++
++import (
++	"bytes"
++	"fmt"
++	"regexp"
++	"testing"
++
++	"codeberg.org/go-pdf/fpdf"
++)
++
++// trailerDoc returns the bytes of a one-page document, optionally with an output intent.
++func trailerDoc(t *testing.T, outputIntent bool) []byte {
++	t.Helper()
++	pdf := fpdf.New("P", "mm", "A4", "")
++	pdf.SetTitle("trailer", false)
++	if outputIntent {
++		pdf.AddOutputIntent(fpdf.OutputIntentType{SubtypeIdent: fpdf.OutputIntent_GTS_PDFA1,
++			OutputConditionIdentifier: "sRGB", Info: "sRGB", ICCProfile: []byte("not a real profile")})
++	}
++	pdf.AddPage()
++	var buf bytes.Buffer
++	if err := pdf.Output(&buf); err != nil {
++		t.Fatal(err)
++	}
++	return buf.Bytes()
++}
++
++// TestTrailerInfoReference checks that /Info names the information dictionary even when
++// output intent streams are written between it and the catalog.
++func TestTrailerInfoReference(t *testing.T) {
++	for _, intent := range []bool{false, true} {
++		doc := trailerDoc(t, intent)
++		trailer := doc[bytes.LastIndex(doc, []byte("trailer")):]
++		m := regexp.MustCompile(`/Info (\d+) 0 R`).FindSubmatch(trailer)
++		if m == nil {
++			t.Fatalf("output intent %v: no /Info in trailer %q", intent, trailer)
++		}
++		start := bytes.Index(doc, []byte(fmt.Sprintf("\n%s 0 obj", m[1])))
++		end := bytes.Index(doc[start:], []byte("endobj"))
++		if obj := doc[start : start+end]; !bytes.Contains(obj, []byte("/Producer")) {
++			t.Errorf("output intent %v: /Info %s 0 R is not the information dictionary: %q", intent, m[1], obj[:min(len(obj), 120)])
++		}
++	}
++}
++
++// TestTrailerFileIdentifier checks that an unencrypted document with an output intent carries
++// the non-empty /ID that PDF/A requires, that it is stable for identical input, and that a
++// document without an output intent is unchanged (no /ID).
++func TestTrailerFileIdentifier(t *testing.T) {
++	id := regexp.MustCompile(`/ID \[<([0-9A-F]{32})> <([0-9A-F]{32})>\]`)
++	first, second := trailerDoc(t, true), trailerDoc(t, true)
++	if id.Find(first[bytes.LastIndex(first, []byte("trailer")):]) == nil {
++		t.Fatal("document with an output intent has no non-empty /ID in its trailer")
++	}
++	if !bytes.Equal(first, second) {
++		t.Error("identical documents differ, so /ID is not deterministic")
++	}
++	plain := trailerDoc(t, false)
++	if bytes.Contains(plain[bytes.LastIndex(plain, []byte("trailer")):], []byte("/ID")) {
++		t.Error("document without an output intent gained an /ID")
++	}
++}
+-- 
+2.43.0
+

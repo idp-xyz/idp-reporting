@@ -7,7 +7,8 @@
 #set document(title: meta.title, author: meta.company, keywords: (meta.snapshot, meta.template))
 #set text(font: "Noto Sans SC", lang: "zh", region: "cn", size: 9pt)
 #set par(leading: 0.6em)
-#set table.cell(breakable: false)
+// Rows may split across pages, so a row taller than a page is continued instead of clipped.
+#set table.cell(breakable: true)
 // GB/T 15834: the interpunct should not start a line, so keep it with the character before it.
 #show regex("[^\\s]·"): box
 

@@ -1,0 +1,161 @@
+{
+  "engine": "typst",
+  "engine_version": "typst 0.15.1 (9dfd3a08)",
+  "sample": {
+    "pages": 5,
+    "rows": 150,
+    "bytes": 216669,
+    "running_totals_match_independent_sum": true,
+    "rows_missing": [],
+    "rows_duplicated": [],
+    "rows_in_order": true,
+    "header_missing_on_pages": [],
+    "page_numbering_wrong_on": [],
+    "carried_totals_wrong": [],
+    "descriptions_not_complete_and_literal": [],
+    "description_column_has_extra_text": false,
+    "amounts_not_on_their_row_page": [],
+    "final_total_and_capital_on_last_page": true,
+    "metadata_readable": true,
+    "description_lines_checked": 209,
+    "line_break_prohibition_violations": [],
+    "fonts": [
+      "AHEKBB+NotoSansSC-Bold-Identity-H (cid)",
+      "EVZIRI+NotoSansSC-Regular-Identity-H (cid)"
+    ],
+    "embedded_font_families": [
+      "NotoSansSC-Bold",
+      "NotoSansSC-Regular"
+    ],
+    "only_embedded_noto": true,
+    "subset_tag_prefix": true,
+    "text_searchable": true,
+    "render_seconds": 0.126790289
+  },
+  "linebreak_stress": {
+    "pages": 31,
+    "rows": 400,
+    "bytes": 592588,
+    "running_totals_match_independent_sum": true,
+    "rows_missing": [],
+    "rows_duplicated": [],
+    "rows_in_order": true,
+    "header_missing_on_pages": [],
+    "page_numbering_wrong_on": [],
+    "carried_totals_wrong": [],
+    "descriptions_not_complete_and_literal": [],
+    "description_column_has_extra_text": false,
+    "amounts_not_on_their_row_page": [],
+    "final_total_and_capital_on_last_page": true,
+    "metadata_readable": true,
+    "description_lines_checked": 1608,
+    "line_break_prohibition_violations": [],
+    "fonts": [
+      "AHEKBB+NotoSansSC-Bold-Identity-H (cid)",
+      "UDPBDL+NotoSansSC-Regular-Identity-H (cid)"
+    ],
+    "embedded_font_families": [
+      "NotoSansSC-Bold",
+      "NotoSansSC-Regular"
+    ],
+    "only_embedded_noto": true,
+    "subset_tag_prefix": true,
+    "text_searchable": true
+  },
+  "row_taller_than_page": {
+    "rendered": true,
+    "message": "",
+    "pages": 4,
+    "engine_output": "",
+    "descriptions_not_complete_and_literal": [],
+    "clause_occurrences_shown": 120,
+    "clause_occurrences_in_data": 120,
+    "all_checks_clean": true
+  },
+  "deterministic_bytes": true,
+  "sample_sha256": "c843e5475f5e4ce6eda9a6e06a5fff783fe62e5ac142af5da17b7f9f67c15427",
+  "verapdf_2b": {
+    "sample": "PASS /data/sample.pdf 2b",
+    "negative_control_without_pdfa": "FAIL /data/sample-no-pdfa.pdf 2b",
+    "draft_watermark": "PASS /data/sample-draft.pdf 2b"
+  },
+  "performance": [
+    {
+      "rows": 5,
+      "pages": 1,
+      "bytes": 39615,
+      "runs": 1,
+      "seconds_median": 0.025,
+      "seconds_min": 0.025,
+      "seconds_max": 0.025,
+      "max_rss_mb_median": 38.9,
+      "max_rss_mb_max": 38.9,
+      "all_checks_clean": true
+    },
+    {
+      "rows": 3000,
+      "pages": 84,
+      "bytes": 3464025,
+      "runs": 1,
+      "seconds_median": 0.939,
+      "seconds_min": 0.939,
+      "seconds_max": 0.939,
+      "max_rss_mb_median": 329.0,
+      "max_rss_mb_max": 329.0,
+      "all_checks_clean": true
+    },
+    {
+      "rows": 30000,
+      "pages": 831,
+      "bytes": 35075759,
+      "runs": 5,
+      "seconds_median": 9.39,
+      "seconds_min": 8.885,
+      "seconds_max": 10.932,
+      "max_rss_mb_median": 2788.0,
+      "max_rss_mb_max": 2788.1,
+      "all_checks_clean": true
+    }
+  ],
+  "concurrency_4x3000_rows": {
+    "all_rendered": true,
+    "wall_seconds": 1.369,
+    "sum_of_peak_rss_mb": 1315.9,
+    "all_checks_clean": true
+  },
+  "amounts": {
+    "16_digit_total_rendered_exactly": true,
+    "16_digit_capital": "玖仟玖佰玖拾玖万亿玖仟玖佰玖拾玖亿玖仟玖佰玖拾玖万玖仟玖佰玖拾玖元玖角玖分",
+    "30_digit_total_refused": "2026/10/26 23:19:26 total 123456789012345678901234567890.12: amount exceeds the 16 integer digits capital numerals support"
+  },
+  "safety": {
+    "read_outside_root": {
+      "rendered": false,
+      "message": "2026/10/26 23:19:26 typst failed: exit status 1\nerror: file not found (searched at /tmp/typst-spike-3442031661/etc/passwd)\n  ┌─ ../../../../../../tmp/typst-spike-3442031661/statement.typ:1:6\n  │\n1 │ #read(\"/etc/passwd\")\n  │       ^^^^^^^^^^^^^"
+    },
+    "package_import_isolated": {
+      "rendered": false,
+      "message": "2026/10/26 23:19:31 typst failed: exit status 1\nerror: failed to download package (https://packages.typst.org/preview/cetz-0.3.4.tar.gz: Dns Failed: resolve dns name 'packages.typst.org:443': failed to lookup address information: Try again)\n  ┌─ ../../../../../../tmp/typst-spike-3707964569/statement.typ:1:8\n  │\n1 │ #import \"@preview/cetz:0.3.4\": *\n  │         ^^^^^^^^^^^^^^^^^^^^^"
+    },
+    "package_import_with_network": {
+      "rendered": true,
+      "message": ""
+    },
+    "infinite_loop": {
+      "rendered": false,
+      "message": "2026/10/26 23:19:33 typst failed: exit status 1\nerror: condition is always true\n  ┌─ ../../../../../../tmp/typst-spike-1230479298/statement.typ:1:7\n  │\n1 │ #while true {}\n  │        ^^^^"
+    },
+    "deep_recursion": {
+      "rendered": false,
+      "message": "2026/10/26 23:19:33 typst failed: exit status 1\nerror: maximum function call depth exceeded\n  ┌─ ../../../../../../tmp/typst-spike-2822914738/statement.typ:1:12\n  │\n1 │ #let f(n) = f(n + 1)\n  │             ^^^^^^^^\n\n  while calling `f` at ../../../../../../tmp/typst-spike-2822914738/statement.typ:2:1\n    f(0)"
+    },
+    "slow_template_killed_by_timeout": {
+      "rendered": false,
+      "message": "2026/10/26 23:19:36 typst killed after 3s"
+    },
+    "3000_rows_under_96mb_address_space": {
+      "rendered": false,
+      "message": "f8c6b5b557f/rayon-core-1.13.0/src/registry.rs:171:10:\nThe global thread pool has not been initialized.: ThreadPoolBuildError { kind: IOError(Os { code: 11, kind: WouldBlock, message: \"Resource temporarily unavailable\" }) }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    }
+  }
+}
