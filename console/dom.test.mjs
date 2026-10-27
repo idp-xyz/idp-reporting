@@ -15,6 +15,8 @@ const script=await readFile(join(root,'console/assets/app.js'),'utf8');
 const dashboardScript=await readFile(join(root,'console/assets/dashboard.js'),'utf8');
 const token=randomBytes(32).toString('hex');
 const artifactDir=process.env.REPORTING_S03A_EVIDENCE_DIR;
+const pdfConfigured=['REPORTING_TYPST','REPORTING_TYPST_SHA256','REPORTING_PDF_FONTS'].every(k=>process.env[k]);
+if(process.env.REPORTING_PDF_REQUIRE==='1'&&!pdfConfigured)throw new Error('REPORTING_PDF_REQUIRE=1 but the Typst binary, its checksum or the fonts are not configured');
 let temporary,child,url;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,label,limit=6000){const end=Date.now()+limit;while(Date.now()<end){if(fn())return;await sleep(15);}throw new Error('DOM condition not reached: '+label);}
@@ -25,7 +27,9 @@ before(async()=>{
   execFileSync(go,['build','-o',join(temporary,'reporting-demo'),'./cmd/reporting-demo'],{cwd:root,env:{...process.env,GOTOOLCHAIN:'local'},stdio:['ignore','pipe','pipe'],timeout:120000});
   const listener=createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
   url='http://127.0.0.1:'+port;
-  child=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(temporary,'layouts'),'-dashboard-directory',join(temporary,'dashboards')],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
+  // PDF export runs when the pinned Typst binary and fonts are configured, as in CI.
+  const pdf=pdfConfigured?['-pdf-typst',process.env.REPORTING_TYPST,'-pdf-typst-sha256',process.env.REPORTING_TYPST_SHA256,'-pdf-fonts',process.env.REPORTING_PDF_FONTS]:[];
+  child=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(temporary,'layouts'),'-dashboard-directory',join(temporary,'dashboards'),...pdf],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
   child.stderr.resume();
   for(let i=0;i<100;i++){try{const r=await fetch(url+'/console/');if(r.ok)return;}catch(_){}if(child.exitCode!==null)throw new Error('Go fixture did not start');await sleep(30);}
   throw new Error('Go fixture startup timeout');
@@ -402,3 +406,58 @@ test('bar chart bounds plotted rows and handles empty zero extreme and invalid n
  for(const invalid of ['NaN','Infinity','1e9','+1','01','', '9'.repeat(513)]){await refresh(['1',invalid]);assert.match(a.$('board-widgets').textContent,/图表不可用/);assert.equal(a.$('board-widgets').querySelectorAll('.board-chart-row').length,0);}
  a.click('board-save');const value=JSON.parse(a.$('board-json').value);value.widgets[0].field='customer.id';a.$('board-json').value=JSON.stringify(value);a.click('board-open');assert.match(a.$('board-status').textContent,/数值字段/);
  }finally{a.close();}});
+
+// PDF export. Without Typst the server does not offer PDF, so the action stays hidden; the
+// console's own checks are exercised against a server that offers PDF through interception.
+const pdfJob='a'.repeat(32),pdfArtifact='b'.repeat(32);
+function json(value,status=200){return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});}
+function offeringPDF(content,{media='application/pdf',format='pdf',bodies=[]}={}){
+  let snapshot='';
+  return async(path,options)=>{
+    if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,options)).json();if(!caps.formats.includes('pdf'))caps.formats.push('pdf');return json(caps);}
+    if(path.endsWith('/exports')&&options?.method==='POST'){const body=JSON.parse(options.body);bodies.push(body);if(body.format!=='pdf')return;snapshot=body.snapshot_id;return json({job_id:pdfJob,kind:'export',state:'queued',snapshot_id:snapshot,format},202);}
+    if(path.endsWith('/jobs/'+pdfJob))return json({job_id:pdfJob,kind:'export',state:'succeeded',snapshot_id:snapshot,format,artifact_id:pdfArtifact});
+    if(path.endsWith('/artifacts/'+pdfArtifact+'/content'))return new Response(content,{headers:{'Content-Type':media,'X-Content-SHA256':createHash('sha256').update(content).digest('hex')}});
+  };
+}
+async function snapshotReady(a){await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');}
+
+test('PDF export is offered only when the server lists the format',async()=>{
+  const a=app(pdfConfigured?async path=>{if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,{headers:{Authorization:'Bearer '+token}})).json();caps.formats=caps.formats.filter(f=>f!=='pdf');return json(caps);}}:undefined);
+  try{await snapshotReady(a);assert.equal(a.$('export-pdf').hidden,true);assert.equal(a.$('overview-formats').textContent,'XLSX');}finally{a.close();}
+  const b=app(offeringPDF(Buffer.from('%PDF-1.7 fixture')));
+  try{await b.login();assert.equal(b.$('export-pdf').hidden,false);assert.equal(b.$('export-pdf').disabled,true);b.click('logout');assert.equal(b.$('export-pdf').hidden,true);}finally{b.close();}
+});
+
+test('a PDF export names its format, verifies the file and labels the task',async()=>{
+  const bodies=[];const content=Buffer.from('%PDF-1.7 fixture');const a=app(offeringPDF(content,{bodies}));
+  try{
+    await snapshotReady(a);a.click('export-pdf');await until(()=>a.downloads.length===1,'PDF download');
+    assert.equal(a.downloads[0].name,'report-'+pdfArtifact+'.pdf');assert.equal(a.downloads[0].blob.type,'application/pdf');
+    assert.deepEqual(Buffer.from(await a.downloads[0].blob.arrayBuffer()),content);
+    assert.deepEqual(Object.keys(bodies[0]).sort(),['format','snapshot_id']);assert.equal(bodies[0].format,'pdf');
+    assert.ok(a.$('notice').textContent.includes('PDF 已通过摘要校验'));
+    assert.equal(a.$('tasks-body').rows[0].cells[0].textContent,'PDF 导出');
+    // The workbook request is unchanged: no format field.
+    await until(()=>!a.$('export').disabled,'idle');a.click('export');await until(()=>a.downloads.length===2,'workbook download');
+    assert.deepEqual(Object.keys(bodies[1]),['snapshot_id']);assert.equal(a.downloads[1].name.endsWith('.xlsx'),true);
+    assert.equal(a.$('tasks-body').rows[0].cells[0].textContent,'Excel 导出');assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});
+
+test('a PDF with the wrong media type, signature or job format never downloads',async()=>{
+  for(const [label,content,options] of [['media type',Buffer.from('%PDF-1.7 fixture'),{media:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}],['signature',Buffer.from('<html>not a pdf</html>'),{}],['job format',Buffer.from('%PDF-1.7 fixture'),{format:'doc'}]]){
+    const a=app(offeringPDF(content,options));
+    try{await snapshotReady(a);a.click('export-pdf');await until(()=>!a.$('notice').hidden&&a.$('notice').className.includes('error'),label+' refused');await sleep(50);assert.equal(a.downloads.length,0,label);}finally{a.close();}
+  }
+});
+
+test('real Go console PDF export through the pinned Typst renderer',{skip:!pdfConfigured&&'set REPORTING_TYPST, REPORTING_TYPST_SHA256 and REPORTING_PDF_FONTS'},async()=>{
+  const a=app();try{
+    await snapshotReady(a);assert.equal(a.$('export-pdf').hidden,false);
+    a.click('export-pdf');await until(()=>a.downloads.length===1,'verified PDF download',20000);
+    const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+    if(artifactDir){await mkdir(artifactDir,{recursive:true});await writeFile(join(artifactDir,'console_finance.pdf'),bytes);}
+    assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});
