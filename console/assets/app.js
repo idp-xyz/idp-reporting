@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',tasks:'任务工作区',system:'能力与环境'};
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
-  const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy});
+  const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，请先刷新服务器看板列表核对。'})});
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   class Failure extends Error { constructor(status,code) { super(code); this.status=status; this.code=code; } }
   class Stale extends Error {}

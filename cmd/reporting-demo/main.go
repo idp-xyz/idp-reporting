@@ -10,6 +10,7 @@ import (
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/adapters/contractsim/pgsource"
 	"idp.local/reporting/console"
+	"idp.local/reporting/dashboards"
 	"idp.local/reporting/export/xlsx"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
@@ -39,6 +40,7 @@ func run() error {
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
 	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
+	dashboardDir := flag.String("dashboard-directory", "", "optional private single-process dashboard directory (0700)")
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -122,6 +124,17 @@ func run() error {
 	handler, e := httpapi.Handler(s, auth, layoutStores...)
 	if e != nil {
 		return e
+	}
+	if *dashboardDir != "" {
+		store, err := dashboards.Open(*dashboardDir)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		handler, err = httpapi.WithDashboards(handler, s, auth, store)
+		if err != nil {
+			return err
+		}
 	}
 	handler, e = console.Handler(handler)
 	if e != nil {

@@ -41,30 +41,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	}
 	mux := http.NewServeMux()
 	bind := func(pattern string, fn func(http.ResponseWriter, *http.Request, r.Principal) error) {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
-			p, e := authenticate(req)
-			if e != nil || !p.Identity.Valid() {
-				status := 401
-				w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="invalid_token"`)
-				scheme, _, _ := strings.Cut(req.Header.Get("Authorization"), " ")
-				if !strings.EqualFold(scheme, "Bearer") {
-					w.Header().Set("WWW-Authenticate", `Bearer realm="reporting"`)
-				}
-				var insufficient interface{ InsufficientScope() bool }
-				if errors.As(e, &insufficient) && insufficient.InsufficientScope() {
-					status = 403
-					w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="insufficient_scope"`)
-				}
-				problem(w, r.ErrDenied, status)
-				return
-			}
-			ctx, cancel := context.WithTimeout(req.Context(), r.WorkTimeout)
-			defer cancel()
-			req = req.WithContext(ctx)
-			if e = fn(w, req, p); e != nil {
-				problem(w, e, 0)
-			}
-		})
+		mux.HandleFunc(pattern, authenticated(authenticate, fn))
 	}
 	const base = "/api/reporting/v1"
 	if len(layoutStores) == 1 {
@@ -385,4 +362,32 @@ func problem(w http.ResponseWriter, e error, status int) {
 		}
 	}
 	_ = send(w, status, map[string]string{"error": code})
+}
+
+func authenticated(authenticate Authenticate, fn func(http.ResponseWriter, *http.Request, r.Principal) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		p, e := authenticate(req)
+		if e != nil || !p.Identity.Valid() {
+			status := 401
+			w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="invalid_token"`)
+			scheme, _, _ := strings.Cut(req.Header.Get("Authorization"), " ")
+			if !strings.EqualFold(scheme, "Bearer") {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="reporting"`)
+			}
+			var insufficient interface{ InsufficientScope() bool }
+			if errors.As(e, &insufficient) && insufficient.InsufficientScope() {
+				status = 403
+				w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="insufficient_scope"`)
+			}
+			problem(w, r.ErrDenied, status)
+			return
+		}
+		ctx, cancel := context.WithTimeout(req.Context(), r.WorkTimeout)
+		defer cancel()
+		req = req.WithContext(ctx)
+		if e = fn(w, req, p); e != nil {
+			problem(w, e, 0)
+		}
+
+	}
 }
