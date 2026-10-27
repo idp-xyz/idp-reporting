@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/dashboards"
+	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/transport/httpapi"
 	"net/http"
@@ -34,6 +35,15 @@ func TestDashboardRoutesPrivateCurrentCatalogAndSeparateFromLayouts(t *testing.T
 	if e != nil {
 		t.Fatal(e)
 	}
+	reportStore, e := layouts.Open(filepath.Join(t.TempDir(), "reports"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reportStore.Close()
+	reportHandler, e := httpapi.Handler(service, auth, reportStore)
+	if e != nil {
+		t.Fatal(e)
+	}
 	catalog, e := service.Catalog(t.Context(), contractsim.DemoPrincipal(), contractsim.FinanceIntegration)
 	if e != nil {
 		t.Fatal(e)
@@ -56,6 +66,13 @@ func TestDashboardRoutesPrivateCurrentCatalogAndSeparateFromLayouts(t *testing.T
 	w := request(h, "POST", "/api/reporting/v1/dashboards", body, true)
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	if request(reportHandler, "POST", "/api/reporting/v1/layouts", body, true).Code != 400 {
+		t.Fatal("report API accepted dashboard body")
+	}
+	reportBody, _ := json.Marshal(map[string]any{"id": "", "expected_version": 0, "layout": map[string]any{"schema_version": "1.0", "binding": config.Binding, "columns": []map[string]string{{"id": field, "align": "right"}}}})
+	if request(h, "POST", "/api/reporting/v1/dashboards", reportBody, true).Code != 400 {
+		t.Fatal("dashboard API accepted report body")
 	}
 	var entry struct {
 		ID      string
