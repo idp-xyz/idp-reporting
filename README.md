@@ -9,7 +9,7 @@
 先在工作台查询，再进入看板设计器添加当前页柱状图。沿用 -dashboard-directory 和独立报表目录。
 既有metric/table文件可读；新增bar组件不被旧程序支持，降级未验。
 Go普通/race各47项顶层测试通过（183个含子测试通过事件），2项数据库入口显式跳过；37项软件DOM、vet/JS语法及两轴审查通过。
-审查后已用无头Chrome 155做五档视口(含手机/320px模拟)的视觉及Excel下载验收，115项通过，修复6处界面问题(超大数撑破页面、窄屏溢出、间距、favicon等)，仅改index.html与styles.css；真机/触控、其他浏览器、无障碍与键盘、PG重跑、生产或崩溃恢复未验。图表只支持当前页柱状图；其他图型、多数据集/共享、文档模板设计器、PDF及运维仍待开发；真实接入最后。
+审查后已用无头Chrome 155做七档视口(含手机/320px模拟)的视觉及Excel下载验收，173项通过，修复6处界面问题(超大数撑破页面、窄屏溢出、总额折行、间距、favicon等)，仅改index.html与styles.css；真机/触控、其他浏览器、无障碍与键盘、PG重跑、生产或崩溃恢复未验。图表只支持当前页柱状图；其他图型、多数据集/共享、文档模板设计器、PDF及运维仍待开发；真实接入最后。
 当前证据evidence/s03c4(审查后变更见post_review.json、浏览器截图见browser_visual)；规格docs/S03C4_SCOPE.md；审查docs/CODE_REVIEW_S03C4.md；浏览器验收docs/BROWSER_ACCEPTANCE_S03C4.md。
 
 以下为此前阶段历史说明：

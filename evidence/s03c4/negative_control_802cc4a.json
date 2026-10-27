@@ -1,6 +1,7 @@
 {
   "base": "http://127.0.0.1:7811",
   "browser": "Chrome/155.0.8059.85",
+  "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
   "served_assets_sha256": {
     "index.html": "1f387451f9640caf2a792a7b3fd25aa05864743b3e589c2debbc1942ed2f4c7a",
     "styles.css": "053f33f3f4a90cd1c6b29d3fb9bfc2a9f187c96f3da0569193b6a519f1e52d41",
@@ -29,13 +30,23 @@
       640
     ],
     [
+      "mid",
+      900,
+      800
+    ],
+    [
+      "laptop",
+      1024,
+      768
+    ],
+    [
       "wide",
       1920,
       1080
     ]
   ],
-  "passed": 70,
-  "failed": 45,
+  "passed": 90,
+  "failed": 83,
   "skipped": [],
   "checks": [
     {
@@ -103,6 +114,55 @@
       ]
     },
     {
+      "name": "desktop: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "desktop: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
       "name": "desktop: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -111,23 +171,51 @@
       "ok": true
     },
     {
-      "name": "desktop: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "desktop: dashboard toolbar groups controls on separate rows",
+      "ok": false,
+      "detail": [
+        "board-metric~board-columns",
+        "board-metric~board-category",
+        "board-columns~board-category"
+      ]
+    },
+    {
+      "name": "desktop: dashboard buttons have visible boundaries",
       "ok": false,
       "detail": {
-        "sharedRows": [
-          "board-metric~board-columns",
-          "board-metric~board-category",
-          "board-columns~board-category"
-        ],
+        "count": 15,
         "borderless": [
           "board-add-metric",
           "board-add-table",
           "board-add-bar",
           "board-reset",
           "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
           "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
           "board-save",
           "board-open"
+        ]
+      }
+    },
+    {
+      "name": "desktop: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
         ]
       }
     },
@@ -305,6 +393,55 @@
       ]
     },
     {
+      "name": "tablet: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "tablet: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
       "name": "tablet: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -316,21 +453,49 @@
       ]
     },
     {
-      "name": "tablet: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "tablet: dashboard toolbar groups controls on separate rows",
+      "ok": false,
+      "detail": [
+        "board-metric~board-columns"
+      ]
+    },
+    {
+      "name": "tablet: dashboard buttons have visible boundaries",
       "ok": false,
       "detail": {
-        "sharedRows": [
-          "board-metric~board-columns"
-        ],
+        "count": 15,
         "borderless": [
           "board-add-metric",
           "board-add-table",
           "board-add-bar",
           "board-reset",
           "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
           "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
           "board-save",
           "board-open"
+        ]
+      }
+    },
+    {
+      "name": "tablet: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
         ]
       }
     },
@@ -541,6 +706,55 @@
       ]
     },
     {
+      "name": "mobile: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "mobile: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
       "name": "mobile: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -557,19 +771,46 @@
       ]
     },
     {
-      "name": "mobile: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "mobile: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard buttons have visible boundaries",
       "ok": false,
       "detail": {
-        "sharedRows": [],
+        "count": 15,
         "borderless": [
           "board-add-metric",
           "board-add-table",
           "board-add-bar",
           "board-reset",
           "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
           "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
           "board-save",
           "board-open"
+        ]
+      }
+    },
+    {
+      "name": "mobile: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
         ]
       }
     },
@@ -785,6 +1026,55 @@
       ]
     },
     {
+      "name": "narrow: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "narrow: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
       "name": "narrow: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -801,19 +1091,46 @@
       ]
     },
     {
-      "name": "narrow: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "narrow: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard buttons have visible boundaries",
       "ok": false,
       "detail": {
-        "sharedRows": [],
+        "count": 15,
         "borderless": [
           "board-add-metric",
           "board-add-table",
           "board-add-bar",
           "board-reset",
           "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
           "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
           "board-save",
           "board-open"
+        ]
+      }
+    },
+    {
+      "name": "narrow: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
         ]
       }
     },
@@ -870,6 +1187,464 @@
       "detail": {
         "scroll": 4155,
         "client": 320,
+        "over": true
+      }
+    },
+    {
+      "name": "mid: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard page has no horizontal overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4684,
+        "client": 885,
+        "over": true
+      }
+    },
+    {
+      "name": "mid: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "mid: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 556
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 544
+        }
+      ]
+    },
+    {
+      "name": "mid: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "mid: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
+      "name": "mid: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard toolbar groups controls on separate rows",
+      "ok": false,
+      "detail": [
+        "board-metric~board-columns"
+      ]
+    },
+    {
+      "name": "mid: dashboard buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 15,
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
+          "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "mid: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
+      "name": "mid: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 510
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 534
+        }
+      ]
+    },
+    {
+      "name": "mid: exact server total stays on one line",
+      "ok": false,
+      "detail": {
+        "lines": 2
+      }
+    },
+    {
+      "name": "mid: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mid: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4684,
+        "client": 885,
+        "over": true
+      }
+    },
+    {
+      "name": "laptop: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard page has no horizontal overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4756,
+        "client": 1009,
+        "over": true
+      }
+    },
+    {
+      "name": "laptop: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "laptop: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 660
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 648
+        }
+      ]
+    },
+    {
+      "name": "laptop: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "laptop: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
+      "name": "laptop: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard toolbar groups controls on separate rows",
+      "ok": false,
+      "detail": [
+        "board-metric~board-columns"
+      ]
+    },
+    {
+      "name": "laptop: dashboard buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 15,
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
+          "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "laptop: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
+      "name": "laptop: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 614
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 638
+        }
+      ]
+    },
+    {
+      "name": "laptop: exact server total stays on one line",
+      "ok": false,
+      "detail": {
+        "lines": 2
+      }
+    },
+    {
+      "name": "laptop: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "laptop: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4756,
+        "client": 1009,
         "over": true
       }
     },
@@ -943,6 +1718,55 @@
       ]
     },
     {
+      "name": "wide: report layout designer buttons have visible boundaries",
+      "ok": false,
+      "detail": {
+        "count": 11,
+        "borderless": [
+          "layout-server-save",
+          "layout-server-new",
+          "layout-server-list",
+          "layout-server-open",
+          "layout-release-status",
+          "layout-release-publish",
+          "layout-release-withdraw",
+          "layout-release-open",
+          "layout-reset",
+          "layout-save",
+          "layout-open"
+        ]
+      }
+    },
+    {
+      "name": "wide: report layout designer rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "tight": [
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "LABEL",
+            "left": 9
+          },
+          {
+            "row": "layout-server-save",
+            "left": 9
+          },
+          {
+            "row": "layout-release-status",
+            "left": 9
+          }
+        ]
+      }
+    },
+    {
       "name": "wide: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -951,23 +1775,51 @@
       "ok": true
     },
     {
-      "name": "wide: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "wide: dashboard toolbar groups controls on separate rows",
+      "ok": false,
+      "detail": [
+        "board-metric~board-columns",
+        "board-metric~board-category",
+        "board-columns~board-category"
+      ]
+    },
+    {
+      "name": "wide: dashboard buttons have visible boundaries",
       "ok": false,
       "detail": {
-        "sharedRows": [
-          "board-metric~board-columns",
-          "board-metric~board-category",
-          "board-columns~board-category"
-        ],
+        "count": 15,
         "borderless": [
           "board-add-metric",
           "board-add-table",
           "board-add-bar",
           "board-reset",
           "board-server-save",
+          "board-server-new",
+          "board-server-list",
+          "board-server-open",
+          "board-release-read",
           "board-release-publish",
+          "board-release-withdraw",
+          "board-published-open",
           "board-save",
           "board-open"
+        ]
+      }
+    },
+    {
+      "name": "wide: dashboard server rows share the 12px gutter",
+      "ok": false,
+      "detail": {
+        "rows": 2,
+        "tight": [
+          {
+            "row": "board-server-save",
+            "left": 9
+          },
+          {
+            "row": "board-release-read",
+            "left": 9
+          }
         ]
       }
     },

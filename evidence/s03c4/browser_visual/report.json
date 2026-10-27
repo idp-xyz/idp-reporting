@@ -1,9 +1,10 @@
 {
   "base": "http://127.0.0.1:7810",
   "browser": "Chrome/155.0.8059.85",
+  "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
   "served_assets_sha256": {
     "index.html": "18754cd8a00491fec64dfa17719f82de9282e562c7511219c4c786574d60b91a",
-    "styles.css": "359b93ff97ad972462806bb05be0338b9a22812a8c30900fe33866de40995424",
+    "styles.css": "c728d2da732dd1e626d1baa867443c0db6c3b4a577076606fec2b3ea1c12b93f",
     "app.js": "ea732ae7c3e9bb8428c7a1fc46b873cf7c33ac9e8bcfac093a60f81bd46d8035",
     "dashboard.js": "c0f21740b862a159d1f67024baa14aa7d7b57b1b7cb07dcaa45bb9041f17b0ff"
   },
@@ -29,12 +30,22 @@
       640
     ],
     [
+      "mid",
+      900,
+      800
+    ],
+    [
+      "laptop",
+      1024,
+      768
+    ],
+    [
       "wide",
       1920,
       1080
     ]
   ],
-  "passed": 115,
+  "passed": 173,
   "failed": 0,
   "skipped": [],
   "checks": [
@@ -71,6 +82,14 @@
       "ok": true
     },
     {
+      "name": "desktop: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "desktop: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
       "name": "desktop: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -79,7 +98,15 @@
       "ok": true
     },
     {
-      "name": "desktop: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "desktop: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard server rows share the 12px gutter",
       "ok": true
     },
     {
@@ -179,6 +206,14 @@
       "ok": true
     },
     {
+      "name": "tablet: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "tablet: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
       "name": "tablet: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -187,7 +222,15 @@
       "ok": true
     },
     {
-      "name": "tablet: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "tablet: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "tablet: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "tablet: dashboard server rows share the 12px gutter",
       "ok": true
     },
     {
@@ -287,6 +330,14 @@
       "ok": true
     },
     {
+      "name": "mobile: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "mobile: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
       "name": "mobile: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -295,7 +346,15 @@
       "ok": true
     },
     {
-      "name": "mobile: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "mobile: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard server rows share the 12px gutter",
       "ok": true
     },
     {
@@ -395,6 +454,14 @@
       "ok": true
     },
     {
+      "name": "narrow: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "narrow: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
       "name": "narrow: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -403,7 +470,15 @@
       "ok": true
     },
     {
-      "name": "narrow: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "narrow: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard server rows share the 12px gutter",
       "ok": true
     },
     {
@@ -420,6 +495,158 @@
     },
     {
       "name": "narrow: extreme-500-digits has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "mid: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "mid: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "mid: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "mid: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
+      "name": "mid: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard server rows share the 12px gutter",
+      "ok": true
+    },
+    {
+      "name": "mid: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "mid: exact server total stays on one line",
+      "ok": true
+    },
+    {
+      "name": "mid: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "mid: extreme-500-digits has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "laptop: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "laptop: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "laptop: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "laptop: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
+      "name": "laptop: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard server rows share the 12px gutter",
+      "ok": true
+    },
+    {
+      "name": "laptop: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "laptop: exact server total stays on one line",
+      "ok": true
+    },
+    {
+      "name": "laptop: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "laptop: extreme-500-digits has no horizontal page overflow",
       "ok": true
     },
     {
@@ -455,6 +682,14 @@
       "ok": true
     },
     {
+      "name": "wide: report layout designer buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "wide: report layout designer rows share the 12px gutter",
+      "ok": true
+    },
+    {
       "name": "wide: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -463,7 +698,15 @@
       "ok": true
     },
     {
-      "name": "wide: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "name": "wide: dashboard toolbar groups controls on separate rows",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard buttons have visible boundaries",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard server rows share the 12px gutter",
       "ok": true
     },
     {

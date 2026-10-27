@@ -10,7 +10,7 @@
     },
     "console/assets/styles.css": {
       "reviewed_sha256": "053f33f3f4a90cd1c6b29d3fb9bfc2a9f187c96f3da0569193b6a519f1e52d41",
-      "current_sha256": "359b93ff97ad972462806bb05be0338b9a22812a8c30900fe33866de40995424"
+      "current_sha256": "c728d2da732dd1e626d1baa867443c0db6c3b4a577076606fec2b3ea1c12b93f"
     }
   },
   "unchanged_since_review": "all other 55 files hashed in provenance.json source_hashes, including every Go source, app.js, dashboard.js and dom.test.mjs",
@@ -29,44 +29,51 @@
   ],
   "browser": {
     "name": "Chrome/155.0.8059.85",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
     "driver": "CDP via scripts/browser_visual_s03c4.mjs",
     "viewports": [
       "desktop 1280x900",
       "tablet 768x1024",
       "mobile 390x844@2x (emulated)",
       "narrow 320x640@2x (emulated)",
+      "mid 900x800",
+      "laptop 1024x768",
       "wide 1920x1080"
     ]
   },
   "browser_checks": {
-    "passed": 115,
+    "passed": 173,
     "failed": 0,
     "skipped": [],
     "report": "evidence/s03c4/browser_visual/report.json",
     "served_assets_sha256": {
       "index.html": "18754cd8a00491fec64dfa17719f82de9282e562c7511219c4c786574d60b91a",
-      "styles.css": "359b93ff97ad972462806bb05be0338b9a22812a8c30900fe33866de40995424",
+      "styles.css": "c728d2da732dd1e626d1baa867443c0db6c3b4a577076606fec2b3ea1c12b93f",
       "app.js": "ea732ae7c3e9bb8428c7a1fc46b873cf7c33ac9e8bcfac093a60f81bd46d8035",
       "dashboard.js": "c0f21740b862a159d1f67024baa14aa7d7b57b1b7cb07dcaa45bb9041f17b0ff"
-    }
+    },
+    "served_assets_equal_commit_under_test": true
   },
   "download": {
-    "file": "report-3e178c68ac2de071524c65608073165b.xlsx",
+    "file": "report-11e263e2819e22cf856943736e37186b.xlsx",
     "bytes": 7915,
-    "sha256": "17e90c7ad39b3c602c620074876b644da0f52cea3f4b8e892a7c58bc58e3ab40",
+    "sha256": "b4bb62da9d2bf0ffb4932f8fc922ab1e6f858caf28f29999d3076994ee8bbd3c",
     "zip_entries": 12,
     "on_screen_cells_compared": 9,
+    "comparison": "set membership of on-screen cell strings among workbook strings",
     "saved_as": "evidence/s03c4/browser_visual/download.xlsx"
   },
   "negative_control": {
     "build": "802cc4a",
-    "passed": 70,
-    "failed": 45,
-    "total": 115,
+    "passed": 90,
+    "failed": 83,
+    "total": 173,
     "report": "evidence/s03c4/negative_control_802cc4a.json"
   },
   "regression": {
-    "logs": "evidence/s03c4/post_review/",
+    "commit_under_test": "37da3a05cf874f72f392728c4239afc4b589d41d",
+    "clean_tree": true,
+    "logs": "evidence/s03c4/post_review/ (each log ends with its exit code)",
     "go_vet": "exit 0",
     "go_test": "exit 0, 10 packages ok",
     "go_test_race": "exit 0, 10 packages ok",
@@ -78,8 +85,9 @@
   "not_verified": [
     "real mobile device, touch, on-screen keyboard",
     "Firefox/Safari/Edge",
+    "fallback rule for browsers without container query units",
     "accessibility audit, screen reader, keyboard navigation",
-    "whole workbook compared with whole dataset (only 9 on-screen cells compared)",
+    "whole workbook compared with whole dataset (only 9 on-screen cells compared as a set)",
     "PG rerun",
     "crash recovery",
     "production qualification"

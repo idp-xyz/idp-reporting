@@ -1,14 +1,8 @@
+commit: 37da3a05cf874f72f392728c4239afc4b589d41d
+tracked changes and untracked files before the run: 0 (0 means a clean tree)
+date: 2026-10-27T03:11:51Z (UTC)
+platform: Linux 6.18.54.1-microsoft-standard-WSL2
 go version go1.26.8 linux/amd64
 GOTOOLCHAIN=go1.26.8
-v24.22.0
-cfe8c4787cc8a918e25c6748152a6b78ee68122e
- M console/assets/index.html
- M console/assets/styles.css
- M evidence/s03c4/browser_visual/desktop-00-report-designer.png
- M evidence/s03c4/browser_visual/desktop-03-server-controls.png
- M evidence/s03c4/browser_visual/desktop-05-extreme-500-digits.png
- M evidence/s03c4/browser_visual/download.json
- M evidence/s03c4/browser_visual/mobile-00-report-designer.png
- M evidence/s03c4/browser_visual/mobile-03-server-controls.png
- M evidence/s03c4/browser_visual/mobile-04-board-real-data.png
- M evidence/s03c4/browser_visual/mobile-05-all-zero.png
+node v24.22.0
+DOM runner REPORTING_GO=go1.26.8 toolchain binary
