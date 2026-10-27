@@ -19,8 +19,8 @@ domain-neutral and standard-library-only; the earlier "core unchanged since S01-
 and is replaced by review of this change.
 
 export/pdf (not core) builds a private root holding the embedded template and a data.json, checks every
-printed character against the configured fonts with golang.org/x/image/font/sfnt and fails closed with
-UNSUPPORTED_CHARACTER, and runs the configured Typst binary: checksum verified at startup, empty environment,
+printed character against the configured fonts with golang.org/x/image/font/sfnt and fails closed with the
+existing UNSUPPORTED_COMBINATION (no new error code), and runs the configured Typst binary: checksum verified at startup, empty environment,
 new user and network namespace, empty package store, only the configured fonts, PDF/A-2b, creation time from
 the service clock, a timeout inside WorkTimeout. Output above MaxArtifactBytes fails with the existing budget
 error. Typst stderr is never logged with row values. The demo enables PDF only when both the Typst binary and
