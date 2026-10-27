@@ -44,9 +44,11 @@ A PDF is PDF/A-2b, rendered by a pinned Typst binary from a server-owned templat
 (export/pdf): the same rows in snapshot order, the column labels repeated on every page,
 metric numbers with thousands separators and every digit kept, the metric totals, and a
 footer with page X of Y, snapshot ID, dataset@version, as-of date, source watermark and
-data class. A character the configured fonts do not cover, or more than 32 columns, fails
-the job with UNSUPPORTED_COMBINATION; a document over the artifact limit or the render time
-limit fails with BUDGET_EXCEEDED. Such snapshots remain available as workbooks.
+data class. A character the configured fonts do not cover, a soft hyphen (Typst would print it
+as "-" at a line break), or more than 32 columns fails the job with UNSUPPORTED_COMBINATION;
+a document over the artifact limit, or one that exceeds the renderer's own time (15 s) or
+memory (2 GiB) limit, fails with BUDGET_EXCEEDED. Such snapshots remain available as
+workbooks. Other renderer failures, and the 20 s job timeout, are EXECUTION_FAILED.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile

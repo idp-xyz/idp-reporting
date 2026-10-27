@@ -1,0 +1,265 @@
+{
+ "file": "edges.pdf",
+ "landscape": true,
+ "columns": [
+  [
+   34.02,
+   341.5
+  ],
+  [
+   341.5,
+   648.98
+  ],
+  [
+   648.98,
+   807.86
+  ]
+ ],
+ "margin": 34.02,
+ "inset": 4,
+ "min_pages": 1,
+ "title": "finance.ledger",
+ "labels": [
+  {
+   "label": "维度0",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "维度1",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "金额0",
+   "currency": "CNY",
+   "unit": ""
+  }
+ ],
+ "metric": [
+  false,
+  false,
+  true
+ ],
+ "dimensions": 2,
+ "rows": [
+  [
+   "长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。长文本说明，迫使各列收窄。",
+   "W（x）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WW（xx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWW（xxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWW（xxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWW（xxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWW（xxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWW（xxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWW（xxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWW（xxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWW（xxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWW（xxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWW（xxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWW（xxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWW（xxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWW（xxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ],
+  [
+   "",
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW（xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）",
+   "-999999999999999999999999.99"
+  ]
+ ],
+ "totals": [
+  "-999999999999999999999999.99"
+ ],
+ "meta": [
+  "finance.ledger@2026.10",
+  "截至 2026-10-27",
+  "Asia/Shanghai",
+  "c-east、c-west",
+  "40 行",
+  "生成于 2026-10-27 08:30:00 UTC"
+ ],
+ "footer": [
+  "合同模拟器 / 合成数据（非真实业务数据）",
+  "快照 0123456789abcdef0123456789abcdef",
+  "finance.ledger@2026.10",
+  "截至 2026-10-27",
+  "来源水位 wm-42"
+ ]
+}
