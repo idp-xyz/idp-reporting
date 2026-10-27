@@ -51,7 +51,8 @@ var labels = map[string]string{
 
 var dataClasses = map[string]string{"contract-simulator": "合同模拟器 / 合成数据（非真实业务数据）"}
 
-// document is data.json. Every printed string in it went through measurer.segment.
+// document is data.json. Every printed string in it was checked against the fonts: the values
+// by measurer.segment, the labels by measurer.width.
 type document struct {
 	Title     string            `json:"title"` // PDF metadata
 	Fonts     []string          `json:"fonts"`
@@ -208,7 +209,11 @@ func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
 	}
 	content := func(j int) float64 { return widths[j] - 2*insetX }
 	for j := range cols {
-		d.Align = append(d.Align, map[bool]string{true: "right", false: "left"}[numeric(j)])
+		align := "left"
+		if numeric(j) {
+			align = "right"
+		}
+		d.Align = append(d.Align, align)
 		h, err := m.segment(header[j], bodySize, true, content(j))
 		if err != nil {
 			return nil, err
@@ -335,36 +340,45 @@ func groupDigits(v string) string {
 	return sign + b.String()
 }
 
-// breaksAround reports whether a line may break before and after ch without a space: ideographs,
-// kana, hangul, CJK punctuation and full-width forms. Other characters form runs that only
-// spaces break; a run wider than its box is marked so Typst may break it anywhere.
-func breaksAround(ch rune) bool {
-	return unicode.In(ch, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) ||
-		(ch >= 0x3000 && ch <= 0x303F) || (ch >= 0xFF00 && ch <= 0xFFEF)
+// Where a line may break. Typst follows the Unicode line breaking rules; this model knows only
+// places where those rules always allow a break: between two ideographs that may start a line,
+// and after spaces before a letter or digit that may start a line, unless the spaces follow
+// opening punctuation. Typst may break at more places, never fewer, so text between two of
+// these places (a run) is the only text that could overflow its box, and segment cuts a run
+// that is wider than its box. Punctuation thus joins the run it touches: a line may not start
+// with a closing mark or end with an opening one.
+
+// ideograph reports a Han character that a line may start with (not 々 or 〻).
+func ideograph(ch rune) bool {
+	return unicode.Is(unicode.Han, ch) && ch != 0x3005 && ch != 0x303B
 }
 
-// runs splits one line into spaces, single breakable characters and unbreakable runs.
-func runs(line string, each func(text string, run bool) error) error {
-	start := -1
+// startsWord reports a letter or digit that a line may start with: not a small kana, a
+// prolonged sound mark or an iteration mark.
+func startsWord(ch rune) bool {
+	return (unicode.IsLetter(ch) || unicode.IsDigit(ch)) && !strings.ContainsRune(noStart, ch) && (ch < 0x31F0 || ch > 0x31FF)
+}
+
+const noStart = "々〻ゝゞヽヾーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
+
+// runs splits one line at the places where a line may certainly break.
+func runs(line string, each func(run string) error) error {
+	start := 0
+	var prev, solid rune // the previous character and the previous one that is not a space
 	for i, ch := range line {
-		if ch == ' ' || breaksAround(ch) {
-			if start >= 0 {
-				if err := each(line[start:i], true); err != nil {
-					return err
-				}
-				start = -1
-			}
-			if err := each(string(ch), false); err != nil {
+		if i > 0 && ((ideograph(prev) && ideograph(ch)) || (prev == ' ' && solid != 0 && startsWord(ch) && !unicode.In(solid, unicode.Ps, unicode.Pi))) {
+			if err := each(line[start:i]); err != nil {
 				return err
 			}
-			continue
-		}
-		if start < 0 {
 			start = i
 		}
+		prev = ch
+		if ch != ' ' {
+			solid = ch
+		}
 	}
-	if start >= 0 {
-		return each(line[start:], true)
+	if start < len(line) {
+		return each(line[start:])
 	}
 	return nil
 }
@@ -377,7 +391,7 @@ func (m *measurer) extent(s string, size float64, bold bool) (line, token float6
 			return 0, 0, err
 		}
 		line = math.Max(line, w)
-		err = runs(l, func(text string, _ bool) error {
+		err = runs(l, func(text string) error {
 			t, err := m.width(text, size, bold)
 			token = math.Max(token, t)
 			return err
@@ -399,12 +413,12 @@ func (m *measurer) segment(s string, size float64, bold bool, width float64) (an
 		if i > 0 {
 			plain.WriteByte('\n')
 		}
-		err := runs(l, func(text string, run bool) error {
+		err := runs(l, func(text string) error {
 			w, err := m.width(text, size, bold)
 			if err != nil {
 				return err
 			}
-			if run && w*slack > width {
+			if w*slack > width {
 				if plain.Len() > 0 {
 					parts = append(parts, plain.String())
 					plain.Reset()
@@ -438,17 +452,19 @@ func (m *measurer) segment(s string, size float64, bold bool, width float64) (an
 func (m *measurer) cut(text string, size float64, bold bool, width float64) ([]string, error) {
 	var out []string
 	start, w := 0, 0.0
+	var prev rune
 	for i, ch := range text {
 		e, err := m.em(ch, bold)
 		if err != nil {
 			return nil, err
 		}
-		adv := e * size * slack
+		adv := (e + gap(prev, ch)) * size * slack
 		if i > start && w+adv > width && !joins(ch) {
 			out = append(out, text[start:i])
-			start, w = i, 0
+			start, w, adv = i, 0, e*size*slack
 		}
 		w += adv
+		prev = ch
 	}
 	return append(out, text[start:]), nil
 }

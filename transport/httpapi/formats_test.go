@@ -108,6 +108,21 @@ func TestHTTPServesEachExportFormatWithItsMediaType(t *testing.T) {
 	}
 }
 
+func TestHTTPRefusesToServeAnArtifactOfAnUnknownFormat(t *testing.T) {
+	// The service accepts any well-formed format name; HTTP serves only the ones it knows.
+	s, h, snapshot := formatSetup(t, map[string]r.WorkbookWriter{"csv": fakePDF{}})
+	w := exportRequest(h, "csv", map[string]string{"snapshot_id": snapshot, "format": "csv"})
+	var j r.JobView
+	if w.Code != 202 || json.Unmarshal(w.Body.Bytes(), &j) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	j = finish(t, s, h, j.ID)
+	w = request(h, "GET", "/api/reporting/v1/artifacts/"+j.ArtifactID+"/content", nil, true)
+	if w.Code != 409 || w.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("an artifact of format csv: %d %v; want 409 without a file", w.Code, w.Header())
+	}
+}
+
 func TestHTTPRefusesFormatsTheServiceDoesNotOffer(t *testing.T) {
 	_, h, snapshot := formatSetup(t, nil)
 	w := request(h, "GET", "/api/reporting/v1/capabilities", nil, true)

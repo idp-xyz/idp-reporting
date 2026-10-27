@@ -14,14 +14,14 @@ import (
 	r "idp.local/reporting/reporting"
 )
 
-// fakeMetrics covers every character except the blocked ones: ideographs are 1 em, others
-// half an em, bold Latin 0.6 em.
+// fakeMetrics covers every character except the blocked ones: ideographs, kana and full-width
+// forms are 1 em, others half an em, bold Latin 0.6 em.
 func fakeMetrics(blocked ...rune) *measurer {
 	return &measurer{families: []string{"Fake Sans"}, ems: map[glyphKey]float64{}, advance: func(ch rune, bold bool) (float64, bool, error) {
 		switch {
 		case slices.Contains(blocked, ch):
 			return 0, false, nil
-		case breaksAround(ch):
+		case ideograph(ch) || (ch >= 0x3000 && ch <= 0x30FF) || (ch >= 0xFF00 && ch <= 0xFFEF):
 			return 1, true, nil
 		case bold:
 			return 0.6, true, nil
@@ -248,13 +248,13 @@ func TestSegmentCutsOnlyRunsWiderThanTheirBox(t *testing.T) {
 	if got, err := m.segment("short words 中文。", bodySize, false, 100); err != nil || got != "short words 中文。" {
 		t.Errorf("text that fits: %v %v", got, err)
 	}
-	run := strings.Repeat("A", 60)
-	got, err := m.segment("前文 "+run+" 后文\n下一行", bodySize, false, 50)
+	run := strings.Repeat("A", 60) + " " // the space before an ideograph ends the run
+	got, err := m.segment("前文 "+run+"后文\n下一行", bodySize, false, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
 	parts, ok := got.([]any)
-	if !ok || len(parts) != 3 || parts[0] != "前文 " || parts[2] != " 后文\n下一行" {
+	if !ok || len(parts) != 3 || parts[0] != "前文 " || parts[2] != "后文\n下一行" {
 		t.Fatalf("segment = %#v", got)
 	}
 	cut := parts[1].(pieces).Pieces
@@ -273,6 +273,86 @@ func TestSegmentCutsOnlyRunsWiderThanTheirBox(t *testing.T) {
 		if strings.HasPrefix(p, "́") {
 			t.Fatalf("a piece starts with a combining mark: %q", p)
 		}
+	}
+}
+
+func TestRunsBreakOnlyWhereALineMayBreak(t *testing.T) {
+	for in, want := range map[string][]string{
+		"中文。": {"中", "文。"},
+		"应收账款，含税（13%）及运费": {"应", "收", "账", "款，含", "税（13%）及", "运", "费"},
+		"a b  c": {"a ", "b  ", "c"},
+		"（ a":    {"（ a"},       // not after opening punctuation
+		"a ）b":   {"a ）b"},      // not before closing punctuation
+		"紧急！！！":  {"紧", "急！！！"}, // a line may not start with "！"
+		"x 々 ー":  {"x 々 ー"},
+		"  a":    {"  a"},
+		"“ a” b": {"“ a” ", "b"},
+	} {
+		var got []string
+		if err := runs(in, func(run string) error { got = append(got, run); return nil }); err != nil || !slices.Equal(got, want) {
+			t.Errorf("runs(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSegmentCutsRunsOfPunctuation(t *testing.T) {
+	m := fakeMetrics()
+	for _, in := range []string{"紧急" + strings.Repeat("！", 60), strings.Repeat("。", 40), strings.Repeat("（", 30) + "a"} {
+		got, err := m.segment(in, bodySize, false, 40)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if flatten(got) != in {
+			t.Fatalf("segment(%q) printed %q", in, flatten(got))
+		}
+		parts, ok := got.([]any)
+		if !ok {
+			t.Fatalf("a %d-character run of punctuation was not cut: %q", len([]rune(in)), got)
+		}
+		for _, p := range parts {
+			text := ""
+			if s, ok := p.(string); ok {
+				text = s
+			} else {
+				for _, piece := range p.(pieces).Pieces {
+					if w, _ := m.width(piece, bodySize, false); w*slack > 40 {
+						t.Errorf("piece %q is %.1f pt wide", piece, w*slack)
+					}
+				}
+				continue
+			}
+			if w, _ := m.width(text, bodySize, false); w*slack > 40 && len([]rune(text)) > 1 {
+				t.Errorf("uncut text %q is %.1f pt wide", text, w*slack)
+			}
+		}
+	}
+}
+
+func TestWidthCountsTheSpaceBetweenChineseAndLatin(t *testing.T) {
+	m := fakeMetrics()
+	plain, _ := m.width("维度", bodySize, false)
+	mixed, _ := m.width("维度5x", bodySize, false)
+	if want := plain + (0.25+0.5+0.5)*bodySize; mixed != want {
+		t.Fatalf("width of 维度5x = %v, want %v", mixed, want)
+	}
+}
+
+func TestSoftHyphensAreRefused(t *testing.T) {
+	// Typst prints a soft hyphen as "-" where it breaks the line, which the data does not hold.
+	if _, err := build(table(1, 1, []string{"bbbb\u00adcccc", "1.00"}), fakeMetrics(), created); !errors.Is(err, r.ErrUnsupported) {
+		t.Fatalf("a soft hyphen: %v; want unsupported", err)
+	}
+}
+
+func TestTypstFontListingIsParsed(t *testing.T) {
+	out := "Noto Sans SC\n  ├ /f/NotoSansSC-Bold.otf\n  │   Style: Normal, Weight: 700, Stretch: 100%\n  └ /f/My Fonts/R.otf\n      Style: Normal, Weight: 400, Stretch: 100%\nGo Mono\n  └ /f/m.ttf\n      Style: Italic, Weight: 400, Stretch: 100%\n\n"
+	got, err := typstFaces(out)
+	want := []listedFace{{"Noto Sans SC", "/f/NotoSansSC-Bold.otf", "Normal", 700}, {"Noto Sans SC", "/f/My Fonts/R.otf", "Normal", 400}, {"Go Mono", "/f/m.ttf", "Italic", 400}}
+	if err != nil || !slices.Equal(got, want) {
+		t.Fatalf("typstFaces = %v, %v", got, err)
+	}
+	if _, err := typstFaces("Family\n  ? something else\n"); err == nil {
+		t.Error("an unexpected listing line is accepted")
 	}
 }
 
@@ -298,14 +378,14 @@ func TestSegmentLosesNoCharacter(t *testing.T) {
 
 func TestRenderErrorHidesTypstOutput(t *testing.T) {
 	e := &RenderError{Status: "exit status 1", stderr: []byte("error: row value secret-123")}
-	if strings.Contains(e.Error(), "secret") || e.Stderr() == "" {
+	if strings.Contains(e.Error(), "secret") || e.output() == "" {
 		t.Fatalf("Error() = %q", e.Error())
 	}
-	var tl tail
-	for range 10 {
+	var tl head
+	for range 100 {
 		tl.Write(make([]byte, 1000))
 	}
-	if len(tl.b) != maxStderr {
+	if len(tl.b) != maxOutput {
 		t.Fatalf("kept %d bytes of stderr", len(tl.b))
 	}
 }

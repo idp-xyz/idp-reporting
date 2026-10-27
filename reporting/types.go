@@ -206,6 +206,9 @@ type Repository interface {
 	Snapshot(context.Context, Identity, string) (Snapshot, error)
 	Artifact(context.Context, Identity, string) (Artifact, error)
 }
+
+// WorkbookWriter renders a snapshot in one export format. The name predates formats other than
+// the workbook.
 type WorkbookWriter interface {
 	Write(context.Context, Snapshot) ([]byte, error)
 }

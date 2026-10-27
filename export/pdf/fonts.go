@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/sfnt"
@@ -20,7 +21,7 @@ const (
 	maxFontBytes     = 160 << 20
 )
 
-// fontExtensions are the files Typst loads from a font directory.
+// fontExtensions are the files Typst loads from a font directory, in lower or upper case.
 var fontExtensions = map[string]bool{".ttf": true, ".otf": true, ".ttc": true, ".otc": true}
 
 type face struct {
@@ -44,6 +45,13 @@ func (f family) face(bold bool) *face {
 
 type fontSet struct {
 	families []family
+	listed   []listedFace // every face, as Typst must list it
+}
+
+// listedFace is one face as `typst fonts --variants` lists it.
+type listedFace struct {
+	family, path, style string
+	weight              int
 }
 
 // names returns the family names in the order Typst tries them.
@@ -75,6 +83,7 @@ func loadFonts(dir string, order []string) (*fontSet, map[string]fileID, error) 
 	}
 	byName := map[string]*family{}
 	var found []string
+	var listed []listedFace
 	files := 0
 	total := 0
 	for _, e := range entries {
@@ -82,8 +91,12 @@ func loadFonts(dir string, order []string) (*fontSet, map[string]fileID, error) 
 		if !e.Type().IsRegular() {
 			return nil, nil, fmt.Errorf("pdf: font directory may hold only regular files: %s", e.Name())
 		}
-		if !fontExtensions[strings.ToLower(filepath.Ext(e.Name()))] {
+		ext := filepath.Ext(e.Name())
+		if !fontExtensions[strings.ToLower(ext)] {
 			continue
+		}
+		if ext != strings.ToLower(ext) && ext != strings.ToUpper(ext) {
+			return nil, nil, fmt.Errorf("pdf: Typst does not load %s: use a lower or upper case extension", e.Name())
 		}
 		if files++; files > maxFontFiles {
 			return nil, nil, fmt.Errorf("pdf: more than %d font files", maxFontFiles)
@@ -131,8 +144,10 @@ func loadFonts(dir string, order []string) (*fontSet, map[string]fileID, error) 
 			switch {
 			case style == "Regular" && fam.regular == nil:
 				fam.regular = fc
+				listed = append(listed, listedFace{name, path, "Normal", 400})
 			case style == "Bold" && fam.bold == nil:
 				fam.bold = fc
+				listed = append(listed, listedFace{name, path, "Normal", 700})
 			default:
 				return nil, nil, fmt.Errorf("pdf: %s: face %q %q is not a single Regular or Bold face", e.Name(), name, style)
 			}
@@ -141,7 +156,7 @@ func loadFonts(dir string, order []string) (*fontSet, map[string]fileID, error) 
 	if len(order) == 0 {
 		order = slices.Sorted(slices.Values(found))
 	}
-	set := &fontSet{}
+	set := &fontSet{listed: listed}
 	for _, name := range order {
 		fam := byName[name]
 		if fam == nil || fam.regular == nil || slices.ContainsFunc(set.families, func(f family) bool { return f.name == name }) {
@@ -158,8 +173,10 @@ func loadFonts(dir string, order []string) (*fontSet, map[string]fileID, error) 
 	return set, ids, nil
 }
 
-// faceNames returns the family and style names Typst uses: the typographic names when the font
-// has them, else the legacy ones.
+// faceNames returns the family and style names from the name table: the typographic names when
+// the font has them, else the legacy ones. Typst may name a family differently (it drops words
+// such as "CN" or "Bold" from some family names), so New compares the result with Typst's own
+// listing of the font directory.
 func faceNames(f *sfnt.Font) (string, string, error) {
 	var b sfnt.Buffer
 	name, err := f.Name(&b, sfnt.NameIDTypographicFamily)
@@ -223,8 +240,12 @@ func newMeasurer(f *fontSet) *measurer {
 	return &measurer{families: f.names(), advance: f.lookup(), ems: map[glyphKey]float64{}}
 }
 
-// em returns the advance of ch in ems, or ErrUnsupported when no configured font maps ch.
+// em returns the advance of ch in ems, or ErrUnsupported when no configured font maps ch or ch
+// is a soft hyphen.
 func (m *measurer) em(ch rune, bold bool) (float64, error) {
+	if ch == 0x00AD {
+		return 0, fmt.Errorf("pdf: a soft hyphen would print as a hyphen where Typst breaks the line: %w", r.ErrUnsupported)
+	}
 	k := glyphKey{ch, bold}
 	if v, ok := m.ems[k]; ok {
 		return v, nil
@@ -243,12 +264,28 @@ func (m *measurer) em(ch rune, bold bool) (float64, error) {
 // width returns the width in points of s set on one line, without kerning.
 func (m *measurer) width(s string, size float64, bold bool) (float64, error) {
 	w := 0.0
+	var prev rune
 	for _, ch := range s {
 		e, err := m.em(ch, bold)
 		if err != nil {
 			return 0, err
 		}
-		w += e
+		w += e + gap(prev, ch)
+		prev = ch
 	}
 	return w * size, nil
 }
+
+// gap returns the space in ems that Typst puts between two characters: a quarter em between a
+// Chinese or Japanese character and a letter or digit of another script (cjk-latin-spacing).
+// It is counted for every such pair, which may be more than Typst adds, never less.
+func gap(a, b rune) float64 {
+	if (cjk(a) && alnum(b)) || (alnum(a) && cjk(b)) {
+		return 0.25
+	}
+	return 0
+}
+
+func cjk(ch rune) bool { return unicode.In(ch, unicode.Han, unicode.Hiragana, unicode.Katakana) }
+
+func alnum(ch rune) bool { return (unicode.IsLetter(ch) || unicode.IsDigit(ch)) && !cjk(ch) }

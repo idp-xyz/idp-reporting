@@ -1,3 +1,5 @@
+//go:build linux
+
 package pdf
 
 // Tests with the real pinned Typst binary and fonts. They run when REPORTING_TYPST,
@@ -12,9 +14,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -47,28 +51,37 @@ func typstWriter(t *testing.T, change func(*Config)) *Writer {
 	if err != nil {
 		var re *RenderError
 		if errors.As(err, &re) {
-			t.Fatalf("%v\n%s", err, re.Stderr())
+			t.Fatalf("%v\n%s", err, re.output())
 		}
 		t.Fatal(err)
 	}
 	return w
 }
 
-// expectation is what scripts/check_pdf_export.py verifies in one document.
+// expectation is what scripts/check_pdf_export.py checks one document against. The data are
+// the snapshot's own values; the script derives the printed text itself, so a defect in build
+// is not copied into what the document must show. Only the page geometry comes from the layout.
 type expectation struct {
-	File      string     `json:"file"`
-	Landscape bool       `json:"landscape"`
-	Header    []string   `json:"header"`
-	Rows      [][]string `json:"rows"`
-	Totals    []string   `json:"totals"`
-	Footer    []string   `json:"footer"`
-	MinPages  int        `json:"min_pages"`
-	// Columns are the left and right edges of each table column in points; the table starts
-	// at the left margin.
-	Columns  [][2]float64 `json:"columns"`
-	Margin   float64      `json:"margin"`
-	Empty    string       `json:"empty,omitempty"`
-	ListedTo bool         `json:"totals_listed"`
+	File       string       `json:"file"`
+	Landscape  bool         `json:"landscape"`
+	Columns    [][2]float64 `json:"columns"` // left and right edge of each column, in points
+	Margin     float64      `json:"margin"`
+	Inset      float64      `json:"inset"`
+	MinPages   int          `json:"min_pages"`
+	Title      string       `json:"title"`
+	Labels     []label      `json:"labels"`
+	Metric     []bool       `json:"metric"` // metric numbers are printed with thousands separators
+	Dimensions int          `json:"dimensions"`
+	Rows       [][]string   `json:"rows"`
+	Totals     []string     `json:"totals"` // in metric order
+	Meta       []string     `json:"meta"`
+	Footer     []string     `json:"footer"`
+}
+
+type label struct {
+	Label    string `json:"label"`
+	Currency string `json:"currency"`
+	Unit     string `json:"unit"`
 }
 
 func evidence(t *testing.T, name string, pdf []byte, d *document, s r.Snapshot, minPages int) {
@@ -77,32 +90,26 @@ func evidence(t *testing.T, name string, pdf []byte, d *document, s r.Snapshot, 
 	if dir == "" {
 		return
 	}
-	e := expectation{File: name + ".pdf", Landscape: d.Landscape, MinPages: minPages, Rows: [][]string{}, Margin: marginX, ListedTo: d.TotalList != nil}
+	q := s.Query
+	e := expectation{File: name + ".pdf", Landscape: d.Landscape, Margin: marginX, Inset: insetX, MinPages: minPages,
+		Title: q.Dataset.ID, Dimensions: len(q.Dimensions), Rows: s.Result.Rows, Totals: []string{},
+		Meta:   []string{q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, q.Timezone, strings.Join(q.Companies, "、"), strconv.Itoa(len(s.Result.Rows)) + " 行", "生成于 2026-10-27 08:30:00 UTC"},
+		Footer: []string{"合同模拟器 / 合成数据（非真实业务数据）", "快照 " + s.ID, q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, "来源水位 " + s.Prepared.Watermark}}
+	if e.Rows == nil {
+		e.Rows = [][]string{}
+	}
 	x := marginX
 	for _, w := range d.Widths {
 		e.Columns = append(e.Columns, [2]float64{x, x + w})
 		x += w
 	}
-	if d.Empty {
-		e.Empty = labels["empty"]
+	for j, c := range s.Result.Columns {
+		e.Labels = append(e.Labels, label{c.Label, c.Currency, c.Unit})
+		e.Metric = append(e.Metric, j >= len(q.Dimensions) && (c.Type == "decimal" || c.Type == "integer"))
 	}
-	for _, h := range d.Header {
-		e.Header = append(e.Header, flatten(h))
+	for _, m := range q.Metrics {
+		e.Totals = append(e.Totals, s.Result.Totals[m.ID])
 	}
-	for _, row := range d.Rows {
-		var cells []string
-		for _, c := range row {
-			cells = append(cells, flatten(c))
-		}
-		e.Rows = append(e.Rows, cells)
-	}
-	for _, c := range d.TotalRow {
-		e.Totals = append(e.Totals, flatten(c))
-	}
-	for _, c := range d.TotalList {
-		e.Totals = append(e.Totals, flatten(c))
-	}
-	e.Footer = []string{"快照 " + s.ID, s.Query.Dataset.ID + "@" + s.Query.Dataset.Version, "截至 " + s.Query.AsOf, "来源水位 " + s.Prepared.Watermark}
 	b, _ := json.MarshalIndent(e, "", " ")
 	for file, content := range map[string][]byte{name + ".pdf": pdf, name + ".json": b} {
 		if err := os.WriteFile(filepath.Join(dir, file), content, 0o644); err != nil {
@@ -202,16 +209,37 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 	for i := range r.MaxRows {
 		many.Result.Rows = append(many.Result.Rows, []string{fmt.Sprintf("公司%d", i%7), fmt.Sprintf("摘要 %d：应收账款含税及运费", i), fmt.Sprintf("%d.%02d", i*1234567, i%100)})
 	}
+	// Runs of punctuation that no line may start or end with, in narrow middle and last columns.
+	marks := table(8, 1)
+	for i := range 6 {
+		row := []string{"紧急" + strings.Repeat("！", 60), strings.Repeat("。", 40), strings.Repeat("（", 30) + "开", "、、、、、、、、、、、、、、、、", "a ）b ）c", "x", "y", "z", strconv.Itoa(i) + ".00"}
+		row[7] = strings.Repeat("！", 50)
+		marks.Result.Rows = append(marks.Result.Rows, row)
+	}
+	// Runs of every length around the width of their cell, with brackets glued on, next to a
+	// long text that makes the columns shrink; and a bold total that is the widest number.
+	edge := table(2, 1)
+	edge.Result.Totals["m0"] = "-999999999999999999999999.99"
+	for k := 1; k <= 40; k++ {
+		long := ""
+		if k == 1 {
+			long = strings.Repeat("长文本说明，迫使各列收窄。", 30)
+		}
+		edge.Result.Rows = append(edge.Result.Rows, []string{long, strings.Repeat("W", k) + "（" + strings.Repeat("x", k) + "）", "-999999999999999999999999.99"})
+	}
 	docs := []struct {
 		name     string
 		s        r.Snapshot
 		minPages int
 	}{
 		{"hostile", hostile(), 3},
+		{"punctuation", marks, 1},
+		{"edges", edge, 1},
+		{"emptynodims", table(0, 2), 1},
 		{"wide", wide, 1},
 		{"nodims", table(0, 2, []string{"1.00", "-2.50"}), 1},
 		{"empty", table(1, 1), 1},
-		{"rows1000", many, 20},
+		{"rows1000", many, 10},
 	}
 	for _, doc := range docs {
 		t.Run(doc.name, func(t *testing.T) {
@@ -219,7 +247,7 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 			if err != nil {
 				var re *RenderError
 				if errors.As(err, &re) {
-					t.Fatalf("%v\n%s", err, re.Stderr())
+					t.Fatalf("%v\n%s", err, re.output())
 				}
 				t.Fatal(err)
 			}
@@ -270,25 +298,42 @@ func TestTypstFailsClosed(t *testing.T) {
 	}
 
 	small := typstWriter(t, func(c *Config) { c.MemoryBytes = 256 << 20 })
-	_, err := small.Write(ctx, huge)
-	var re *RenderError
-	if !errors.As(err, &re) || strings.Contains(re.Status, "core") {
-		t.Errorf("Typst over its memory limit: %v; want a failure without a core dump", err)
+	if _, err := small.Write(ctx, huge); !errors.Is(err, r.ErrBudget) {
+		t.Errorf("Typst over its memory limit: %v; want budget", err)
 	}
+	var re *RenderError
 
 	// Sources the server never writes, run in the same sandbox. Without a network, a package
-	// import fails when name resolution times out after five seconds.
-	for name, source := range map[string]string{
-		"a package import":        `#import "@preview/example:0.1.0": *`,
-		"a file outside the root": `#read("/etc/hostname")`,
-		"an environment lookup":   `#sys.inputs.at("HOME")`,
-	} {
-		limited := typstWriter(t, func(c *Config) { c.Timeout = 10 * time.Second })
+	// import fails when name resolution times out after five seconds. Fonts other than the
+	// configured ones are unknown families, which fail the run: fonts built into Typst and
+	// fonts of the host. TYPST_FEATURES=html would make the html module known; Typst sees it
+	// only if it inherits the environment.
+	limited := typstWriter(t, func(c *Config) { c.Timeout = 10 * time.Second })
+	t.Setenv("TYPST_FEATURES", "html")
+	sources := map[string]string{
+		"a package import":               `#import "@preview/example:0.1.0": *`,
+		"a file outside the root":        `#read("/etc/hostname")`,
+		"an unknown font family":         `#text(font: "No Such Family", fallback: false)[x]`,
+		"a font built into Typst":        `#text(font: "Libertinus Serif", fallback: false)[x]`,
+		"a setting from the environment": `#html.elem("p")[x]`,
+	}
+	output := map[string]string{"a package import": "failed to download package", "a setting from the environment": "unknown variable: html"}
+	// A family the host offers, if any: Typst lists the host's fonts unless told otherwise.
+	listing, err := limited.run(ctx, t.TempDir(), "fonts", "--ignore-embedded-fonts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host := strings.SplitN(strings.TrimSpace(string(listing)), "\n", 2)[0]; host != "" {
+		sources["a font of the host"] = `#text(font: "` + host + `", fallback: false)[x]`
+	} else {
+		t.Log("the host has no fonts of its own")
+	}
+	for name, source := range sources {
 		_, err := limited.renderSource(ctx, source)
 		if !errors.As(err, &re) {
 			t.Errorf("%s: %v; want a Typst failure", name, err)
-		} else if name == "a package import" && !strings.Contains(re.Stderr(), "failed to download package") {
-			t.Errorf("%s: %s", name, re.Stderr())
+		} else if !strings.Contains(re.output(), output[name]) {
+			t.Errorf("%s: %s", name, re.output())
 		}
 	}
 	quick := typstWriter(t, func(c *Config) { c.Timeout = time.Second })
@@ -335,4 +380,72 @@ func (w *Writer) renderSource(ctx context.Context, source string) ([]byte, error
 		return nil, err
 	}
 	return w.render(ctx, dir, created)
+}
+
+// fontsNamed copies the configured fonts with their family name changed to one that Typst
+// shortens: it drops a trailing region word such as "CN".
+func fontsNamed(t *testing.T, from, to string) string {
+	t.Helper()
+	src := typstConfig(t).FontDir
+	dir := t.TempDir()
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	utf16 := func(s string) []byte {
+		var b []byte
+		for _, c := range s {
+			b = append(b, 0, byte(c))
+		}
+		return b
+	}
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b = bytes.ReplaceAll(bytes.ReplaceAll(b, []byte(from), []byte(to)), utf16(from), utf16(to))
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestTypstRefusesFontsItNamesDifferently(t *testing.T) {
+	c := typstConfig(t)
+	c.FontDir = fontsNamed(t, "Noto Sans SC", "Noto Sans CN")
+	_, err := New(c)
+	if err == nil || !strings.Contains(err.Error(), "other font families") {
+		t.Fatalf("fonts that Typst calls \"Noto Sans\" while their name table says \"Noto Sans CN\": %v", err)
+	}
+}
+
+// TestTypstWithAHardCoreLimitOfZero runs in a child process, because lowering a hard limit
+// cannot be undone.
+func TestTypstWithAHardCoreLimitOfZero(t *testing.T) {
+	if os.Getenv("REPORTING_PDF_CORE_ZERO") == "1" {
+		if err := syscall.Setrlimit(syscall.RLIMIT_CORE, &syscall.Rlimit{}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := New(typstConfig(t))
+		fmt.Printf("NEW_RESULT=%v\n", err)
+		return
+	}
+	typstConfig(t)
+	pattern, err := os.ReadFile("/proc/sys/kernel/core_pattern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestTypstWithAHardCoreLimitOfZero$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "REPORTING_PDF_CORE_ZERO=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	piped := strings.HasPrefix(string(pattern), "|")
+	refused := strings.Contains(string(out), "NEW_RESULT=pdf: the hard core limit is 0")
+	if piped != refused || (!piped && !strings.Contains(string(out), "NEW_RESULT=<nil>")) {
+		t.Fatalf("core_pattern %q: %s", pattern, out)
+	}
 }

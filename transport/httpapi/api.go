@@ -302,7 +302,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		media, extension := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
 		switch v.Format {
-		case "":
+		case "": // the workbook
 		case "pdf":
 			media, extension = "application/pdf", "pdf"
 		default:

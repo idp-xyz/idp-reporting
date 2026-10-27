@@ -1,3 +1,5 @@
+//go:build linux
+
 package pdf
 
 import (
@@ -35,6 +37,10 @@ func TestLoadFontsReadsRegularAndBoldFaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := []listedFace{{"Go", filepath.Join(dir, "Go-Bold.TTF"), "Normal", 700}, {"Go", filepath.Join(dir, "Go-Regular.ttf"), "Normal", 400}, {"Go Mono", filepath.Join(dir, "Mono.ttf"), "Normal", 400}}
+	if !slices.Equal(set.listed, want) {
+		t.Errorf("listed faces %v", set.listed)
+	}
 	if !slices.Equal(set.names(), []string{"Go", "Go Mono"}) || set.families[0].bold == nil || set.families[1].bold != nil {
 		t.Fatalf("families %v", set.names())
 	}
@@ -48,6 +54,10 @@ func TestLoadFontsReadsRegularAndBoldFaces(t *testing.T) {
 	regular, err := m.em('W', false)
 	if err != nil || regular <= 0 || regular > 1 {
 		t.Errorf("advance of W: %v %v", regular, err)
+	}
+	// The Go fonts have the same advances in both weights, so compare the faces.
+	if goFamily := set.families[1]; goFamily.name != "Go" || goFamily.face(true) != goFamily.bold || goFamily.face(false) != goFamily.regular || goFamily.bold == goFamily.regular {
+		t.Error("bold text is not measured with the Bold face")
 	}
 	if _, err := m.em('中', false); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("an ideograph the Go fonts lack: %v; want unsupported", err)
@@ -68,6 +78,7 @@ func TestLoadFontsRefusesAmbiguousOrUnsafeDirectories(t *testing.T) {
 		"a family listed twice":           only(regular, "Go", "Go"),
 		"no fonts":                        only(map[string][]byte{"README": []byte("x")}),
 		"not a font":                      only(map[string][]byte{"a.ttf": []byte("not a font")}),
+		"a mixed-case extension":          only(map[string][]byte{"a.ttf": goregular.TTF, "b.Ttf": gobold.TTF}),
 		"a subdirectory": func(t *testing.T) (string, []string) {
 			dir := fontDir(t, regular)
 			if err := os.Mkdir(filepath.Join(dir, "more"), 0o755); err != nil {
@@ -129,42 +140,5 @@ func TestNewChecksTheBinaryAndTheLimits(t *testing.T) {
 	}
 	if _, err := New(Config{Typst: bin, TypstSHA256: good, FontDir: fonts}); err == nil || errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a binary others may write: %v", err)
-	}
-}
-
-func TestUnchangedDetectsModifiedOrReplacedFiles(t *testing.T) {
-	dir := t.TempDir()
-	a, b := filepath.Join(dir, "a"), filepath.Join(dir, "b")
-	for _, p := range []string{a, b} {
-		if err := os.WriteFile(p, []byte("one"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	w := &Writer{ids: map[string]fileID{}}
-	for _, p := range []string{dir, a, b} {
-		id, err := identity(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		w.ids[p] = id
-	}
-	if err := w.unchanged(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(a, []byte("two!"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.unchanged(); !errors.Is(err, r.ErrIntegrity) {
-		t.Errorf("a modified file: %v; want integrity failure", err)
-	}
-	w.ids[a], _ = identity(a)
-	if err := os.WriteFile(b+".new", []byte("one"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(b+".new", b); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.unchanged(); !errors.Is(err, r.ErrIntegrity) {
-		t.Errorf("a replaced file: %v; want integrity failure", err)
 	}
 }

@@ -276,7 +276,7 @@ func (s *Service) Rows(ctx context.Context, p Principal, id string, limit int, c
 
 // Formats lists the configured export formats, the workbook first as "xlsx".
 func (s *Service) Formats() []string {
-	var out []string
+	out := []string{} // never nil: clients expect a list
 	for name := range s.writers {
 		if name != "" {
 			out = append(out, name)

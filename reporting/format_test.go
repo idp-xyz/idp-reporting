@@ -74,6 +74,12 @@ func TestExportFormatsAreRecordedAndServed(t *testing.T) {
 func TestExportFormatRequestsFailClosed(t *testing.T) {
 	s, p, snapshot, _ := formatService(t, nil)
 	ctx := context.Background()
+	if got := s.Formats(); !slices.Equal(got, []string{"xlsx"}) {
+		t.Fatalf("Formats() = %v", got)
+	}
+	if none, err := r.NewService(r.Config{Repository: memory.New(time.Now), Connections: []r.Connection{{Tenant: "t", Integration: "i", SourceTenant: "s", Adapter: contractsim.Financial()}}, CursorKey: []byte("01234567890123456789012345678901")}); err != nil || none.Formats() == nil || len(none.Formats()) != 0 {
+		t.Fatalf("Formats() without writers = %#v, %v; want an empty list", none.Formats(), err)
+	}
 	for _, format := range []string{"pdf", "doc", "PDF", "../x"} {
 		if _, e := s.SubmitExportFormat(ctx, p, snapshot, format, "k-"+format[:1]); !errors.Is(e, r.ErrUnsupported) {
 			t.Errorf("format %q: %v; want unsupported", format, e)
@@ -121,6 +127,14 @@ func TestExportFormatKeepsWorkbookEncodingAndContract(t *testing.T) {
 	job.Format = ""
 	if r.ValidateAdmission(job) == nil {
 		t.Error("a job whose format does not match its request hash is admitted")
+	}
+	snapshotJob := job
+	snapshotJob.Kind, snapshotJob.SnapshotID, snapshotJob.Format, snapshotJob.RequestHash = "snapshot", "", "pdf", r.Digest(r.Normalize(job.Query))
+	if r.ValidateAdmission(snapshotJob) == nil {
+		t.Error("a snapshot job with a format is admitted")
+	}
+	if snapshotJob.Format = ""; r.ValidateAdmission(snapshotJob) != nil {
+		t.Error("the snapshot job without a format is rejected; the test above proves nothing")
 	}
 	// A stored record with a malformed format is refused even when its hash is consistent.
 	for _, format := range []string{"PDF", "xlsx", "../x", "abcdefghijklmnopq"} {

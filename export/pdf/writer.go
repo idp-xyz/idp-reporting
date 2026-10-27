@@ -19,6 +19,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,18 +46,21 @@ type Config struct {
 // Writer is safe for concurrent use.
 type Writer struct {
 	cfg   Config
+	exe   *os.File // the Typst binary, opened and checked once; every run executes this file
+	exeID fileID
 	fonts *fontSet
-	ids   map[string]fileID
+	ids   map[string]fileID // the font directory and font files
 }
 
 const (
 	defaultTimeout = 15 * time.Second
 	defaultMemory  = 2 << 30
-	maxStderr      = 4 << 10
+	maxOutput      = 64 << 10 // kept of Typst's standard output and error
 )
 
-// New verifies the Typst binary against its checksum, loads the fonts and renders a probe
-// document, so a misconfigured host fails at startup rather than at the first export.
+// New verifies the Typst binary against its checksum, loads the fonts, checks that Typst sees
+// exactly the same faces, and renders a probe document, so that a misconfigured host fails at
+// startup rather than at the first export.
 func New(c Config) (*Writer, error) {
 	if c.Timeout == 0 {
 		c.Timeout = defaultTimeout
@@ -78,36 +83,124 @@ func New(c Config) (*Writer, error) {
 	if b, err := hex.DecodeString(c.TypstSHA256); err != nil || len(b) != sha256.Size || c.TypstSHA256 != strings.ToLower(c.TypstSHA256) {
 		return nil, errors.New("pdf: the Typst checksum must be 64 lowercase hex digits")
 	}
-	var err error
-	if c.Typst, err = filepath.EvalSymlinks(c.Typst); err != nil {
-		return nil, fmt.Errorf("pdf: Typst binary: %w", err)
+	if os.Geteuid() == 0 {
+		return nil, errors.New("pdf: Typst must not run as root")
 	}
+	var err error
 	if c.FontDir, err = filepath.EvalSymlinks(c.FontDir); err != nil {
 		return nil, fmt.Errorf("pdf: font directory: %w", err)
 	}
-	w := &Writer{cfg: c, ids: map[string]fileID{}}
-	before, err := identity(c.Typst)
-	if err != nil {
+	if c.WorkDir, err = filepath.EvalSymlinks(c.WorkDir); err != nil {
+		return nil, fmt.Errorf("pdf: work directory: %w", err)
+	}
+	if err := checkHost(c); err != nil {
 		return nil, err
 	}
-	sum, err := fileSHA256(c.Typst)
+	// Typst always runs from this descriptor, so a file put at the path later never runs;
+	// writing to or unlinking the opened file is detected before each render.
+	exe, err := os.Open(c.Typst)
 	if err != nil {
+		return nil, fmt.Errorf("pdf: Typst binary: %w", err)
+	}
+	w := &Writer{cfg: c, exe: exe}
+	ok := false
+	defer func() {
+		if !ok {
+			exe.Close()
+		}
+	}()
+	if w.exeID, err = openIdentity(exe); err != nil {
 		return nil, err
 	}
-	if sum != c.TypstSHA256 {
+	h := sha256.New()
+	if _, err := io.Copy(h, io.NewSectionReader(exe, 0, w.exeID.size)); err != nil {
+		return nil, err
+	}
+	if hex.EncodeToString(h.Sum(nil)) != c.TypstSHA256 {
 		return nil, errors.New("pdf: the Typst binary does not match the pinned checksum")
 	}
-	fonts, ids, err := loadFonts(c.FontDir, c.Families)
-	if err != nil {
+	// The identities of the binary and the fonts were taken before reading them; every render,
+	// starting with the probe below, first checks that none changed since.
+	if w.fonts, w.ids, err = loadFonts(c.FontDir, c.Families); err != nil {
 		return nil, err
 	}
-	w.fonts, w.ids = fonts, ids
-	w.ids[c.Typst] = before
-	// The identities were taken before reading; the probe fails if anything changed since.
+	if _, err := build(probe, newMeasurer(w.fonts), c.Now()); err != nil {
+		return nil, fmt.Errorf("pdf: probe document: %w", err)
+	}
+	if err := w.sameFaces(context.Background()); err != nil {
+		return nil, err
+	}
 	if _, err := w.Write(context.Background(), probe); err != nil {
 		return nil, fmt.Errorf("pdf: probe document: %w", err)
 	}
+	ok = true
 	return w, nil
+}
+
+// sameFaces lists the fonts as Typst sees them and requires exactly the faces loadFonts found:
+// the same family names, files, styles and weights. A family name Typst does not know would
+// otherwise only be a warning, and the text would be laid out without any font.
+func (w *Writer) sameFaces(ctx context.Context) error {
+	dir, err := os.MkdirTemp(w.cfg.WorkDir, "reporting-pdf-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	out, err := w.run(ctx, dir, "fonts", "--font-path", w.cfg.FontDir, "--ignore-system-fonts", "--ignore-embedded-fonts", "--variants")
+	if err != nil {
+		return fmt.Errorf("pdf: list fonts: %w", err)
+	}
+	got, err := typstFaces(string(out))
+	if err != nil {
+		return err
+	}
+	key := func(f listedFace) string { return fmt.Sprintf("%q %q %q %d", f.family, f.path, f.style, f.weight) }
+	want := make([]string, len(w.fonts.listed))
+	for i, f := range w.fonts.listed {
+		want[i] = key(f)
+	}
+	have := make([]string, len(got))
+	for i, f := range got {
+		have[i] = key(f)
+	}
+	slices.Sort(want)
+	slices.Sort(have)
+	if !slices.Equal(want, have) {
+		return fmt.Errorf("pdf: Typst sees other font families or faces than the font check: %v, not %v", have, want)
+	}
+	return nil
+}
+
+// typstFaces parses `typst fonts --variants`: each family name on its own line, then for each
+// face a line with its path and a line "Style: Normal, Weight: 400, Stretch: 100%".
+func typstFaces(out string) ([]listedFace, error) {
+	var faces []listedFace
+	family := ""
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		item := strings.TrimLeft(line, " │")
+		switch {
+		case line == "":
+		case !strings.HasPrefix(line, " "):
+			family = line
+		case strings.HasPrefix(item, "├ ") || strings.HasPrefix(item, "└ "):
+			_, path, _ := strings.Cut(item, " ")
+			faces = append(faces, listedFace{family: family, path: path})
+		case strings.HasPrefix(item, "Style: ") && len(faces) > 0:
+			f := &faces[len(faces)-1]
+			for _, part := range strings.Split(item, ", ") {
+				name, value, _ := strings.Cut(part, ": ")
+				switch name {
+				case "Style":
+					f.style = value
+				case "Weight":
+					f.weight, _ = strconv.Atoi(value)
+				}
+			}
+		default:
+			return nil, errors.New("pdf: unexpected font listing from Typst")
+		}
+	}
+	return faces, nil
 }
 
 // probe covers the template's paths: a dimension, an exact decimal metric with its total, and
@@ -168,9 +261,12 @@ func (w *Writer) Write(ctx context.Context, s r.Snapshot) ([]byte, error) {
 	return out, nil
 }
 
-// unchanged refuses to render when the binary, the font directory or a font file was replaced
-// or modified after New checked them.
+// unchanged refuses to render when the binary was modified, or the font directory or a font file
+// was replaced or modified, after New checked them.
 func (w *Writer) unchanged() error {
+	if got, err := openIdentity(w.exe); err != nil || got != w.exeID {
+		return fmt.Errorf("pdf: the Typst binary changed after startup: %w", r.ErrIntegrity)
+	}
 	for p, want := range w.ids {
 		got, err := identity(p)
 		if err != nil || got != want {
@@ -178,19 +274,6 @@ func (w *Writer) unchanged() error {
 		}
 	}
 	return nil
-}
-
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // readBounded reads a rendered file, refusing one above the artifact limit.
@@ -210,21 +293,21 @@ func readBounded(path string) ([]byte, error) {
 	return b, nil
 }
 
-// RenderError is a failed Typst run. Its message holds no values; Stderr, which may quote the
-// document, is for tests and must not be logged.
+// RenderError is a failed Typst run. Its message holds no values. Typst's output, which may
+// quote the document, is kept for tests only.
 type RenderError struct {
 	Status string
 	stderr []byte
 }
 
 func (e *RenderError) Error() string  { return "pdf: Typst failed: " + e.Status }
-func (e *RenderError) Stderr() string { return string(e.stderr) }
+func (e *RenderError) output() string { return string(e.stderr) }
 
-// tail keeps the first bytes written to it, up to its capacity.
-type tail struct{ b []byte }
+// head keeps the first maxOutput bytes written to it.
+type head struct{ b []byte }
 
-func (t *tail) Write(p []byte) (int, error) {
-	if room := maxStderr - len(t.b); room > 0 {
+func (t *head) Write(p []byte) (int, error) {
+	if room := maxOutput - len(t.b); room > 0 {
 		t.b = append(t.b, p[:min(room, len(p))]...)
 	}
 	return len(p), nil

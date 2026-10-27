@@ -6,14 +6,16 @@ Usage: python3 -I scripts/fetch_pdf_tools.py DIR [--github-env]
 DIR/typst is the binary and DIR/fonts the font directory (Regular and Bold only, as export/pdf
 requires). The script prints the variables that the export/pdf tests, the console DOM tests and
 the demo's -pdf-* flags use; with --github-env it also appends them to $GITHUB_ENV. Archives
-are kept in DIR/downloads and reused when their checksum still matches. Downloads honour the
-usual HTTPS_PROXY variables. Upgrading Typst or the fonts means changing these pins and passing
+are kept in DIR/downloads and reused when their checksum still matches. A file already in
+place with the right checksum is left alone: a running server refuses to render when its
+binary or fonts change. Downloads honour the usual HTTPS_PROXY variables. Upgrading Typst or the fonts means changing these pins and passing
 the golden-document and veraPDF checks again (docs/ADR_0001_PDF_ENGINE.md, condition 6).
 """
 import argparse
 import hashlib
 import io
 import os
+import shlex
 import sys
 import tarfile
 import urllib.request
@@ -57,6 +59,10 @@ def archive(downloads, url, want):
 def place(path, data, want, mode):
     if sha256(data) != want:
         sys.exit(f"{os.path.basename(path)} does not match its pinned checksum")
+    if os.path.isfile(path) and not os.path.islink(path):
+        with open(path, "rb") as f:
+            if sha256(f.read()) == want:
+                return
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(data)
@@ -73,7 +79,6 @@ def main():
     downloads, fonts = os.path.join(root, "downloads"), os.path.join(root, "fonts")
     for d in (root, downloads, fonts):
         os.makedirs(d, mode=0o755, exist_ok=True)
-        os.chmod(d, 0o755)
 
     # Members are read by exact name and written to fixed paths; no archive path is trusted.
     with tarfile.open(fileobj=io.BytesIO(archive(downloads, TYPST_URL, TYPST_ARCHIVE_SHA256)), mode="r:xz") as t:
@@ -90,7 +95,7 @@ def main():
 
     env = {"REPORTING_TYPST": os.path.join(root, "typst"), "REPORTING_TYPST_SHA256": TYPST_SHA256, "REPORTING_PDF_FONTS": fonts}
     for k, v in env.items():
-        print(f"export {k}={v}")
+        print(f"export {k}={shlex.quote(v)}")
     if args.github_env:
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
             for k, v in env.items():
