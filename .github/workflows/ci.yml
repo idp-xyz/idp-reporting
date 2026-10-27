@@ -14,10 +14,13 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pull request runs are cancelled; every commit on main keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # The toolchain pinned in go.mod; local refuses to download a different one silently.
+  # Must equal the toolchain line in go.mod; the go job fails when they differ.
+  GO_VERSION: 1.26.5
+  # Use exactly that toolchain; never download another one silently.
   GOTOOLCHAIN: local
 
 jobs:
@@ -31,17 +34,33 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.26.5
+          go-version: ${{ env.GO_VERSION }}
+      - name: Toolchain matches go.mod
+        run: |
+          if ! grep -qx "toolchain $(go env GOVERSION)" go.mod; then
+            echo "go.mod toolchain line does not match $(go env GOVERSION)"; exit 1
+          fi
       - name: Verify modules and formatting
         run: |
+          go mod download
           go mod verify
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+      - name: Core stays standard-library-only (CODING_STANDARDS.md)
+        run: |
+          external="$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./reporting/... | grep -v '^idp.local/reporting/reporting' || true)"
+          if [ -n "$external" ]; then echo "reporting/ depends on: $external"; exit 1; fi
       - run: go vet ./...
       - run: go build ./...
-      # The two PostgreSQL entry tests skip without REPORTING_S01_TEST_DSN and REPORTING_S01_SOURCE_DSN.
-      - run: go test -count=1 ./...
-      - run: go test -race -count=1 ./...
+      # The two PostgreSQL entry tests are the only expected skips: this job has no database.
+      - name: Test
+        env:
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract
+        run: python3 -I scripts/go_test_strict.py -count=1
+      - name: Race
+        env:
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract
+        run: python3 -I scripts/go_test_strict.py -race -count=1
 
   console:
     name: Console syntax and DOM tests
@@ -51,10 +70,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The DOM suite builds and starts the real Go server on loopback.
+      # The DOM suite builds and starts the real Go server on loopback. The Go cache is left to the
+      # go job, which otherwise loses the shared cache key to this shorter job.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.26.5
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.0

@@ -1,0 +1,16 @@
+# Weekly update proposals for the pinned action SHAs, Go modules and the console's npm dev
+# dependency. Every proposal arrives as a pull request and must pass ci before merging.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
