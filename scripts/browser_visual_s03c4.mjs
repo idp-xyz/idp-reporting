@@ -103,13 +103,14 @@ const toolbarFacts = () => evalJs(`(()=>{
 })()`);
 // Text and controls inside a form panel must not touch the card edge (text counts its own padding).
 const insetFacts = ids => evalJs(`(()=>${JSON.stringify(ids)}.map(id=>{
-  const e=document.getElementById(id);if(!e||!e.getClientRects().length)return null;
+  const e=document.getElementById(id);if(!e||!e.getClientRects().length)return {id,missing:true};
   const p=e.closest('.panel').getBoundingClientRect(),b=e.getBoundingClientRect(),s=getComputedStyle(e),text=['P','LABEL'].includes(e.tagName);
   return {id,left:Math.round(b.left-p.left+(text?parseFloat(s.paddingLeft):0)),right:Math.round(p.right-b.right+(text?parseFloat(s.paddingRight):0))};
-}).filter(Boolean))()`);
+}))()`);
 const DASHBOARD_INSET = ['board-server-status', 'board-release-status', 'board-status', 'board-json', 'board-save', 'board-open'];
 const DESIGNER_INSET = ['layout-server-status', 'layout-release-info', 'layout-status', 'layout-json', 'layout-save', 'layout-open', 'layout-reset'];
-const tooTight = facts => facts.filter(f => f.left < 8 || f.right < 8);
+// A checked element that is missing or hidden counts as a failure, so the check cannot pass vacuously.
+const tooTight = facts => facts.filter(f => f.missing || f.left < 8 || f.right < 8);
 // The exact server total must stay on one line; a Range reports one client rect per rendered line.
 const totalLines = () => evalJs(`(()=>{const e=document.querySelector('#board-widgets .board-value');if(!e)return null;const r=document.createRange();r.selectNodeContents(e);return r.getClientRects().length;})()`);
 
@@ -173,7 +174,7 @@ async function downloadCheck() {
   mkdirSync(local, {recursive: true});
   const before = new Set(readdirSync(local));
   const browser = connect(version.webSocketDebuggerUrl); await browser.ready;
-  let file;
+  let file, cells;
   try {
     await browser.send('Browser.setDownloadBehavior', {behavior: 'allow', downloadPath: args['download-chrome']});
     await openPage('workspace');
@@ -181,7 +182,7 @@ async function downloadCheck() {
     await waitFor(`!document.getElementById('preview').disabled&&!document.getElementById('result-table-wrap').hidden`, 'real preview for snapshot');
     await evalJs(`document.getElementById('snapshot').click()`);
     await waitFor(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`, 'snapshot complete', 20000);
-    var cells = await evalJs(`[...document.querySelectorAll('#result-table tbody td')].map(td=>td.textContent.trim()).filter(Boolean)`);
+    cells = await evalJs(`[...document.querySelectorAll('#result-table tbody td')].map(td=>td.textContent.trim()).filter(Boolean)`);
     await evalJs(`document.getElementById('export').click()`);
     for (let i = 0; i < 200 && !file; i++) { await sleep(100); file = readdirSync(local).find(f => f.endsWith('.xlsx') && !before.has(f)); }
   } finally { browser.close(); }
