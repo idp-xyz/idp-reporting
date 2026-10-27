@@ -1,0 +1,45 @@
+✔ real Go console workflow preserves precision, frozen pages, export and logout (1910.28128ms)
+✔ invalid login and company selector escalation are rejected without cached rows (93.998238ms)
+✔ unconfirmed snapshot submission reuses its idempotency key (429.78714ms)
+✔ late preview cannot replace a changed query (85.082818ms)
+✔ authorization outage clears previously displayed results (84.457113ms)
+✔ text cells cannot create elements or execute injected markup (62.371722ms)
+✔ 401 during a query clears the active session and visible private references (75.700623ms)
+✔ logout aborts an in-flight response without repopulating the page (129.023874ms)
+✔ a mismatched workbook digest never starts a file download (692.29044ms)
+✔ overlapping next-page actions consume a frozen cursor only once (448.300825ms)
+✔ page size stays consistent while a frozen cursor request is pending (417.687492ms)
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (110.009124ms)
+✔ an old product catalog failure cannot clear a newer product preview (141.252747ms)
+✔ an old task refresh error cannot clear a changed-query preview (462.069709ms)
+✔ a task denial affects its snapshot rather than an unrelated current preview (444.577462ms)
+✔ a current task denial clears the corresponding visible snapshot (376.715506ms)
+✔ an old task cancellation error cannot replace a changed-query result (459.973987ms)
+✔ bulk task refresh keeps an unrelated product preview after a task denial (413.193855ms)
+✔ restoring an unknown task leaves the current preview intact (72.514683ms)
+✔ task file download denial preserves an unrelated current preview (712.063471ms)
+✔ task snapshot viewing denial preserves the previous unrelated preview (88.629471ms)
+✔ report layout reorders and hides columns without changing exact values or query scope (66.440062ms)
+✔ layout import rejects foreign binding, duplicate/unknown fields, empty columns and extra authority (83.859589ms)
+✔ server layouts save immutable revisions and reopen an earlier version (156.116328ms)
+✔ an uncertain layout save requires list reconciliation without automatic retry (88.813542ms)
+✔ publication pins a saved private layout until explicitly replaced or withdrawn (243.368422ms)
+✔ dashboard composes exact server totals and current-page tables with metadata-only reopen (69.152838ms)
+✔ dashboard rejects unauthorized bindings, unknown widgets, fields and configuration budgets (82.056504ms)
+✔ dashboard clears visible data on query changes, denial and logout (128.346142ms)
+✔ server dashboard versions reopen exact metadata and reject stale updates (143.850578ms)
+✔ uncertain dashboard save requires list reconciliation and does not clear current data (86.721311ms)
+✔ dashboard publication fixes a saved version, rejects dirty publish, supports rollback and withdrawal (291.217889ms)
+✔ uncertain dashboard publication requires explicit history reconciliation without retry (118.141522ms)
+✔ dashboard release conflicts require refresh and delayed history cannot survive query invalidation (138.82097ms)
+✔ bar chart preserves exact current-page values through save publish and reopen (127.256123ms)
+✔ bar chart uses symmetric signed scale and literal labels without aggregating duplicates (62.829545ms)
+✔ bar chart bounds plotted rows and handles empty zero extreme and invalid numeric strings (268.725769ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10417.982285

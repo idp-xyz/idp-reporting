@@ -1,39 +1,36 @@
 {
-  "phase": "S03-C3",
+  "phase": "S03-C4",
   "date": "2026-10-27 Asia/Shanghai",
-  "baseline": "7b4208e28a4526cc5a01b520e87dc161855c668b",
-  "reviewed_implementation": "3aac6667557eaa2e7749bfb3756d22a497171884",
-  "qualified_checkpoint": "0e76228a4725b0ef8c42fabe99a4e032ee4be19c",
-  "go_checks": {
-    "go": {
-      "top_level_passes": 45,
-      "pass_events": 181,
-      "skips": [
-        "TestPostgresContract",
-        "TestDurablePostgresContract"
-      ]
-    },
-    "race": {
-      "top_level_passes": 45,
-      "pass_events": 181,
-      "skips": [
-        "TestPostgresContract",
-        "TestDurablePostgresContract"
-      ]
-    }
+  "baseline": "1fd0c1fba69fd767a8e1c0f1966d25954a6e951d",
+  "reviewed_implementation": "3fca26739761ea45f2ecc8ff7bea4715283be28a",
+  "go": {
+    "top_level_passes": 47,
+    "pass_events": 183,
+    "skips": [
+      "TestPostgresContract",
+      "TestDurablePostgresContract"
+    ]
   },
-  "dom_pass": 34,
-  "vet": "PASS",
-  "javascript_syntax": "PASS",
-  "standards_review": "PASS",
-  "spec_review": "PASS",
-  "independent_targeted_publication_dom_each_axis": 3,
-  "dashboard_scope": "owner-private publication of fixed metadata versions; release CAS/history/withdraw/explicit rollback",
-  "browser_qa": "NOT_VERIFIED",
-  "real_pg_rerun": false,
-  "production_approved": false,
-  "diagnostics": "first full DOM run failed shared fixture selection in new test; exact ID selection fixed, final complete rerun 34/34. Diagnostic log is not qualification.",
-  "go_qualification_note": "Go source tests unchanged after ordinary/race runs; only DOM fixture selection corrected later. Every started Go test has pass/skip terminal event.",
+  "race": {
+    "top_level_passes": 47,
+    "pass_events": 183,
+    "skips": [
+      "TestPostgresContract",
+      "TestDurablePostgresContract"
+    ]
+  },
+  "vet": {
+    "exit_code": 0
+  },
+  "javascript": {
+    "exit_code": 0
+  },
+  "app_syntax": {
+    "exit_code": 0
+  },
+  "dom": {
+    "exit_code": 0
+  },
   "source_hashes": {
     "adapters/contractsim/financial.go": "93aef5b39fb2ae473e9081fa5162ef91aec9c32c85b63194ac5c466b2e4f4855",
     "adapters/contractsim/fixture.go": "41923fede6e835f63e361d915d4bf7745c838f934e8ef3b50a24e96cf3adda92",
@@ -45,14 +42,14 @@
     "cmd/reporting-demo/main.go": "09d150d1f6439308d0d223090c3db3c7b7ba26cffa4faf68a04610d50259b1a1",
     "cmd/reporting-recovery-probe/main.go": "e3628ccc42cf77ce01be5bbd532ee92314a0f5576eeaf5abd2dcdfe87a0a08e4",
     "console/assets/app.js": "ea732ae7c3e9bb8428c7a1fc46b873cf7c33ac9e8bcfac093a60f81bd46d8035",
-    "console/assets/dashboard.js": "403389ebbb820a6b00987d9e0167904dec7e225c7978de622c2c5529376f8a69",
-    "console/assets/index.html": "9fb977c5bf2102672f3df4d3db9efedfcd6e5e4cf64d01a3b4f0a656b0762e68",
-    "console/assets/styles.css": "1877dc071292ef16f4be2a40bd170bf9760cb1a768a8cf46899e35559ae8771a",
-    "console/dom.test.mjs": "1b344c14abd06032165a941e6d98ed44e247aaba78cfd842f44515ccf8163195",
+    "console/assets/dashboard.js": "c0f21740b862a159d1f67024baa14aa7d7b57b1b7cb07dcaa45bb9041f17b0ff",
+    "console/assets/index.html": "1f387451f9640caf2a792a7b3fd25aa05864743b3e589c2debbc1942ed2f4c7a",
+    "console/assets/styles.css": "053f33f3f4a90cd1c6b29d3fb9bfc2a9f187c96f3da0569193b6a519f1e52d41",
+    "console/dom.test.mjs": "f6fa6824c452e6125dafd4166f1aac57e4d67cbcd9dd6c9313880a46bb4395a3",
     "console/handler.go": "645e85795f47d069fd3b584442701df3c5017575e9b28beee653de3544201890",
     "console/handler_test.go": "b94edc893255451aba7b0d2e8b74af165ee43ea593b9c6b5691dfef2dcea3fbd",
-    "dashboards/store.go": "1be39489235b86761bea5962cc7199807ffa201f72b3a9b4f3ccfe34fc363da4",
-    "dashboards/store_test.go": "5b4b62c07488b8af803ba7359544cea07ec0681535e7b5bb5136481b372357f9",
+    "dashboards/store.go": "c453acee84ce94b90564ac4442d26a60ed4ebf24468f93b09e0bcfa8a2a3503a",
+    "dashboards/store_test.go": "9c3e3abfcfa5eac600a625deb68437a5c6153bf02de715e4d0e0277ee8ec2358",
     "export/xlsx/writer.go": "71ed51e6c9d92926586d75699deddaeffbb269c37af9fdaaa2a633595a3de0a8",
     "go.mod": "ffdf02777c0b2fca75a8b9b69bee3728d36fd91927988a57eec9c2caa2d65d17",
     "go.sum": "2857e6a81e98cb0e6a47d13bd1ac503d1d04d8a2ee4b2a427cd4f1ee0409333a",
@@ -87,10 +84,20 @@
     "transport/httpapi/api.go": "050682f4f1b41569bd68f5214ba45f4a8a975429622dc5f0bfe0ac336071ac75",
     "transport/httpapi/api_test.go": "480bb129cdb0605413366fe7415a66abadd0b46548dec161a1ea74d7da4665d2",
     "transport/httpapi/authentication_test.go": "bc5287b130129bf8d61a751d4245d4cd03e87c3c1de8245f8e65b73b748672af",
-    "transport/httpapi/dashboards.go": "9a76bed997fff8c428a31be88e3bfde7ba45dc00364ffcbd20c7ec4b1f0200c9",
+    "transport/httpapi/dashboards.go": "83272805e85f693d0593be273be43c1d047f9ad1b4998e5bb6ad106f74ce96a0",
     "transport/httpapi/dashboards_test.go": "568a2a2badce64aae7207d59e9f996550b390fdbe7340c5c5970e473da01a4ae",
     "transport/httpapi/layouts_test.go": "f5149fab42fa0b02513da398548a07dbb32e3182b880cdc548ebffeac60e3825",
-    "transport/httpapi/release_catalog_test.go": "ee42b358bcfc24f664936862501fff211c3d4916558b133485c359140818b5eb",
+    "transport/httpapi/release_catalog_test.go": "41cdf1664226f49cc70bb94684a3bf72b9ceb43f34291e0a8d089d4f95c31320",
     "transport/httpapi/session_test.go": "c8b5266618a38c372da59f872e3153c55bbce1a81c8c64bb7dac2e63605a82a5"
-  }
+  },
+  "dom_pass": 37,
+  "standards_review": "PASS",
+  "spec_review": "PASS",
+  "independent_bar_dom_each_axis": 3,
+  "chart_scope": "current page first 50 rows, original order, symmetric signed bar scale; BigInt ratios; original exact text; no grouping or totals",
+  "compatibility": "existing metric/table schema1.0 readable; old binaries reject bar widgets; downgrade unqualified",
+  "browser_qa": "NOT_VERIFIED",
+  "real_pg_rerun": false,
+  "production_approved": false,
+  "go_completion_check": "every started Go test has terminal pass/skip; no failures; two explicit DB entry skips"
 }
