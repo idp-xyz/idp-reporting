@@ -22,14 +22,14 @@ try {
 } catch (e) { usage(e.message); }
 if (!args.out || !args['token-file']) usage('--out and --token-file are required');
 const base = args.base || 'http://127.0.0.1:7810', cdp = args.cdp || '9333', outDir = args.out;
-const baseUrl = new URL(base);
+let baseUrl;
+try { baseUrl = new URL(base); } catch { usage('--base is not a valid URL'); }
 if (baseUrl.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(baseUrl.hostname)) usage('--base must be an http loopback address');
 const downloads = !args['skip-download'];
 if (downloads && !(args['download-chrome'] && args['download-local'])) usage('give --download-chrome and --download-local, or --skip-download explicitly');
 const token = readFileSync(args['token-file'], 'utf8').trim();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 mkdirSync(outDir, {recursive: true});
-for (const f of readdirSync(outDir)) if (/\.png$|^(report\.json|download\.json|download\.xlsx)$/.test(f)) rmSync(join(outDir, f));
 
 const problems = [], dialogs = [], checks = [], skipped = [];
 const check = (name, ok, detail) => { checks.push({name, ok: !!ok, detail: ok ? undefined : detail}); console.log(ok ? 'PASS' : 'FAIL', name, ok ? '' : JSON.stringify(detail)); };
@@ -76,8 +76,11 @@ const shot = async (name, elementExpr) => {
 };
 
 // name, width, height, mobile, dpr, full: every scenario and screenshot versus layout checks only.
-const VIEWPORTS = [['desktop', 1280, 900, false, 1, true], ['tablet', 768, 1024, false, 1, true], ['mobile', 390, 844, true, 2, true], ['narrow', 320, 640, true, 2, false], ['wide', 1920, 1080, false, 1, false]];
+const VIEWPORTS = [['desktop', 1280, 900, false, 1, true], ['tablet', 768, 1024, false, 1, true], ['mobile', 390, 844, true, 2, true], ['narrow', 320, 640, true, 2, false], ['mid', 900, 800, false, 1, false], ['laptop', 1024, 768, false, 1, false], ['wide', 1920, 1080, false, 1, false]];
 const PAGES = ['overview', 'catalog', 'workspace', 'dashboard', 'tasks', 'system'];
+// Remove only files this script generates (named after its viewports) so a shared --out keeps unrelated PNGs.
+const OWN_FILE = new RegExp(`^(00-login|zz-failure|(${VIEWPORTS.map(v => v[0]).join('|')})-\\d\\d-[\\w-]+)\\.png$|^(report\\.json|download\\.json|download\\.xlsx)$`);
+for (const f of readdirSync(outDir)) if (OWN_FILE.test(f)) rmSync(join(outDir, f));
 const setViewport = async ([, width, height, mobile, dpr]) => { await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor: dpr, mobile}); await sleep(250); };
 const openPage = name => evalJs(`document.querySelector('[data-page="${name}"]').click()`);
 const pageOverflow = () => evalJs(`(()=>{const d=document.documentElement;return {scroll:d.scrollWidth,client:d.clientWidth,over:d.scrollWidth>d.clientWidth+1};})()`);
@@ -91,15 +94,23 @@ const clippedControls = scope => evalJs(`(()=>{
     .map(e=>e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+'@right='+Math.round(e.getBoundingClientRect().right));
 })()`);
 
-// Dashboard toolbar: metric, table and bar controls must not share a row, and buttons need a visible boundary.
-const toolbarFacts = () => evalJs(`(()=>{
-  const el=id=>document.getElementById(id),rect=id=>el(id).getBoundingClientRect();
+// Dashboard toolbar: metric, table and bar controls must not share a row.
+const toolbarRows = () => evalJs(`(()=>{
+  const rect=id=>document.getElementById(id).getBoundingClientRect();
   const overlap=(a,b)=>rect(a).top<rect(b).bottom&&rect(b).top<rect(a).bottom;
   const rows=['board-metric','board-columns','board-category'];
-  const sharedRows=rows.flatMap((a,i)=>rows.slice(i+1).filter(b=>overlap(a,b)).map(b=>a+'~'+b));
-  const borderless=['board-add-metric','board-add-table','board-add-bar','board-reset','board-server-save','board-release-publish','board-save','board-open']
-    .filter(id=>{const s=getComputedStyle(el(id)),c=s.borderTopColor;return parseFloat(s.borderTopWidth)<1||c==='transparent'||c.endsWith(', 0)');});
-  return {sharedRows,borderless};
+  return rows.flatMap((a,i)=>rows.slice(i+1).filter(b=>overlap(a,b)).map(b=>a+'~'+b));
+})()`);
+// Every static (non-quiet) button in a scope needs a visible border; the JS-built row buttons are quiet by design.
+// An empty scope fails, so the check cannot pass vacuously.
+const buttonBoundaries = scope => evalJs(`(()=>{
+  const bs=[...document.querySelectorAll(${JSON.stringify(scope + ' button.button:not(.quiet)')})];
+  return {count:bs.length,borderless:bs.filter(b=>{const s=getComputedStyle(b),c=s.borderTopColor;return parseFloat(s.borderTopWidth)<1||c==='transparent'||c.endsWith(', 0)');}).map(b=>b.id||b.textContent.trim())};
+})()`);
+// Rows inside a form panel keep the 12px gutter (panel border 1px plus 12px padding), and there must be rows to check.
+const gutterFacts = scope => evalJs(`(()=>{
+  const rows=[...document.querySelectorAll(${JSON.stringify(scope + ' .designer-row')})].filter(r=>r.getClientRects().length);
+  return {rows:rows.length,tight:rows.map(r=>({row:r.firstElementChild.id||r.firstElementChild.tagName,left:Math.round(r.firstElementChild.getBoundingClientRect().left-r.closest('.panel').getBoundingClientRect().left)})).filter(x=>x.left<12)};
 })()`);
 // Text and controls inside a form panel must not touch the card edge (text counts its own padding).
 const insetFacts = ids => evalJs(`(()=>${JSON.stringify(ids)}.map(id=>{
@@ -242,6 +253,9 @@ try {
     const designerClipped = await clippedControls('#report-designer'), designerTight = tooTight(await insetFacts(DESIGNER_INSET));
     check(`${tag}: report layout designer controls are not clipped`, !designerClipped.length, designerClipped);
     check(`${tag}: report layout designer keeps text and controls off the card edge`, !designerTight.length, designerTight);
+    const designerButtons = await buttonBoundaries('#report-designer'), designerGutter = await gutterFacts('#report-designer');
+    check(`${tag}: report layout designer buttons have visible boundaries`, designerButtons.count > 0 && !designerButtons.borderless.length, designerButtons);
+    check(`${tag}: report layout designer rows share the 12px gutter`, designerGutter.rows > 0 && !designerGutter.tight.length, designerGutter);
     if (full) await shot(`${tag}-00-report-designer`, `document.getElementById('report-designer')`);
     await evalJs(`document.getElementById('report-designer').open=false`);
 
@@ -252,10 +266,12 @@ try {
       await shot(`${tag}-03-server-controls`, `document.getElementById('board-server-save').closest('.panel')`);
       await shot(`${tag}-04-board-real-data`, `document.getElementById('board-widgets')`);
     }
-    const real = await chartFacts(), clipped = await clippedControls('#page-dashboard'), toolbar = await toolbarFacts(), tight = tooTight(await insetFacts(DASHBOARD_INSET)), lines = await totalLines();
+    const real = await chartFacts(), clipped = await clippedControls('#page-dashboard'), sharedRows = await toolbarRows(), buttons = await buttonBoundaries('#page-dashboard'), gutter = await gutterFacts('#page-dashboard'), tight = tooTight(await insetFacts(DASHBOARD_INSET)), lines = await totalLines();
     check(`${tag}: real server rows plot 3 bars with exact labels`, real.rows === 3 && real.values.some(v => v === '9007199254740893.00'), real);
     check(`${tag}: dashboard controls are not clipped`, !clipped.length, clipped);
-    check(`${tag}: dashboard toolbar groups controls on separate rows with visible button boundaries`, !toolbar.sharedRows.length && !toolbar.borderless.length, toolbar);
+    check(`${tag}: dashboard toolbar groups controls on separate rows`, !sharedRows.length, sharedRows);
+    check(`${tag}: dashboard buttons have visible boundaries`, buttons.count > 0 && !buttons.borderless.length, buttons);
+    check(`${tag}: dashboard server rows share the 12px gutter`, gutter.rows > 0 && !gutter.tight.length, gutter);
     check(`${tag}: dashboard server panel keeps text and controls off the card edge`, !tight.length, tight);
     check(`${tag}: exact server total stays on one line`, lines === 1, {lines});
 
@@ -279,7 +295,7 @@ check('no console errors, failed requests or exceptions', !problems.length, [...
 check('no JavaScript dialogs (hostile text stayed text)', !dialogs.length, dialogs);
 if (fatal) check('script ran to completion', false, fatal);
 const failed = checks.filter(c => !c.ok);
-writeFileSync(join(outDir, 'report.json'), JSON.stringify({base, browser: browserName, served_assets_sha256: served, viewports: VIEWPORTS.map(v => v.slice(0, 3)), passed: checks.length - failed.length, failed: failed.length, skipped, checks}, null, 2));
+writeFileSync(join(outDir, 'report.json'), JSON.stringify({base, browser: browserName, user_agent: version?.['User-Agent'], served_assets_sha256: served, viewports: VIEWPORTS.map(v => v.slice(0, 3)), passed: checks.length - failed.length, failed: failed.length, skipped, checks}, null, 2));
 console.log(`\n${checks.length - failed.length}/${checks.length} checks passed` + (skipped.length ? `; skipped: ${skipped.join(', ')}` : ''));
 page?.close();
 process.exit(failed.length ? 1 : 0);
