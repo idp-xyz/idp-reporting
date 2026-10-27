@@ -11,6 +11,7 @@ import (
 	"idp.local/reporting/adapters/contractsim/pgsource"
 	"idp.local/reporting/console"
 	"idp.local/reporting/dashboards"
+	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
@@ -41,6 +42,9 @@ func run() error {
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
 	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
 	dashboardDir := flag.String("dashboard-directory", "", "optional private single-process dashboard directory (0700)")
+	typst := flag.String("pdf-typst", "", "optional pinned Typst binary; with -pdf-typst-sha256 and -pdf-fonts enables PDF export")
+	typstSum := flag.String("pdf-typst-sha256", "", "SHA-256 of the -pdf-typst binary in lowercase hex")
+	pdfFonts := flag.String("pdf-fonts", "", "directory holding the only fonts PDF export may use")
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -103,8 +107,19 @@ func run() error {
 		}
 		finance, shipment = source, source
 	}
+	formats := map[string]r.WorkbookWriter{}
+	switch {
+	case *typst != "" && *typstSum != "" && *pdfFonts != "":
+		w, err := pdf.New(pdf.Config{Typst: *typst, TypstSHA256: *typstSum, FontDir: *pdfFonts})
+		if err != nil {
+			return fmt.Errorf("PDF export could not start: %w", err)
+		}
+		formats["pdf"] = w
+	case *typst != "" || *typstSum != "" || *pdfFonts != "":
+		return fmt.Errorf("PDF export needs -pdf-typst, -pdf-typst-sha256 and -pdf-fonts together")
+	}
 	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + secret))
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats})
 	if e != nil {
 		return e
 	}
@@ -171,7 +186,7 @@ func run() error {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, os.Getpid(), listener.Addr())
+	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, os.Getpid(), listener.Addr())
 	e = server.Serve(listener)
 	stop()
 	workers.Wait()
