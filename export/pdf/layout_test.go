@@ -354,6 +354,20 @@ func TestACharacterWiderThanItsCellIsRefused(t *testing.T) {
 	}
 }
 
+func TestWideDashesAndToneMarks(t *testing.T) {
+	m := fakeMetrics()
+	for in, ems := range map[string]float64{"—": 1, "⸺": 2, "⸻": 3, "-": 0.5} {
+		if w, _ := m.width(in, 1, false); w != ems {
+			t.Errorf("width of %q = %v em, want %v", in, w, ems)
+		}
+	}
+	for _, ch := range []rune{0x302E, 0x302F} {
+		if _, err := m.em(ch, false); !errors.Is(err, r.ErrUnsupported) {
+			t.Errorf("%U: %v; want unsupported", ch, err)
+		}
+	}
+}
+
 func TestSoftHyphensAreRefused(t *testing.T) {
 	// Typst prints a soft hyphen as "-" where it breaks the line, which the data does not hold.
 	if _, err := build(table(1, 1, []string{"bbbb\u00adcccc", "1.00"}), fakeMetrics(), created); !errors.Is(err, r.ErrUnsupported) {

@@ -17,8 +17,9 @@ suffixes, the total row or list, the empty-table label) and requires of each PDF
   - every character inside the page margins and inside its cell's padding (CJK punctuation,
     which Typst may push into the padding, inside the column), table text above the footer,
     text in a dark colour with ink inside its box (not hidden, covered or clipped), the
-    characters of a line from left to right, no character drawn over another and no
-    replacement character;
+    characters of a line from left to right, no character drawn over another, no replacement
+    character, and no ink at all in the side margins (which catches glyphs the engine adds
+    but that are not text, such as dotted circles);
   - the header and the total row in bold, other cells not, and metric numbers aligned right.
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
@@ -103,8 +104,17 @@ def characters(page, number):
                     x0, y0, x1, y1 = c["bbox"]
                     out.append({"c": c["c"], "page": number, "x0": x0, "y0": y0, "x1": x1, "y1": y1, "x": c["origin"][0],
                                 "base": c["origin"][1], "size": round(span["size"], 1), "light": light,
-                                "bold": "Bold" in span["font"], "n": len(out)})
+                                "bold": "Bold" in span["font"], "n": len(out),
+                                "mark": unicodedata.category(c["c"]).startswith("M")})
     return out
+
+
+def ink_in_margins(page, margin):
+    """Whether anything is drawn left or right of the side margins, with 1 pt to spare."""
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), colorspace=pymupdf.csGRAY)
+    buf, w, h = pix.samples, pix.width, pix.height
+    left, right = int((margin - 1) * 2), int((page.rect.width - margin + 1) * 2)
+    return any(buf[y * w + x] < 128 for y in range(h) for x in [*range(0, max(0, left)), *range(min(w, right), w)])
 
 
 def inkless(page, chars):
@@ -219,13 +229,18 @@ def check(directory, exp):
             problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f},{c['y0']:.1f} is drawn over another character")
         for c in inkless(page, chars)[:5]:
             problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f},{c['y0']:.1f} has no ink")
-        # Each line, in drawing order, runs left to right.
+        if ink_in_margins(page, margin):
+            problems.append(f"page {i + 1}: something is drawn in a side margin")
+        # Each line, in drawing order, runs left to right. A combining mark sits over the
+        # character before it, and Typst may pull compressed CJK punctuation back.
         lines = {}
         for c in chars:
             if c["c"].strip():
                 lines.setdefault((c["size"], round(c["base"], 1)), []).append(c)
         for line in lines.values():
             for a, b in zip(line, line[1:]):
+                if b["mark"] or cjk_punctuation(a["c"]) or cjk_punctuation(b["c"]):
+                    continue
                 if b["x"] < a["x"] - 0.5:
                     problems.append(f"page {i + 1}: {b['c']!r} at {b['x']:.1f} is drawn after {a['c']!r} at {a['x']:.1f}, not left to right")
                     break
@@ -437,6 +452,8 @@ def pdf_corruptions(directory, exp, scratch):
     if plain:
         yield "table text above its column", "top to bottom", copy_with("order", text("X", (left + 1, head - 9), TABLE))
     yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
+    # A drawing that is not text, like the dotted circle Typst adds before a stray mark.
+    yield "a shape in the margin", "side margin", copy_with("shape", lambda doc: doc[0].draw_circle((width - margin / 2, height / 2), 2, color=(0, 0, 0), fill=(0, 0, 0)))
     if body and plain:
         line = [c for c in table if abs(c["base"] - body[0]) < 0.5 and cols[0][0] <= c["x0"] < cols[0][1]]
         if line:

@@ -214,8 +214,10 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 	marks := table(8, 1)
 	for i := range 6 {
 		row := []string{"紧急" + strings.Repeat("！", 60), strings.Repeat("。", 40), strings.Repeat("（", 30) + "开", "、、、、、、、、、、、、、、、、", "a ）b ）c",
-			strings.Repeat("甲&", 10) + "乙、Receivable。", "¡¡¡    " + strings.Repeat("x", 12) + " ¿¿ yyyy ー#ー%Ⅰ文", "z", strconv.Itoa(i) + ".00"}
-		row[7] = strings.Repeat("！", 50)
+			strings.Repeat("甲&", 10) + "乙、Receivable。", "¡¡¡    " + strings.Repeat("x", 12) + " ¿¿ yyyy ー#ー%Ⅰ文", strings.Repeat("—a", 12) + "⸺b⸻c——", strconv.Itoa(i) + ".00"}
+		if i%2 == 1 {
+			row[7] = strings.Repeat("！", 50)
+		}
 		marks.Result.Rows = append(marks.Result.Rows, row)
 	}
 	// Runs of every length around the width of their cell, with brackets glued on, next to a
@@ -309,8 +311,9 @@ func TestTypstFailsClosed(t *testing.T) {
 	w := typstWriter(t, nil)
 	ctx := t.Context()
 
-	// An emoji, an Extension B ideograph and a zero-width space that Noto Sans SC does not have.
-	for _, v := range []string{"笑脸 😀", "扩展B区 \U00020000", "零宽\u200b空格"} {
+	// An emoji, an Extension B ideograph and a zero-width space that Noto Sans SC does not have,
+	// and a Hangul tone mark, which Typst would draw with a dotted circle.
+	for _, v := range []string{"笑脸 😀", "扩展B区 \U00020000", "零宽\u200b空格", strings.Repeat("\u302e", 60)} {
 		if _, err := w.Write(ctx, table(1, 1, []string{v, "1.00"})); !errors.Is(err, r.ErrUnsupported) {
 			t.Errorf("%q: %v; want unsupported", v, err)
 		}

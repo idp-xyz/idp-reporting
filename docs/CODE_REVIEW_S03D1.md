@@ -79,3 +79,12 @@ evidence/s03d1/checks.json and the logs beside it: Go 84 top-level tests normal 
 entries skip), 41 DOM tests with the real Typst, 11 documents checked, 275 negative controls caught and none missed,
 the golden layout matched, veraPDF PDF/A-2b passed for all 12 PDFs (including the console download) and failed the
 negative control.
+
+## Later finding (from the S03-E review)
+
+Comparing Go's widths with Typst's own measurements over every covered character found five characters Typst draws
+wider than their advances: the Hangul tone marks U+302E and U+302F, before which Typst draws a dotted circle that is
+not text (so the checker could not see it running off the page), and the em, two-em and three-em dashes in Chinese
+text. The tone marks are now refused and the dashes measured at one, two and three ems. The checker now also fails on
+any ink in the side margins, with a negative control, and no longer counts combining marks and compressed CJK
+punctuation as text drawn right to left. The punctuation document holds dash runs; 284 negative controls are caught.

@@ -3,6 +3,7 @@ package pdf
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -241,10 +242,14 @@ func newMeasurer(f *fontSet) *measurer {
 }
 
 // em returns the advance of ch in ems, or ErrUnsupported when no configured font maps ch or ch
-// is a soft hyphen.
+// is a soft hyphen or a Hangul tone mark.
 func (m *measurer) em(ch rune, bold bool) (float64, error) {
-	if ch == 0x00AD {
+	switch ch {
+	case 0x00AD:
 		return 0, fmt.Errorf("pdf: a soft hyphen would print as a hyphen where Typst breaks the line: %w", r.ErrUnsupported)
+	case 0x302E, 0x302F:
+		// Hangul tone marks: Typst draws a dotted circle before each, which the data does not hold.
+		return 0, fmt.Errorf("pdf: a Hangul tone mark would print with a dotted circle: %w", r.ErrUnsupported)
 	}
 	k := glyphKey{ch, bold}
 	if v, ok := m.ems[k]; ok {
@@ -257,9 +262,16 @@ func (m *measurer) em(ch rune, bold bool) (float64, error) {
 	if !ok {
 		return 0, fmt.Errorf("pdf: a character is not covered by the configured fonts: %w", r.ErrUnsupported)
 	}
+	// In Chinese text Typst draws these dashes wider than their default glyphs.
+	v = math.Max(v, wideDashes[ch])
 	m.ems[k] = v
 	return v, nil
 }
+
+// wideDashes are the least widths in ems Typst gives these dashes in Chinese text: an em dash
+// one em, the two- and three-em dashes two and three. Measured against Typst over every
+// character the pinned fonts cover; no other character is drawn wider than its advance.
+var wideDashes = map[rune]float64{0x2014: 1, 0x2E3A: 2, 0x2E3B: 3}
 
 // width returns the width in points of s set on one line, without kerning.
 func (m *measurer) width(s string, size float64, bold bool) (float64, error) {
