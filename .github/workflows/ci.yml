@@ -62,6 +62,53 @@ jobs:
           EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract
         run: python3 -I scripts/go_test_strict.py -race -count=1
 
+  postgres:
+    name: PostgreSQL contract and durable tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.15@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+        env:
+          # A throwaway server inside this job; trust mirrors scripts/run_pg16_vm.py.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      # A missing DSN fails instead of skipping, and no test may skip in this job.
+      REPORTING_S01_REQUIRE_PG: "1"
+      EXPECTED_SKIPS: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Create the guarded test databases
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          for db in reporting_test_s01 reporting_source_test_s01 reporting_test_s01_race reporting_source_test_s01_race; do
+            docker exec "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db"
+          done
+      - name: Test against PostgreSQL
+        env:
+          REPORTING_S01_TEST_DSN: postgresql://postgres@127.0.0.1:55432/reporting_test_s01?sslmode=disable
+          REPORTING_S01_SOURCE_DSN: postgresql://postgres@127.0.0.1:55432/reporting_source_test_s01?sslmode=disable
+        run: python3 -I scripts/go_test_strict.py -count=1
+      - name: Race against PostgreSQL
+        env:
+          REPORTING_S01_TEST_DSN: postgresql://postgres@127.0.0.1:55432/reporting_test_s01_race?sslmode=disable
+          REPORTING_S01_SOURCE_DSN: postgresql://postgres@127.0.0.1:55432/reporting_source_test_s01_race?sslmode=disable
+        run: python3 -I scripts/go_test_strict.py -race -count=1
+
   console:
     name: Console syntax and DOM tests
     runs-on: ubuntu-24.04
