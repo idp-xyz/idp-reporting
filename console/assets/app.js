@@ -2,9 +2,10 @@
 (function () {
   const base = '/api/reporting/v1';
   const $ = (id) => document.getElementById(id);
-  const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',tasks:'任务工作区',system:'能力与环境'};
+  const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',documents:'文档模板设计器',tasks:'任务工作区',system:'能力与环境'};
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
+  const documents=window.createReportingDocuments({upload:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('PNG超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);const value=await request('/document-backgrounds',{method:'POST',body:{binding,png:btoa(raw)}});if(!current(m))throw new Stale();apply(value);},{label:'底稿上传',uncertain:'上传结果未确认；请刷新底稿列表核对，勿直接重复上传。'}),active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,snapshot:()=>state.snapshot,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label,uncertain:'写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}),download:(body,path='/document-previews')=>perform(async m=>{const bytes=await request(path,{method:'POST',body,binary:'application/pdf'});if(!current(m))throw new Stale();if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download='document-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('PDF预览已通过摘要校验，下载已发起。','success');},{label:'PDF预览',snapshot:body.snapshot_id,uncertain:'预览生成结果未确认；可重新生成，不会正式出具。'})});
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   class Failure extends Error { constructor(status,code) { super(code); this.status=status; this.code=code; } }
   class Stale extends Error {}
@@ -26,7 +27,7 @@
     for(const id of ['query-dataset','query-companies','query-date','refresh-catalog'])$(id).disabled=!state.session||state.catalogLoading;
   }
   function clearResult() {
-    dashboard.clear();
+    dashboard.clear();documents.clear();
     $('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
@@ -35,7 +36,7 @@
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
-    dashboard.clear(true);state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
+    dashboard.clear(true);documents.clear(true);state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
@@ -220,7 +221,7 @@
   $('layout-release-open').addEventListener('click',()=>layoutAction(()=>{const saved=releaseTarget();perform(async m=>{const entry=await request('/layouts/'+saved.id+'/published');if(!current(m))throw new Stale();if(entry.id!==saved.id||!Number.isSafeInteger(entry.version)||entry.version<1||entry.version>20)throw new Failure(0,'INVALID_RESPONSE');applyLayout(entry.layout,true);setSavedLayout(entry);$('layout-server-status').textContent='已打开发布版本 '+entry.version+'；当前数据仍来自授权查询。';},{label:'打开发布版本'});}));
   function renderResult(result,query,meta) {
     checkResult(result);state.lastResult=result;state.query=copy(query);
-    renderDesigner();renderTable(result);dashboard.refresh(result,query,!!meta);
+    renderDesigner();renderTable(result);dashboard.refresh(result,query,!!meta);documents.refresh(result,query);
     const summary=$('result-summary');summary.replaceChildren();
     for(const [id,value] of Object.entries(result.totals).slice(0,20)){const column=result.columns.find(c=>c.id===id);const card=node('div',undefined,'summary-card');card.append(node('small',(column?.label||id)+' · 原范围合计'+(column?.currency?' / '+column.currency:column?.unit?' / '+column.unit:'')),node('strong',value));summary.append(card);}
     summary.hidden=!summary.children.length;$('result-table-wrap').hidden=!result.rows.length;$('result-empty').hidden=!!result.rows.length;
