@@ -1,0 +1,1 @@
+First full software DOM run: 33 pass, 1 fail. The new rollback test selected the first dashboard in shared fixture history, not its own saved ID. Fixed in 0e76228 by explicit ID selection. Final complete dom.log: 34/34 pass. This diagnostic log is not final qualification.

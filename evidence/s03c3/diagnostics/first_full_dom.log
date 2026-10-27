@@ -1,0 +1,52 @@
+✔ real Go console workflow preserves precision, frozen pages, export and logout (1628.365734ms)
+✔ invalid login and company selector escalation are rejected without cached rows (82.859451ms)
+✔ unconfirmed snapshot submission reuses its idempotency key (385.067948ms)
+✔ late preview cannot replace a changed query (71.000584ms)
+✔ authorization outage clears previously displayed results (90.702464ms)
+✔ text cells cannot create elements or execute injected markup (75.15371ms)
+✔ 401 during a query clears the active session and visible private references (97.233004ms)
+✔ logout aborts an in-flight response without repopulating the page (126.238346ms)
+✔ a mismatched workbook digest never starts a file download (692.166478ms)
+✔ overlapping next-page actions consume a frozen cursor only once (466.361562ms)
+✔ page size stays consistent while a frozen cursor request is pending (443.473543ms)
+✔ overlapping same-product catalog refreshes replace rather than duplicate options (107.12418ms)
+✔ an old product catalog failure cannot clear a newer product preview (133.81553ms)
+✔ an old task refresh error cannot clear a changed-query preview (437.475933ms)
+✔ a task denial affects its snapshot rather than an unrelated current preview (436.601731ms)
+✔ a current task denial clears the corresponding visible snapshot (395.762986ms)
+✔ an old task cancellation error cannot replace a changed-query result (452.189835ms)
+✔ bulk task refresh keeps an unrelated product preview after a task denial (414.268378ms)
+✔ restoring an unknown task leaves the current preview intact (70.42621ms)
+✔ task file download denial preserves an unrelated current preview (726.349939ms)
+✔ task snapshot viewing denial preserves the previous unrelated preview (400.802919ms)
+✔ report layout reorders and hides columns without changing exact values or query scope (65.856509ms)
+✔ layout import rejects foreign binding, duplicate/unknown fields, empty columns and extra authority (60.171015ms)
+✔ server layouts save immutable revisions and reopen an earlier version (140.000783ms)
+✔ an uncertain layout save requires list reconciliation without automatic retry (102.338226ms)
+✔ publication pins a saved private layout until explicitly replaced or withdrawn (237.484761ms)
+✔ dashboard composes exact server totals and current-page tables with metadata-only reopen (63.66432ms)
+✔ dashboard rejects unauthorized bindings, unknown widgets, fields and configuration budgets (58.601855ms)
+✔ dashboard clears visible data on query changes, denial and logout (146.909151ms)
+✔ server dashboard versions reopen exact metadata and reject stale updates (145.333166ms)
+✔ uncertain dashboard save requires list reconciliation and does not clear current data (88.242749ms)
+✖ dashboard publication fixes a saved version, rejects dirty publish, supports rollback and withdrawal (6191.3865ms)
+✔ uncertain dashboard publication requires explicit history reconciliation without retry (124.002955ms)
+✔ dashboard release conflicts require refresh and delayed history cannot survive query invalidation (185.848517ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 33
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15889.80288
+
+✖ failing tests:
+
+test at console/dom.test.mjs:364:1
+✖ dashboard publication fixes a saved version, rejects dirty publish, supports rollback and withdrawal (6191.3865ms)
+  Error: DOM condition not reached: revision2
+      at until (file:///workspace/scratch/c179a7054698/work_s03/idp-reporting/console/dom.test.mjs:20:130)
+      at async TestContext.<anonymous> (file:///workspace/scratch/c179a7054698/work_s03/idp-reporting/console/dom.test.mjs:369:338)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
