@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/dashboards"
 	"idp.local/reporting/export/xlsx"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
@@ -76,6 +77,71 @@ func TestPublicationChecksTargetColumnsAfterCatalogChange(t *testing.T) {
 	d.Columns[0].ID = catalog[0].Columns[1].ID
 	save(first.ID, 1)
 	path := "/api/reporting/v1/layouts/" + first.ID
+	adapter.allowed = catalog[0].Columns[0].ID
+	if request(h, "POST", path+"/release", []byte(`{"action":"publish","version":2,"expected_revision":0}`), true).Code != 403 {
+		t.Fatal("invalid target columns published")
+	}
+	if request(h, "POST", path+"/release", []byte(`{"action":"publish","version":1,"expected_revision":0}`), true).Code != 200 {
+		t.Fatal("valid v1 denied")
+	}
+	adapter.allowed = catalog[0].Columns[1].ID
+	if request(h, "GET", path+"/published", nil, true).Code != 403 {
+		t.Fatal("removed published columns disclosed")
+	}
+	if request(h, "GET", path+"/release", nil, true).Code != 200 {
+		t.Fatal("owner cannot inspect binding-scoped history")
+	}
+	if request(h, "POST", path+"/release", []byte(`{"action":"withdraw","version":0,"expected_revision":1}`), true).Code != 200 {
+		t.Fatal("cannot withdraw after column removal")
+	}
+	if request(h, "POST", path+"/release", []byte(`{"action":"publish","version":2,"expected_revision":2}`), true).Code != 200 {
+		t.Fatal("valid v2 blocked by obsolete v1")
+	}
+	if request(h, "GET", path+"/published", nil, true).Code != 200 {
+		t.Fatal("valid published target denied")
+	}
+}
+
+func TestDashboardPublicationChecksTargetFieldsAfterCatalogChange(t *testing.T) {
+	p := contractsim.DemoPrincipal()
+	source := contractsim.Financial()
+	source.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
+	adapter := &changingLayoutCatalog{Adapter: source}
+	service, e := r.NewService(r.Config{Repository: memory.New(time.Now), Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: adapter}}, CursorKey: []byte(secret), Writer: xlsx.Writer{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	store, e := dashboards.Open(filepath.Join(t.TempDir(), "private"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	auth, _ := httpapi.DemoBearer(secret, p)
+	fallback, _ := httpapi.Handler(service, auth)
+	h, e := httpapi.WithDashboards(fallback, service, auth, store)
+	if e != nil {
+		t.Fatal(e)
+	}
+	catalog, e := service.Catalog(t.Context(), p, contractsim.FinanceIntegration)
+	if e != nil || len(catalog[0].Columns) < 2 {
+		t.Fatal(e)
+	}
+	d := dashboards.Document{Schema: "1.0", Kind: "dashboard", Binding: dashboards.Binding{Integration: contractsim.FinanceIntegration, Dataset: catalog[0].Ref}, Widgets: []dashboards.Widget{{Type: "table", Columns: []string{catalog[0].Columns[0].ID}}}}
+	save := func(id string, expected int) dashboards.Entry {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"id": id, "expected_version": expected, "config": d})
+		w := request(h, "POST", "/api/reporting/v1/dashboards", body, true)
+		if w.Code != 201 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var entry dashboards.Entry
+		json.Unmarshal(w.Body.Bytes(), &entry)
+		return entry
+	}
+	first := save("", 0)
+	d.Widgets[0].Columns[0] = catalog[0].Columns[1].ID
+	save(first.ID, 1)
+	path := "/api/reporting/v1/dashboards/" + first.ID
 	adapter.allowed = catalog[0].Columns[0].ID
 	if request(h, "POST", path+"/release", []byte(`{"action":"publish","version":2,"expected_revision":0}`), true).Code != 403 {
 		t.Fatal("invalid target columns published")

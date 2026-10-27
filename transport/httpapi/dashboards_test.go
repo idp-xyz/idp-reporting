@@ -105,7 +105,46 @@ func TestDashboardRoutesPrivateCurrentCatalogAndSeparateFromLayouts(t *testing.T
 	if request(fallback, "GET", "/api/reporting/v1/dashboards", nil, true).Code != 404 {
 		t.Fatal("dashboard not opt-in")
 	}
+
+	releasePath := "/api/reporting/v1/dashboards/" + entry.ID + "/release"
+	publishedPath := "/api/reporting/v1/dashboards/" + entry.ID + "/published"
+	publish := []byte(`{"action":"publish","version":1,"expected_revision":0}`)
+	if request(h, "POST", releasePath, publish, false).Code != 401 {
+		t.Fatal("anonymous publish")
+	}
+	other = true
+	for _, path := range []string{releasePath, publishedPath} {
+		if request(h, "GET", path, nil, true).Code != 404 {
+			t.Fatal("release owner leak")
+		}
+	}
+	if request(h, "POST", releasePath, publish, true).Code != 404 {
+		t.Fatal("cross-owner publish")
+	}
+	other = false
+	for _, invalid := range []string{`{"action":"share","version":1,"expected_revision":0}`, `{"action":"publish","version":1,"expected_revision":0,"owner":"x"}`, `null`} {
+		if request(h, "POST", releasePath, []byte(invalid), true).Code != 400 {
+			t.Fatal("invalid release body")
+		}
+	}
+	if request(h, "POST", releasePath, publish, true).Code != 200 {
+		t.Fatal("publish")
+	}
+	if request(h, "POST", releasePath, publish, true).Code != 409 {
+		t.Fatal("release CAS")
+	}
+	if request(h, "GET", publishedPath, nil, true).Code != 200 {
+		t.Fatal("published read")
+	}
 	revoked = true
+	for _, path := range []string{releasePath, publishedPath} {
+		if request(h, "GET", path, nil, true).Code != 403 {
+			t.Fatal("revoked release disclosure")
+		}
+	}
+	if request(h, "POST", releasePath, []byte(`{"action":"withdraw","version":0,"expected_revision":1}`), true).Code != 403 {
+		t.Fatal("revoked integration mutation")
+	}
 	if request(h, "GET", path, nil, true).Code != 403 {
 		t.Fatal("current rights bypass")
 	}

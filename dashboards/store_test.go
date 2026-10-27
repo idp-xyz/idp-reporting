@@ -84,3 +84,52 @@ func TestDashboardStrictWidgetShapesAndLimits(t *testing.T) {
 		t.Fatal("valid roundtrip")
 	}
 }
+
+func TestDashboardReleasePersistsWithoutChangingDrafts(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "private")
+	s, e := dashboards.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
+	v1, e := s.Save(owner, "", 0, doc())
+	if e != nil {
+		t.Fatal(e)
+	}
+	state, e := s.Publish(owner, v1.ID, "publish", 1, 0)
+	if e != nil || state.Revision != 1 || state.PublishedVersion != 1 {
+		t.Fatal(state, e)
+	}
+	empty := doc()
+	empty.Widgets = []dashboards.Widget{}
+	if _, e = s.Save(owner, v1.ID, 1, empty); e != nil {
+		t.Fatal(e)
+	}
+	current, e := s.Published(owner, v1.ID)
+	if e != nil || current.Version != 1 || len(current.Layout.Widgets) != 1 {
+		t.Fatal("draft changed publication", current, e)
+	}
+	if _, e = s.Publish(owner, v1.ID, "withdraw", 0, 0); !errors.Is(e, r.ErrConflict) {
+		t.Fatal("stale release", e)
+	}
+	s.Close()
+	s, e = dashboards.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	state, e = s.Release(owner, v1.ID)
+	if e != nil || state.Revision != 1 || len(state.History) != 1 || state.History[0].Action != "publish" || state.History[0].At == "" {
+		t.Fatal(state, e)
+	}
+	if _, e = s.Publish(owner, v1.ID, "withdraw", 0, 1); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Published(owner, v1.ID); !errors.Is(e, r.ErrNotFound) {
+		t.Fatal(e)
+	}
+	if _, e = s.Publish(owner, v1.ID, "publish", 1, 2); e != nil {
+		t.Fatal("explicit rollback", e)
+	}
+}
