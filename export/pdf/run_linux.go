@@ -32,28 +32,33 @@ func toID(st *syscall.Stat_t) fileID {
 	return fileID{dev: uint64(st.Dev), ino: st.Ino, mode: st.Mode, size: st.Size, mtime: st.Mtim, ctime: st.Ctim}
 }
 
-// identity refuses symbolic links and files that others may write.
+// identity refuses symbolic links and files that anyone but root and this user may write.
 func identity(path string) (fileID, error) {
 	var st syscall.Stat_t
 	if err := syscall.Lstat(path, &st); err != nil {
 		return fileID{}, fmt.Errorf("pdf: %s: %w", filepath.Base(path), err)
 	}
-	if st.Mode&syscall.S_IFMT == syscall.S_IFLNK || st.Mode&0o022 != 0 {
-		return fileID{}, fmt.Errorf("pdf: %s is a symbolic link or writable by others", filepath.Base(path))
+	if st.Mode&syscall.S_IFMT == syscall.S_IFLNK || !ownWrites(&st) {
+		return fileID{}, fmt.Errorf("pdf: %s is a symbolic link or writable by others than root and this user", filepath.Base(path))
 	}
 	return toID(&st), nil
 }
 
-// openIdentity identifies an open regular file that others may not write.
+// openIdentity identifies an open regular file that only root and this user may write.
 func openIdentity(f *os.File) (fileID, error) {
 	var st syscall.Stat_t
 	if err := syscall.Fstat(int(f.Fd()), &st); err != nil {
 		return fileID{}, err
 	}
-	if st.Mode&syscall.S_IFMT != syscall.S_IFREG || st.Mode&0o022 != 0 {
-		return fileID{}, errors.New("pdf: the Typst binary is not a regular file or is writable by others")
+	if st.Mode&syscall.S_IFMT != syscall.S_IFREG || !ownWrites(&st) {
+		return fileID{}, errors.New("pdf: the Typst binary is not a regular file or is writable by others than root and this user")
 	}
 	return toID(&st), nil
+}
+
+// ownWrites: the file is owned by root or this user and nobody else may write it.
+func ownWrites(st *syscall.Stat_t) bool {
+	return (st.Uid == 0 || st.Uid == uint32(os.Getuid())) && st.Mode&0o022 == 0
 }
 
 // staleAfter is when a render directory is certainly left over: a render takes less than
@@ -118,8 +123,12 @@ func trustedAncestors(path string) error {
 
 // sweep removes this user's render directories in workDir last changed before staleAfter.
 func sweep(workDir string, now time.Time) {
-	paths, _ := filepath.Glob(filepath.Join(workDir, "reporting-pdf-*"))
-	for _, p := range paths {
+	entries, _ := os.ReadDir(workDir)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), "reporting-pdf-") {
+			continue
+		}
+		p := filepath.Join(workDir, e.Name())
 		var st syscall.Stat_t
 		if syscall.Lstat(p, &st) != nil || st.Mode&syscall.S_IFMT != syscall.S_IFDIR || st.Uid != uint32(os.Getuid()) {
 			continue
@@ -171,6 +180,10 @@ func (w *Writer) run(ctx context.Context, dir string, args ...string) ([]byte, e
 		UidMappings: []syscall.SysProcIDMap{{ContainerID: uid, HostID: uid, Size: 1}},
 		GidMappings: []syscall.SysProcIDMap{{ContainerID: gid, HostID: gid, Size: 1}},
 		Pdeathsig:   syscall.SIGKILL,
+	}
+	// The hard core limit or kernel.core_pattern may have changed since New.
+	if err := coreDumpsContained(); err != nil {
+		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("pdf: start Typst in new user and network namespaces (the host may forbid unprivileged user namespaces, as Ubuntu does with kernel.apparmor_restrict_unprivileged_userns=1): %w", err)

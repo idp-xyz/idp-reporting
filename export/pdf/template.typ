@@ -3,11 +3,12 @@
 // checked against the fonts. Values are laid out as given: the template computes nothing.
 #let d = json("data.json")
 
-// A cell is a string, or a list of strings and {pieces: [...]}: a run without spaces that is
-// wider than the cell, cut by the server into pieces that each fit one line. A line may break
-// between two boxes, and boxes add no characters to the text layer.
+// A cell is a string, or a list of strings and {pieces: [...]}: a run that is wider than the
+// cell, cut by the server into pieces that each fit one line. Each piece ends its line, so the
+// text stays in order even if a piece turned out wider than measured; a line break adds no
+// character to the text layer.
 #let show-text(c) = if type(c) == str { c } else {
-  c.map(p => if type(p) == str { p } else { p.pieces.map(box).join() }).join()
+  c.map(p => if type(p) == str { p } else { p.pieces.join(linebreak()) }).join()
 }
 
 #set document(title: d.title)

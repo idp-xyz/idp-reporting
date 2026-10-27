@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -212,7 +213,8 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 	// Runs of punctuation that no line may start or end with, in narrow middle and last columns.
 	marks := table(8, 1)
 	for i := range 6 {
-		row := []string{"紧急" + strings.Repeat("！", 60), strings.Repeat("。", 40), strings.Repeat("（", 30) + "开", "、、、、、、、、、、、、、、、、", "a ）b ）c", "x", "y", "z", strconv.Itoa(i) + ".00"}
+		row := []string{"紧急" + strings.Repeat("！", 60), strings.Repeat("。", 40), strings.Repeat("（", 30) + "开", "、、、、、、、、、、、、、、、、", "a ）b ）c",
+			strings.Repeat("甲&", 10) + "乙、Receivable。", "¡¡¡    " + strings.Repeat("x", 12) + " ¿¿ yyyy ー#ー%Ⅰ文", "z", strconv.Itoa(i) + ".00"}
 		row[7] = strings.Repeat("！", 50)
 		marks.Result.Rows = append(marks.Result.Rows, row)
 	}
@@ -227,11 +229,28 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 		}
 		edge.Result.Rows = append(edge.Result.Rows, []string{long, strings.Repeat("W", k) + "（" + strings.Repeat("x", k) + "）", "-999999999999999999999999.99"})
 	}
+	// Text of every kind mixed at random, with a fixed seed, in narrow columns.
+	mixed := table(7, 1)
+	alphabet := []rune("甲乙丙丁文字表格数据汉ーあア、。，．！？：；（）「」《》“”‘’·…—#$%&*+-/<=>@[]{}~^|_ ¡¿Ⅰ①ＡＢａｂ０１abcxyzWMil.,;:!?'\"0123456789éü  ")
+	rnd := rand.New(rand.NewPCG(7, 1))
+	for range 25 {
+		row := make([]string, 8)
+		for j := range 7 {
+			b := make([]rune, rnd.IntN(60))
+			for i := range b {
+				b[i] = alphabet[rnd.IntN(len(alphabet))]
+			}
+			row[j] = string(b)
+		}
+		row[7] = strconv.Itoa(rnd.IntN(1e9)) + ".00"
+		mixed.Result.Rows = append(mixed.Result.Rows, row)
+	}
 	docs := []struct {
 		name     string
 		s        r.Snapshot
 		minPages int
 	}{
+		{"mixed", mixed, 1},
 		{"hostile", hostile(), 3},
 		{"punctuation", marks, 1},
 		{"edges", edge, 1},

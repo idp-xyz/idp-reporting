@@ -361,12 +361,18 @@ func startsWord(ch rune) bool {
 
 const noStart = "々〻ゝゞヽヾーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
 
+// opens reports opening punctuation and initial quotes, after which a line may not break even
+// across spaces: the Unicode classes OP and initial QU, which include ¡, ¿ and ⸘.
+func opens(ch rune) bool {
+	return unicode.In(ch, unicode.Ps, unicode.Pi) || ch == 0x00A1 || ch == 0x00BF || ch == 0x2E18
+}
+
 // runs splits one line at the places where a line may certainly break.
 func runs(line string, each func(run string) error) error {
 	start := 0
 	var prev, solid rune // the previous character and the previous one that is not a space
 	for i, ch := range line {
-		if i > 0 && ((ideograph(prev) && ideograph(ch)) || (prev == ' ' && solid != 0 && startsWord(ch) && !unicode.In(solid, unicode.Ps, unicode.Pi))) {
+		if i > 0 && ((ideograph(prev) && ideograph(ch)) || (prev == ' ' && solid != 0 && startsWord(ch) && !opens(solid))) {
 			if err := each(line[start:i]); err != nil {
 				return err
 			}
@@ -448,7 +454,8 @@ func (m *measurer) segment(s string, size float64, bold bool, width float64) (an
 }
 
 // cut splits a run into pieces no wider than width, never before a character that joins the
-// one before it (a combining mark, a joiner or a variation selector).
+// one before it (a combining mark, a joiner or a variation selector). A character wider than
+// width on its own cannot be placed and is unsupported.
 func (m *measurer) cut(text string, size float64, bold bool, width float64) ([]string, error) {
 	var out []string
 	start, w := 0, 0.0
@@ -457,6 +464,9 @@ func (m *measurer) cut(text string, size float64, bold bool, width float64) ([]s
 		e, err := m.em(ch, bold)
 		if err != nil {
 			return nil, err
+		}
+		if e*size*slack > width {
+			return nil, fmt.Errorf("pdf: a character is wider than its cell: %w", r.ErrUnsupported)
 		}
 		adv := (e + gap(prev, ch)) * size * slack
 		if i > start && w+adv > width && !joins(ch) {

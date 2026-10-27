@@ -280,13 +280,15 @@ func TestRunsBreakOnlyWhereALineMayBreak(t *testing.T) {
 	for in, want := range map[string][]string{
 		"中文。": {"中", "文。"},
 		"应收账款，含税（13%）及运费": {"应", "收", "账", "款，含", "税（13%）及", "运", "费"},
-		"a b  c": {"a ", "b  ", "c"},
-		"（ a":    {"（ a"},       // not after opening punctuation
-		"a ）b":   {"a ）b"},      // not before closing punctuation
-		"紧急！！！":  {"紧", "急！！！"}, // a line may not start with "！"
-		"x 々 ー":  {"x 々 ー"},
-		"  a":    {"  a"},
-		"“ a” b": {"“ a” ", "b"},
+		"a b  c":   {"a ", "b  ", "c"},
+		"（ a":      {"（ a"},       // not after opening punctuation
+		"a ）b":     {"a ）b"},      // not before closing punctuation
+		"紧急！！！":    {"紧", "急！！！"}, // a line may not start with "！"
+		"x 々 ー":    {"x 々 ー"},
+		"  a":      {"  a"},
+		"“ a” b":   {"“ a” ", "b"},
+		"¡¡¡    x": {"¡¡¡    x"}, // ¡ and ¿ open like brackets
+		"¿ a b":    {"¿ a ", "b"},
 	} {
 		var got []string
 		if err := runs(in, func(run string) error { got = append(got, run); return nil }); err != nil || !slices.Equal(got, want) {
@@ -334,6 +336,21 @@ func TestWidthCountsTheSpaceBetweenChineseAndLatin(t *testing.T) {
 	mixed, _ := m.width("维度5x", bodySize, false)
 	if want := plain + (0.25+0.5+0.5)*bodySize; mixed != want {
 		t.Fatalf("width of 维度5x = %v, want %v", mixed, want)
+	}
+}
+
+func TestWidthCountsAGapBesideEveryChineseCharacter(t *testing.T) {
+	m := fakeMetrics()
+	for in, ems := range map[string]float64{"文#文": 1 + 0.25 + 0.5 + 0.25 + 1, "ーa": 1 + 0.25 + 0.5, "a b": 1.5, "文文": 2} {
+		if w, _ := m.width(in, 1, false); w != ems {
+			t.Errorf("width of %q = %v em, want %v", in, w, ems)
+		}
+	}
+}
+
+func TestACharacterWiderThanItsCellIsRefused(t *testing.T) {
+	if _, err := fakeMetrics().segment("中中", bodySize, false, 5); !errors.Is(err, r.ErrUnsupported) {
+		t.Fatalf("ideographs in a 5 pt cell: %v; want unsupported", err)
 	}
 }
 

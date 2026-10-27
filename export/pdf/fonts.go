@@ -276,16 +276,19 @@ func (m *measurer) width(s string, size float64, bold bool) (float64, error) {
 	return w * size, nil
 }
 
-// gap returns the space in ems that Typst puts between two characters: a quarter em between a
-// Chinese or Japanese character and a letter or digit of another script (cjk-latin-spacing).
-// It is counted for every such pair, which may be more than Typst adds, never less.
+// gap returns the space in ems that Typst may put between two characters. Typst puts a quarter
+// em between Chinese or Japanese text and its neighbours of other kinds (cjk-latin-spacing),
+// including some symbols; this counts it next to anything but a space or another such
+// character, which may be more than Typst adds, never less.
 func gap(a, b rune) float64 {
-	if (cjk(a) && alnum(b)) || (alnum(a) && cjk(b)) {
+	if a != 0 && a != ' ' && b != ' ' && cjk(a) != cjk(b) {
 		return 0.25
 	}
 	return 0
 }
 
-func cjk(ch rune) bool { return unicode.In(ch, unicode.Han, unicode.Hiragana, unicode.Katakana) }
-
-func alnum(ch rune) bool { return (unicode.IsLetter(ch) || unicode.IsDigit(ch)) && !cjk(ch) }
+// cjk reports Chinese and Japanese characters, including the prolonged sound marks and
+// half-width katakana.
+func cjk(ch rune) bool {
+	return unicode.In(ch, unicode.Han, unicode.Hiragana, unicode.Katakana) || ch == 0x30FC || ch == 0xFF70 || (ch >= 0xFF66 && ch <= 0xFF9F)
+}

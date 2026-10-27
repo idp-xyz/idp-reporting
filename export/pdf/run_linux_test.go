@@ -118,6 +118,23 @@ func TestSweepRemovesOnlyStaleRenderDirectories(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A pattern character in the path is taken literally.
+	pattern, sibling := filepath.Join(work, "w[1]"), filepath.Join(work, "w1")
+	for _, d := range []string{filepath.Join(pattern, "reporting-pdf-3"), filepath.Join(sibling, "reporting-pdf-4")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(d, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweep(pattern, time.Now())
+	if _, err := os.Stat(filepath.Join(sibling, "reporting-pdf-4")); err != nil {
+		t.Error("sweep of w[1] removed a directory in w1")
+	}
+	if _, err := os.Stat(filepath.Join(pattern, "reporting-pdf-3")); err == nil {
+		t.Error("sweep of w[1] left its own stale directory")
+	}
 	sweep(work, time.Now())
 	for d, want := range map[string]bool{stale: false, fresh: true, other: true} {
 		if _, err := os.Stat(d); (err == nil) != want {

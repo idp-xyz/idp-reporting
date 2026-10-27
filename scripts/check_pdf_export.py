@@ -80,8 +80,10 @@ def printed(exp):
 
 
 def cjk_punctuation(c):
+    """Punctuation that Typst compresses or pushes into the cell padding in Chinese text,
+    including the middle dot."""
     cp = ord(c)
-    return unicodedata.category(c).startswith("P") and (0x3000 <= cp <= 0x303F or 0xFF00 <= cp <= 0xFFEF or 0x2010 <= cp <= 0x206F)
+    return unicodedata.category(c).startswith("P") and (cp == 0xB7 or 0x3000 <= cp <= 0x303F or 0xFF00 <= cp <= 0xFFEF or 0x2010 <= cp <= 0x206F)
 
 
 def characters(page, number):
@@ -100,10 +102,11 @@ def characters(page, number):
 
 
 def overlaps(chars):
-    """Pairs of characters drawn over each other, ignoring CJK punctuation, which Typst
-    compresses by overlapping advance boxes."""
+    """Characters drawn over others. Neighbours drawn one after the other on one line may
+    overlap: kerning and the compression of punctuation move their advance boxes together."""
     grid, found = {}, []
-    for a in chars:
+    for n, a in enumerate(chars):
+        a["n"] = n
         if not a["c"].strip() or cjk_punctuation(a["c"]):
             continue
         cells = {(gx, gy) for gx in range(int(a["x0"] // 12), int(a["x1"] // 12) + 1)
@@ -113,7 +116,8 @@ def overlaps(chars):
                 w = min(a["x1"], b["x1"]) - max(a["x0"], b["x0"])
                 h = min(a["y1"], b["y1"]) - max(a["y0"], b["y0"])
                 small = min((a["x1"] - a["x0"]) * (a["y1"] - a["y0"]), (b["x1"] - b["x0"]) * (b["y1"] - b["y0"]))
-                if w > 0 and h > 0 and w * h > 0.25 * small and b not in found:
+                neighbours = a["n"] - b["n"] == 1 and abs(a["base"] - b["base"]) < 0.5
+                if w > 0 and h > 0 and w * h > 0.25 * small and not neighbours and b not in found:
                     found.append(b)
         for key in cells:
             grid.setdefault(key, []).append(a)

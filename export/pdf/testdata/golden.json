@@ -32,6 +32,14 @@
   ],
   "pages": 3
  },
+ "mixed.pdf": {
+  "first_rows": [
+   0,
+   9,
+   18
+  ],
+  "pages": 3
+ },
  "nodims.pdf": {
   "first_rows": [
    0
@@ -40,9 +48,10 @@
  },
  "punctuation.pdf": {
   "first_rows": [
-   0
+   0,
+   6
   ],
-  "pages": 1
+  "pages": 2
  },
  "rows1000.pdf": {
   "first_rows": [
