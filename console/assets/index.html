@@ -7,6 +7,7 @@
   <meta name="description" content="IDP Reporting 独立报表工作区">
   <title>IDP Reporting · 报表工作区</title>
   <link rel="stylesheet" href="/console/styles.css">
+  <script src="/console/dashboard.js" defer></script>
   <script src="/console/app.js" defer></script>
 </head>
 <body>
@@ -19,6 +20,7 @@
       <button class="nav-item active" data-page="overview" aria-current="page"><span aria-hidden="true">◫</span>工作区概览</button>
       <button class="nav-item" data-page="catalog"><span aria-hidden="true">▦</span>数据目录</button>
       <button class="nav-item" data-page="workspace"><span aria-hidden="true">▤</span>报表工作台</button>
+      <button class="nav-item" data-page="dashboard"><span aria-hidden="true">▦</span>看板设计器</button>
       <button class="nav-item" data-page="tasks"><span aria-hidden="true">◷</span>任务工作区<span id="task-count" class="nav-count">0</span></button>
       <div class="nav-label second">平台</div>
       <button class="nav-item" data-page="system"><span aria-hidden="true">⚙</span>能力与环境</button>
@@ -71,6 +73,13 @@
           <div id="result-pager" class="pager" hidden><span id="page-info"></span><div><label for="page-size" class="help">每页</label><select id="page-size" aria-label="快照每页行数"><option value="2">2 行</option><option value="25" selected>25 行</option><option value="50">50 行</option></select><button id="first-page" class="button quiet small">第一页</button><button id="next-page" class="button secondary small" disabled>下一页 →</button></div></div>
           <div id="result-evidence" class="evidence" hidden></div>
         </article>
+      </section>
+      <section class="page" id="page-dashboard" hidden>
+        <div class="page-heading"><div><h1>看板设计器</h1><p>组合当前授权结果的指标卡与明细表。当前支持单数据集、本地配置文件。</p></div><button class="button secondary" data-open="workspace">回工作台查询</button></div>
+        <p id="board-source">尚无当前授权结果</p><p>指标卡是服务端原范围合计，表格是当前页或有界预览；两者范围可能不同。看板不计算新的汇总，不改变查询权限。</p>
+        <div class="panel"><label for="board-metric">指标</label><select id="board-metric"></select><button type="button" class="button" id="board-add-metric">添加指标卡</button><label for="board-columns">表格字段（可多选）</label><select id="board-columns" multiple aria-label="表格字段"></select><button type="button" class="button" id="board-add-table">添加明细表</button><button type="button" class="button" id="board-reset">清空组件</button><p id="board-count">0 / 12 个组件</p></div>
+        <div id="board-widgets" class="board-grid"></div>
+        <div class="panel"><button type="button" class="button" id="board-save">生成看板配置文件</button><label for="board-json">看板 JSON（仅组件和字段绑定；可粘贴重新打开）</label><textarea id="board-json" maxlength="65536" rows="6"></textarea><button type="button" class="button" id="board-open">打开看板配置</button><p id="board-status" role="status">请先在工作台查询或打开快照。</p><p>配置不含数据、令牌或公司范围。当前未接入看板的服务器保存和发布；报表列布局的服务器接口不用于看板文件。</p></div>
       </section>
       <section class="page" id="page-tasks" hidden>
         <div class="page-heading"><div><div class="eyebrow">BACKGROUND TASKS</div><h1>任务工作区</h1><p>跟踪本次会话已知任务；使用任务 ID 恢复服务器上的私有任务。</p></div><button id="refresh-tasks" class="button secondary">刷新状态</button></div>
