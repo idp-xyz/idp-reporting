@@ -1,34 +1,32 @@
 {
-  "phase": "S03-B3",
+  "phase": "S03-C1",
   "date": "2026-10-27 Asia/Shanghai",
-  "baseline": "5c5556d14b72d23f9a57ca8063be55d0fc0a33fa",
-  "code_commit": "10d5e96756c2252cd3f740302151920c404e4ab7",
+  "baseline": "118abcf00d745c7c627343cfbb17ed0a358f398d",
+  "reviewed_implementation": "d5478d6",
+  "qualified_checkpoint": "6d30c24523ac62d48cea32ff94538c7c6217d1b1",
   "go_checks": {
     "go": {
       "top_level_passes": 40,
-      "pass_events": 175,
-      "explicit_skips": [
+      "pass_events": 176,
+      "skips": [
         "TestPostgresContract",
         "TestDurablePostgresContract"
       ]
     },
     "race": {
       "top_level_passes": 40,
-      "pass_events": 175,
-      "explicit_skips": [
+      "pass_events": 176,
+      "skips": [
         "TestPostgresContract",
         "TestDurablePostgresContract"
       ]
     }
   },
-  "dom_pass": 26,
+  "dom_pass": 29,
   "standards_review": "PASS",
   "spec_review": "PASS",
-  "independent_targeted_publication_dom_each_axis": 1,
-  "closed_P2": "Publish must authorize actual target version, not initial version1 columns",
-  "negative_control": "old2872cab API with current HTTP regression fails as expected via Go overlay",
-  "schema_migration": "legacy [][]Entry -> schema2 on next write; preserves IDs and definitions; old binaries cannot read schema2",
-  "publication_scope": "private owner only; no sharing or approvals",
+  "independent_targeted_dom_each_axis": 3,
+  "dashboard_scope": "single authorized result, server-total cards/current-page tables; local metadata file only",
   "browser_qa": "NOT_VERIFIED",
   "real_pg_rerun": false,
   "production_approved": false,
@@ -42,12 +40,13 @@
     "adapters/contractsim/simulator.go": "85f0fd380af74c4a36306a2d48cb3072fd4db4528265f2c25e20e18f0e3ae3a9",
     "cmd/reporting-demo/main.go": "5757fbcf7d00a23636e58a1dbcc500e4a19b5f19a7b251863036d2c102b25454",
     "cmd/reporting-recovery-probe/main.go": "e3628ccc42cf77ce01be5bbd532ee92314a0f5576eeaf5abd2dcdfe87a0a08e4",
-    "console/assets/app.js": "35b563dbe6beccf8247dcb076cbf6394184d6aa95de198c9be24bb816d699b2e",
-    "console/assets/index.html": "cb47baa963648f128e6568c93b012dde20cdeea16e6f9dab5d4caa577558d640",
-    "console/assets/styles.css": "922517a23edaec9cc1ad98c0f242722d5aa5bcc7c8a948d03d3f46af7451a20b",
-    "console/dom.test.mjs": "bd98c0389390cbbdcb2d7ee8f30efde7279bb11871c79cd9d1c50c09a4c82e39",
-    "console/handler.go": "3c5d0b83320469a8806ba06a6589f5a1673e4c0e2f02952bb6e80a8095dab9b3",
-    "console/handler_test.go": "83c9fb8a08f716565a3168416a9b5860bb8beac10e564d1202be4e7e63b5d7e4",
+    "console/assets/app.js": "fa04ca2212b170e7cc7b65181fc4ad6d76332453f5cac0cf7b34d3b4584aa48d",
+    "console/assets/dashboard.js": "6b6f04956b7a1748e236b5c80e122ada6cd3e420fab3267b6d837dfea5c4d07c",
+    "console/assets/index.html": "55c5f6717320f0ed1c1822c0da5e3eb1aa069b97b90ea0398fdd46dfdc298a05",
+    "console/assets/styles.css": "1877dc071292ef16f4be2a40bd170bf9760cb1a768a8cf46899e35559ae8771a",
+    "console/dom.test.mjs": "d6be86149eb110142bbc6c69e14116c08a3f9a337eb431c3157df8e8ed723932",
+    "console/handler.go": "645e85795f47d069fd3b584442701df3c5017575e9b28beee653de3544201890",
+    "console/handler_test.go": "b94edc893255451aba7b0d2e8b74af165ee43ea593b9c6b5691dfef2dcea3fbd",
     "export/xlsx/writer.go": "71ed51e6c9d92926586d75699deddaeffbb269c37af9fdaaa2a633595a3de0a8",
     "go.mod": "ffdf02777c0b2fca75a8b9b69bee3728d36fd91927988a57eec9c2caa2d65d17",
     "go.sum": "2857e6a81e98cb0e6a47d13bd1ac503d1d04d8a2ee4b2a427cd4f1ee0409333a",
@@ -84,6 +83,5 @@
     "transport/httpapi/layouts_test.go": "f5149fab42fa0b02513da398548a07dbb32e3182b880cdc548ebffeac60e3825",
     "transport/httpapi/release_catalog_test.go": "289e57b90acec3755d02af4e76317683cbdab770c5fe8418a4f0be322149b9fc",
     "transport/httpapi/session_test.go": "c8b5266618a38c372da59f872e3153c55bbce1a81c8c64bb7dac2e63605a82a5"
-  },
-  "ordinary_log_note": "Initial ordinary log incomplete (diagnostic only); complete same-source rerun verified every started test terminated."
+  }
 }
