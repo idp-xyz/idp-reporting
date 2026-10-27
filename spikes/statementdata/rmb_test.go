@@ -1,4 +1,4 @@
-package main
+package statementdata
 
 import "testing"
 
@@ -18,13 +18,13 @@ func TestRMBUpper(t *testing.T) {
 		"-0.00":               "零元整",
 		"9999999999999999.99": "玖仟玖佰玖拾玖万亿玖仟玖佰玖拾玖亿玖仟玖佰玖拾玖万玖仟玖佰玖拾玖元玖角玖分",
 	} {
-		if got, e := rmbUpper(in); e != nil || got != want {
-			t.Errorf("rmbUpper(%q) = %q, %v; want %q", in, got, e, want)
+		if got, e := RMBUpper(in); e != nil || got != want {
+			t.Errorf("RMBUpper(%q) = %q, %v; want %q", in, got, e, want)
 		}
 	}
 	for _, in := range []string{"12345678901234567.00", "1.5", "1", "abc", "1e5", "", "+1.00", "1.000", "-.50"} {
-		if got, e := rmbUpper(in); e == nil {
-			t.Errorf("rmbUpper(%q) = %q; want an error", in, got)
+		if got, e := RMBUpper(in); e == nil {
+			t.Errorf("RMBUpper(%q) = %q; want an error", in, got)
 		}
 	}
 }

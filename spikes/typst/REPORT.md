@@ -80,8 +80,10 @@ PDF 阅读器兼容性（Acrobat、浏览器内置阅读器等；只用 PyMuPDF 
 
 ```bash
 go test ./... && go build -o typst-spike .
-python -I eval.py --spike-bin ./typst-spike --typst <typst> --fonts <只含 Noto Sans SC 的目录> --out results
+python -I ../pdfeval/eval.py --engine typst --spike-bin ./typst-spike --typst <typst> --fonts <只含 Noto Sans SC 的目录> --out results
 ```
+
+后来，检查脚本移到了 spikes/pdfeval/，改为与引擎无关的版本，数据生成也抽到了 spikes/statementdata/。本目录下 results/ 里的数据出自旧版脚本。与 fpdf 方案的同条件对比见 spikes/pdfgo/COMPARISON.md，用的是新版脚本。
 
 需要非特权用户命名空间（`unshare -rn` 可用）和 Docker（用于 veraPDF）。这台机器上 Docker 守护进程不走代理，所以 veraPDF 镜像是用一个脚本经 shell 代理逐层下载、校验 sha256 后 `docker load` 进来的，没有改动系统配置。
 

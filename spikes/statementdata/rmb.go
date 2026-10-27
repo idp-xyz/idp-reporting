@@ -1,4 +1,4 @@
-package main
+package statementdata
 
 import (
 	"errors"
@@ -11,9 +11,9 @@ var (
 	cnGroups = [...]string{"", "万", "亿", "万亿"}
 )
 
-// rmbUpper writes an exact two-decimal amount in capital numerals as used on vouchers.
+// RMBUpper writes an exact two-decimal amount in capital numerals as used on vouchers.
 // It refuses more than 16 integer digits rather than invent larger units.
-func rmbUpper(amount string) (string, error) {
+func RMBUpper(amount string) (string, error) {
 	neg := strings.HasPrefix(amount, "-")
 	whole, frac, ok := strings.Cut(strings.TrimPrefix(amount, "-"), ".")
 	if !ok || whole == "" || len(frac) != 2 || !allDigits(whole) || !allDigits(frac) {

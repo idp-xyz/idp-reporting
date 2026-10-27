@@ -1,0 +1,130 @@
+{
+  "engine": "fpdf",
+  "engine_version": "codeberg.org/go-pdf/fpdf\tv0.12.0",
+  "sample": {
+    "pages": 6,
+    "rows": 150,
+    "bytes": 73956,
+    "running_totals_match_independent_sum": true,
+    "rows_missing": [],
+    "rows_duplicated": [],
+    "rows_in_order": true,
+    "header_missing_on_pages": [],
+    "page_numbering_wrong_on": [],
+    "carried_totals_wrong": [],
+    "descriptions_not_complete_and_literal": [],
+    "description_column_has_extra_text": false,
+    "amounts_not_on_their_row_page": [],
+    "final_total_and_capital_on_last_page": true,
+    "metadata_readable": true,
+    "description_lines_checked": 196,
+    "line_break_prohibition_violations": [],
+    "fonts": [
+      "utf8noto (ttf)",
+      "utf8notoB (ttf)"
+    ],
+    "embedded_font_families": [
+      "Noto Sans SC"
+    ],
+    "only_embedded_noto": true,
+    "subset_tag_prefix": false,
+    "text_searchable": true,
+    "render_seconds": 0.038940702
+  },
+  "linebreak_stress": {
+    "pages": 34,
+    "rows": 400,
+    "bytes": 146684,
+    "running_totals_match_independent_sum": true,
+    "rows_missing": [],
+    "rows_duplicated": [],
+    "rows_in_order": true,
+    "header_missing_on_pages": [],
+    "page_numbering_wrong_on": [],
+    "carried_totals_wrong": [],
+    "descriptions_not_complete_and_literal": [],
+    "description_column_has_extra_text": false,
+    "amounts_not_on_their_row_page": [],
+    "final_total_and_capital_on_last_page": true,
+    "metadata_readable": true,
+    "description_lines_checked": 1448,
+    "line_break_prohibition_violations": [],
+    "fonts": [
+      "utf8noto (ttf)",
+      "utf8notoB (ttf)"
+    ],
+    "embedded_font_families": [
+      "Noto Sans SC"
+    ],
+    "only_embedded_noto": true,
+    "subset_tag_prefix": false,
+    "text_searchable": true
+  },
+  "row_taller_than_page": {
+    "rendered": true,
+    "message": "",
+    "pages": 4,
+    "engine_output": "",
+    "descriptions_not_complete_and_literal": [],
+    "clause_occurrences_shown": 120,
+    "clause_occurrences_in_data": 120,
+    "all_checks_clean": true
+  },
+  "deterministic_bytes": true,
+  "sample_sha256": "122ac78291821e574e51bee954659c6970c2607b3b892ace81db4c2e52bc44c8",
+  "verapdf_2b": {
+    "sample": "PASS /data/sample.pdf 2b",
+    "negative_control_without_pdfa": "FAIL /data/sample-no-pdfa.pdf 2b",
+    "draft_watermark": "PASS /data/sample-draft.pdf 2b"
+  },
+  "performance": [
+    {
+      "rows": 5,
+      "pages": 1,
+      "bytes": 35631,
+      "runs": 1,
+      "seconds_median": 0.029,
+      "seconds_min": 0.029,
+      "seconds_max": 0.029,
+      "max_rss_mb_median": 153.0,
+      "max_rss_mb_max": 153.0,
+      "all_checks_clean": true
+    },
+    {
+      "rows": 3000,
+      "pages": 107,
+      "bytes": 418346,
+      "runs": 1,
+      "seconds_median": 0.06,
+      "seconds_min": 0.06,
+      "seconds_max": 0.06,
+      "max_rss_mb_median": 153.0,
+      "max_rss_mb_max": 153.0,
+      "all_checks_clean": true
+    },
+    {
+      "rows": 30000,
+      "pages": 1053,
+      "bytes": 3705328,
+      "runs": 5,
+      "seconds_median": 0.362,
+      "seconds_min": 0.343,
+      "seconds_max": 0.397,
+      "max_rss_mb_median": 201.9,
+      "max_rss_mb_max": 235.1,
+      "all_checks_clean": true
+    }
+  ],
+  "concurrency_4x3000_rows": {
+    "all_rendered": true,
+    "wall_seconds": 0.13,
+    "sum_of_peak_rss_mb": 1007.5,
+    "all_checks_clean": true
+  },
+  "amounts": {
+    "16_digit_total_rendered_exactly": true,
+    "16_digit_capital": "玖仟玖佰玖拾玖万亿玖仟玖佰玖拾玖亿玖仟玖佰玖拾玖万玖仟玖佰玖拾玖元玖角玖分",
+    "30_digit_total_refused": "2026/10/26 22:40:59 total 123456789012345678901234567890.12: amount exceeds the 16 integer digits capital numerals support"
+  },
+  "safety": "not applicable: no template language; the layout is Go code and fpdf's core imports no network package"
+}
