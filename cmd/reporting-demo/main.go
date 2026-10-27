@@ -11,6 +11,7 @@ import (
 	"idp.local/reporting/adapters/contractsim/pgsource"
 	"idp.local/reporting/console"
 	"idp.local/reporting/dashboards"
+	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
 	"idp.local/reporting/layouts"
@@ -45,6 +46,8 @@ func run() error {
 	typst := flag.String("pdf-typst", "", "optional pinned Typst binary; with -pdf-typst-sha256 and -pdf-fonts enables PDF export")
 	typstSum := flag.String("pdf-typst-sha256", "", "SHA-256 of the -pdf-typst binary in lowercase hex")
 	pdfFonts := flag.String("pdf-fonts", "", "directory holding the only fonts PDF export may use")
+	templateDir := flag.String("template-directory", "", "optional private single-process document template directory (0700)")
+	assetDir := flag.String("background-directory", "", "optional private immutable PNG background directory (0700)")
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -108,13 +111,14 @@ func run() error {
 		finance, shipment = source, source
 	}
 	formats := map[string]r.WorkbookWriter{}
+	var renderer *pdf.Writer // table exports and document previews share one Typst
 	switch {
 	case *typst != "" && *typstSum != "" && *pdfFonts != "":
 		w, err := pdf.New(pdf.Config{Typst: *typst, TypstSHA256: *typstSum, FontDir: *pdfFonts})
 		if err != nil {
 			return fmt.Errorf("PDF export could not start: %w", err)
 		}
-		formats["pdf"] = w
+		formats["pdf"], renderer = w, w
 	case *typst != "" || *typstSum != "" || *pdfFonts != "":
 		return fmt.Errorf("PDF export needs -pdf-typst, -pdf-typst-sha256 and -pdf-fonts together")
 	}
@@ -148,6 +152,34 @@ func run() error {
 		defer store.Close()
 		handler, err = httpapi.WithDashboards(handler, s, auth, store)
 		if err != nil {
+			return err
+		}
+	}
+	var assets *doctemplates.Assets
+	if *assetDir != "" {
+		var err error
+		if assets, err = doctemplates.OpenAssets(*assetDir); err != nil {
+			return err
+		}
+		defer assets.Close()
+		if handler, err = httpapi.WithDocumentAssets(handler, s, auth, assets); err != nil {
+			return err
+		}
+	}
+	var documents httpapi.DocumentRenderer
+	if renderer != nil {
+		documents = renderer
+		if handler, e = httpapi.WithDocumentPreviews(handler, s, auth, documents, assets); e != nil {
+			return e
+		}
+	}
+	if *templateDir != "" {
+		store, err := doctemplates.Open(*templateDir)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		if handler, err = httpapi.WithDocumentTemplates(handler, s, auth, store, documents, assets); err != nil {
 			return err
 		}
 	}

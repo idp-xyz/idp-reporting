@@ -10,6 +10,8 @@ package pdf
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +26,7 @@ import (
 	"time"
 
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -482,5 +485,96 @@ func TestTypstWithAHardCoreLimitOfZero(t *testing.T) {
 	refused := strings.Contains(string(out), "NEW_RESULT=pdf: the hard core limit is 0")
 	if piped != refused || (!piped && !strings.Contains(string(out), "NEW_RESULT=<nil>")) {
 		t.Fatalf("core_pattern %q: %s", pattern, out)
+	}
+}
+
+// documentExpectation is what scripts/check_pdf_export.py checks a document preview against:
+// the template's own boxes in millimetres and the values, from which it derives positions.
+type documentExpectation struct {
+	Kind       string            `json:"kind"`
+	File       string            `json:"file"`
+	Background bool              `json:"background"`
+	OffsetX    float64           `json:"offset_x"`
+	OffsetY    float64           `json:"offset_y"`
+	Elements   []documentElement `json:"elements"`
+}
+
+type documentElement struct {
+	Text  string  `json:"text"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	Width float64 `json:"width"`
+	Size  int     `json:"size"`
+	Align string  `json:"align"`
+}
+
+func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background bool) {
+	t.Helper()
+	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
+	if dir == "" {
+		return
+	}
+	e := documentExpectation{Kind: "document", File: name + ".pdf", Background: background, OffsetX: d.Print.OffsetX, OffsetY: d.Print.OffsetY, Elements: []documentElement{}}
+	for _, el := range d.Elements {
+		if d.Print.Mode == "variables" && el.Source == "literal" {
+			continue
+		}
+		e.Elements = append(e.Elements, documentElement{Text: values[el.ID], X: el.X, Y: el.Y, Width: el.Width, Size: el.FontSize, Align: el.Align})
+	}
+	b, _ := json.MarshalIndent(e, "", " ")
+	for file, content := range map[string][]byte{name + ".pdf": pdf, name + ".json": b} {
+		if err := os.WriteFile(filepath.Join(dir, file), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTypstRendersDocuments(t *testing.T) {
+	w := typstWriter(t, nil)
+	png, err := os.ReadFile("../../doctemplates/testdata/a4-background.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(png)
+	elements := []doctemplates.Element{
+		{ID: "n1", Source: "literal", Text: "套打底稿预览 Form", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"},
+		{ID: "n2", Source: "row", Field: "ar.open_balance", X: 20, Y: 50, Width: 80, Height: 8, FontSize: 10, Align: "right"},
+		{ID: "n3", Source: "total", Field: "ar.open_balance", X: 110.5, Y: 50, Width: 80, Height: 8, FontSize: 10, Align: "center"},
+		{ID: "n4", Source: "row", Field: "customer", X: 20, Y: 249.7, Width: 170, Height: 16, FontSize: 28, Align: "left"},
+	}
+	values := map[string]string{"n1": "套打底稿预览 Form", "n2": "9007199254740893.00", "n3": "9007199254740993.01", "n4": "  客户 a  b"}
+	doc := func(mode string, ox, oy float64) doctemplates.Document {
+		return doctemplates.Document{Schema: "1.2", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}}, Elements: elements,
+			Print: &doctemplates.PrintProfile{Mode: mode, OffsetX: ox, OffsetY: oy}, Background: &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: hex.EncodeToString(sum[:])}}
+	}
+	for _, c := range []struct {
+		name string
+		d    doctemplates.Document
+		png  []byte
+	}{
+		{"document_full", doc("full", 0, 0), png},
+		{"document_calibrated", doc("full", 1.2, -0.5), png},
+		{"document_variables", doc("variables", -2.3, 4), nil},
+	} {
+		out, err := w.Render(t.Context(), c.d, values, c.png)
+		if err != nil {
+			var re *RenderError
+			if errors.As(err, &re) {
+				t.Fatalf("%s: %v\n%s", c.name, err, re.output())
+			}
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		again, err := w.Render(t.Context(), c.d, values, c.png)
+		if err != nil || !bytes.Equal(out, again) {
+			t.Fatalf("%s: two renders with the same clock differ (%v)", c.name, err)
+		}
+		documentEvidence(t, c.name, out, c.d, values, c.png != nil)
+	}
+	// Refused before Typst runs: a value too wide for its box, and one the fonts lack.
+	for value, want := range map[string]error{strings.Repeat("宽", 40): r.ErrUnsupported, "😀": r.ErrUnsupported} {
+		v := map[string]string{"n1": "x", "n2": value, "n3": "1", "n4": "1"}
+		if _, err := w.Render(t.Context(), doc("variables", 0, 0), v, nil); !errors.Is(err, want) {
+			t.Errorf("%q: %v; want %v", value, err, want)
+		}
 	}
 }
