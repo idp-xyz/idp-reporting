@@ -1,0 +1,22 @@
+{
+ "pages": 6,
+ "rows": 150,
+ "rows_missing": [],
+ "rows_in_order": true,
+ "header_missing_on_pages": [],
+ "page_numbering_wrong_on": [],
+ "descriptions_not_complete_and_literal": [],
+ "description_lines": 251,
+ "line_break_violations": 0,
+ "violation_examples": [],
+ "fonts": [
+  "NotoSansSC-Regular-5405 (ttf)"
+ ],
+ "searchable": true,
+ "metadata": {
+  "title": "应收账款对账单",
+  "producer": "pdfme (https://pdfme.com/)",
+  "creationDate": "D:20261027054533Z",
+  "format": "PDF 1.7"
+ }
+}

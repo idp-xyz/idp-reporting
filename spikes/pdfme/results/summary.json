@@ -1,0 +1,15 @@
+{
+ "engine": "@pdfme/generator 6.2.8 (MIT, published 2026-10-21) on Node v24.22.0; data files shared with the fpdf and Typst runs",
+ "sample_150_rows": "6 pages; rows complete and ordered; header and page numbers on every page; descriptions complete and literal; 0 line-break violations in 251 lines; Noto subset embedded; searchable",
+ "row_taller_than_page": "rendered with no warning; 2 of 120 clauses shown (silent truncation)",
+ "glyphs": "astral U+2C317 in the font rendered; U+20BB7 and an emoji missing from the font extracted as \\x00 (silent loss)",
+ "pdfa_2b_verapdf": "FAIL (the pdf-lib fork has no output intent or PDF/A identification)",
+ "deterministic": "no: creation and modification dates are the render time",
+ "carried_totals": "no per-page content except {currentPage}/{totalPages}; would need a custom plugin (not evaluated)",
+ "performance": {
+  "3000_rows": "117 pages, 1.67 s, 458 MB peak RSS",
+  "30000_rows": "1159 pages, 26.23 s, 2101 MB peak RSS, 12.5 MB file"
+ },
+ "designer": "@pdfme/ui needs React 19 and antd 6 (22.6 MB unpacked); the console is buildless with CSP script-src 'self'",
+ "dependency_note": "@pdfme/generator depends on @pdfme/pdf-lib '*' and peer 'latest'; only a lock file pins them"
+}
