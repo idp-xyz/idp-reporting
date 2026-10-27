@@ -1,10 +1,11 @@
 # S03-A verification and remaining browser gate
 
-Pinned Go 1.26.5 and Node 24.22.1. Production UI is buildless HTML/CSS/JavaScript
-embedded in the Go binary. jsdom 30.1.3 is a locked development-only test tool.
+Pinned Go 1.26.10 (the go.mod toolchain line; evidence before this change used 1.26.5) and
+Node 24.22.1. Production UI is buildless HTML/CSS/JavaScript embedded in the Go binary. jsdom
+30.1.3 is a locked development-only test tool.
 
     npm ci --ignore-scripts --no-audit --no-fund
-    python3 scripts/run_s03a_checks.py --go /path/to/go1.26.5/bin/go
+    python3 scripts/run_s03a_checks.py --go /path/to/go1.26.10/bin/go
     python3 scripts/verify_s03a_workbooks.py
 
 Current evidence lives in evidence/s03a. Ordinary/race host suites include the

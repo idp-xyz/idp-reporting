@@ -19,7 +19,7 @@ concurrency:
 
 env:
   # Must equal the toolchain line in go.mod; the go job fails when they differ.
-  GO_VERSION: 1.26.5
+  GO_VERSION: 1.26.10
   # Use exactly that toolchain; never download another one silently.
   GOTOOLCHAIN: local
 

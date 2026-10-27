@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
@@ -21,7 +22,7 @@ def main():
     parser.add_argument('--go', default=os.environ.get('REPORTING_GO') or shutil.which('go'))
     args = parser.parse_args()
     if not args.go:
-        parser.error('provide --go for the pinned Go 1.26.5 toolchain')
+        parser.error('provide --go for the toolchain pinned in go.mod')
     root = Path(__file__).resolve().parents[1]
     out = root / 'evidence/s03a'
     out.mkdir(parents=True, exist_ok=True)
@@ -71,7 +72,10 @@ def main():
     unchanged = {}
     for relative in old_paths:
         original = subprocess.check_output(['git', 'show', BASELINE + ':' + relative], cwd=root)
-        assert original == (root / relative).read_bytes(), relative
+        current = (root / relative).read_bytes()
+        if relative == 'go.mod':  # a toolchain upgrade is not a dependency change
+            original, current = (re.sub(rb'(?m)^toolchain .*\n', b'', b) for b in (original, current))
+        assert original == current, relative
         unchanged[relative] = hashlib.sha256(original).hexdigest()
     summary = {'phase': 'S03-A', 'status': 'PASS_API_AND_SOFTWARE_DOM_BROWSER_QA_PENDING',
                'baseline': BASELINE, 'go': subprocess.check_output([args.go, 'version'], text=True).strip(),
