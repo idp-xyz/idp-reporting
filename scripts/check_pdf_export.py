@@ -1,21 +1,30 @@
-"""Check PDF exports against what each must show, independently of the engine that drew them.
+"""Check PDF exports against the snapshots they were made from, independently of export/pdf.
 
-For every <name>.json that the export/pdf Typst tests write (REPORTING_PDF_EVIDENCE), the
-matching <name>.pdf must:
-  - identify itself as PDF/A-2b in its XMP metadata, embed every font and use no Type 3 font;
-  - have at least min_pages pages, all in the expected orientation;
-  - print each table column, read page by page in drawing order, as exactly the column header on
-    every page followed by the expected cells and total in order, ignoring whitespace: nothing
-    lost, added, duplicated, reordered or moved to another column, and lines top to bottom;
-  - keep every character inside its column and inside the page margins, table text above the
-    footer, and no replacement character;
-  - print "第 i 页 / 共 N 页" and the snapshot facts in the footer of every page.
-With --negative it also corrupts every expectation in several ways and fails unless each
-corruption is caught. With --verapdf IMAGE it validates every PDF as PDF/A-2b with veraPDF in
-Docker without a network, and a copy stripped of its XMP metadata, which must fail.
+The export/pdf Typst tests (REPORTING_PDF_EVIDENCE=DIR) write <name>.pdf and <name>.json: the
+snapshot's own values, the column edges and the facts the page furniture must show. This
+script derives the printed text itself (thousands separators for metric numbers, header
+suffixes, the total row or list, the empty-table label) and requires of each PDF:
+  - PDF/A-2b identification in the XMP metadata, every font embedded, no Type 3 font;
+  - at least min_pages pages, all in the expected orientation;
+  - the dataset title (13 pt) and the meta facts (7.5 pt) on page 1 above the table, and
+    "第 i 页 / 共 N 页" with the snapshot facts in the footer (6.5 pt) of every page;
+  - each column, read in drawing order, as its header on every page and then every cell and
+    the total in order: no character lost, added, duplicated, reordered or in another column; a
+    line break where a value has one, a space or line break where it has spaces, no space where
+    it has none; lines top to bottom;
+  - every non-empty cell of a row starting on the same page and baseline;
+  - the totals list and the empty-table label after the table, below its last line;
+  - every character inside the page margins and inside its cell's padding (CJK punctuation,
+    which Typst may push into the padding, inside the column), table text above the footer,
+    text in a dark colour, no character drawn over another and no replacement character.
+--golden FILE compares each document's page count and the first row on each page with FILE;
+--write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
+the expectations and the PDFs in several ways and fails unless each corruption is caught.
+--verapdf IMAGE validates every PDF as PDF/A-2b with veraPDF in Docker without a network, and
+a copy without XMP metadata, which must fail.
 
-Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--verapdf IMAGE]
-(needs PyMuPDF: scripts/requirements-pdfcheck.txt)
+Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | --write-golden FILE]
+       [--verapdf IMAGE]   (needs PyMuPDF: scripts/requirements-pdfcheck.txt)
 """
 import argparse
 import copy
@@ -25,28 +34,135 @@ import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 
 import pymupdf
 
-TABLE_SIZE = 8.0
-FOOT_SIZE = 6.5
+TITLE, META, TABLE, FOOT = 13.0, 7.5, 8.0, 6.5
 BOTTOM_MARGIN = 18 / 25.4 * 72
+TOTAL, EMPTY = "合计", "无数据行"
+FLAGS = pymupdf.TEXT_INHIBIT_SPACES | pymupdf.TEXT_PRESERVE_WHITESPACE  # only drawn characters
 
 
 def squash(s):
     return re.sub(r"\s+", "", s)
 
 
-def characters(page):
-    """Yields (size, char, bbox, origin) in drawing order."""
-    for block in page.get_text("rawdict")["blocks"]:
+def group(v):
+    """Thousands separators, written independently of export/pdf."""
+    sign, rest = ("-", v[1:]) if v.startswith("-") else ("", v)
+    whole, dot, frac = rest.partition(".")
+    out = ""
+    while len(whole) > 3:
+        whole, out = whole[:-3], "," + whole[-3:] + out
+    return sign + whole + out + dot + frac
+
+
+def printed(exp):
+    """Returns the headers, rows, total row (or None) and the text after the table."""
+    def header(c):
+        suffix = " · ".join(x for x in (c["currency"], c["unit"]) if x)
+        return c["label"] + (f"（{suffix}）" if suffix else "")
+
+    def cell(j, v):
+        return group(v) if exp["metric"][j] else v.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+
+    heads = [header(c) for c in exp["labels"]]
+    rows = [[cell(j, v) for j, v in enumerate(row)] for row in exp["rows"]]
+    dims = exp["dimensions"]
+    totals = [cell(dims + i, v) for i, v in enumerate(exp["totals"])]
+    total_row, after = None, ([] if rows else [EMPTY])
+    if totals and dims:
+        total_row = [TOTAL] + [""] * (dims - 1) + totals
+    elif totals:
+        after += [heads[i] + "：" + t for i, t in enumerate(totals)]
+    return heads, rows, total_row, after
+
+
+def cjk_punctuation(c):
+    cp = ord(c)
+    return unicodedata.category(c).startswith("P") and (0x3000 <= cp <= 0x303F or 0xFF00 <= cp <= 0xFFEF or 0x2010 <= cp <= 0x206F)
+
+
+def characters(page, number):
+    """The characters a page draws, in drawing order."""
+    out = []
+    for block in page.get_text("rawdict", flags=FLAGS)["blocks"]:
         for line in block.get("lines", []):
             for span in line["spans"]:
+                rgb = span["color"]
+                light = (0.2126 * (rgb >> 16 & 255) + 0.7152 * (rgb >> 8 & 255) + 0.0722 * (rgb & 255)) / 255 > 0.6
                 for c in span["chars"]:
-                    yield span["size"], c["c"], c["bbox"], c["origin"]
+                    x0, y0, x1, y1 = c["bbox"]
+                    out.append({"c": c["c"], "page": number, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
+                                "base": c["origin"][1], "size": round(span["size"], 1), "light": light})
+    return out
+
+
+def overlaps(chars):
+    """Pairs of characters drawn over each other, ignoring CJK punctuation, which Typst
+    compresses by overlapping advance boxes."""
+    grid, found = {}, []
+    for a in chars:
+        if not a["c"].strip() or cjk_punctuation(a["c"]):
+            continue
+        cells = {(gx, gy) for gx in range(int(a["x0"] // 12), int(a["x1"] // 12) + 1)
+                 for gy in range(int(a["y0"] // 12), int(a["y1"] // 12) + 1)}
+        for key in cells:
+            for b in grid.get(key, []):
+                w = min(a["x1"], b["x1"]) - max(a["x0"], b["x0"])
+                h = min(a["y1"], b["y1"]) - max(a["y0"], b["y0"])
+                small = min((a["x1"] - a["x0"]) * (a["y1"] - a["y0"]), (b["x1"] - b["x0"]) * (b["y1"] - b["y0"]))
+                if w > 0 and h > 0 and w * h > 0.25 * small and b not in found:
+                    found.append(b)
+        for key in cells:
+            grid.setdefault(key, []).append(a)
+    return found
+
+
+class Column:
+    """A column's characters in drawing order, read cell by cell."""
+
+    def __init__(self, chars):
+        self.chars, self.at = chars, 0
+
+    def take(self, text):
+        """Consumes text; returns (start (page, baseline) or None, problem or None)."""
+        start, prev, gap = None, None, None
+        for ch in text:
+            if ch == "\n":
+                gap = "line"
+                continue
+            if ch.isspace():
+                gap = gap or "space"
+                continue
+            spaced = False
+            while self.at < len(self.chars) and not self.chars[self.at]["c"].strip():
+                spaced, self.at = True, self.at + 1
+            if self.at >= len(self.chars):
+                return start, f"ends before {ch!r}"
+            got = self.chars[self.at]
+            if got["c"] != ch:
+                return start, f"has {got['c']!r} where {ch!r} belongs (page {got['page'] + 1})"
+            if prev is None:
+                start = (got["page"], got["base"])
+            else:
+                broke = (got["page"], round(got["base"], 1)) != (prev["page"], round(prev["base"], 1))
+                if gap == "line" and not broke:
+                    return start, f"lost a line break before {ch!r}"
+                if gap == "space" and not (spaced or broke):
+                    return start, f"lost a space before {ch!r}"
+                if gap is None and spaced:
+                    return start, f"has a space before {ch!r} that the value lacks"
+            prev, gap, self.at = got, None, self.at + 1
+        return start, None
+
+    def rest(self):
+        return "".join(c["c"] for c in self.chars[self.at:] if c["c"].strip())
 
 
 def check(directory, exp):
+    """Returns the problems found and the layout summary for the golden file."""
     problems = []
     doc = pymupdf.open(os.path.join(directory, exp["file"]))
     xmp = doc.get_xml_metadata()
@@ -55,117 +171,205 @@ def check(directory, exp):
     pages = doc.page_count
     if pages < exp["min_pages"]:
         problems.append(f"{pages} pages, expected at least {exp['min_pages']}")
-    cols = exp["columns"]
-    header = [squash(h) for h in exp["header"]]
-    streams = [""] * len(cols)
-    tail = ""  # 8 pt text after the table: listed totals or the empty-table label
-    expected_tail = "".join(squash(t) for t in exp["totals"]) if exp["totals_listed"] else ""
-    expected_tail += squash(exp.get("empty", ""))
+    heads, rows, total_row, after = printed(exp)
+    cols, inset, margin = exp["columns"], exp["inset"], exp["margin"]
+    streams = [[] for _ in cols]
+    headers_ok = True
+    tail, table_bottom = [], 0.0
     for i, page in enumerate(doc):
         for f in page.get_fonts(full=True):
             if f[1] == "n/a" or f[2] == "Type3":
-                problems.append(f"page {i + 1}: font {f[3]} is {f[2]} and embedded as {f[1]}")
+                problems.append(f"page {i + 1}: font {f[3]} is {f[2]}, embedded as {f[1]}")
         width, height = page.rect.width, page.rect.height
         if (width > height) != exp["landscape"]:
             problems.append(f"page {i + 1}: orientation")
-        chunks = [[] for _ in cols]
-        footer = []
-        table = []
-        for size, ch, (x0, y0, x1, y1), origin in characters(page):
-            if not ch.strip():
-                continue
-            if ch == "�":
+        chars = characters(page, i)
+        for c in overlaps(chars):
+            problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f},{c['y0']:.1f} is drawn over another character")
+        by_size = {}
+        for c in chars:
+            if c["c"] == "�":
                 problems.append(f"page {i + 1}: a replacement character")
-            tolerance = 0.5 * size + 0.5  # CJK punctuation trimmed at a line edge
-            if x0 < exp["margin"] - tolerance or x1 > width - exp["margin"] + tolerance or y0 < 0 or y1 > height:
-                problems.append(f"page {i + 1}: {ch!r} at {x0:.1f}..{x1:.1f} is outside the margins")
-            if abs(size - FOOT_SIZE) < 0.05:
-                footer.append(ch)
-            elif abs(size - TABLE_SIZE) < 0.05:
-                if y1 > height - BOTTOM_MARGIN + 0.5:
-                    problems.append(f"page {i + 1}: table text {ch!r} in the footer area")
-                table.append((ch, x0, x1, origin[1]))
-        if i == pages - 1 and expected_tail:
-            # The text after the table is the last expected_tail characters drawn on the page.
-            n = len(expected_tail)
-            tail, table = "".join(c[0] for c in table[-n:]), table[:-n]
-        for ch, x0, x1, base in table:
-            centre = (x0 + x1) / 2
+            if c["light"] and c["c"].strip():
+                problems.append(f"page {i + 1}: {c['c']!r} is drawn in a light colour")
+            tolerance = 0.5 * c["size"] + 0.5  # CJK punctuation trimmed at a line edge
+            if c["x0"] < margin - tolerance or c["x1"] > width - margin + tolerance or c["y0"] < 0 or c["y1"] > height:
+                problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f}..{c['x1']:.1f} is outside the margins")
+            by_size.setdefault(c["size"], []).append(c)
+        if set(by_size) - {TITLE, META, TABLE, FOOT}:
+            problems.append(f"page {i + 1}: text of unexpected sizes {sorted(set(by_size) - {TITLE, META, TABLE, FOOT})}")
+        table = by_size.get(TABLE, [])
+        for c in table:
+            if c["y1"] > height - BOTTOM_MARGIN + 0.5:
+                problems.append(f"page {i + 1}: table text {c['c']!r} in the footer area")
+        if i == pages - 1 and after:
+            n, k = len(squash("".join(after))), len(table)
+            while n and k:
+                k -= 1
+                n -= bool(table[k]["c"].strip())
+            tail, table = table[k:], table[:k]
+        chunks = [[] for _ in cols]
+        for c in table:
+            centre = (c["x0"] + c["x1"]) / 2
             j = next((j for j, (a, b) in enumerate(cols) if a <= centre < b), None)
             if j is None:
-                problems.append(f"page {i + 1}: {ch!r} at {x0:.1f} is in no column")
+                problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f} is in no column")
                 continue
-            if x0 < cols[j][0] - 0.5 or x1 > cols[j][1] + 0.5:
-                problems.append(f"page {i + 1}: {ch!r} crosses the edge of column {j + 1}")
-            chunks[j].append((ch, base))
+            pad = 0 if cjk_punctuation(c["c"]) else inset
+            if c["c"].strip() and (c["x0"] < cols[j][0] + pad - 0.5 or c["x1"] > cols[j][1] - pad + 0.5):
+                problems.append(f"page {i + 1}: {c['c']!r} at {c['x0']:.1f}..{c['x1']:.1f} leaves the cell of column {j + 1}")
+            chunks[j].append(c)
+            table_bottom = max(table_bottom, c["base"]) if i == pages - 1 else table_bottom
         for j, chunk in enumerate(chunks):
-            text = "".join(c for c, _ in chunk)
-            if any(b < a - 0.5 for (_, a), (_, b) in zip(chunk, chunk[1:])):
+            if any(b["base"] < a["base"] - 0.5 for a, b in zip(chunk, chunk[1:])):
                 problems.append(f"page {i + 1}: column {j + 1} is not drawn top to bottom")
-            if not text.startswith(header[j]):
-                problems.append(f"page {i + 1}: column {j + 1} does not start with its header")
-            streams[j] += text[len(header[j]):]
-        foot = "".join(footer)
-        for part in [f"第 {i + 1} 页 / 共 {pages} 页"] + exp["footer"]:
-            if squash(part) not in foot:
-                problems.append(f"page {i + 1}: footer lacks {part!r}")
+            column = Column(chunk)
+            _, problem = column.take(heads[j])
+            if problem:
+                problems.append(f"page {i + 1}: the header of column {j + 1} {problem}")
+                headers_ok = False
+            streams[j] += chunk[column.at:]
+        first = [c for c in chars if c["size"] in (TITLE, META)]
+        if i == 0:
+            title = [c for c in first if c["size"] == TITLE]
+            meta = [c for c in first if c["size"] == META]
+            if squash("".join(c["c"] for c in title)) != squash(exp["title"]):
+                problems.append("page 1 lacks the dataset title")
+            for fact in exp["meta"]:
+                if squash(fact) not in squash("".join(c["c"] for c in meta)):
+                    problems.append(f"page 1: the meta line lacks {fact!r}")
+            top = min((c["base"] for c in table), default=height)
+            if title and meta and not (max(c["base"] for c in title) < min(c["base"] for c in meta) <= max(c["base"] for c in meta) < top):
+                problems.append("page 1: the title and the meta line are not above the table in that order")
+        elif first:
+            problems.append(f"page {i + 1}: the title or the meta line is repeated")
+        foot = by_size.get(FOOT, [])
+        text = squash("".join(c["c"] for c in foot))
+        for fact in [f"第 {i + 1} 页 / 共 {pages} 页"] + exp["footer"]:
+            if squash(fact) not in text:
+                problems.append(f"page {i + 1}: the footer lacks {fact!r}")
+        if foot and table and min(c["base"] for c in foot) <= max(c["base"] for c in table):
+            problems.append(f"page {i + 1}: the footer is not below the table")
+    starts = [[None] * len(cols) for _ in rows + ([total_row] if total_row else [])]
     for j in range(len(cols)):
-        want = "".join(squash(row[j]) for row in exp["rows"])
-        if exp["totals"] and not exp["totals_listed"]:
-            want += squash(exp["totals"][j])
-        if streams[j] != want:
-            at = next((k for k, (a, b) in enumerate(zip(streams[j], want)) if a != b), min(len(streams[j]), len(want)))
-            problems.append(f"column {j + 1} differs at character {at} of {len(want)}")
-    if tail != expected_tail:
+        if not headers_ok:
+            break
+        column = Column(streams[j])
+        for r, row in enumerate(rows + ([total_row] if total_row else [])):
+            starts[r][j], problem = column.take(row[j])
+            if problem:
+                problems.append(f"column {j + 1}, row {r + 1}: the cell {problem}")
+                break
+        else:
+            if column.rest():
+                problems.append(f"column {j + 1} has text after its last cell: {column.rest()[:20]!r}")
+    for r, row in enumerate(starts):
+        seen = [s for s in row if s is not None]
+        if any(s[0] != seen[0][0] or abs(s[1] - seen[0][1]) > 0.5 for s in seen):
+            problems.append(f"row {r + 1}: its cells do not start on one baseline")
+    if squash("".join(c["c"] for c in tail)) != squash("".join(after)):
         problems.append("the totals or the empty-table label after the table differ")
-    return problems
+    elif tail and min(c["base"] for c in tail) <= table_bottom:
+        problems.append("the text after the table is not below it")
+    first_rows = []
+    for p in range(pages):
+        first_rows.append(next((r for r, s in enumerate(starts) if s[0] is not None and s[0][0] == p), None))
+    return problems, {"pages": pages, "first_rows": first_rows}
 
 
 def corruptions(exp):
     """Yields (name, corrupted expectation) for each corruption that applies."""
     rows = exp["rows"]
-    first = next(((r, j) for r, row in enumerate(rows) for j, v in enumerate(row) if squash(v)), None)
-    if first:
+    text_cols = [j for j in range(len(exp["columns"])) if not exp["metric"][j]]
+    cells = [(r, j) for r, row in enumerate(rows) for j in text_cols if squash(row[j])]
+
+    def changed(name, change):
         e = copy.deepcopy(exp)
-        r, j = first
-        e["rows"][r][j] = e["rows"][r][j].rstrip()[:-1]
-        yield "a cell lost a character", e
-    distinct = [k for k in range(1, len(rows)) if [squash(v) for v in rows[k]] != [squash(v) for v in rows[0]]]
+        change(e)
+        return name, e
+
+    if cells:
+        r, j = cells[0]
+        yield changed("a cell lost a character", lambda e: e["rows"][r].__setitem__(j, e["rows"][r][j].rstrip()[:-1]))
+        short = next(((r, j) for r, j in cells if 2 <= len(rows[r][j]) <= 8 and not re.search(r"\s", rows[r][j])), None)
+        if short:
+            r2, j2 = short
+            v = rows[r2][j2]
+            yield changed("a line break the PDF lacks", lambda e: e["rows"][r2].__setitem__(j2, v[0] + "\n" + v[1:]))
+            yield changed("a space the PDF lacks", lambda e: e["rows"][r2].__setitem__(j2, v[0] + " " + v[1:]))
+        spaced = next(((r, j) for r, j in cells if re.search(r"\S \S", rows[r][j]) and "\n" not in rows[r][j] and len(rows[r][j]) <= 12), None)
+        if spaced:
+            r3, j3 = spaced
+            yield changed("a space dropped", lambda e: e["rows"][r3].__setitem__(j3, re.sub(r"(\S) (\S)", r"\1\2", rows[r3][j3], count=1)))
+        pair = next(((r, j) for r, j in cells if r + 1 < len(rows) and squash(rows[r + 1][j]) and len(squash(rows[r][j])) > 1), None)
+        if pair:
+            r4, j4 = pair
+
+            def move(e):
+                v = e["rows"][r4][j4].rstrip()
+                e["rows"][r4][j4], e["rows"][r4 + 1][j4] = v[:-1], v[-1] + e["rows"][r4 + 1][j4]
+            yield changed("a character moved to the next row", move)
+    distinct = [k for k in range(1, len(rows)) if rows[k] != rows[0]]
     if distinct:
-        e = copy.deepcopy(exp)
         k = distinct[0]
-        e["rows"][0], e["rows"][k] = e["rows"][k], e["rows"][0]
-        yield "two rows swapped", e
+        yield changed("two rows swapped", lambda e: e["rows"].__setitem__(slice(0, k + 1, k), [rows[k], rows[0]]))
     if rows:
-        e = copy.deepcopy(exp)
-        e["rows"].append(e["rows"][0])
-        yield "a row duplicated", e
-    if first and len(exp["columns"]) > 1:
-        e = copy.deepcopy(exp)
-        r, j = first
+        yield changed("a row duplicated", lambda e: e["rows"].append(rows[0]))
+    if cells and len(exp["columns"]) > 1:
+        r, j = cells[0]
         k = (j + 1) % len(exp["columns"])
-        if squash(e["rows"][r][j]) != squash(e["rows"][r][k]):
-            e["rows"][r][j], e["rows"][r][k] = e["rows"][r][k], e["rows"][r][j]
-            yield "cells moved between columns", e
-    e = copy.deepcopy(exp)
-    e["header"][0] += "X"
-    yield "a header changed", e
-    e = copy.deepcopy(exp)
-    e["footer"][0] += "X"
-    yield "a footer fact changed", e
-    e = copy.deepcopy(exp)
-    e["min_pages"] = 10**6
-    yield "pages missing", e
-    e = copy.deepcopy(exp)
-    e["landscape"] = not e["landscape"]
-    yield "the orientation flipped", e
-    e = copy.deepcopy(exp)
-    e["columns"] = [[a + 30, b + 30] for a, b in e["columns"]]
-    yield "the columns moved", e
+        if squash(rows[r][j]) != squash(rows[r][k]):
+            def swap(e):
+                e["rows"][r][j], e["rows"][r][k] = rows[r][k], rows[r][j]
+            yield changed("cells moved between columns", swap)
+    yield changed("a header changed", lambda e: e["labels"][0].__setitem__("label", e["labels"][0]["label"] + "X"))
+    yield changed("a footer fact changed", lambda e: e["footer"].__setitem__(0, e["footer"][0] + "X"))
+    yield changed("a meta fact changed", lambda e: e["meta"].__setitem__(0, e["meta"][0] + "X"))
+    yield changed("the title changed", lambda e: e.__setitem__("title", e["title"] + "X"))
+    yield changed("pages missing", lambda e: e.__setitem__("min_pages", 10**6))
+    yield changed("the orientation flipped", lambda e: e.__setitem__("landscape", not e["landscape"]))
+    yield changed("the columns moved", lambda e: e.__setitem__("columns", [[a + 30, b + 30] for a, b in e["columns"]]))
     if exp["totals"]:
-        e = copy.deepcopy(exp)
-        e["totals"][-1] += "1"
-        yield "a total changed", e
+        yield changed("a total changed", lambda e: e["totals"].__setitem__(-1, e["totals"][-1] + "1"))
+
+
+def pdf_corruptions(directory, exp, scratch):
+    """Yields (name, problem the check must report, directory) for corrupted copies of one PDF."""
+    font = pymupdf.Font("cjk")  # embedded when inserted from its buffer
+
+    def copy_with(name, change):
+        doc = pymupdf.open(os.path.join(directory, exp["file"]))
+        change(doc)
+        target = os.path.join(scratch, name)
+        os.makedirs(target, exist_ok=True)
+        doc.save(os.path.join(target, exp["file"]))
+        return target
+
+    def insert(text, where, size, color=(0, 0, 0), embedded=True):
+        def change(doc):
+            page = doc[0]
+            point = where(page)
+            if embedded:
+                page.insert_font(fontname="Fx", fontbuffer=font.buffer)
+                page.insert_text(point, text, fontname="Fx", fontsize=size, color=color)
+            else:
+                page.insert_text(point, text, fontname="helv", fontsize=size, color=color)
+        return change
+
+    margin, (left, _) = exp["margin"], exp["columns"][0]
+    below = lambda p: (margin + 1, p.rect.height - 6)
+    yield "text outside the margins", "outside the margins", copy_with("margins", insert("X", lambda p: (3, p.rect.height - 6), FOOT))
+    yield "table text in the footer area", "footer area", copy_with("footer", insert("X", lambda p: (left + exp["inset"] + 1, p.rect.height - 30), TABLE))
+    yield "a font that is not embedded", "embedded as n/a", copy_with("font", insert("X", below, FOOT, embedded=False))
+    yield "text in white", "light colour", copy_with("white", insert("X", below, FOOT, color=(1, 1, 1)))
+    yield "a replacement character", "replacement character", copy_with("fffd", insert("�", below, FOOT))
+
+    def over(doc):
+        page = doc[0]
+        c = next(c for c in characters(page, 0) if c["size"] == FOOT and c["c"].isalnum())
+        insert("X", lambda p: (c["x0"], c["base"]), FOOT)(doc)
+    yield "a character drawn over another", "drawn over another", copy_with("over", over)
+    yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
 
 
 def verapdf(image, directory, names):
@@ -202,25 +406,45 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("directory")
     ap.add_argument("--negative", action="store_true")
+    ap.add_argument("--golden", metavar="FILE")
+    ap.add_argument("--write-golden", metavar="FILE")
     ap.add_argument("--verapdf", metavar="IMAGE")
     args = ap.parse_args()
     names = sorted(f for f in os.listdir(args.directory) if f.endswith(".json"))
     if not names:
         sys.exit("no expectations found")
-    failed = False
+    failed, layouts = False, {}
     for name in names:
         with open(os.path.join(args.directory, name), encoding="utf-8") as f:
             exp = json.load(f)
-        problems = check(args.directory, exp)
+        problems, layouts[exp["file"]] = check(args.directory, exp)
         print(f"{exp['file']}: {'ok' if not problems else 'FAILED'}")
         for p in problems[:20]:
             print("  " + p)
         failed |= bool(problems)
         if args.negative:
             for what, corrupted in corruptions(exp):
-                caught = bool(check(args.directory, corrupted))
+                caught = bool(check(args.directory, corrupted)[0])
                 print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")
                 failed |= not caught
+            if exp["rows"]:
+                with tempfile.TemporaryDirectory() as scratch:
+                    for what, expected, directory in pdf_corruptions(args.directory, exp, scratch):
+                        found = check(directory, exp)[0]
+                        caught = any(expected in p for p in found)
+                        print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
+                        failed |= not caught
+    if args.write_golden:
+        with open(args.write_golden, "w", encoding="utf-8") as f:
+            json.dump(layouts, f, indent=1, sort_keys=True)
+            f.write("\n")
+    if args.golden:
+        with open(args.golden, encoding="utf-8") as f:
+            golden = json.load(f)
+        for name in sorted(set(golden) | set(layouts)):
+            if golden.get(name) != layouts.get(name):
+                print(f"{name}: layout differs from the golden file: {layouts.get(name)} instead of {golden.get(name)}")
+                failed = True
     if args.verapdf:
         pdfs = sorted(f for f in os.listdir(args.directory) if f.endswith(".pdf"))
         failed |= check_pdfa(args.verapdf, args.directory, pdfs)
