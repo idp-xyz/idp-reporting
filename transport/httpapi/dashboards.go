@@ -47,6 +47,14 @@ func WithDashboards(fallback http.Handler, service *r.Service, authenticate Auth
 				if !ok || !metrics[*w.Field] || (c.Type != "decimal" && c.Type != "integer") {
 					return r.ErrDenied
 				}
+			} else if w.Type == "bar" {
+				c, ok := columns[*w.Field]
+				if !ok || (c.Type != "decimal" && c.Type != "integer") {
+					return r.ErrDenied
+				}
+				if _, ok := columns[*w.Category]; !ok {
+					return r.ErrDenied
+				}
 			} else {
 				for _, id := range w.Columns {
 					if _, ok := columns[id]; !ok {

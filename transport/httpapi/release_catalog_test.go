@@ -166,3 +166,58 @@ func TestDashboardPublicationChecksTargetFieldsAfterCatalogChange(t *testing.T) 
 		t.Fatal("valid published target denied")
 	}
 }
+
+func TestDashboardBarBothFieldsRequireCurrentCatalog(t *testing.T) {
+	p := contractsim.DemoPrincipal()
+	source := contractsim.Financial()
+	source.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
+	adapter := &changingLayoutCatalog{Adapter: source}
+	service, e := r.NewService(r.Config{Repository: memory.New(time.Now), Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: adapter}}, CursorKey: []byte(secret), Writer: xlsx.Writer{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	store, e := dashboards.Open(filepath.Join(t.TempDir(), "bar"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	auth, _ := httpapi.DemoBearer(secret, p)
+	fallback, _ := httpapi.Handler(service, auth)
+	h, e := httpapi.WithDashboards(fallback, service, auth, store)
+	if e != nil {
+		t.Fatal(e)
+	}
+	category, amount := "customer.id", "ar.open_balance"
+	d := dashboards.Document{Schema: "1.0", Kind: "dashboard", Binding: dashboards.Binding{Integration: contractsim.FinanceIntegration, Dataset: r.Ref{ID: "receivables.aging", Version: "1.0.0"}}, Widgets: []dashboards.Widget{{Type: "bar", Category: &category, Field: &amount}}}
+	body, _ := json.Marshal(map[string]any{"config": d})
+	w := request(h, "POST", "/api/reporting/v1/dashboards", body, true)
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var response struct{ ID string }
+	if e = json.Unmarshal(w.Body.Bytes(), &response); e != nil {
+		t.Fatal(e)
+	}
+	path := "/api/reporting/v1/dashboards/" + response.ID
+	if request(h, "POST", path+"/release", []byte(`{"action":"publish","version":1,"expected_revision":0}`), true).Code != 200 {
+		t.Fatal("bar publish")
+	}
+	for _, allowed := range []string{"customer.id", "ar.open_balance"} {
+		adapter.allowed = allowed
+		for _, suffix := range []string{"?version=1", "/published"} {
+			if request(h, "GET", path+suffix, nil, true).Code != 403 {
+				t.Fatal("bar field leaked", allowed, suffix)
+			}
+		}
+		if request(h, "POST", path+"/release", []byte(`{"action":"publish","version":1,"expected_revision":1}`), true).Code != 403 {
+			t.Fatal("bar field publish", allowed)
+		}
+	}
+	adapter.allowed = ""
+	bad := "aging.bucket"
+	d.Widgets[0].Field = &bad
+	body, _ = json.Marshal(map[string]any{"config": d})
+	if request(h, "POST", "/api/reporting/v1/dashboards", body, true).Code != 403 {
+		t.Fatal("nonnumeric bar accepted")
+	}
+}

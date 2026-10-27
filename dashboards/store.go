@@ -13,9 +13,10 @@ type Binding struct {
 	Dataset     r.Ref  `json:"dataset"`
 }
 type Widget struct {
-	Type    string   `json:"type"`
-	Field   *string  `json:"field,omitempty"`
-	Columns []string `json:"columns,omitempty"`
+	Type     string   `json:"type"`
+	Field    *string  `json:"field,omitempty"`
+	Columns  []string `json:"columns,omitempty"`
+	Category *string  `json:"category,omitempty"`
 }
 type Document struct {
 	Schema  string   `json:"schema_version"`
@@ -37,11 +38,15 @@ func Validate(d Document) error {
 	for _, w := range d.Widgets {
 		switch w.Type {
 		case "metric":
-			if w.Field == nil || *w.Field == "" || len(*w.Field) > 128 || w.Columns != nil {
+			if w.Field == nil || *w.Field == "" || len(*w.Field) > 128 || w.Columns != nil || w.Category != nil {
+				return r.ErrInvalid
+			}
+		case "bar":
+			if w.Field == nil || *w.Field == "" || len(*w.Field) > 128 || w.Category == nil || *w.Category == "" || len(*w.Category) > 128 || w.Columns != nil {
 				return r.ErrInvalid
 			}
 		case "table":
-			if w.Field != nil || len(w.Columns) == 0 || len(w.Columns) > 100 {
+			if w.Field != nil || w.Category != nil || len(w.Columns) == 0 || len(w.Columns) > 100 {
 				return r.ErrInvalid
 			}
 			seen := map[string]bool{}
@@ -69,15 +74,19 @@ func (w *Widget) UnmarshalJSON(data []byte) error {
 		return e
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(data, &fields) != nil || len(fields) != 2 {
+	if json.Unmarshal(data, &fields) != nil {
 		return r.ErrInvalid
 	}
 	if value.Type == "metric" {
-		if fields["type"] == nil || fields["field"] == nil {
+		if len(fields) != 2 || fields["type"] == nil || fields["field"] == nil {
+			return r.ErrInvalid
+		}
+	} else if value.Type == "bar" {
+		if len(fields) != 3 || fields["type"] == nil || fields["category"] == nil || fields["field"] == nil {
 			return r.ErrInvalid
 		}
 	} else if value.Type == "table" {
-		if fields["type"] == nil || fields["columns"] == nil {
+		if len(fields) != 2 || fields["type"] == nil || fields["columns"] == nil {
 			return r.ErrInvalid
 		}
 	} else {

@@ -133,3 +133,50 @@ func TestDashboardReleasePersistsWithoutChangingDrafts(t *testing.T) {
 		t.Fatal("explicit rollback", e)
 	}
 }
+
+func TestBarWidgetStrictShapeRoundtripAndReopen(t *testing.T) {
+	category, field := "customer.id", "amount"
+	d := doc()
+	d.Widgets = []dashboards.Widget{{Type: "bar", Category: &category, Field: &field}}
+	b, e := json.Marshal(d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var loaded dashboards.Document
+	if e = r.DecodeStrict(strings.NewReader(string(b)), &loaded); e != nil || dashboards.Validate(loaded) != nil {
+		t.Fatal("bar roundtrip", e)
+	}
+	for _, widget := range []string{`{"type":"bar","category":"c","field":"n","columns":null}`, `{"type":"bar","category":null,"field":"n"}`, `{"type":"bar","field":"n"}`, `{"type":"table","columns":["c"],"category":null}`, `{"type":"metric","field":"n","category":null}`} {
+		var w dashboards.Widget
+		e = json.Unmarshal([]byte(widget), &w)
+		invalid := doc()
+		invalid.Widgets = []dashboards.Widget{w}
+		if e == nil && dashboards.Validate(invalid) == nil {
+			t.Fatal("invalid variant accepted", widget)
+		}
+	}
+	dir := filepath.Join(t.TempDir(), "charts")
+	s, e := dashboards.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
+	entry, e := s.Save(owner, "", 0, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Publish(owner, entry.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	s.Close()
+	s, e = dashboards.Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	current, e := s.Published(owner, entry.ID)
+	if e != nil || current.Layout.Widgets[0].Type != "bar" || *current.Layout.Widgets[0].Category != "customer.id" {
+		t.Fatal(current, e)
+	}
+}
