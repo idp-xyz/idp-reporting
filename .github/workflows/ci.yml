@@ -1,0 +1,68 @@
+# Checks every pull request to main and every push to main. Third-party actions are pinned to
+# full commit SHAs (tag in the trailing comment), the token is read-only and nothing runs with
+# repository secrets, because the repository is public.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The toolchain pinned in go.mod; local refuses to download a different one silently.
+  GOTOOLCHAIN: local
+
+jobs:
+  go:
+    name: Go format, vet, build, test and race
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.26.5
+      - name: Verify modules and formatting
+        run: |
+          go mod verify
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      - run: go build ./...
+      # The two PostgreSQL entry tests skip without REPORTING_S01_TEST_DSN and REPORTING_S01_SOURCE_DSN.
+      - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./...
+
+  console:
+    name: Console syntax and DOM tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The DOM suite builds and starts the real Go server on loopback.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.26.5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.0
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: JavaScript syntax
+        run: |
+          node --check console/assets/app.js
+          node --check console/assets/dashboard.js
+          node --check scripts/browser_visual_s03c4.mjs
+      - run: node --test console/dom.test.mjs
