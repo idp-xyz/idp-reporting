@@ -197,7 +197,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": slices.Clone(p.Integrations)})
 	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": []string{"xlsx"}, "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content"}})
+		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content"}})
 	})
 	bind("GET "+base+"/catalog", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		values := req.URL.Query()
@@ -279,6 +279,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	bind("POST "+base+"/exports", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		var input struct {
 			SnapshotID string `json:"snapshot_id"`
+			Format     string `json:"format"` // absent means xlsx
 		}
 		if e := decode(req, &input); e != nil {
 			return e
@@ -287,7 +288,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		if e != nil {
 			return e
 		}
-		v, e := service.SubmitExport(req.Context(), p, input.SnapshotID, key)
+		v, e := service.SubmitExportFormat(req.Context(), p, input.SnapshotID, input.Format, key)
 		if e != nil {
 			return e
 		}
@@ -299,8 +300,16 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		if e != nil {
 			return e
 		}
-		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		w.Header().Set("Content-Disposition", `attachment; filename="report-`+v.ID+`.xlsx"`)
+		media, extension := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
+		switch v.Format {
+		case "":
+		case "pdf":
+			media, extension = "application/pdf", "pdf"
+		default:
+			return r.ErrIntegrity
+		}
+		w.Header().Set("Content-Type", media)
+		w.Header().Set("Content-Disposition", `attachment; filename="report-`+v.ID+`.`+extension+`"`)
 		w.Header().Set("Content-Length", strconv.Itoa(len(v.Content)))
 		w.Header().Set("X-Content-SHA256", v.SHA256)
 		if _, e = w.Write(v.Content); e != nil {
