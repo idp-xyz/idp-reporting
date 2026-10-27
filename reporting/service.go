@@ -483,3 +483,9 @@ func (s *Service) decodeCursor(token string, snap Snapshot) (int, error) {
 	}
 	return offset(fields[3])
 }
+
+// AuthorizedSnapshot supplies a verified frozen result to trusted in-process renderers.
+// Callers must recheck before releasing long-running rendered output. Never expose this object over HTTP.
+func (s *Service) AuthorizedSnapshot(ctx context.Context, p Principal, id string) (Snapshot, error) {
+	return s.snapshot(ctx, p, id)
+}
