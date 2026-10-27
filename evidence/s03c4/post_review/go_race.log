@@ -1,0 +1,16 @@
+ok  	idp.local/reporting/adapters/contractsim	1.011s
+ok  	idp.local/reporting/adapters/contractsim/pgsource	1.010s
+?   	idp.local/reporting/cmd/reporting-demo	[no test files]
+?   	idp.local/reporting/cmd/reporting-recovery-probe	[no test files]
+ok  	idp.local/reporting/console	1.015s
+ok  	idp.local/reporting/dashboards	1.056s
+?   	idp.local/reporting/export/xlsx	[no test files]
+ok  	idp.local/reporting/identity/accessjwt	1.693s
+ok  	idp.local/reporting/integration	2.448s
+?   	idp.local/reporting/internal/fixturedb	[no test files]
+ok  	idp.local/reporting/layouts	1.516s
+?   	idp.local/reporting/privatedocs	[no test files]
+ok  	idp.local/reporting/reporting	1.049s
+?   	idp.local/reporting/storage/memory	[no test files]
+ok  	idp.local/reporting/storage/postgres	1.008s
+ok  	idp.local/reporting/transport/httpapi	1.142s

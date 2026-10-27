@@ -2,70 +2,88 @@
   "phase": "S03-C4 post-review browser acceptance",
   "date": "2026-10-27 Asia/Shanghai",
   "reviewed_commit": "802cc4a76f127089f7e9751f754a907ae7da3d66",
-  "committed": true,
+  "commits": "git log 802cc4a..HEAD on branch reporting-s03a",
   "changed_files_vs_reviewed": {
     "console/assets/index.html": {
       "reviewed_sha256": "1f387451f9640caf2a792a7b3fd25aa05864743b3e589c2debbc1942ed2f4c7a",
-      "current_sha256": "d2403e2fa646de7eeb12bc820d8eed7b7a62aae9469a3d3a9ce3f5960974f90e"
+      "current_sha256": "18754cd8a00491fec64dfa17719f82de9282e562c7511219c4c786574d60b91a"
     },
     "console/assets/styles.css": {
       "reviewed_sha256": "053f33f3f4a90cd1c6b29d3fb9bfc2a9f187c96f3da0569193b6a519f1e52d41",
-      "current_sha256": "5204283a50bf7c368e9d7efaa28d9069cf944f59115ce4653523a986b5eb4b63"
+      "current_sha256": "359b93ff97ad972462806bb05be0338b9a22812a8c30900fe33866de40995424"
     }
   },
   "unchanged_since_review": "all other 55 files hashed in provenance.json source_hashes, including every Go source, app.js, dashboard.js and dom.test.mjs",
-  "added_files": [
+  "added": [
     "scripts/browser_visual_s03c4.mjs",
     "docs/BROWSER_ACCEPTANCE_S03C4.md",
+    "docs/CODE_REVIEW_S03C4_1.md",
     "evidence/s03c4/browser_visual/",
-    "evidence/s03c4/negative_control_802cc4a.json"
+    "evidence/s03c4/negative_control_802cc4a.json",
+    "evidence/s03c4/post_review/"
+  ],
+  "updated_notes": [
+    "README.md",
+    "docs/CONSOLE.md",
+    "docs/VALIDATION.md"
   ],
   "browser": {
-    "name": "Chrome 155.0.8059.85 Windows headless=new",
+    "name": "Chrome/155.0.8059.85",
     "driver": "CDP via scripts/browser_visual_s03c4.mjs",
     "viewports": [
       "desktop 1280x900",
       "tablet 768x1024",
-      "mobile 390x844@2x (emulated)"
+      "mobile 390x844@2x (emulated)",
+      "narrow 320x640@2x (emulated)",
+      "wide 1920x1080"
     ]
   },
   "browser_checks": {
-    "passed": 72,
+    "passed": 115,
     "failed": 0,
-    "report": "evidence/s03c4/browser_visual/report.json"
+    "skipped": [],
+    "report": "evidence/s03c4/browser_visual/report.json",
+    "served_assets_sha256": {
+      "index.html": "18754cd8a00491fec64dfa17719f82de9282e562c7511219c4c786574d60b91a",
+      "styles.css": "359b93ff97ad972462806bb05be0338b9a22812a8c30900fe33866de40995424",
+      "app.js": "ea732ae7c3e9bb8428c7a1fc46b873cf7c33ac9e8bcfac093a60f81bd46d8035",
+      "dashboard.js": "c0f21740b862a159d1f67024baa14aa7d7b57b1b7cb07dcaa45bb9041f17b0ff"
+    }
+  },
+  "download": {
+    "file": "report-17a428808ba7f22a7dc24042955afa9a.xlsx",
+    "bytes": 7913,
+    "sha256": "160a35733ed40a2b787b450b0db3c643fbbbe4461b98eb7d777f481025836bb1",
+    "zip_entries": 12,
+    "on_screen_cells_compared": 9,
+    "saved_as": "evidence/s03c4/browser_visual/download.xlsx"
   },
   "negative_control": {
     "build": "802cc4a",
-    "passed": 49,
-    "failed": 22,
-    "total": 71,
-    "note": "download check skipped in this run",
+    "passed": 70,
+    "failed": 45,
+    "total": 115,
     "report": "evidence/s03c4/negative_control_802cc4a.json"
   },
   "regression": {
-    "go_vet": "ok",
-    "go_test": "ok for every package",
-    "go_test_race": "ok for every package",
+    "logs": "evidence/s03c4/post_review/",
+    "go_vet": "exit 0",
+    "go_test": "exit 0, 10 packages ok",
+    "go_test_race": "exit 0, 10 packages ok",
     "dom": "37 of 37",
     "node_check": "ok for app.js, dashboard.js, browser_visual_s03c4.mjs"
   },
+  "review": "docs/CODE_REVIEW_S03C4_1.md",
   "browser_qa": "VERIFIED_HEADLESS_CHROME_155_EMULATED_VIEWPORTS",
   "not_verified": [
-    "real mobile device or touch",
+    "real mobile device, touch, on-screen keyboard",
     "Firefox/Safari/Edge",
-    "accessibility audit and screen reader",
-    "Excel cell values compared in browser",
+    "accessibility audit, screen reader, keyboard navigation",
+    "whole workbook compared with whole dataset (only 9 on-screen cells compared)",
     "PG rerun",
     "crash recovery",
     "production qualification"
   ],
   "real_pg_rerun": false,
-  "production_approved": false,
-  "commits_on_reporting_s03a_after_reviewed_commit": [
-    "Fix console layout overflow and form spacing found in browser acceptance",
-    "Add real-browser acceptance script, screenshots and record",
-    "Keep the pre-fix negative control report as evidence",
-    "Record independent review of the browser acceptance fixes"
-  ],
-  "review": "docs/CODE_REVIEW_S03C4_1.md"
+  "production_approved": false
 }

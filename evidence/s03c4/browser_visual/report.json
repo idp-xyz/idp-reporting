@@ -1,5 +1,12 @@
 {
   "base": "http://127.0.0.1:7810",
+  "browser": "Chrome/155.0.8059.85",
+  "served_assets_sha256": {
+    "index.html": "18754cd8a00491fec64dfa17719f82de9282e562c7511219c4c786574d60b91a",
+    "styles.css": "359b93ff97ad972462806bb05be0338b9a22812a8c30900fe33866de40995424",
+    "app.js": "ea732ae7c3e9bb8428c7a1fc46b873cf7c33ac9e8bcfac093a60f81bd46d8035",
+    "dashboard.js": "c0f21740b862a159d1f67024baa14aa7d7b57b1b7cb07dcaa45bb9041f17b0ff"
+  },
   "viewports": [
     [
       "desktop",
@@ -15,10 +22,21 @@
       "mobile",
       390,
       844
+    ],
+    [
+      "narrow",
+      320,
+      640
+    ],
+    [
+      "wide",
+      1920,
+      1080
     ]
   ],
-  "passed": 72,
+  "passed": 115,
   "failed": 0,
+  "skipped": [],
   "checks": [
     {
       "name": "desktop: overview page has no horizontal overflow",
@@ -49,11 +67,27 @@
       "ok": true
     },
     {
+      "name": "desktop: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
       "name": "desktop: real server rows plot 3 bars with exact labels",
       "ok": true
     },
     {
       "name": "desktop: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "desktop: exact server total stays on one line",
       "ok": true
     },
     {
@@ -141,11 +175,27 @@
       "ok": true
     },
     {
+      "name": "tablet: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
       "name": "tablet: real server rows plot 3 bars with exact labels",
       "ok": true
     },
     {
       "name": "tablet: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "tablet: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": true
+    },
+    {
+      "name": "tablet: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "tablet: exact server total stays on one line",
       "ok": true
     },
     {
@@ -233,11 +283,27 @@
       "ok": true
     },
     {
+      "name": "mobile: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
       "name": "mobile: real server rows plot 3 bars with exact labels",
       "ok": true
     },
     {
       "name": "mobile: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": true
+    },
+    {
+      "name": "mobile: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "mobile: exact server total stays on one line",
       "ok": true
     },
     {
@@ -297,7 +363,131 @@
       "ok": true
     },
     {
-      "name": "real Chrome downloads a verified .xlsx",
+      "name": "narrow: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "narrow: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "narrow: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "narrow: exact server total stays on one line",
+      "ok": true
+    },
+    {
+      "name": "narrow: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "narrow: extreme-500-digits has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "wide: report layout designer keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "wide: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard server panel keeps text and controls off the card edge",
+      "ok": true
+    },
+    {
+      "name": "wide: exact server total stays on one line",
+      "ok": true
+    },
+    {
+      "name": "wide: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "wide: extreme-500-digits has no horizontal page overflow",
+      "ok": true
+    },
+    {
+      "name": "real Chrome downloads a well-formed .xlsx",
+      "ok": true
+    },
+    {
+      "name": "downloaded workbook holds every on-screen cell value exactly",
       "ok": true
     },
     {

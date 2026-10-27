@@ -1,5 +1,12 @@
 {
   "base": "http://127.0.0.1:7811",
+  "browser": "Chrome/155.0.8059.85",
+  "served_assets_sha256": {
+    "index.html": "1f387451f9640caf2a792a7b3fd25aa05864743b3e589c2debbc1942ed2f4c7a",
+    "styles.css": "053f33f3f4a90cd1c6b29d3fb9bfc2a9f187c96f3da0569193b6a519f1e52d41",
+    "app.js": "ea732ae7c3e9bb8428c7a1fc46b873cf7c33ac9e8bcfac093a60f81bd46d8035",
+    "dashboard.js": "c0f21740b862a159d1f67024baa14aa7d7b57b1b7cb07dcaa45bb9041f17b0ff"
+  },
   "viewports": [
     [
       "desktop",
@@ -15,10 +22,21 @@
       "mobile",
       390,
       844
+    ],
+    [
+      "narrow",
+      320,
+      640
+    ],
+    [
+      "wide",
+      1920,
+      1080
     ]
   ],
-  "passed": 49,
-  "failed": 22,
+  "passed": 70,
+  "failed": 45,
+  "skipped": [],
   "checks": [
     {
       "name": "desktop: overview page has no horizontal overflow",
@@ -49,11 +67,108 @@
       "ok": true
     },
     {
+      "name": "desktop: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 868
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 856
+        }
+      ]
+    },
+    {
       "name": "desktop: real server rows plot 3 bars with exact labels",
       "ok": true
     },
     {
       "name": "desktop: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "desktop: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": false,
+      "detail": {
+        "sharedRows": [
+          "board-metric~board-columns",
+          "board-metric~board-category",
+          "board-columns~board-category"
+        ],
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-release-publish",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "desktop: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 837
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 861
+        }
+      ]
+    },
+    {
+      "name": "desktop: exact server total stays on one line",
       "ok": true
     },
     {
@@ -154,6 +269,42 @@
       ]
     },
     {
+      "name": "tablet: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 424
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 412
+        }
+      ]
+    },
+    {
       "name": "tablet: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -163,6 +314,65 @@
       "detail": [
         "button#board-server-open@right=841"
       ]
+    },
+    {
+      "name": "tablet: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": false,
+      "detail": {
+        "sharedRows": [
+          "board-metric~board-columns"
+        ],
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-release-publish",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "tablet: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 393
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 417
+        }
+      ]
+    },
+    {
+      "name": "tablet: exact server total stays on one line",
+      "ok": true
     },
     {
       "name": "tablet: signed-duplicate-hostile renders as specified",
@@ -295,6 +505,42 @@
       ]
     },
     {
+      "name": "mobile: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 269
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 257
+        }
+      ]
+    },
+    {
       "name": "mobile: real server rows plot 3 bars with exact labels",
       "ok": true
     },
@@ -309,6 +555,66 @@
         "button#board-release-withdraw@right=410",
         "button#board-published-open@right=542"
       ]
+    },
+    {
+      "name": "mobile: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": false,
+      "detail": {
+        "sharedRows": [],
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-release-publish",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "mobile: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 223
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 247
+        }
+      ]
+    },
+    {
+      "name": "mobile: exact server total stays on one line",
+      "ok": false,
+      "detail": {
+        "lines": 2
+      }
     },
     {
       "name": "mobile: signed-duplicate-hostile renders as specified",
@@ -402,10 +708,336 @@
       }
     },
     {
+      "name": "narrow: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard page has no horizontal overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 642,
+        "client": 320,
+        "over": true
+      }
+    },
+    {
+      "name": "narrow: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "narrow: report layout designer controls are not clipped",
+      "ok": false,
+      "detail": [
+        "button#layout-server-list@right=387",
+        "select#layout-server-listing@right=425",
+        "input#layout-server-version@right=463",
+        "button#layout-server-open@right=595",
+        "button#layout-release-withdraw@right=387",
+        "button#layout-release-open@right=519"
+      ]
+    },
+    {
+      "name": "narrow: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 199
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 187
+        }
+      ]
+    },
+    {
+      "name": "narrow: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "narrow: dashboard controls are not clipped",
+      "ok": false,
+      "detail": [
+        "button#board-server-list@right=410",
+        "select#board-server-listing@right=448",
+        "input#board-server-version@right=486",
+        "button#board-server-open@right=642",
+        "button#board-release-withdraw@right=410",
+        "button#board-published-open@right=542"
+      ]
+    },
+    {
+      "name": "narrow: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": false,
+      "detail": {
+        "sharedRows": [],
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-release-publish",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "narrow: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 153
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 177
+        }
+      ]
+    },
+    {
+      "name": "narrow: exact server total stays on one line",
+      "ok": false,
+      "detail": {
+        "lines": 2
+      }
+    },
+    {
+      "name": "narrow: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "narrow: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 4155,
+        "client": 320,
+        "over": true
+      }
+    },
+    {
+      "name": "wide: overview page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: catalog page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: workspace page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard page has no horizontal overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 5217,
+        "client": 1905,
+        "over": true
+      }
+    },
+    {
+      "name": "wide: tasks page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: system page has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "wide: report layout designer controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "wide: report layout designer keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "layout-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-release-info",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "layout-open",
+          "left": 1,
+          "right": 1339
+        },
+        {
+          "id": "layout-reset",
+          "left": 1,
+          "right": 1327
+        }
+      ]
+    },
+    {
+      "name": "wide: real server rows plot 3 bars with exact labels",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard controls are not clipped",
+      "ok": true
+    },
+    {
+      "name": "wide: dashboard toolbar groups controls on separate rows with visible button boundaries",
+      "ok": false,
+      "detail": {
+        "sharedRows": [
+          "board-metric~board-columns",
+          "board-metric~board-category",
+          "board-columns~board-category"
+        ],
+        "borderless": [
+          "board-add-metric",
+          "board-add-table",
+          "board-add-bar",
+          "board-reset",
+          "board-server-save",
+          "board-release-publish",
+          "board-save",
+          "board-open"
+        ]
+      }
+    },
+    {
+      "name": "wide: dashboard server panel keeps text and controls off the card edge",
+      "ok": false,
+      "detail": [
+        {
+          "id": "board-server-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-release-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-status",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-json",
+          "left": 1,
+          "right": 1
+        },
+        {
+          "id": "board-save",
+          "left": 1,
+          "right": 1293
+        },
+        {
+          "id": "board-open",
+          "left": 1,
+          "right": 1317
+        }
+      ]
+    },
+    {
+      "name": "wide: exact server total stays on one line",
+      "ok": true
+    },
+    {
+      "name": "wide: extreme-500-digits renders as specified",
+      "ok": true
+    },
+    {
+      "name": "wide: extreme-500-digits has no horizontal page overflow",
+      "ok": false,
+      "detail": {
+        "scroll": 5217,
+        "client": 1905,
+        "over": true
+      }
+    },
+    {
+      "name": "real Chrome downloads a well-formed .xlsx",
+      "ok": true
+    },
+    {
+      "name": "downloaded workbook holds every on-screen cell value exactly",
+      "ok": true
+    },
+    {
       "name": "no console errors, failed requests or exceptions",
       "ok": false,
       "detail": [
-        "http 404 http://127.0.0.1:7811/favicon.ico"
+        "http 404 http://127.0.0.1:7811/favicon.ico",
+        "log.error: Failed to load resource: the server responded with a status of 404 (Not Found) http://127.0.0.1:7811/favicon.ico"
       ]
     },
     {

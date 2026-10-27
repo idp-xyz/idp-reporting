@@ -1,0 +1,14 @@
+go version go1.26.8 linux/amd64
+GOTOOLCHAIN=go1.26.8
+v24.22.0
+cfe8c4787cc8a918e25c6748152a6b78ee68122e
+ M console/assets/index.html
+ M console/assets/styles.css
+ M evidence/s03c4/browser_visual/desktop-00-report-designer.png
+ M evidence/s03c4/browser_visual/desktop-03-server-controls.png
+ M evidence/s03c4/browser_visual/desktop-05-extreme-500-digits.png
+ M evidence/s03c4/browser_visual/download.json
+ M evidence/s03c4/browser_visual/mobile-00-report-designer.png
+ M evidence/s03c4/browser_visual/mobile-03-server-controls.png
+ M evidence/s03c4/browser_visual/mobile-04-board-real-data.png
+ M evidence/s03c4/browser_visual/mobile-05-all-zero.png

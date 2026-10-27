@@ -44,6 +44,12 @@ was used. No browser success, screenshot, mobile layout or pixel QA is claimed.
 Software-DOM tests are additional code validation, not a workaround to control
 that browser. Browser/visual/accessibility verification remains open.
 
+Update (S03-C4 post-review): a later session verified the console in headless Chrome
+155 at desktop, tablet and phone widths (emulated) including an Excel download; see
+docs/BROWSER_ACCEPTANCE_S03C4.md. Real devices, other browsers, accessibility and
+keyboard operation remain open. The paragraph above is the record of the earlier
+environment and is left unchanged.
+
 The first preview attempt lacked the Go toolchain in the separate preview
 container. The standard local preview runner now supports a prebuilt binary and
 the CLI's port flags. Runtime Go/app network safeguards remain loopback-only.
