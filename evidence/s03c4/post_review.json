@@ -1,0 +1,68 @@
+{
+  "phase": "S03-C4 post-review browser acceptance",
+  "date": "2026-10-27 Asia/Shanghai",
+  "reviewed_commit": "802cc4a76f127089f7e9751f754a907ae7da3d66",
+  "committed": true,
+  "changed_files_vs_reviewed": {
+    "console/assets/index.html": {
+      "reviewed_sha256": "1f387451f9640caf2a792a7b3fd25aa05864743b3e589c2debbc1942ed2f4c7a",
+      "current_sha256": "d2403e2fa646de7eeb12bc820d8eed7b7a62aae9469a3d3a9ce3f5960974f90e"
+    },
+    "console/assets/styles.css": {
+      "reviewed_sha256": "053f33f3f4a90cd1c6b29d3fb9bfc2a9f187c96f3da0569193b6a519f1e52d41",
+      "current_sha256": "5204283a50bf7c368e9d7efaa28d9069cf944f59115ce4653523a986b5eb4b63"
+    }
+  },
+  "unchanged_since_review": "all other 55 files hashed in provenance.json source_hashes, including every Go source, app.js, dashboard.js and dom.test.mjs",
+  "added_files": [
+    "scripts/browser_visual_s03c4.mjs",
+    "docs/BROWSER_ACCEPTANCE_S03C4.md",
+    "evidence/s03c4/browser_visual/"
+  ],
+  "browser": {
+    "name": "Chrome 155.0.8059.85 Windows headless=new",
+    "driver": "CDP via scripts/browser_visual_s03c4.mjs",
+    "viewports": [
+      "desktop 1280x900",
+      "tablet 768x1024",
+      "mobile 390x844@2x (emulated)"
+    ]
+  },
+  "browser_checks": {
+    "passed": 72,
+    "failed": 0,
+    "report": "evidence/s03c4/browser_visual/report.json"
+  },
+  "negative_control": {
+    "build": "802cc4a",
+    "passed": 49,
+    "failed": 22,
+    "total": 71,
+    "note": "download check skipped in this run"
+  },
+  "regression": {
+    "go_vet": "ok",
+    "go_test": "ok for every package",
+    "go_test_race": "ok for every package",
+    "dom": "37 of 37",
+    "node_check": "ok for app.js, dashboard.js, browser_visual_s03c4.mjs"
+  },
+  "browser_qa": "VERIFIED_HEADLESS_CHROME_155_EMULATED_VIEWPORTS",
+  "not_verified": [
+    "real mobile device or touch",
+    "Firefox/Safari/Edge",
+    "accessibility audit and screen reader",
+    "Excel cell values compared in browser",
+    "PG rerun",
+    "crash recovery",
+    "production qualification"
+  ],
+  "real_pg_rerun": false,
+  "production_approved": false,
+  "commits_on_reporting_s03a_after_reviewed_commit": [
+    "Fix console layout overflow and form spacing found in browser acceptance",
+    "Add real-browser acceptance script, screenshots and record",
+    "Record independent review of the browser acceptance fixes"
+  ],
+  "review": "docs/CODE_REVIEW_S03C4_1.md"
+}
