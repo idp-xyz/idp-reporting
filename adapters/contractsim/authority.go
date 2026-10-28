@@ -34,15 +34,29 @@ func (s *Simulator) now() time.Time {
 // own rules, until it is set back. It is a Go-only fixture control like SetUnavailable.
 func (s *Simulator) SetIssueRefused(v bool) { s.mu.Lock(); defer s.mu.Unlock(); s.issueRefused = v }
 
-// IssueRecord is the test lookup of what the simulator holds for a job id. Should several
-// sources hold the same job id, it returns the earliest issued.
+// lookupBefore orders the records of one job id for the lookup: reservations before tombstones,
+// then by integration and source tenant (the durable lookup orders the same way in SQL).
+func lookupBefore(a, b IssueRecord) bool {
+	if a.Tombstone() != b.Tombstone() {
+		return !a.Tombstone()
+	}
+	return a.Integration+"\x00"+a.SourceTenant < b.Integration+"\x00"+b.SourceTenant
+}
+
+// IssueRecord is the test lookup of what the simulator holds for a job id, a tombstone included.
+// Should several sources hold the same job id, it returns a reservation before a tombstone, and
+// of those the one of the source that sorts first by integration and source tenant; tests that
+// look up a job id keep it unique.
 func (s *Simulator) IssueRecord(jobID string) (IssueRecord, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var found IssueRecord
 	ok := false
 	for _, rec := range s.issues {
-		if rec.JobID == jobID && (!ok || rec.IssuedAt.Before(found.IssuedAt) || rec.IssuedAt.Equal(found.IssuedAt) && rec.Integration+"\x00"+rec.SourceTenant < found.Integration+"\x00"+found.SourceTenant) {
+		if rec.JobID != jobID {
+			continue
+		}
+		if !ok || lookupBefore(rec, found) {
 			found, ok = rec, true
 		}
 	}
@@ -54,9 +68,10 @@ func (s *Simulator) IssueRecord(jobID string) (IssueRecord, bool) {
 // source (ErrUnavailable); and with ErrDenied a principal whose current grant may not issue
 // documents, a source read that is not the simulator's own, unexpired and still authorized (as
 // AuthorizeCurrent says), a read whose row at RowIndex lacks the digest the platform froze, and
-// an approval switch that is on. Only then does it answer from the record of the job, or reserve
-// the next number of the source for it. The checks apply to every call, so a principal revoked
-// meanwhile is refused even for a job it already reserved.
+// an approval switch that is on. Only then does it answer from the record of the job (a void of
+// the job, a tombstone included, is ErrConflict), or reserve the next number of the source for it.
+// The checks apply to every call, so a principal revoked meanwhile is refused even for a job it
+// already reserved.
 func (s *Simulator) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.IssueIntent) (r.IssueReservation, error) {
 	if e := ctx.Err(); e != nil {
 		return r.IssueReservation{}, e
@@ -105,7 +120,8 @@ func (s *Simulator) PrepareDocument(ctx context.Context, sc r.SourceContext, in 
 
 // ConfirmIssue binds the reserved number to the file's digest and page count; the rules are
 // IssueRecord.Confirm's. It does not check the principal's grant, but an unavailable source
-// answers ErrUnavailable and a job the source does not hold ErrNotFound.
+// answers ErrUnavailable and a job the source does not hold ErrNotFound; a job it holds a void
+// for, a tombstone included, is ErrConflict.
 func (s *Simulator) ConfirmIssue(ctx context.Context, sc r.SourceContext, c r.IssueConfirmation) (r.IssueReceipt, error) {
 	if e := ctx.Err(); e != nil {
 		return r.IssueReceipt{}, e
@@ -132,7 +148,9 @@ func (s *Simulator) ConfirmIssue(ctx context.Context, sc r.SourceContext, c r.Is
 }
 
 // VoidIssue voids what the simulator holds for the job in sc's source, whoever reserved it and
-// whatever the principal's grants now are; holding nothing, or a void job, is not an error.
+// whatever the principal's grants now are; a void job is not an error and stays as it is. A void
+// is final for the job id: when the source holds nothing for the job it records a tombstone, so
+// that a stale worker cannot reserve or confirm the job afterwards (both are ErrConflict).
 func (s *Simulator) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, reason string) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -146,10 +164,13 @@ func (s *Simulator) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, re
 		return r.ErrUnavailable
 	}
 	key := issueKey{sourceOf(sc), jobID}
-	if rec, ok := s.issues[key]; ok {
-		if next, changed := rec.Void(reason, s.now()); changed {
-			s.issues[key] = next
-		}
+	rec, ok := s.issues[key]
+	if !ok {
+		s.issues[key] = NewTombstone(sc, jobID, reason, s.now())
+		return nil
+	}
+	if next, changed := rec.Void(reason, s.now()); changed {
+		s.issues[key] = next
 	}
 	return nil
 }

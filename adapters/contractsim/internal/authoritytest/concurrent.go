@@ -131,6 +131,87 @@ var concurrentScenarios = []ruleScenario{
 			}
 		}
 	}},
+	// A void and a PrepareDocument that race on a job the source holds nothing for end with the job
+	// void: either the void came first and is a tombstone the reservation conflicts with, or the
+	// reservation came first and the void voids it. Never a live reservation of a voided job.
+	{"a_void_and_prepares_racing_on_an_unknown_job_never_leave_a_live_reservation", func(t *testing.T, newEnv NewEnv) {
+		g := NewRig(t, newEnv, Finance())
+		taken := 0 // the numbers given out so far
+		for round := 1; round <= rounds; round++ {
+			got := make([]r.IssueReservation, workers)
+			errs := make([]error, workers)
+			together(workers, func(i int) {
+				if i%2 == 0 {
+					got[i], errs[i] = g.Prepare(round, 0)
+				} else {
+					errs[i] = g.Src.VoidIssue(ctx, g.SC, Job(round), "EXECUTION_FAILED")
+				}
+			})
+			var reserved *r.IssueReservation
+			for i := range got {
+				switch {
+				case i%2 == 1:
+					if errs[i] != nil {
+						t.Fatalf("round %d: void %d: %v", round, i, errs[i])
+					}
+				case errs[i] == nil:
+					if reserved != nil {
+						sameReservation(t, got[i], *reserved)
+					}
+					reserved = &got[i]
+				default:
+					is(t, errs[i], r.ErrConflict, fmt.Sprintf("round %d: prepare %d after the void", round, i))
+				}
+			}
+			rec := g.Record(round)
+			if rec.State != "void" || rec.Reason != "EXECUTION_FAILED" {
+				t.Fatalf("round %d: the job is not void: %+v", round, rec)
+			}
+			if reserved != nil {
+				taken++
+				if rec.Tombstone() || rec.Ref != reserved.Ref || rec.Number != reserved.Number {
+					t.Fatalf("round %d: the void record %+v is not the reservation %+v", round, rec, *reserved)
+				}
+			} else if !rec.Tombstone() {
+				t.Fatalf("round %d: no reservation was made, yet the record holds one: %+v", round, rec)
+			}
+			// whatever the race, the job id cannot be reserved or confirmed any more
+			_, e := g.Prepare(round, 0)
+			is(t, e, r.ErrConflict, fmt.Sprintf("round %d: prepare after the race", round))
+			c := g.Confirmation(r.IssueReservation{JobID: Job(round), Ref: rec.Ref})
+			_, e = g.Src.ConfirmIssue(ctx, g.SC, c)
+			is(t, e, r.ErrConflict, fmt.Sprintf("round %d: confirm after the race", round))
+			// the conflicts and the tombstones took no number: the next job gets the next one
+			probe := g.Reserve(1000 + round)
+			taken++
+			if want := fmt.Sprintf("AR-%06d", taken); probe.Number != want {
+				t.Fatalf("round %d: the next job got %s, want %s", round, probe.Number, want)
+			}
+		}
+	}},
+	{"voids_of_one_unknown_job_record_one_tombstone", func(t *testing.T, newEnv NewEnv) {
+		g := NewRig(t, newEnv, Finance())
+		for round := 1; round <= rounds; round++ {
+			errs := make([]error, workers)
+			together(workers, func(i int) { errs[i] = g.Src.VoidIssue(ctx, g.SC, Job(round), fmt.Sprintf("REASON_%d", i)) })
+			for i, e := range errs {
+				if e != nil {
+					t.Fatalf("round %d: void %d: %v", round, i, e)
+				}
+			}
+			rec := g.Holds(round, "void", "")
+			if !strings.HasPrefix(rec.Reason, "REASON_") {
+				t.Fatalf("round %d: %+v", round, rec)
+			}
+			// one of the voids was first and its reason stays
+			if e := g.Src.VoidIssue(ctx, g.SC, Job(round), "LATE"); e != nil {
+				t.Fatal(e)
+			}
+			if again := g.Record(round); again.Reason != rec.Reason || !again.VoidedAt.Equal(rec.VoidedAt) {
+				t.Fatalf("round %d: the tombstone changed: %+v then %+v", round, rec, again)
+			}
+		}
+	}},
 	{"confirmations_and_voids_of_one_job_settle_on_void", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance())
 		for round := 1; round <= rounds; round++ {
