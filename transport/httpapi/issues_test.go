@@ -28,7 +28,7 @@ type stampingRenderer struct {
 	stamp  string
 }
 
-func (f *stampingRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, _ []byte, _ *doctemplates.TableData, stamp string) ([]byte, int, error) {
+func (f *stampingRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, _ []byte, _ *doctemplates.TableData, stamp string, _ time.Time) ([]byte, int, error) {
 	f.calls++
 	f.doc, f.values, f.stamp = d, values, stamp
 	return []byte("%PDF-1.7\n" + stamp + "\n%%EOF"), 2, nil

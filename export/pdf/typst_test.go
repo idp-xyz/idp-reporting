@@ -759,7 +759,7 @@ func TestTypstRendersDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Pages[0].Texts[0].Width = 0
-	if _, err := w.renderDocument(t.Context(), p, nil, nil); !errors.Is(err, r.ErrUnsupported) {
+	if _, err := w.renderDocument(t.Context(), p, nil, nil, created); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a glyph wider than declared: %v; want unsupported", err)
 	}
 	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.
@@ -884,13 +884,37 @@ func statementRows(n int) *doctemplates.TableData {
 	return data
 }
 
-// TestTypstIssuesDocuments renders official documents (S03-G): the preview's pages with the
-// issue stamp in the banner strip, in the text colour (checked on the laid-out page; the
-// checker verifies the drawn PDF); the page count is returned; an empty stamp, one with a
-// control character or one naming the banner is invalid, one that would not fit the strip or
-// that the fonts lack is unsupported.
+// singleBox is a document of one box that prints the customer.
+func singleBox() doctemplates.Document {
+	return doctemplates.Document{Schema: "1.1", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
+		Elements: []doctemplates.Element{{ID: "n1", Source: "row", Field: "customer", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"}}, Print: &doctemplates.PrintProfile{Mode: "full"}}
+}
+
+// issueStamp is the line an issued document carries (S03-H): "ISSUED No. <number> - <issue time>
+// - <record id>", the number being the string the source product reserved and the time UTC to
+// the second. It is spelled out here, not taken from the reporting package, so that the
+// contract the checker verifies is stated where the documents are made.
+func issueStamp(number string, at time.Time, id string) string {
+	return "ISSUED No. " + number + " - " + at.UTC().Format("2006-01-02T15:04:05Z") + " - " + id
+}
+
+// infoCreation is how a PDF's information dictionary records the creation date at.
+func infoCreation(at time.Time) []byte {
+	return []byte("/CreationDate(D:" + at.UTC().Format("20060102150405") + "Z)")
+}
+
+// TestTypstIssuesDocuments renders official documents (S03-G, S03-H): the preview's pages with
+// the stamp of the product's number in the banner strip, in the text colour (checked on the
+// laid-out page; the checker verifies the drawn PDF); the page count is returned; an empty
+// stamp, one with a control character or one naming the banner is invalid, one that would not
+// fit the strip or that the fonts lack is unsupported. The product's issue time, not the
+// writer's clock, is the PDF's creation date: writers whose clocks differ issue the same
+// bytes, another issue time gives other bytes, and an issue time that is not a UTC whole second
+// is invalid.
 func TestTypstIssuesDocuments(t *testing.T) {
 	w := typstWriter(t, nil)
+	// A writer whose clock is a day and a half ahead.
+	later := typstWriter(t, func(c *Config) { c.Now = func() time.Time { return created.Add(36 * time.Hour) } })
 	png, err := os.ReadFile("../../doctemplates/testdata/a4-background.png")
 	if err != nil {
 		t.Fatal(err)
@@ -911,8 +935,7 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		return d
 	}
 	values := map[string]string{"n1": "对账单 Statement", "n2": "华东区客户", "n3": "9007199254740993.01"}
-	single := doctemplates.Document{Schema: "1.1", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
-		Elements: []doctemplates.Element{{ID: "n1", Source: "row", Field: "customer", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"}}, Print: &doctemplates.PrintProfile{Mode: "full"}}
+	single := singleBox()
 	id := strings.Repeat("7", 32)
 	at := time.Date(2026, 10, 28, 6, 12, 3, 0, time.UTC)
 	for _, c := range []struct {
@@ -921,15 +944,15 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		values map[string]string
 		png    []byte
 		table  *doctemplates.TableData
-		number int64
+		number string
 		pages  int
 	}{
-		{"document_issue", tableDoc("full", true), values, png, statementRows(60), 12, 3},
-		{"document_issue_variables", tableDoc("variables", false), values, nil, statementRows(60), 999999, 3},
-		{"document_issue_single", single, map[string]string{"n1": "华东区客户"}, nil, nil, 1, 1},
+		{"document_issue", tableDoc("full", true), values, png, statementRows(60), "AR-000012", 3},
+		{"document_issue_variables", tableDoc("variables", false), values, nil, statementRows(60), "SH-999999", 3},
+		{"document_issue_single", single, map[string]string{"n1": "华东区客户"}, nil, nil, "AR-000001", 1},
 	} {
-		stamp := r.IssueStamp(c.number, at, id)
-		out, pages, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp)
+		stamp := issueStamp(c.number, at, id)
+		out, pages, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp, at)
 		if err != nil {
 			var re *RenderError
 			if errors.As(err, &re) {
@@ -940,13 +963,32 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		if pages != c.pages {
 			t.Errorf("%s: %d pages, want %d", c.name, pages, c.pages)
 		}
-		again, _, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp)
+		again, _, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp, at)
 		if err != nil || !bytes.Equal(out, again) {
-			t.Fatalf("%s: two issues with the same clock differ (%v)", c.name, err)
+			t.Fatalf("%s: two issues of the same inputs differ (%v)", c.name, err)
+		}
+		// The product's issue time dates the document, not the writer's clock: a writer whose
+		// clock differs issues the same bytes; another issue time under the same stamp gives
+		// other bytes (the creation date alone differs); the previews, which carry their
+		// writers' clocks, differ.
+		fromLater, _, err := later.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp, at)
+		if err != nil || !bytes.Equal(out, fromLater) {
+			t.Fatalf("%s: writers whose clocks differ issue different bytes (%v)", c.name, err)
+		}
+		otherTime, _, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp, at.Add(time.Second))
+		if err != nil || bytes.Equal(out, otherTime) {
+			t.Fatalf("%s: another issue time gives the same bytes (%v)", c.name, err)
 		}
 		preview, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
 		if err != nil || bytes.Equal(preview, out) {
 			t.Fatalf("%s: the issue is the preview (%v)", c.name, err)
+		}
+		laterPreview, err := later.Render(t.Context(), c.d, c.values, c.png, c.table)
+		if err != nil || bytes.Equal(preview, laterPreview) {
+			t.Fatalf("%s: previews of writers whose clocks differ are alike (%v)", c.name, err)
+		}
+		if !bytes.Contains(out, infoCreation(at)) || bytes.Contains(out, infoCreation(created)) || !bytes.Contains(preview, infoCreation(created)) || bytes.Contains(preview, infoCreation(at)) {
+			t.Errorf("%s: the issue is not dated with the issue time or the preview not with the writer's clock", c.name)
 		}
 		documentEvidence(t, c.name, out, c.d, c.values, c.png, c.table, w.fonts)
 		issueEvidence(t, c.name, out, preview, c.number, at, id, pages)
@@ -956,6 +998,11 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		p, err := w.issuePage(c.d, c.values, c.png, c.table, stamp)
 		if err != nil || p.Banner.Text != stamp || p.Banner.Fill != stampFill || p.Title != "Issued document" || len(p.Pages) != c.pages {
 			t.Fatalf("%s: issue page %+v %v", c.name, p.Banner, err)
+		}
+		// The stamp is set at its own size, 8 pt, from the strip's left edge and top: the
+		// banner's 10 pt would not hold every number the contract allows.
+		if p.Banner.Size != stampSize || stampSize != 8 || !near(p.Banner.Baseline, 10*mm+ascent*8) || !near(p.Banner.Left, 10*mm) || !near(p.Banner.Top, 10*mm) {
+			t.Fatalf("%s: the stamp is not 8 pt in the strip: %+v", c.name, p.Banner)
 		}
 		for _, pg := range p.Pages {
 			texts := ""
@@ -967,40 +1014,118 @@ func TestTypstIssuesDocuments(t *testing.T) {
 			}
 		}
 		pv, err := layOut(c.d, c.values, c.png, c.table, newPlainMeasurer(w.fonts))
-		if err != nil || pv.Banner.Text != bannerText || pv.Banner.Fill != bannerFill {
+		if err != nil || pv.Banner.Text != bannerText || pv.Banner.Fill != bannerFill || pv.Banner.Size != 10 || !near(pv.Banner.Baseline, 10*mm+ascent*10) {
 			t.Fatalf("%s: preview banner %+v %v", c.name, pv.Banner, err)
 		}
 	}
 	// Refused before Typst runs: an empty stamp, one with a control character, one naming
 	// the preview banner, one longer than the strip.
 	for stamp, want := range map[string]error{"": r.ErrInvalid, "ISSUED\tNo. 1": r.ErrInvalid, "PREVIEW - NOT AN ISSUED DOCUMENT": r.ErrInvalid, strings.Repeat("W", 120): r.ErrUnsupported, "ISSUED 😀": r.ErrUnsupported} {
-		if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, stamp); !errors.Is(err, want) {
+		if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, stamp, at); !errors.Is(err, want) {
 			t.Errorf("stamp %q: %v; want %v", stamp, err, want)
 		}
 	}
+	// The issue time is the product's: a UTC whole second that a PDF can carry as its creation
+	// date, else invalid. The first and the last second Typst can write are issued.
+	for name, bad := range map[string]time.Time{
+		"zero":        {},
+		"not in UTC":  at.In(time.FixedZone("UTC+8", 8*3600)),
+		"fractional":  at.Add(500 * time.Millisecond),
+		"before 1970": time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC),
+		"after 9999":  time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, issueStamp("AR-000001", bad, id), bad); !errors.Is(err, r.ErrInvalid) {
+			t.Errorf("issue time %s: %v; want invalid", name, err)
+		}
+	}
+	for name, edge := range map[string]time.Time{"first second of 1970": time.Unix(0, 0).UTC(), "last second of 9999": time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)} {
+		out, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, issueStamp("AR-000001", edge, id), edge)
+		if err != nil || !bytes.Contains(out, infoCreation(edge)) {
+			t.Errorf("issue time %s: %v", name, err)
+		}
+	}
 	// The banner text as a value or a cell is refused: an issued document never says PREVIEW.
-	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x " + bannerText}, nil, nil, r.IssueStamp(1, at, id)); !errors.Is(err, r.ErrUnsupported) {
+	stamp := issueStamp("AR-000001", at, id)
+	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x " + bannerText}, nil, nil, stamp, at); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("banner text as a value: %v; want unsupported", err)
 	}
 	cells := statementRows(2)
 	cells.Rows[1][1] = bannerText
-	if _, _, err := w.Issue(t.Context(), tableDoc("full", false), values, nil, cells, r.IssueStamp(1, at, id)); !errors.Is(err, r.ErrUnsupported) {
+	if _, _, err := w.Issue(t.Context(), tableDoc("full", false), values, nil, cells, stamp, at); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("banner text as a cell: %v; want unsupported", err)
 	}
 	// An issue takes an export slot, not a preview slot: with the previews saturated it still
 	// renders; with no slot at all it is a budget error.
 	w.previews <- struct{}{}
-	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, r.IssueStamp(1, at, id)); err != nil {
+	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, stamp, at); err != nil {
 		t.Errorf("issue while previews are saturated: %v", err)
 	}
 	release(w.previews)
 }
 
+// TestTypstIssuesTheWidestLegalStamp: the worker must never void a number the product reserved
+// because of our layout, so the stamp of the widest number, record id and issue time the contract
+// allows has to fit the strip, with margin, and render. Widths are the plain advances the writer
+// measures, at the size the stamp is drawn at: 32 times the widest glyph of A-Za-z0-9._- as the
+// number, 32 times the widest lowercase hex digit as the record id, and the widest legal time.
+func TestTypstIssuesTheWidestLegalStamp(t *testing.T) {
+	w := typstWriter(t, nil)
+	m := newPlainMeasurer(w.fonts)
+	width := func(s string, size float64) float64 {
+		v, err := m.width(s, size, false)
+		if err != nil {
+			t.Fatalf("%q: %v", s, err)
+		}
+		return v
+	}
+	widest := func(chars string) string {
+		best := ""
+		for _, c := range chars {
+			if best == "" || width(string(c), stampSize) > width(best, stampSize) {
+				best = string(c)
+			}
+		}
+		return best
+	}
+	number := strings.Repeat(widest("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"), 32)
+	id := strings.Repeat(widest("0123456789abcdef"), 32)
+	if len(number) != 32 || !r.ValidIssueNumber(number) || len(id) != 32 {
+		t.Fatalf("the widest number %q or id %q is not one the contract allows", number, id)
+	}
+	// Every legal time prints digits where 9999-12-31T23:59:59Z does, so none is wider than that
+	// shape drawn with the widest digit; the latest second is as wide as it, and so the widest.
+	latest := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	stampTime := latest.UTC().Format("2006-01-02T15:04:05Z")
+	digit := widest("0123456789")
+	shape := strings.Map(func(c rune) rune {
+		if c >= '0' && c <= '9' {
+			return rune(digit[0])
+		}
+		return c
+	}, stampTime)
+	if width(shape, stampSize)-width(stampTime, stampSize) > 1e-9 {
+		t.Fatalf("a legal time can be wider than %s: %s is %.3f pt, %s %.3f pt", stampTime, shape, width(shape, stampSize), stampTime, width(stampTime, stampSize))
+	}
+	stamp := issueStamp(number, latest, id)
+	got := width(stamp, stampSize)
+	t.Logf("the widest legal stamp, %q: %.2f pt at %v pt; the strip is %.2f pt, with a margin of %.2f pt; at the banner's %v pt it would be %.2f pt", stamp, got, stampSize, bannerW*mm, fitMargin, bannerSize, width(stamp, bannerSize))
+	if got > bannerW*mm-fitMargin {
+		t.Errorf("the widest legal stamp is %.2f pt, the strip %.2f pt less a margin of %.2f pt", got, bannerW*mm, fitMargin)
+	}
+	if width(stamp, bannerSize) <= bannerW*mm {
+		t.Errorf("the widest legal stamp fits the strip at the banner's size: the stamp's own size no longer matters")
+	}
+	out, pages, err := w.Issue(t.Context(), singleBox(), map[string]string{"n1": "x"}, nil, nil, stamp, latest)
+	if err != nil || pages != 1 || !bytes.Contains(out, infoCreation(latest)) {
+		t.Errorf("the widest legal stamp does not render: %v", err)
+	}
+}
+
 // issueExpectation is the record the checker verifies an issued document against: the stamp
-// recomputed from the number, time and id, the digest and page count of the PDF, and the
-// preview of the same document, which must not pass as the issue.
+// recomputed from the product's number (a string), the time and the id, the digest and page
+// count of the PDF, and the preview of the same document, which must not pass as the issue.
 type issueExpectation struct {
-	Number      int64  `json:"number"`
+	Number      string `json:"number"`
 	IssueID     string `json:"issue_id"`
 	IssuedAt    string `json:"issued_at"`
 	Stamp       string `json:"stamp"`
@@ -1009,7 +1134,7 @@ type issueExpectation struct {
 	PreviewFile string `json:"preview_file"`
 }
 
-func issueEvidence(t *testing.T, name string, pdf, preview []byte, number int64, at time.Time, id string, pages int) {
+func issueEvidence(t *testing.T, name string, pdf, preview []byte, number string, at time.Time, id string, pages int) {
 	t.Helper()
 	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
 	if dir == "" {
@@ -1024,7 +1149,7 @@ func issueEvidence(t *testing.T, name string, pdf, preview []byte, number int64,
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(pdf)
-	e["issue"] = issueExpectation{Number: number, IssueID: id, IssuedAt: at.UTC().Format("2006-01-02T15:04:05Z"), Stamp: r.IssueStamp(number, at, id), SHA256: hex.EncodeToString(sum[:]), Pages: pages, PreviewFile: name + ".preview.pdf"}
+	e["issue"] = issueExpectation{Number: number, IssueID: id, IssuedAt: at.UTC().Format("2006-01-02T15:04:05Z"), Stamp: issueStamp(number, at, id), SHA256: hex.EncodeToString(sum[:]), Pages: pages, PreviewFile: name + ".preview.pdf"}
 	b, _ := json.MarshalIndent(e, "", " ")
 	for file, content := range map[string][]byte{name + ".json": b, name + ".preview.pdf": preview} {
 		if err := os.WriteFile(filepath.Join(dir, file), content, 0o644); err != nil {
