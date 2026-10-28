@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/adapters/contractsim"
@@ -56,7 +57,29 @@ func Open(ctx context.Context, dsn string, initialize bool) (*Source, error) {
 	if name != "durable-contract-simulator-only" || version != profileVersion {
 		return fail(r.ErrDenied)
 	}
+	if e = checkShape(ctx, p); e != nil {
+		return fail(e)
+	}
 	return &Source{pool: p}, nil
+}
+
+// checkShape refuses the issues table the first revision of schema version 2 made, before void
+// tombstones: it cannot hold what the void of a job nothing was reserved for records. Schema
+// version 2 was never released, so such a test database is dropped (drop schema
+// reporting_source_s01) and initialized again, not upgraded.
+func checkShape(ctx context.Context, p *pgxpool.Pool) error {
+	var nullable string
+	e := p.QueryRow(ctx, "SELECT is_nullable FROM information_schema.columns WHERE table_schema='reporting_source_s01' AND table_name='issues' AND column_name='number'").Scan(&nullable)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: the issues table is missing", r.ErrDenied)
+	}
+	if e != nil {
+		return e
+	}
+	if nullable != "YES" {
+		return fmt.Errorf("%w: the issues table predates void tombstones; drop schema reporting_source_s01 and initialize again", r.ErrDenied)
+	}
+	return nil
 }
 
 // profileVersion is the schema this code requires: 2 since S03-H added the number sequences and

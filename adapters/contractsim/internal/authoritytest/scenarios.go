@@ -655,18 +655,103 @@ var ruleScenarios = []ruleScenario{
 	}},
 
 	// VoidIssue.
-	{"voiding_a_job_the_source_does_not_hold_is_not_an_error", func(t *testing.T, newEnv NewEnv) {
+	// A void is final for the job id: a void of a job the source holds nothing for is recorded, as
+	// a tombstone with no reservation and no number.
+	{"voiding_a_job_the_source_holds_nothing_for_records_a_tombstone", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance())
 		if e := g.Src.VoidIssue(ctx, g.SC, Job(7), "EXECUTION_FAILED"); e != nil {
 			t.Fatal(e)
 		}
-		if _, ok := g.Env.Record(Job(7)); ok {
-			t.Fatal("voiding created a record")
+		rec := g.Holds(7, contractsim.IssueVoid, "")
+		if !rec.Tombstone() || rec.Reason != "EXECUTION_FAILED" || rec.Integration != g.SC.Owner.Integration || rec.SourceTenant != SourceTenant || rec.JobID != Job(7) {
+			t.Fatalf("%+v", rec)
 		}
-		// and it does not take the job's number: the job can still be reserved
-		if res := g.Reserve(7); res.Number != "AR-000001" {
-			t.Fatal(res.Number)
+		if rec.Ref != "" || rec.IntentSHA256 != "" || rec.SHA256 != "" || rec.Pages != 0 || rec.ConfirmationRef != "" || !rec.IssuedAt.IsZero() || !rec.ExpiresAt.IsZero() || !rec.ConfirmedAt.IsZero() {
+			t.Fatalf("a tombstone holds a reservation: %+v", rec)
 		}
+		utcSecond(t, rec.VoidedAt, "void time")
+		near(t, g, rec.VoidedAt, "void time")
+	}},
+	{"a_voided_job_id_cannot_be_prepared_and_uses_no_number", func(t *testing.T, newEnv NewEnv) {
+		g := NewRig(t, newEnv, Finance())
+		if e := g.Src.VoidIssue(ctx, g.SC, Job(7), "TEMPLATE_NOT_PUBLISHED"); e != nil {
+			t.Fatal(e)
+		}
+		_, e := g.Prepare(7, 0)
+		is(t, e, r.ErrConflict, "job voided before it was ever reserved")
+		_, e = g.Prepare(7, 1)
+		is(t, e, r.ErrConflict, "another intent of the voided job")
+		// the checks still come first, as for a voided reservation: a revoked principal is denied
+		g.Env.Revoke(g.SC)
+		_, e = g.Prepare(7, 0)
+		is(t, e, r.ErrDenied, "revoked principal, voided job")
+		g.Env.SetGrant(g.SC, g.P.Grant)
+		_, e = g.Prepare(7, 0)
+		is(t, e, r.ErrConflict, "restored principal, voided job")
+		// the refusals took no number, and the void stays a void without one
+		if res := g.Reserve(1); res.Number != "AR-000001" {
+			t.Fatal("the voided job used a number:", res.Number)
+		}
+		rec := g.Holds(7, contractsim.IssueVoid, "")
+		if rec.Reason != "TEMPLATE_NOT_PUBLISHED" {
+			t.Fatalf("%+v", rec)
+		}
+	}},
+	{"a_voided_job_id_cannot_be_confirmed", func(t *testing.T, newEnv NewEnv) {
+		g := NewRig(t, newEnv, Finance())
+		if e := g.Src.VoidIssue(ctx, g.SC, Job(7), "EXECUTION_FAILED"); e != nil {
+			t.Fatal(e)
+		}
+		// the source holds the void, so this is a conflict and not a job it does not know; a
+		// tombstone has no reservation, so whatever reference a worker brings does not match
+		for name, ref := range map[string]string{"a reference": strings.Repeat("a", 32), "no reference": ""} {
+			c := g.Confirmation(r.IssueReservation{JobID: Job(7), Ref: ref})
+			_, e := g.Src.ConfirmIssue(ctx, g.SC, c)
+			is(t, e, r.ErrConflict, "confirming a voided job id with "+name)
+		}
+		g.Holds(7, contractsim.IssueVoid, "")
+	}},
+	{"voiding_a_tombstone_again_keeps_the_first_reason", func(t *testing.T, newEnv NewEnv) {
+		g := NewRig(t, newEnv, Finance())
+		for _, reason := range []string{"first", "second"} {
+			if e := g.Src.VoidIssue(ctx, g.SC, Job(7), reason); e != nil {
+				t.Fatal(e)
+			}
+		}
+		if rec := g.Holds(7, contractsim.IssueVoid, ""); rec.Reason != "first" {
+			t.Fatalf("%+v", rec)
+		}
+	}},
+	{"the_lookup_prefers_a_reservation_to_a_tombstone_of_the_same_job_id", func(t *testing.T, newEnv NewEnv) {
+		const sortsFirst = "aaa-contract-demo" // sorts before the principal's integration
+		g := NewRig(t, newEnv, Finance(), sortsFirst)
+		res := g.Reserve(1)
+		if e := g.Src.VoidIssue(ctx, g.Context(sortsFirst), Job(1), "EXECUTION_FAILED"); e != nil {
+			t.Fatal(e)
+		}
+		rec := g.Holds(1, contractsim.IssueReserved, "AR-000001")
+		if rec.Ref != res.Ref || rec.Integration != g.SC.Owner.Integration {
+			t.Fatalf("%+v", rec)
+		}
+	}},
+	{"a_tombstone_belongs_to_its_source", func(t *testing.T, newEnv NewEnv) {
+		g := NewRig(t, newEnv, Finance(), OtherIntegration)
+		other := g.Context(OtherIntegration)
+		if e := g.Src.VoidIssue(ctx, g.SC, Job(7), "EXECUTION_FAILED"); e != nil {
+			t.Fatal(e)
+		}
+		if rec := g.Holds(7, contractsim.IssueVoid, ""); rec.Integration != g.SC.Owner.Integration {
+			t.Fatalf("%+v", rec)
+		}
+		// the same job id in the other integration is another job, free to be reserved
+		in := g.Intent(7, 0)
+		in.Prepared = g.Read(other)
+		res, e := g.Src.PrepareDocument(ctx, other, in)
+		if e != nil || res.Number != "AR-000001" {
+			t.Fatal(res, e)
+		}
+		_, e = g.Prepare(7, 0)
+		is(t, e, r.ErrConflict, "the integration that was told to void it")
 	}},
 	{"voiding_a_reservation_records_the_reason", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance())
@@ -714,6 +799,11 @@ var ruleScenarios = []ruleScenario{
 			t.Fatal(e)
 		}
 		g.Holds(1, contractsim.IssueVoid, "AR-000001")
+		// nor does the void of a job the source holds nothing for
+		if e := g.Src.VoidIssue(ctx, g.SC, Job(2), "EXECUTION_FAILED"); e != nil {
+			t.Fatal(e)
+		}
+		g.Holds(2, contractsim.IssueVoid, "")
 	}},
 	{"an_expired_reservation_can_be_voided", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance())
@@ -733,18 +823,23 @@ var ruleScenarios = []ruleScenario{
 			{"two-byte runes on the boundary", strings.Repeat("é", 150), strings.Repeat("é", 100)},
 			{"three-byte runes across the boundary", "a" + strings.Repeat("世", 100), "a" + strings.Repeat("世", 66)},
 			{"four-byte runes across the boundary", "ab" + strings.Repeat("😀", 60), "ab" + strings.Repeat("😀", 49)},
-			{"invalid UTF-8", "ab\xffcd", "ab�cd"},
+			{"invalid UTF-8", "ab\xffcd", "ab\uFFFDcd"},
 			{"NUL", "a\x00b", "ab"},
 		}
 		for i, c := range cases {
-			g := NewRig(t, newEnv, Finance())
-			g.Reserve(1)
-			if e := g.Src.VoidIssue(ctx, g.SC, Job(1), c.reason); e != nil {
-				t.Fatal(c.name, e)
-			}
-			got := g.Record(1).Reason
-			if got != c.want || len(got) > 200 || !utf8.ValidString(got) {
-				t.Fatalf("case %d %s: kept %d bytes %q", i, c.name, len(got), got)
+			// the reason of a reservation that is voided and of a tombstone are cut alike
+			for _, reserved := range []bool{true, false} {
+				g := NewRig(t, newEnv, Finance())
+				if reserved {
+					g.Reserve(1)
+				}
+				if e := g.Src.VoidIssue(ctx, g.SC, Job(1), c.reason); e != nil {
+					t.Fatal(c.name, e)
+				}
+				got := g.Record(1).Reason
+				if got != c.want || len(got) > 200 || !utf8.ValidString(got) {
+					t.Fatalf("case %d %s (reserved %v): kept %d bytes %q", i, c.name, reserved, len(got), got)
+				}
 			}
 		}
 	}},
@@ -753,18 +848,33 @@ var ruleScenarios = []ruleScenario{
 		g.Reserve(1)
 		for name, id := range map[string]string{"empty": "", "short": Job(1)[:31], "uppercase": strings.ToUpper(strings.Repeat("ab", 16)), "not hexadecimal": strings.Repeat("g", 32), "long": Job(1) + "0"} {
 			is(t, g.Src.VoidIssue(ctx, g.SC, id, "x"), r.ErrInvalid, name)
+			if _, ok := g.Env.Record(id); ok {
+				t.Fatal(name, "left a tombstone")
+			}
 		}
 		g.Holds(1, contractsim.IssueReserved, "AR-000001")
 	}},
 	{"voiding_is_scoped_to_the_source", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance(), OtherIntegration)
-		g.Reserve(1)
-		for name, sc := range map[string]r.SourceContext{"other integration": g.Context(OtherIntegration), "other source tenant": {Owner: g.SC.Owner, SourceTenant: "tenant_b"}} {
+		res := g.Reserve(1)
+		other := g.Context(OtherIntegration)
+		// the same job id in another source is another job; voiding it there leaves this one alone
+		for name, sc := range map[string]r.SourceContext{"other integration": other, "other source tenant": {Owner: g.SC.Owner, SourceTenant: "tenant_b"}} {
 			if e := g.Src.VoidIssue(ctx, sc, Job(1), "EXECUTION_FAILED"); e != nil {
 				t.Fatal(name, e)
 			}
 		}
-		g.Holds(1, contractsim.IssueReserved, "AR-000001")
+		again, e := g.Prepare(1, 0)
+		if e != nil {
+			t.Fatal("the job of this source was touched by a void of another source:", e)
+		}
+		sameReservation(t, again, res)
+		g.Confirm(res)
+		// ...while in the other integration the job id is void now
+		in := g.Intent(1, 0)
+		in.Prepared = g.Read(other)
+		_, e = g.Src.PrepareDocument(ctx, other, in)
+		is(t, e, r.ErrConflict, "the job id voided in the other integration")
 	}},
 
 	{"an_unavailable_source_refuses_every_call", func(t *testing.T, newEnv NewEnv) {
@@ -778,12 +888,19 @@ var ruleScenarios = []ruleScenario{
 		_, e = g.Src.ConfirmIssue(ctx, g.SC, g.Confirmation(res))
 		is(t, e, r.ErrUnavailable, "confirm")
 		is(t, g.Src.VoidIssue(ctx, g.SC, Job(1), "EXECUTION_FAILED"), r.ErrUnavailable, "void")
+		is(t, g.Src.VoidIssue(ctx, g.SC, Job(9), "EXECUTION_FAILED"), r.ErrUnavailable, "void of a job nothing is held for")
 		g.Env.SetUnavailable(false)
-		// the outage changed nothing and used no number
+		// the outage changed nothing and used no number, and recorded no tombstone
 		g.Holds(1, contractsim.IssueReserved, "AR-000001")
+		if _, ok := g.Env.Record(Job(9)); ok {
+			t.Fatal("a void refused during the outage was recorded")
+		}
 		g.Confirm(res)
 		if second := g.Reserve(2); second.Number != "AR-000002" {
 			t.Fatal(second.Number)
+		}
+		if third := g.Reserve(9); third.Number != "AR-000003" {
+			t.Fatal(third.Number)
 		}
 	}},
 }

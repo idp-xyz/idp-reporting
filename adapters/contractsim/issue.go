@@ -28,17 +28,19 @@ const (
 )
 
 // IssueRecord is what a simulator holds for one issue job (S03-H): its reservation and, as the
-// job goes on, its confirmation or its void. The in-memory and the durable simulator keep this
-// same record and decide every call with the methods below, so that their rules cannot drift.
-// It is a lookup for tests, not part of the reporting.DocumentAuthority contract. Times are UTC;
-// the fields of a step that did not happen are zero.
+// job goes on, its confirmation or its void. A void is final for the job id, so a void of a job
+// the source held nothing for is recorded as well, as a tombstone: state void, with a reason and
+// a time but no reference, number, intent or issue time (see Tombstone). The in-memory and the
+// durable simulator keep this same record and decide every call with the methods below, so that
+// their rules cannot drift. It is a lookup for tests, not part of the reporting.DocumentAuthority
+// contract. Times are UTC; the fields of a step that did not happen are zero.
 type IssueRecord struct {
 	Integration     string
 	SourceTenant    string
 	JobID           string
-	State           string // IssueReserved, IssueConfirmed or IssueVoid
-	Ref             string // the reservation reference
-	Number          string
+	State           string    // IssueReserved, IssueConfirmed or IssueVoid
+	Ref             string    // the reservation reference; empty for a tombstone
+	Number          string    // empty for a tombstone
 	IssuedAt        time.Time // whole second
 	ExpiresAt       time.Time
 	IntentSHA256    string // Digest of the intent the job was reserved under, normalized by IntentDigest
@@ -158,7 +160,7 @@ func ReservationTimes(now, readExpires time.Time) (issuedAt, expiresAt time.Time
 // NUL is dropped (the database cannot hold it) and at most MaxVoidReason bytes remain, cut at a
 // rune boundary.
 func CutReason(reason string) string {
-	reason = strings.ToValidUTF8(strings.ReplaceAll(reason, "\x00", ""), "�")
+	reason = strings.ToValidUTF8(strings.ReplaceAll(reason, "\x00", ""), "\uFFFD")
 	if len(reason) <= MaxVoidReason {
 		return reason
 	}
@@ -175,6 +177,15 @@ func NewIssueRecord(sc r.SourceContext, in r.IssueIntent, number string, now tim
 	return IssueRecord{Integration: sc.Owner.Integration, SourceTenant: sc.SourceTenant, JobID: in.JobID, State: IssueReserved, Ref: r.NewID(), Number: number, IssuedAt: issuedAt, ExpiresAt: expiresAt, IntentSHA256: IntentDigest(in)}
 }
 
+// NewTombstone records the void of a job the source held nothing for: nothing was reserved, no
+// number was taken, and the job id can never be reserved or confirmed in this source.
+func NewTombstone(sc r.SourceContext, jobID, reason string, now time.Time) IssueRecord {
+	return IssueRecord{Integration: sc.Owner.Integration, SourceTenant: sc.SourceTenant, JobID: jobID, State: IssueVoid, Reason: CutReason(reason), VoidedAt: now.UTC().Truncate(time.Second)}
+}
+
+// Tombstone: the record is the void of a job nothing was reserved for.
+func (rec IssueRecord) Tombstone() bool { return rec.Ref == "" }
+
 // Reservation is the product's answer to PrepareDocument for the record.
 func (rec IssueRecord) Reservation() r.IssueReservation {
 	return r.IssueReservation{Ref: rec.Ref, JobID: rec.JobID, Number: rec.Number, IssuedAt: rec.IssuedAt, ExpiresAt: rec.ExpiresAt}
@@ -186,12 +197,13 @@ func (rec IssueRecord) Receipt() r.IssueReceipt {
 }
 
 // Again answers PrepareDocument for a job that already has this record, once the caller has
-// checked the principal, the row and the approval: another intent is ErrConflict, so is a voided
-// reservation, a reserved one that has expired is ErrDenied, and a reserved or confirmed one is
-// returned as it was reserved (a confirmed one even after its expiry).
+// checked the principal, the row and the approval: another intent is ErrConflict, so is a void,
+// whether of a reservation or a tombstone (a void is final for the job id), a reserved one that
+// has expired is ErrDenied, and a reserved or confirmed one is returned as it was reserved (a
+// confirmed one even after its expiry).
 func (rec IssueRecord) Again(intentSHA string, now time.Time) (r.IssueReservation, error) {
 	switch {
-	case rec.IntentSHA256 != intentSHA, rec.State == IssueVoid:
+	case rec.State == IssueVoid, rec.IntentSHA256 != intentSHA:
 		return r.IssueReservation{}, r.ErrConflict
 	case rec.State == IssueReserved && !now.Before(rec.ExpiresAt):
 		return r.IssueReservation{}, r.ErrDenied
@@ -201,11 +213,12 @@ func (rec IssueRecord) Again(intentSHA string, now time.Time) (r.IssueReservatio
 
 // Confirm answers ConfirmIssue at now. It returns the record to keep and the receipt; the record
 // is the receiver's when the confirmation had already happened. The reference must be the
-// reservation's (else ErrConflict); a voided one is ErrConflict; a confirmed one answers the same
-// receipt for the same digest and pages and is ErrConflict for others; a reserved one that has
-// expired is ErrDenied. The time is never before the issue time.
+// reservation's (else ErrConflict, which is all a tombstone, holding no reservation, can say);
+// a voided one is ErrConflict; a confirmed one answers the same receipt for the same digest and
+// pages and is ErrConflict for others; a reserved one that has expired is ErrDenied. The time is
+// never before the issue time.
 func (rec IssueRecord) Confirm(c r.IssueConfirmation, now time.Time) (IssueRecord, r.IssueReceipt, error) {
-	if c.ReservationRef != rec.Ref {
+	if rec.Tombstone() || c.ReservationRef != rec.Ref {
 		return rec, r.IssueReceipt{}, r.ErrConflict
 	}
 	switch rec.State {
@@ -228,8 +241,9 @@ func (rec IssueRecord) Confirm(c r.IssueConfirmation, now time.Time) (IssueRecor
 	return rec, rec.Receipt(), nil
 }
 
-// Void answers VoidIssue at now: a reserved or confirmed record becomes void with the cut reason
-// (changed is true); a void one stays as it is, with its first reason.
+// Void answers VoidIssue at now for a job that has this record: a reserved or confirmed record
+// becomes void with the cut reason (changed is true); a void one, a tombstone included, stays as
+// it is, with its first reason. A job without a record gets NewTombstone.
 func (rec IssueRecord) Void(reason string, now time.Time) (next IssueRecord, changed bool) {
 	if rec.State == IssueVoid {
 		return rec, false

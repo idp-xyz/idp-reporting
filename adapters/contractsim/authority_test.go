@@ -105,6 +105,17 @@ func TestDocumentAuthorityFollowsTheSimulatorsClock(t *testing.T) {
 			t.Fatal("voided at", rec.VoidedAt)
 		}
 	})
+	t.Run("the_tombstone_time_is_the_clock_to_the_second", func(t *testing.T) {
+		g, env := setup(t)
+		env.set(at(12, 4, 30, 700_000_000))
+		if e := g.Src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED"); e != nil {
+			t.Fatal(e)
+		}
+		rec := g.Record(7)
+		if !rec.Tombstone() || !rec.VoidedAt.Equal(at(12, 4, 30, 0)) || !rec.IssuedAt.IsZero() {
+			t.Fatalf("%+v", rec)
+		}
+	})
 	t.Run("a_reservation_is_over_at_its_expiry_instant", func(t *testing.T) {
 		g, env := setup(t)
 		env.set(at(12, 0, 2, 500_000_000))

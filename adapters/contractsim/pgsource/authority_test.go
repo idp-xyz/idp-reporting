@@ -165,6 +165,9 @@ func sourceDSN(t *testing.T) string {
 // the durable source has: its sequences and schema, its reopening and the upgrade of version 1.
 func TestDurableDocumentAuthority(t *testing.T) {
 	dsn = sourceDSN(t)
+	// Schema version 2 was never released and changed in place (void tombstones): a test database
+	// made by an earlier revision of this code is dropped, not upgraded.
+	freshSchema(t)
 	t.Run("conformance", func(t *testing.T) { authoritytest.Run(t, newDurableEnv) })
 	t.Run("concurrency", func(t *testing.T) { authoritytest.RunConcurrent(t, newDurableEnv) })
 	for _, s := range durableScenarios {
@@ -272,6 +275,7 @@ var durableScenarios = []scenario{
 		env := g.Env.(*durableEnv)
 		g.Reserve(1)
 		g.Reserve(2)
+		must(t, env.src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED")) // a tombstone
 		must(t, env.src.ResetFixture(ctx))
 		for _, table := range []string{"issues", "issue_numbers"} {
 			if n := scalar[int64](t, env.admin, "SELECT count(*) FROM "+schema+table); n != 0 {
@@ -281,9 +285,12 @@ var durableScenarios = []scenario{
 		must(t, env.src.EnsureFixture(ctx, g.SC.Owner.Integration, authoritytest.SourceTenant, g.P.Build().Fixture()))
 		must(t, env.src.SetGrant(ctx, g.SC, g.P.Grant))
 		g.Prep = g.Read(g.SC)
-		// the numbers start over and the job ids are free again
+		// the numbers start over and the job ids are free again, the voided one too
 		if res := g.Reserve(1); res.Number != "AR-000001" {
 			t.Fatal(res.Number)
+		}
+		if res := g.Reserve(7); res.Number != "AR-000002" {
+			t.Fatal("the tombstone survived the reset:", res.Number)
 		}
 	}},
 	{"reservations_survive_reopening_the_source", func(t *testing.T) {
@@ -291,6 +298,7 @@ var durableScenarios = []scenario{
 		first := g.Reserve(1)
 		receipt := g.Confirm(first)
 		second := g.Reserve(2)
+		must(t, g.Src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED")) // a tombstone
 		g.Env.(*durableEnv).src.Close()
 		reopened, e := pgsource.Open(ctx, dsn, false)
 		must(t, e)
@@ -312,6 +320,14 @@ var durableScenarios = []scenario{
 		third, e := reopened.PrepareDocument(ctx, g.SC, g.Intent(3, 0))
 		if e != nil || third.Number != "AR-000003" {
 			t.Fatal(third, e)
+		}
+		// and a void of a job nothing was reserved for is still final
+		_, e = reopened.PrepareDocument(ctx, g.SC, g.Intent(7, 0))
+		is(t, e, r.ErrConflict, "prepare of a voided job id after reopening")
+		_, e = reopened.ConfirmIssue(ctx, g.SC, g.Confirmation(r.IssueReservation{JobID: authoritytest.Job(7), Ref: first.Ref}))
+		is(t, e, r.ErrConflict, "confirm of a voided job id after reopening")
+		if rec, ok, e := reopened.IssueRecord(ctx, authoritytest.Job(7)); e != nil || !ok || !rec.Tombstone() || rec.State != contractsim.IssueVoid {
+			t.Fatal(rec, ok, e)
 		}
 	}},
 	{"a_grant_stored_before_the_capability_does_not_issue", func(t *testing.T) {
@@ -427,6 +443,96 @@ var durableScenarios = []scenario{
 		if pgCode(e) != "23514" {
 			t.Fatal("an unknown state:", e)
 		}
+	}},
+	{"the_schema_allows_a_tombstone_and_no_other_row_without_a_reservation", func(t *testing.T) {
+		freshSchema(t)
+		g := authoritytest.NewRig(t, newDurableEnv, authoritytest.Finance())
+		a := g.Env.(*durableEnv).admin
+		ref, sha := r.NewID(), strings.Repeat("a", 64)
+		insert := func(job int, columns, values string) error {
+			_, e := a.Exec(ctx, "INSERT INTO "+schema+"issues(integration,source_tenant,job_id,"+columns+") VALUES($1,'tenant_a',$2,"+values+")", g.SC.Owner.Integration, authoritytest.Job(job))
+			return e
+		}
+		attempts := []struct {
+			name, columns, values, code string
+		}{
+			{"a tombstone", "state,reason,voided_at", "'void','EXECUTION_FAILED',now()", ""},
+			{"a tombstone with an empty reason", "state,reason,voided_at", "'void','',now()", ""},
+			{"a numbered reservation", "ref,seq,number,state,issued_at,expires_at,intent_sha", "'" + ref + "',1,'AR-000001','reserved',now(),now(),'" + sha + "'", ""},
+			{"a reserved row without a number", "state,issued_at,expires_at,intent_sha", "'reserved',now(),now(),'" + sha + "'", "23514"},
+			{"a confirmed row without a number", "state,sha256,pages,confirmation_ref,confirmed_at", "'confirmed','" + sha + "',1,'" + ref + "',now()", "23514"},
+			{"a reserved row that looks like a tombstone", "state,reason,voided_at", "'reserved','x',now()", "23514"},
+			{"a confirmed row that looks like a tombstone", "state,reason,voided_at", "'confirmed','x',now()", "23514"},
+			{"a tombstone without a reason", "state,voided_at", "'void',now()", "23514"},
+			{"a tombstone without a void time", "state,reason", "'void','x'", "23514"},
+			{"a tombstone with a reference", "state,reason,voided_at,ref", "'void','x',now(),'" + r.NewID() + "'", "23514"},
+			{"a tombstone with a sequence", "state,reason,voided_at,seq", "'void','x',now(),9", "23514"},
+			{"a tombstone with an issue time", "state,reason,voided_at,issued_at", "'void','x',now(),now()", "23514"},
+			{"a tombstone with a digest", "state,reason,voided_at,sha256", "'void','x',now(),'" + sha + "'", "23514"},
+			{"a numbered row without its sequence", "ref,number,state,issued_at,expires_at,intent_sha", "'" + r.NewID() + "','AR-000200','reserved',now(),now(),'" + sha + "'", "23514"},
+			{"a numbered row without its reference", "seq,number,state,issued_at,expires_at,intent_sha", "200,'AR-000200','reserved',now(),now(),'" + sha + "'", "23514"},
+			{"a numbered row without its intent", "ref,seq,number,state,issued_at,expires_at", "'" + r.NewID() + "',200,'AR-000200','reserved',now(),now()", "23514"},
+			{"a number that is not a valid issue number", "ref,seq,number,state,issued_at,expires_at,intent_sha", "'" + r.NewID() + "',201,'-bad','reserved',now(),now(),'" + sha + "'", "23514"},
+			{"a number of 33 characters", "ref,seq,number,state,issued_at,expires_at,intent_sha", "'" + r.NewID() + "',202,'" + strings.Repeat("A", 33) + "','reserved',now(),now(),'" + sha + "'", "23514"},
+		}
+		for i, c := range attempts {
+			if e := insert(100+i, c.columns, c.values); pgCode(e) != c.code {
+				t.Fatalf("%s: got %v, want SQLSTATE %q", c.name, e, c.code)
+			}
+		}
+		// a job id has one row: a second tombstone for it is refused, tombstones of other jobs are not
+		if e := insert(100, "state,reason,voided_at", "'void','again',now()"); pgCode(e) != "23505" {
+			t.Fatal("a second row for the job id of a tombstone:", e)
+		}
+		// the tombstones took no number: the source's sequence is where it was
+		if n := scalar[int64](t, a, "SELECT last_number FROM "+schema+"issue_numbers"); n != 0 {
+			t.Fatal("last_number", n)
+		}
+	}},
+	{"voiding_needs_the_source_and_its_sequence", func(t *testing.T) {
+		g := authoritytest.NewRig(t, newDurableEnv, authoritytest.Finance())
+		env := g.Env.(*durableEnv)
+		count := func(job int) int64 {
+			return scalar[int64](t, env.admin, "SELECT count(*) FROM "+schema+"issues WHERE job_id=$1", authoritytest.Job(job))
+		}
+		// a source the database does not hold can hold no job: no error and nothing recorded
+		unknown := g.SC
+		unknown.Owner.Integration = "unknown-contract-demo"
+		must(t, env.src.VoidIssue(ctx, unknown, authoritytest.Job(7), "EXECUTION_FAILED"))
+		if n := count(7); n != 0 {
+			t.Fatal("a void in a source the database does not hold left", n, "rows")
+		}
+		// a source ensured before the sequences existed cannot take the tombstone, as it cannot
+		// take a reservation: ErrIntegrity, until its fixture is ensured again
+		exec(t, env.admin, "DELETE FROM "+schema+"issue_numbers")
+		is(t, env.src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED"), r.ErrIntegrity, "source without its sequence")
+		if n := count(7); n != 0 {
+			t.Fatal("a refused void left", n, "rows")
+		}
+		must(t, env.src.EnsureFixture(ctx, g.SC.Owner.Integration, authoritytest.SourceTenant, g.P.Build().Fixture()))
+		must(t, env.src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED"))
+		g.Holds(7, contractsim.IssueVoid, "")
+	}},
+	{"a_database_with_the_first_revision_of_the_issues_table_is_refused", func(t *testing.T) {
+		freshSchema(t)
+		a := admin(t)
+		// the first revision of schema version 2 had a number on every row; the table is empty
+		restore := func() { exec(t, a, "ALTER TABLE "+schema+"issues ALTER COLUMN number DROP NOT NULL") }
+		exec(t, a, "ALTER TABLE "+schema+"issues ALTER COLUMN number SET NOT NULL")
+		t.Cleanup(restore)
+		for _, initialize := range []bool{false, true} {
+			s, e := pgsource.Open(ctx, dsn, initialize)
+			if s != nil {
+				s.Close()
+			}
+			if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "tombstones") {
+				t.Fatalf("initialize=%v: %v", initialize, e)
+			}
+		}
+		restore()
+		s, e := pgsource.Open(ctx, dsn, false)
+		must(t, e)
+		s.Close()
 	}},
 	{"a_fresh_database_gets_the_version_2_schema", func(t *testing.T) {
 		freshSchema(t)
@@ -563,12 +669,19 @@ func upgradeFromVersion1(t *testing.T) {
 	if _, e = src.ConfirmIssue(ctx, g.SC, g.Confirmation(res)); e != nil {
 		t.Fatal(e)
 	}
+	// the upgraded database holds a void of a job nothing was reserved for as well
+	must(t, src.VoidIssue(ctx, g.SC, authoritytest.Job(2), "EXECUTION_FAILED"))
+	_, e = src.PrepareDocument(ctx, g.SC, g.Intent(2, 0))
+	is(t, e, r.ErrConflict, "prepare of a voided job id in the upgraded database")
 
 	// initializing again changes nothing
 	again, e := pgsource.Open(ctx, dsn, true)
 	must(t, e)
 	defer again.Close()
 	if rec, ok, e := again.IssueRecord(ctx, authoritytest.Job(1)); e != nil || !ok || rec.State != contractsim.IssueConfirmed || rec.Number != "AR-000001" {
+		t.Fatal(rec, ok, e)
+	}
+	if rec, ok, e := again.IssueRecord(ctx, authoritytest.Job(2)); e != nil || !ok || !rec.Tombstone() || rec.State != contractsim.IssueVoid {
 		t.Fatal(rec, ok, e)
 	}
 }
