@@ -42,9 +42,10 @@ bootstrapped from its profile version on the first `up` (those rows carry the ch
 
 Rollback is `down --to N`, newest step first; a target above the current version is refused. A down that
 would discard rows is refused unless `--accept-data-loss` is passed; the message names what would go: 003
-discards the issue jobs, records, issued PDFs and the issue counters (after which the numbering of every
-tenant and integration restarts at 1, reusing numbers already printed), 001 discards everything including
-the profile row (`init-profile` is needed after the next `up`). Qualification: a fresh database taken up
+discards the issue jobs, the records and the issue counters (after which the numbering of every tenant and
+integration restarts at 1, reusing numbers already printed) while the issued PDFs stay as plain artifacts
+without their records, 001 discards everything including the profile row (`init-profile` is needed after
+the next `up`). Qualification: a fresh database taken up
 to the latest, down to zero and up again has a catalog (columns, types, defaults, nullability, constraints,
 indexes) identical to the first (integration/migrate_test.go).
 
@@ -57,12 +58,16 @@ Two roles, created by the DBA with their own login and password policy:
 - the application role is what the server connects as: USAGE on the schema, SELECT on every table, INSERT
   and UPDATE on the data tables (`jobs`, `assets`, `issue_numbers`), nothing else: no DELETE, no TRUNCATE,
   no DDL, no CREATE on the schema, no ownership, not a superuser, no role or database creation, no RLS
-  bypass. The ledger and the profile it only reads.
+  bypass, no replication, a member of no role (a membership is a `SET ROLE` away from more), no `SET ROLE`
+  in effect, not the owner of the database and without CREATE on it (an owner can drop the database and set
+  its parameters), no column-level grants anywhere in the schema. The ledger and the profile it only reads.
+  Create the database as the DBA or the migrator, never as the application role.
 
 `reporting-migrate roles` sets ownership and grants (idempotent) on the tables that exist; the migrator's
 default privileges give the application role SELECT on tables created later, never INSERT or UPDATE. So
-run `roles` after every `up` or `down` that creates a data table, whoever ran it: until then the server's
-role check names the table and refuses to start (`status` shows the same). `roles` refuses a schema that
+run `roles` after every `up` or `down` that creates a data table, as whoever ran the step (only the owner
+of a table, or a superuser, can hand it over): until then the server's role check names the table and
+refuses to start (`status` shows the same). `roles` refuses a schema that
 holds a table it does not know, and every identifier it executes is quoted.
 
 Trust boundary: the ledger is written by the migrator role (or an owner, or a superuser). Such a role can
@@ -80,10 +85,12 @@ superuser connections the destructive test resets need; a production store canno
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the
-same migrator. The CI postgres job and the local throwaway server run `TestPostgresMigrations` with two
-roles it creates (`reporting_app_t`, `reporting_migrator_t`): the application role runs the platform's
-whole contract through the production path (with the test-only option that lifts TLS and the fixture
-name), and every forbidden statement is attempted and refused.
+same migrator. The CI postgres job and the local throwaway server run `TestPostgresMigrations` and
+`TestMigrateCommand` with roles they create (`reporting_app_t`, `reporting_migrator_t`, the attribute,
+membership and command-test roles): the application role runs every write the server performs through the
+production path (with the test-only option that lifts TLS and the fixture name), the migrator role runs the
+whole lifecycle with and without CREATE on the database, and every forbidden statement is attempted and
+refused. The two test binaries share the fixture database, so the job runs packages one at a time.
 
 Not covered yet: row-level security (one application role for all tenants; isolation is the service's),
 retention and cleanup, object storage, backups and restore, capacity, key lifecycle.

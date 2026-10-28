@@ -1,6 +1,7 @@
 -- 001 base: the platform's own assets (S01-A). The profile row names the deployment kind and
 -- carries the highest applied migration; it is inserted by the operator (init-profile), not here.
-CREATE SCHEMA IF NOT EXISTS reporting_s01;
+-- The schema itself is created by the migrator when absent (the first run needs CREATE on the
+-- database); a later 001, after a down to zero, finds it in place.
 CREATE TABLE reporting_s01.profile (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   profile text NOT NULL, version integer NOT NULL

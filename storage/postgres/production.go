@@ -71,13 +71,17 @@ var readTables = []string{"profile", "schema_migrations"}
 // INSERT or UPDATE on a data table.
 func RoleProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	var problems []string
-	var super, createRole, createDB, bypassRLS, sameSession bool
+	var super, createRole, createDB, bypassRLS, replication, sameSession, ownsDB, createOnDB bool
 	var memberships int
-	if err := pool.QueryRow(ctx, `SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls, session_user=current_user,
-(SELECT count(*) FROM pg_auth_members m WHERE m.member=r.oid) FROM pg_roles r WHERE rolname=current_user`).Scan(&super, &createRole, &createDB, &bypassRLS, &sameSession, &memberships); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls,rolreplication, session_user=current_user,
+(SELECT count(*) FROM pg_auth_members m WHERE m.member=r.oid),
+(SELECT pg_has_role(current_user, d.datdba, 'USAGE') FROM pg_database d WHERE d.datname=current_database()),
+has_database_privilege(current_user, current_database(), 'CREATE')
+FROM pg_roles r WHERE rolname=current_user`).Scan(&super, &createRole, &createDB, &bypassRLS, &replication, &sameSession, &memberships, &ownsDB, &createOnDB); err != nil {
 		return nil, err
 	}
-	for name, v := range map[string]bool{"superuser": super, "role creation": createRole, "database creation": createDB, "row security bypass": bypassRLS, "SET ROLE in effect": !sameSession} {
+	for name, v := range map[string]bool{"superuser": super, "role creation": createRole, "database creation": createDB, "row security bypass": bypassRLS, "replication": replication, "SET ROLE in effect": !sameSession,
+		"owns the database": ownsDB, "CREATE on the database": createOnDB} {
 		if v {
 			problems = append(problems, name)
 		}
@@ -99,7 +103,8 @@ func RoleProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	}
 	rows, err := pool.Query(ctx, `SELECT c.relname, pg_has_role(current_user,c.relowner,'USAGE'),
 has_table_privilege(current_user,c.oid,'SELECT'), has_table_privilege(current_user,c.oid,'INSERT'), has_table_privilege(current_user,c.oid,'UPDATE'),
-has_table_privilege(current_user,c.oid,'DELETE'), has_table_privilege(current_user,c.oid,'TRUNCATE')
+has_table_privilege(current_user,c.oid,'DELETE'), has_table_privilege(current_user,c.oid,'TRUNCATE'),
+EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND a.attacl IS NOT NULL)
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r' ORDER BY c.relname`)
 	if err != nil {
 		return nil, err
@@ -108,9 +113,14 @@ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rep
 	seen := map[string]bool{}
 	for rows.Next() {
 		var name string
-		var owns, sel, ins, upd, del, trunc bool
-		if err := rows.Scan(&name, &owns, &sel, &ins, &upd, &del, &trunc); err != nil {
+		var owns, sel, ins, upd, del, trunc, columnACL bool
+		if err := rows.Scan(&name, &owns, &sel, &ins, &upd, &del, &trunc, &columnACL); err != nil {
 			return nil, err
+		}
+		if columnACL {
+			// A column-level grant is invisible to the table-level probes and may reach the
+			// profile or the ledger: none is expected on any table.
+			problems = append(problems, "column-level privileges on "+name)
 		}
 		seen[name] = true
 		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {

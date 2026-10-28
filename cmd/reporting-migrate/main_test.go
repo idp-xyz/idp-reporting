@@ -28,15 +28,20 @@ func TestMigrateCommandArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("REPORTING_STORE_DSN", "postgresql://nobody@127.0.0.1:1/none?sslmode=disable")
-	for name, args := range map[string][]string{
-		"down without --to":    {"down"},
-		"roles without roles":  {"roles"},
-		"init-profile fixture": {"init-profile", "fixture"},
-		"init-profile none":    {"init-profile"},
-		"unknown":              {"frobnicate"},
+	for name, c := range map[string]struct {
+		args []string
+		want string
+	}{
+		"down without --to":    {[]string{"down"}, "explicit --to"},
+		"roles without roles":  {[]string{"roles"}, "--migrator-role"},
+		"roles bad name":       {[]string{"roles", "--migrator-role", "Robert'; DROP", "--app-role", "x"}, "INVALID_REQUEST"},
+		"init-profile fixture": {[]string{"init-profile", "fixture"}, "init-profile takes"},
+		"init-profile none":    {[]string{"init-profile"}, "init-profile takes"},
+		"unknown":              {[]string{"frobnicate"}, "usage"},
+		"timeout zero":         {[]string{"status", "--timeout", "0"}, "--timeout must be positive"},
 	} {
-		if _, err := capture(t, args...); err == nil || errors.Is(err, r.ErrUnavailable) {
-			t.Errorf("%s: %v", name, err)
+		if _, err := capture(t, c.args...); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", name, err, c.want)
 		}
 	}
 	t.Setenv("REPORTING_STORE_DSN", "::")
@@ -59,7 +64,7 @@ func TestMigrateCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
+	t.Cleanup(admin.Close) // registered first: the role cleanups below run before it
 	if _, err := admin.Exec(ctx, "DROP SCHEMA IF EXISTS reporting_s01 CASCADE"); err != nil {
 		t.Fatal(err)
 	}

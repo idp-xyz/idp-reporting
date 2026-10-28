@@ -12,7 +12,7 @@
 演示服务的 -initialize-fixture 通过同一迁移器初始化。
 测试 `TestPostgresMigrations`（PostgreSQL 任务）：往返目录相等、部分目标、篡改账本（校验和/未知版本/缺号/改名/profile 过期）全部拒绝且目录不变、6 个并发迁移器、丢行拒绝与接受、旧库引导、
 创建两个角色后应用角色跑通整条平台契约（出具含）并逐条尝试被禁语句、超级用户与夹具 profile 被生产路径拒绝、DSN 规则（disable/prefer/require/verify-ca/夹具库名）。
-Go 普通/race 各 {GO_TOP} 项顶层测试通过（{GO_EVENTS} 个通过事件），仅 4 项数据库入口跳过；本机 PostgreSQL 16：{PG_RESULT}；DOM {DOM_PASS}/{DOM_TOTAL}；vet、go mod verify、JS 语法通过；
+Go 普通/race 各 {GO_TOP} 项顶层测试通过（{GO_EVENTS} 个通过事件），仅 5 项数据库入口跳过（含迁移鉴定与命令测试）；本机 PostgreSQL 16：{PG_RESULT}；DOM {DOM_PASS}/{DOM_TOTAL}；vet、go mod verify、JS 语法通过；
 检查器与 veraPDF 结果与 S03-G 一致（本阶段不改渲染）。两路独立审查见 docs/CODE_REVIEW_S04A.md。GitHub Actions 四项任务在 PR #{PR} 上通过（run {RUN}）。
 未验：真实 TLS 生产库（生产路径的 TLS 规则只验证了拒绝分支）、真实 DBA 角色与密码策略、生产准入。
 不在本阶段：行级安全（单一应用角色，租户隔离仍在服务层）、产物对象存储、过期资产清理与保留、配额、备份与恢复鉴定、容量、密钥生命周期；真实接入最后。

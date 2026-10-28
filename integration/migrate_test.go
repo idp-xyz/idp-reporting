@@ -191,11 +191,8 @@ func TestPostgresMigrations(t *testing.T) {
 		// Down over 003 would discard the issue job, the counter and the issued PDF: refused with
 		// all three named (the counters restart the numbering); accepted, it goes.
 		e := postgres.Down(ctx, admin, 2, "test", false)
-		if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 issue jobs and records, 0 issued PDFs and 1 issue counters") || !strings.Contains(e.Error(), "restart at 1") {
+		if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 issue jobs and records and 1 issue counters") || !strings.Contains(e.Error(), "restart at 1") || !strings.Contains(e.Error(), "0 issued PDFs would lose their records") {
 			t.Fatal("down with issue rows accepted or counted wrongly", e)
-		}
-		if _, e := s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "unused"); e == nil {
-			// a second snapshot job is fine; nothing to assert
 		}
 		// A counter alone (its rows gone) is still data: the numbering would restart.
 		if _, e := admin.Exec(ctx, "DELETE FROM reporting_s01.jobs WHERE kind='issue'"); e != nil {
@@ -476,7 +473,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		if problems, e := postgres.RoleProblems(ctx, admin); e != nil || !strings.Contains(strings.Join(problems, ";"), "superuser") {
 			t.Fatal("the superuser passes as the application role", problems, e)
 		}
-		for attr, want := range map[string]string{"CREATEROLE": "role creation", "CREATEDB": "database creation", "BYPASSRLS": "row security bypass"} {
+		for attr, want := range map[string]string{"CREATEROLE": "role creation", "CREATEDB": "database creation", "BYPASSRLS": "row security bypass", "REPLICATION": "replication"} {
 			role := "reporting_attr_t"
 			if _, e := admin.Exec(ctx, "DROP OWNED BY "+role+"; DROP ROLE IF EXISTS "+role); e != nil && !strings.Contains(e.Error(), "does not exist") {
 				t.Fatal(e)
@@ -531,6 +528,23 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		if e := postgres.Grants(ctx, migPool, "reporting_migrator_t", "reporting_app_t"); e != nil {
 			t.Fatal(e)
 		}
+		// With CREATE on the database revoked, the migrator still rolls back to zero and comes
+		// up again: the schema stays and 001 does not create it.
+		if _, e := admin.Exec(ctx, "REVOKE CREATE ON DATABASE "+currentDatabase(t, admin)+" FROM reporting_migrator_t"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Down(ctx, migPool, 0, "migrator", true); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Up(ctx, migPool, 0, "migrator"); e != nil {
+			t.Fatal("the migrator role needs CREATE on the database after the first run", e)
+		}
+		if e := postgres.InitProfile(ctx, migPool, postgres.ProfileFixture); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Grants(ctx, migPool, "reporting_migrator_t", "reporting_app_t"); e != nil {
+			t.Fatal(e)
+		}
 		appDSN := strings.Replace(os.Getenv("REPORTING_S01_TEST_DSN"), "postgres@", "reporting_app_t@", 1)
 		appPool, e := pgxpool.New(ctx, appDSN)
 		if e != nil {
@@ -565,6 +579,35 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 			if e != nil || !strings.Contains(strings.Join(problems, ";"), c.want) {
 				t.Fatalf("%s: %v %v", c.role, problems, e)
 			}
+		}
+		// Power over the database itself, and column-level grants that the table probes cannot
+		// see, are refused too; roles revokes the column grants, the DBA the rest.
+		for name, c := range map[string]struct{ give, take, want string }{
+			"create on the database": {"GRANT CREATE ON DATABASE " + currentDatabase(t, admin) + " TO reporting_app_t", "REVOKE CREATE ON DATABASE " + currentDatabase(t, admin) + " FROM reporting_app_t", "CREATE on the database"},
+			"database owner":         {"ALTER DATABASE " + currentDatabase(t, admin) + " OWNER TO reporting_app_t", "ALTER DATABASE " + currentDatabase(t, admin) + " OWNER TO postgres", "owns the database"},
+			"column grant":           {"GRANT UPDATE(version) ON reporting_s01.profile TO reporting_app_t", "REVOKE UPDATE(version) ON reporting_s01.profile FROM reporting_app_t", "column-level privileges on profile"},
+		} {
+			if _, e := admin.Exec(ctx, c.give); e != nil {
+				t.Fatal(name, e)
+			}
+			if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || !strings.Contains(strings.Join(problems, ";"), c.want) {
+				t.Fatalf("%s: %v %v, want %q", name, problems, e, c.want)
+			}
+			if _, e := admin.Exec(ctx, c.take); e != nil {
+				t.Fatal(name, e)
+			}
+			if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) != 0 {
+				t.Fatalf("%s not restored: %v %v", name, problems, e)
+			}
+		}
+		if _, e := admin.Exec(ctx, "GRANT UPDATE(checksum) ON reporting_s01.schema_migrations TO reporting_app_t"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Grants(ctx, admin, "reporting_migrator_t", "reporting_app_t"); e != nil {
+			t.Fatal(e)
+		}
+		if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) != 0 {
+			t.Fatal("roles did not revoke the column grant", problems, e)
 		}
 		if _, e := admin.Exec(ctx, "GRANT CREATE ON SCHEMA reporting_s01 TO reporting_app_t"); e != nil {
 			t.Fatal(e)

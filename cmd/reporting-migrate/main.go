@@ -67,6 +67,9 @@ func run(args []string, out io.Writer) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
+	if *timeout <= 0 {
+		return errors.New("--timeout must be positive")
+	}
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 	switch args[0] {

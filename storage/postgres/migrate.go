@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/internal/fixturedb"
 	r "idp.local/reporting/reporting"
@@ -179,6 +180,9 @@ func Status(ctx context.Context, pool *pgxpool.Pool) (State, error) {
 			st.Problems = append(st.Problems, fmt.Sprintf("version %d claims to be a legacy row but was not recorded by the bootstrap", a.Version))
 		}
 	}
+	if hasLedger && !hasProfile {
+		st.Problems = append(st.Problems, "the profile table is missing")
+	}
 	if hasLedger && hasProfile {
 		var version *int
 		if err := pool.QueryRow(ctx, "SELECT version FROM reporting_s01.profile WHERE singleton").Scan(&version); err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -320,7 +324,7 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 			return "", err
 		}
 		if n > 0 || counters > 0 || issued > 0 {
-			return fmt.Sprintf("%d issue jobs and records, %d issued PDFs and %d issue counters (the numbering of every tenant and integration would restart at 1, reusing numbers already printed)", n, issued, counters), nil
+			return fmt.Sprintf("%d issue jobs and records and %d issue counters (the numbering of every tenant and integration would restart at 1, reusing numbers already printed); %d issued PDFs would lose their records and stay as plain artifacts", n, counters, issued), nil
 		}
 	}
 	return "", nil
@@ -340,9 +344,9 @@ func step(ctx context.Context, pool *pgxpool.Pool, m Migration, up bool, by stri
 	if m.Version == 1 && up {
 		// A backend that waited on the lock has not processed the catalog invalidations of the
 		// migrator it waited for, and a negative syscache entry from the earlier Status would
-		// make CREATE SCHEMA IF NOT EXISTS fail on a duplicate; a catalog scan takes a lock and
-		// accepts them. The schema is created only when absent, so the migrator role needs
-		// CREATE on the database for the very first run only.
+		// make a CREATE SCHEMA IF NOT EXISTS fail on a duplicate; a catalog scan takes a lock and
+		// accepts them. The schema is created here, only when absent (001's SQL does not create
+		// it), so the migrator role needs CREATE on the database for the very first run only.
 		var schema bool
 		if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname='reporting_s01')").Scan(&schema); err != nil {
 			return err
@@ -361,6 +365,10 @@ func step(ctx context.Context, pool *pgxpool.Pool, m Migration, up bool, by stri
 	// plan was made; a stale plan is refused, never applied onto the wrong schema.
 	var head int
 	if err := tx.QueryRow(ctx, "SELECT coalesce(max(version),0) FROM reporting_s01.schema_migrations").Scan(&head); err != nil {
+		var pgerr *pgconn.PgError
+		if errors.As(err, &pgerr) && pgerr.Code == "42P01" {
+			return fmt.Errorf("the ledger is gone: another migrator reverted the schema, rerun: %w", r.ErrConflict)
+		}
 		return err
 	}
 	want := m.Version - 1
@@ -426,6 +434,9 @@ func lock(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("the run's time limit expired while waiting for the migration lock: %w", err)
+		}
 		return fmt.Errorf("another session holds the migration lock (pg_locks shows it) or the server did not answer within a minute: %w", err)
 	}
 	return nil

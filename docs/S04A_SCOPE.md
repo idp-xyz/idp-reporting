@@ -24,15 +24,18 @@ A2 · Rollback. Every migration has a down step that is the exact inverse of its
 round trip: up to the latest, snapshot the catalog (tables, columns, types, defaults, nullability,
 constraints, indexes), down to zero, up again, and the catalog is identical (001 down keeps the empty
 schema, whose ownership is the DBA's). A down step that would discard
-rows (003 with issue jobs or records present, 001 with any row) is refused unless the operator passes
+rows (003 with issue jobs, records, issued PDFs or issue counters present, as the numbering would restart;
+001 with any row, the profile row included) is refused unless the operator passes
 `--accept-data-loss`; 002's down only drops derivable digest columns and is always allowed. Down runs one
 step per transaction, to an explicit target version.
 
 A3 · Least privilege. An operator step (`reporting-migrate roles`) sets the ownership and the grants of two
 roles the DBA created: the migrator role that owns the schema and runs the migrations (it needs CREATE on
 the database for the very first `up`, which creates the schema), and the application role that can only read and
-write rows (USAGE on the schema; SELECT, INSERT and UPDATE on the tables; no DELETE, no TRUNCATE, no DDL, no
-CREATE on the schema, not a superuser, no role or database creation). The production opening path
+write rows (USAGE on the schema; SELECT on every table, INSERT and UPDATE on the data tables; no DELETE, no
+TRUNCATE, no DDL, no CREATE on the schema, no ownership, not a superuser, no role or database creation, no
+row-security bypass, no replication, a member of no role, no SET ROLE in effect, not the database's owner
+and without CREATE on it, no column-level grants). The production opening path
 (`postgres.OpenProduction`) verifies the connected role against these rules at startup and refuses to run
 otherwise; the guarded fixture path keeps its superuser connections for the destructive test resets, which
 exist only there. Every write the server performs (freeze, export, download, issue, cancel) runs as the
