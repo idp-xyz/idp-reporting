@@ -22,8 +22,10 @@ cannot issue: `POST /issues` answers 422 and a stored job fails with UNSUPPORTED
 H2 · The worker. For an issue job the worker, after the S03-G checks (template still published, snapshot
 current and verified, row present), calls `PrepareDocument`; validates the reservation (reference 1..128
 bytes, the job's id, a valid number, issue time a UTC whole second, expiry after it; else
-INTEGRITY_FAILURE); renders with the stamp `ISSUED No. <number> - <issue time> - <record id>` and the issue
-time as the PDF's creation date, so the bytes depend only on frozen inputs and the reservation; calls
+INTEGRITY_FAILURE); renders with the stamp `ISSUED No. <number> - <issue time> - <record id>`, set at 8 pt in
+the banner strip so that the stamp of every number the contract allows fits with every record id and time
+(the widest measures 534.6 of the strip's 538.6 pt), and the issue time as the PDF's creation date, so the
+bytes depend only on frozen inputs and the reservation; calls
 `ConfirmIssue` with the digest and page count and validates the receipt (reference 1..128 bytes, time a UTC
 whole second not before the issue time); re-checks the source as before; publishes the artifact and the
 record. When the job fails after this attempt called `PrepareDocument` (whatever its outcome), or after a
