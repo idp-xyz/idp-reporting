@@ -759,7 +759,7 @@ func TestTypstRendersDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Pages[0].Texts[0].Width = 0
-	if _, err := w.renderDocument(t.Context(), p, nil); !errors.Is(err, r.ErrUnsupported) {
+	if _, err := w.renderDocument(t.Context(), p, nil, nil); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a glyph wider than declared: %v; want unsupported", err)
 	}
 	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.
@@ -882,4 +882,153 @@ func statementRows(n int) *doctemplates.TableData {
 	}
 	data.Totals["amount"] = fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
 	return data
+}
+
+// TestTypstIssuesDocuments renders official documents (S03-G): the preview's pages with the
+// issue stamp in the banner strip, in the text colour (checked on the laid-out page; the
+// checker verifies the drawn PDF); the page count is returned; an empty stamp, one with a
+// control character or one naming the banner is invalid, one that would not fit the strip or
+// that the fonts lack is unsupported.
+func TestTypstIssuesDocuments(t *testing.T) {
+	w := typstWriter(t, nil)
+	png, err := os.ReadFile("../../doctemplates/testdata/a4-background.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(png)
+	tableDoc := func(mode string, withBackground bool) doctemplates.Document {
+		d := doctemplates.Document{Schema: "1.3", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
+			Elements: []doctemplates.Element{
+				{ID: "n1", Source: "literal", Text: "对账单 Statement", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"},
+				{ID: "n2", Source: "row", Field: "customer", X: 20, Y: 46, Width: 80, Height: 8, FontSize: 10, Align: "left"},
+				{ID: "n3", Source: "total", Field: "ar.open_balance", X: 110.5, Y: 46, Width: 80, Height: 8, FontSize: 10, Align: "right"},
+			},
+			Print: &doctemplates.PrintProfile{Mode: mode, OffsetX: 0.5, OffsetY: -0.3},
+			Table: &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 200, FontSize: 9, Columns: []doctemplates.TableColumn{{Field: "customer", Width: 40}, {Field: "note", Width: 80}, {Field: "amount", Width: 60}}}}
+		if withBackground {
+			d.Background = &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: hex.EncodeToString(sum[:])}
+		}
+		return d
+	}
+	values := map[string]string{"n1": "对账单 Statement", "n2": "华东区客户", "n3": "9007199254740993.01"}
+	single := doctemplates.Document{Schema: "1.1", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
+		Elements: []doctemplates.Element{{ID: "n1", Source: "row", Field: "customer", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"}}, Print: &doctemplates.PrintProfile{Mode: "full"}}
+	id := strings.Repeat("7", 32)
+	at := time.Date(2026, 10, 28, 6, 12, 3, 0, time.UTC)
+	for _, c := range []struct {
+		name   string
+		d      doctemplates.Document
+		values map[string]string
+		png    []byte
+		table  *doctemplates.TableData
+		number int64
+		pages  int
+	}{
+		{"document_issue", tableDoc("full", true), values, png, statementRows(60), 12, 3},
+		{"document_issue_variables", tableDoc("variables", false), values, nil, statementRows(60), 999999, 3},
+		{"document_issue_single", single, map[string]string{"n1": "华东区客户"}, nil, nil, 1, 1},
+	} {
+		stamp := r.IssueStamp(c.number, at, id)
+		out, pages, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp)
+		if err != nil {
+			var re *RenderError
+			if errors.As(err, &re) {
+				t.Fatalf("%s: %v\n%s", c.name, err, re.output())
+			}
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if pages != c.pages {
+			t.Errorf("%s: %d pages, want %d", c.name, pages, c.pages)
+		}
+		again, _, err := w.Issue(t.Context(), c.d, c.values, c.png, c.table, stamp)
+		if err != nil || !bytes.Equal(out, again) {
+			t.Fatalf("%s: two issues with the same clock differ (%v)", c.name, err)
+		}
+		preview, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
+		if err != nil || bytes.Equal(preview, out) {
+			t.Fatalf("%s: the issue is the preview (%v)", c.name, err)
+		}
+		documentEvidence(t, c.name, out, c.d, c.values, c.png, c.table, w.fonts)
+		issueEvidence(t, c.name, out, preview, c.number, at, id, pages)
+		// What Typst is told to draw: the stamp in the strip in the text colour on every page
+		// (the strip is one banner for all pages), the preview's title gone, and no glyph of
+		// the banner text anywhere; the preview keeps its banner.
+		p, err := w.issuePage(c.d, c.values, c.png, c.table, stamp)
+		if err != nil || p.Banner.Text != stamp || p.Banner.Fill != stampFill || p.Title != "Issued document" || len(p.Pages) != c.pages {
+			t.Fatalf("%s: issue page %+v %v", c.name, p.Banner, err)
+		}
+		for _, pg := range p.Pages {
+			texts := ""
+			for _, g := range pg.Texts {
+				texts += g.Text
+			}
+			if strings.Contains(texts, bannerText) {
+				t.Errorf("%s: a page of the issue draws the banner text", c.name)
+			}
+		}
+		pv, err := layOut(c.d, c.values, c.png, c.table, newPlainMeasurer(w.fonts))
+		if err != nil || pv.Banner.Text != bannerText || pv.Banner.Fill != bannerFill {
+			t.Fatalf("%s: preview banner %+v %v", c.name, pv.Banner, err)
+		}
+	}
+	// Refused before Typst runs: an empty stamp, one with a control character, one naming
+	// the preview banner, one longer than the strip.
+	for stamp, want := range map[string]error{"": r.ErrInvalid, "ISSUED\tNo. 1": r.ErrInvalid, "PREVIEW - NOT AN ISSUED DOCUMENT": r.ErrInvalid, strings.Repeat("W", 120): r.ErrUnsupported, "ISSUED 😀": r.ErrUnsupported} {
+		if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, stamp); !errors.Is(err, want) {
+			t.Errorf("stamp %q: %v; want %v", stamp, err, want)
+		}
+	}
+	// The banner text as a value or a cell is refused: an issued document never says PREVIEW.
+	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x " + bannerText}, nil, nil, r.IssueStamp(1, at, id)); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("banner text as a value: %v; want unsupported", err)
+	}
+	cells := statementRows(2)
+	cells.Rows[1][1] = bannerText
+	if _, _, err := w.Issue(t.Context(), tableDoc("full", false), values, nil, cells, r.IssueStamp(1, at, id)); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("banner text as a cell: %v; want unsupported", err)
+	}
+	// An issue takes an export slot, not a preview slot: with the previews saturated it still
+	// renders; with no slot at all it is a budget error.
+	w.previews <- struct{}{}
+	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, r.IssueStamp(1, at, id)); err != nil {
+		t.Errorf("issue while previews are saturated: %v", err)
+	}
+	release(w.previews)
+}
+
+// issueExpectation is the record the checker verifies an issued document against: the stamp
+// recomputed from the number, time and id, the digest and page count of the PDF, and the
+// preview of the same document, which must not pass as the issue.
+type issueExpectation struct {
+	Number      int64  `json:"number"`
+	IssueID     string `json:"issue_id"`
+	IssuedAt    string `json:"issued_at"`
+	Stamp       string `json:"stamp"`
+	SHA256      string `json:"sha256"`
+	Pages       int    `json:"pages"`
+	PreviewFile string `json:"preview_file"`
+}
+
+func issueEvidence(t *testing.T, name string, pdf, preview []byte, number int64, at time.Time, id string, pages int) {
+	t.Helper()
+	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
+	if dir == "" {
+		return
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, name+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e map[string]any
+	if err := json.Unmarshal(raw, &e); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(pdf)
+	e["issue"] = issueExpectation{Number: number, IssueID: id, IssuedAt: at.UTC().Format("2006-01-02T15:04:05Z"), Stamp: r.IssueStamp(number, at, id), SHA256: hex.EncodeToString(sum[:]), Pages: pages, PreviewFile: name + ".preview.pdf"}
+	b, _ := json.MarshalIndent(e, "", " ")
+	for file, content := range map[string][]byte{name + ".json": b, name + ".preview.pdf": preview} {
+		if err := os.WriteFile(filepath.Join(dir, file), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

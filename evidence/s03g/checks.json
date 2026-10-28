@@ -1,0 +1,83 @@
+{
+ "phase": "S03-G",
+ "date": "2026-10-28 Asia/Shanghai",
+ "baseline": "fb3aa5d (main after PR #8, S03-F); reviewed implementation ea9e3d3, fixes dbdd4dd, bfe5b3b, df80f55 (round 1) and fd68568 (round 2); evidence from fd68568",
+ "go": {
+  "top_level_passes": 124,
+  "pass_events": 271,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestDurablePostgresIssues",
+   "TestPostgresContract"
+  ]
+ },
+ "race": {
+  "top_level_passes": 124,
+  "pass_events": 271,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestDurablePostgresIssues",
+   "TestPostgresContract"
+  ]
+ },
+ "vet": {
+  "exit_code": 0
+ },
+ "mod_verify": {
+  "exit_code": 0
+ },
+ "app_syntax": {
+  "exit_code": 0
+ },
+ "dom": {
+  "tests": 60,
+  "pass": 60,
+  "fail": 0,
+  "skipped": 0,
+  "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser",
+  "s03g": "official issue of the open published template (download issued-000001.pdf, record digest equals the download, withdrawal refused), capability gating and refusal message, job view and record validation"
+ },
+ "postgres_local": {
+  "database": "PostgreSQL 16.14 in a throwaway container on 127.0.0.1:55433 (CI runs the same tests in its postgres job)",
+  "top_level_passes": 13,
+  "issue_subtests": 6,
+  "exit_code": 0,
+  "covers": "numbers taken at admission in the admitting transaction, replays and conflicts, cancellation keeps the number, 8 concurrent admissions distinct and consecutive, per-integration sequences, record and artifact published together, listing filtered before the limit, v2→v3 fixture upgrade keeping an export, tampered record/job/artifact and a missing record as integrity failures"
+ },
+ "pdf_documents": {
+  "checked": 27,
+  "issued": 3,
+  "issued_pages": "3 (full, background), 3 (variables), 1 (single)",
+  "checks": "everything a preview is checked for, plus: the stamp in the banner strip equal to the record's (number, UTC second, id recomputed), the stamp in the text colour, the banner phrase nowhere, the PDF's digest and page count equal to the record's",
+  "negative_controls_caught": 829,
+  "negative_controls_missed": 0,
+  "issued_controls_caught": 137,
+  "golden": "export/pdf/testdata/golden.json (matched; the three issued fixtures added)",
+  "verapdf_pass": 34,
+  "verapdf_negative_control": "FAIL"
+ },
+ "reviews": "docs/CODE_REVIEW_S03G.md: two independent reviewers, two rounds, both axes; every finding reproduced and closed",
+ "tools": {
+  "typst": "0.15.1 binary sha256 29273eaa04f6d00edd0c2bec578f565fc9c65be856bfbffc894567c68ed0b237",
+  "fonts": "Noto Sans SC 2.004 Regular and Bold",
+  "verapdf": "verapdf/cli v1.30.3 (local image; CI pins registry manifest sha256:d565095c67a083e693aebf7d1a15784007370571053fc1aa5b502665b9a78f9c)",
+  "pymupdf": "1.27.2.3",
+  "go": "go1.26.10",
+  "node": "v24.22.0",
+  "postgres": "16.14"
+ },
+ "github_actions": {
+  "pull_request": 9,
+  "run": 40661393568,
+  "head": "02a6ae3",
+  "jobs": [
+   "Go format, vet, build, test and race",
+   "PostgreSQL contract and durable tests",
+   "Console syntax and DOM tests",
+   "PDF export and document previews with the pinned Typst, fonts and veraPDF"
+  ],
+  "result": "all pass"
+ }
+}

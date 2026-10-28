@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	r "idp.local/reporting/reporting"
+	"slices"
 	"sync"
 	"time"
 )
@@ -16,13 +17,16 @@ type Store struct {
 	keys      map[string]string
 	snapshots map[string]r.Snapshot
 	artifacts map[string]r.Artifact
+	issues    map[string]r.Issue
+	numbers   map[[2]string]int64 // the last issue number per tenant and integration
+	order     []string            // job ids in admission order, for the issue listing
 }
 
 func New(now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}}
+	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}, numbers: map[[2]string]int64{}}
 }
 func clone[T any](v T) T {
 	b, e := json.Marshal(v)
@@ -61,8 +65,16 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if len(s.jobs) >= 10000 {
 		return r.Job{}, r.ErrBudget
 	}
+	if j.Kind == "issue" {
+		// The number is the store's to give: consecutive per tenant and integration, never
+		// reused, taken when the job is admitted so that a failed job explains its gap.
+		k := [2]string{j.Owner.Tenant, j.Owner.Integration}
+		s.numbers[k]++
+		j.Number = s.numbers[k]
+	}
 	s.keys[key] = j.ID
 	s.jobs[j.ID] = clone(j)
+	s.order = append(s.order, j.ID)
 	return clone(j), nil
 }
 func (s *Store) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
@@ -103,7 +115,9 @@ func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, j := range s.jobs {
+	// In admission order, as the durable store claims by creation time.
+	for _, id := range s.order {
+		j := s.jobs[id]
 		if j.State == "queued" || (j.State == "running" && !j.LeaseUntil.After(s.now())) {
 			j.State = "running"
 			j.Generation++
@@ -149,6 +163,12 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if p.Artifact != nil {
 		if _, exists := s.artifacts[p.Artifact.ID]; exists {
 			return r.ErrConflict
+		}
+		if p.Issue != nil {
+			if _, exists := s.issues[p.Issue.ID]; exists {
+				return r.ErrConflict
+			}
+			s.issues[p.Issue.ID] = *p.Issue
 		}
 		s.artifacts[p.Artifact.ID] = *p.Artifact
 		j.ArtifactID = p.Artifact.ID
@@ -197,6 +217,37 @@ func (s *Store) Artifact(ctx context.Context, i r.Identity, id string) (r.Artifa
 		return r.Artifact{}, r.ErrNotFound
 	}
 	return clone(v), nil
+}
+
+func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, error) {
+	if e := ctx.Err(); e != nil {
+		return r.Issue{}, e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.issues[id]
+	if !ok || v.Owner.Identity != i {
+		return r.Issue{}, r.ErrNotFound
+	}
+	return clone(v), nil
+}
+func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() || len(integrations) == 0 {
+		return nil, r.ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []r.Job{}
+	for n := len(s.order) - 1; n >= 0 && len(out) < limit; n-- {
+		j := s.jobs[s.order[n]]
+		if j.Kind == "issue" && j.Owner.Identity == i && slices.Contains(integrations, j.Owner.Integration) {
+			out = append(out, clone(j))
+		}
+	}
+	return out, nil
 }
 
 var _ r.Repository = (*Store)(nil)

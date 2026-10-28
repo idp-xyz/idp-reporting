@@ -5,7 +5,7 @@
   const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',documents:'文档模板设计器',tasks:'任务工作区',system:'能力与环境'};
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
-  const documents=window.createReportingDocuments({upload:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('PNG超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);const value=await request('/document-backgrounds',{method:'POST',body:{binding,png:btoa(raw)}});if(!current(m))throw new Stale();apply(value);},{label:'底稿上传',uncertain:'上传结果未确认；请刷新底稿列表核对，勿直接重复上传。'}),active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),snapshot:()=>state.snapshot,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label,uncertain:'写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}),download:(body,path='/document-previews')=>perform(async m=>{let bytes;try{bytes=await request(path,{method:'POST',body,binary:'application/pdf'});}catch(error){if(error&&error.status===422&&error.code==='UNSUPPORTED_COMBINATION')error.code='DOCUMENT_LAYOUT';throw error;}if(!current(m))throw new Stale();if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download='document-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('PDF预览已通过摘要校验，下载已发起。','success');},{label:'PDF预览',snapshot:body.snapshot_id,uncertain:'预览生成结果未确认；可重新生成，不会正式出具。'})});
+  const documents=window.createReportingDocuments({upload:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('PNG超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);const value=await request('/document-backgrounds',{method:'POST',body:{binding,png:btoa(raw)}});if(!current(m))throw new Stale();apply(value);},{label:'底稿上传',uncertain:'上传结果未确认；请刷新底稿列表核对，勿直接重复上传。'}),active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),issuance:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf')&&state.capabilities.issuance===true,snapshot:()=>state.snapshot,issue:body=>perform(m=>createIssue(m,body),{label:'正式出具',snapshot:body.snapshot_id,uncertain:'出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。'}),issued:(id,number,sha256)=>perform(m=>download(id,m,'pdf',issuedName(number),sha256),{label:'出具下载'}),exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label,uncertain:'写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}),download:(body,path='/document-previews')=>perform(async m=>{let bytes;try{bytes=await request(path,{method:'POST',body,binary:'application/pdf'});}catch(error){if(error&&error.status===422&&error.code==='UNSUPPORTED_COMBINATION')error.code='DOCUMENT_LAYOUT';throw error;}if(!current(m))throw new Stale();if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download='document-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('PDF预览已通过摘要校验，下载已发起。','success');},{label:'PDF预览',snapshot:body.snapshot_id,uncertain:'预览生成结果未确认；可重新生成，不会正式出具。'})});
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   class Failure extends Error { constructor(status,code) { super(code); this.status=status; this.code=code; } }
   class Stale extends Error {}
@@ -52,6 +52,7 @@
     if(error.status===404)return '未找到当前身份有权访问的资源；它也可能已过期。';
     if(error.status===503)return '当前授权来源不可用，请稍后重试。';
     if(error.code==='INTEGRITY_FAILURE')return '资源完整性校验失败，内容已停止显示。';
+    if(error.code==='TEMPLATE_NOT_PUBLISHED')return '只能正式出具当前已发布的模板版本；请刷新发布状态、打开已发布模板后重试。';
     if(error.status===409)return '请求冲突、资源失效或完整性检查未通过，请重新查询。';
     if(error.status===413)return '结果超过当前限额，请缩小范围。';
     if(error.code==='DOCUMENT_LAYOUT')return '模板无法排版：金额、累计金额或承前/过次/合计标签放不下所在列，表头或行高超过表区，或超过 100 页；请加宽列、减小字号或改用更短的值。';
@@ -63,8 +64,8 @@
   function fail(error,m,context) {
     if(error instanceof Stale||(m&&!current(m))||(error.name==='AbortError'&&!context?.uncertain))return;
     const affectsResult=!context||(context.snapshot&&context.snapshot===state.snapshot);
-    if(affectsResult&&([403,404,409,503].includes(error.status)||error.code==='INVALID_RESPONSE'))clearResult();
-    notify((context?context.label+'：':'')+(context?.uncertain&&!error.status?context.uncertain:errorMessage(error)),'error');
+    if(affectsResult&&error.code!=='TEMPLATE_NOT_PUBLISHED'&&([403,404,409,503].includes(error.status)||error.code==='INVALID_RESPONSE'))clearResult();
+    notify((context?context.label+'：':'')+(context?.uncertain&&!error.status&&error.code!=='INVALID_RESPONSE'?context.uncertain:errorMessage(error)),'error');
   }
   async function readBounded(response,limit) {
     const declared=response.headers.get('Content-Length');
@@ -239,25 +240,27 @@
   function renderJobs() {
     const values=Array.from(state.jobs.values()).reverse();$('task-count').textContent=String(values.length);$('overview-jobs').textContent=String(values.length);$('tasks-note').textContent=values.length+' 项';
     $('tasks-empty').hidden=!!values.length;$('tasks-table-wrap').hidden=!values.length;const body=$('tasks-body');body.replaceChildren();
-    for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?exportFormats[j.format||'xlsx'].label+' 导出':j.kind==='snapshot'?'报表快照':'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',statuses[j.state]||'待刷新','badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
+    for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?exportFormats[j.format||'xlsx'].label+' 导出':j.kind==='snapshot'?'报表快照':j.kind==='issue'?'正式出具 No. '+issueNumber(j.issue.number):'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',statuses[j.state]||'待刷新','badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
       actions.append(button('刷新',()=>refreshTask(j.job_id)));
       if(j.snapshot_id&&j.state==='succeeded')actions.append(button('查看结果',()=>perform(async m=>{await loadSnapshot(j.snapshot_id,j.query||null,m,true);if(current(m))openPage('workspace');},taskContext(j.job_id,'任务查看'))));
-      if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m,j.format),taskContext(j.job_id,'任务下载'))));
+      if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m,j.format,j.kind==='issue'?issuedName(j.issue.number):undefined),taskContext(j.job_id,'任务下载'))));
       if(['queued','running'].includes(j.state))actions.append(button('取消',()=>cancelJob(j.job_id),'danger'));
       row.append(title,id,status,actions);body.append(row);
     }
   }
-  function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind!=='export'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format))))throw new Failure(0,'INVALID_RESPONSE');}
+  const issueNumber=n=>String(n).padStart(6,'0'),issuedName=n=>'issued-'+issueNumber(n)+'.pdf';
+  function checkIssue(v){return !!v&&typeof v==='object'&&Number.isSafeInteger(v.number)&&v.number>=1&&isID(v.template_id)&&Number.isSafeInteger(v.template_version)&&v.template_version>=1&&typeof v.template_sha256==='string'&&/^[a-f0-9]{64}$/.test(v.template_sha256)&&Number.isSafeInteger(v.row_index)&&v.row_index>=0;}
+  function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export','issue'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind==='snapshot'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format)))||(j.kind==='issue')!==(j.issue!==undefined)||(j.kind==='issue'&&(j.format!=='pdf'||!checkIssue(j.issue))))throw new Failure(0,'INVALID_RESPONSE');}
   function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
   async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
   async function refreshTask(id,m=mark()) {const context=taskContext(id,'任务刷新');try{await refreshJob(id);return true;}catch(error){fail(error,m,context);return false;}}
   async function cancelJob(id) {const m=mark(),context=taskContext(id,'任务取消');try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
-  async function submit(kind,payload,context) {
+  async function submit(kind,payload,context,verify) {
     const fingerprint=kind+JSON.stringify(payload);
     if(!state.pending||state.pending.fingerprint!==fingerprint)state.pending={fingerprint:fingerprint,key:crypto.randomUUID()};
     const key=state.pending.key;
-    try {const job=await request(kind==='snapshot'?'/snapshot-jobs':'/exports',{method:'POST',body:payload,key:key});rememberJob(job,context);state.pending=null;return job;}
+    try {const job=await request(kind==='snapshot'?'/snapshot-jobs':kind==='issue'?'/issues':'/exports',{method:'POST',body:payload,key:key});checkJob(job);if(verify)verify(job);rememberJob(job,context);state.pending=null;return job;}
     catch(error){if(error.status>=400&&error.status<500)state.pending=null;throw error;}
   }
   async function poll(id,m) {
@@ -291,11 +294,20 @@
     if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m,done.format);
     else notify(done.state==='cancelled'?'导出任务已取消。':'导出任务失败，未生成可下载文件。',done.state==='cancelled'?'':'error');
   }
-  async function download(id,m,format) {
+  async function createIssue(m,body) {
+    const query=copy(state.query);if(!state.snapshot||body.snapshot_id!==state.snapshot)throw new Failure(400,'INVALID_REQUEST');
+    // The view must be the job that was asked for, before the key is spent or the task kept.
+    const job=await submit('issue',body,{query:query,integration:query.integration_id},j=>{if(j.kind!=='issue'||j.issue.template_id!==body.template_id||j.issue.template_version!==body.version||j.issue.row_index!==body.row_index)throw new Failure(0,'INVALID_RESPONSE');});if(!current(m))throw new Stale();
+    notify('正式出具任务已提交，编号 No. '+issueNumber(job.issue.number)+'。');const done=await poll(job.job_id,m);if(!done)return;
+    if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m,'pdf',issuedName(done.issue.number));
+    else notify(done.state==='cancelled'?'出具任务已取消；编号 No. '+issueNumber(done.issue.number)+' 作废，不再使用。':'出具任务失败（'+(done.error_code||'未知原因')+'）；编号 No. '+issueNumber(done.issue.number)+' 作废，不再使用。',done.state==='cancelled'?'':'error');
+  }
+  async function download(id,m,format,name,expectedDigest) {
     const kind=exportFormats[format||'xlsx'];if(!isID(id)||!kind||format==='xlsx')throw new Failure(400,'INVALID_REQUEST');
     const bytes=await request('/artifacts/'+id+'/content',{binary:kind.media});if(!current(m))throw new Stale();
     if(String.fromCharCode(...bytes.subarray(0,kind.magic.length))!==kind.magic)throw new Failure(409,'INTEGRITY_FAILURE');
-    const url=URL.createObjectURL(new Blob([bytes],{type:kind.media}));const link=node('a');link.href=url;link.download='report-'+id+'.'+kind.extension;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify(kind.label+' 已通过摘要校验，下载已发起。','success');
+    if(expectedDigest){const sum=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));if(!current(m))throw new Stale();if(Array.from(sum,b=>b.toString(16).padStart(2,'0')).join('')!==expectedDigest)throw new Failure(409,'INTEGRITY_FAILURE');}
+    const url=URL.createObjectURL(new Blob([bytes],{type:kind.media}));const link=node('a');link.href=url;link.download=name||'report-'+id+'.'+kind.extension;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify(kind.label+' 已通过摘要校验，下载已发起。','success');
   }
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));

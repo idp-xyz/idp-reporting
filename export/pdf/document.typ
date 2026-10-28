@@ -34,5 +34,5 @@
   for l in pg.rules { place(top + left, dx: l.x0 * 1pt, dy: l.y0 * 1pt, line(end: ((l.x1 - l.x0) * 1pt, (l.y1 - l.y0) * 1pt), stroke: l.stroke * 1pt + luma(60))) }
   for g in pg.texts { glyph(g) }
   place(top + left, dx: b.left * 1pt, dy: b.top * 1pt, rect(width: b.width * 1pt, height: b.height * 1pt, fill: white, stroke: none))
-  place(top + left, dx: b.left * 1pt, dy: b.baseline * 1pt, text(size: b.size * 1pt, fill: rgb("#8C3B20"), b.text))
+  place(top + left, dx: b.left * 1pt, dy: b.baseline * 1pt, text(size: b.size * 1pt, fill: rgb(b.fill), b.text))
 }

@@ -44,6 +44,7 @@ Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | -
 import argparse
 import copy
 import decimal
+import hashlib
 import json
 import os
 import re
@@ -116,7 +117,7 @@ def characters(page, number):
                 for c in span["chars"]:
                     x0, y0, x1, y1 = c["bbox"]
                     out.append({"c": c["c"], "page": number, "x0": x0, "y0": y0, "x1": x1, "y1": y1, "x": c["origin"][0],
-                                "base": c["origin"][1], "size": round(span["size"], 1), "light": light,
+                                "base": c["origin"][1], "size": round(span["size"], 1), "light": light, "color": rgb,
                                 "bold": "Bold" in span["font"], "n": len(out),
                                 "mark": unicodedata.category(c["c"]).startswith("M")})
     return out
@@ -363,6 +364,7 @@ def check(directory, exp):
 MM = 72 / 25.4
 ASCENT = 1.16  # baseline below the top of a box, in font sizes (the document contract)
 BANNER = "PREVIEW - NOT AN ISSUED DOCUMENT"
+STAMP_COLOUR = 0x132238  # the issue stamp is drawn in the text colour, never the banner's red
 
 
 def clusters(text):
@@ -416,6 +418,9 @@ def check_document(directory, exp, font=None):
     the text boxes and the background, and the table is checked across the pages."""
     problems = []
     metrics = faces(font)
+    issue = exp.get("issue")
+    if issue:
+        problems += check_issue_record(directory, exp, issue)
     doc = pymupdf.open(os.path.join(directory, exp["file"]))
     xmp = doc.get_xml_metadata()
     if not re.search(r"pdfaid:part[^0-9]{0,4}2\b", xmp) or not re.search(r"pdfaid:conformance[^A-Z]{0,4}B\b", xmp):
@@ -430,6 +435,8 @@ def check_document(directory, exp, font=None):
         problems += [f"page {i + 1}: {p}" for p in page_problems]
         pages.append((page, chars, used))
     layout = {"pages": doc.page_count}
+    if issue and doc.page_count != issue["pages"]:
+        problems.append(f"{doc.page_count} pages, the record says {issue['pages']}")
     if table:
         problems += check_table(exp, pages, metrics, layout)
     for i, (page, chars, used) in enumerate(pages):
@@ -439,6 +446,25 @@ def check_document(directory, exp, font=None):
         if not exp["background"] and ink_outside(page, document_rects(exp)):
             problems.append(f"page {i + 1}: ink outside the boxes and the banner")
     return problems, layout
+
+
+def check_issue_record(directory, exp, issue):
+    """An issued document's record (S03-G): the stamp is the contract's line for the number,
+    the time and the id; the PDF is the one the record names, by digest."""
+    problems = []
+    if not isinstance(issue.get("number"), int) or issue["number"] < 1:
+        problems.append("the record has no number")
+    if not re.fullmatch(r"[0-9a-f]{32}", str(issue.get("issue_id", ""))):
+        problems.append("the record has no id")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", str(issue.get("issued_at", ""))):
+        problems.append("the record's time is not a UTC second")
+    if not problems and issue["stamp"] != f"ISSUED No. {issue['number']:06d} - {issue['issued_at']} - {issue['issue_id']}":
+        problems.append("the stamp is not the record's number, time and id")
+    with open(os.path.join(directory, exp["file"]), "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != issue.get("sha256"):
+        problems.append("the PDF is not the one the record names (digest)")
+    return problems
 
 
 def faces(font):
@@ -475,7 +501,16 @@ def check_page(directory, page, number, exp, metrics, region):
         if c["c"] == "\ufffd":
             problems.append("a replacement character")
     used = set()
-    wanted = [(BANNER, 10, 10, 190, 10, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
+    issue = exp.get("issue")
+    strip = issue["stamp"] if issue else BANNER
+    wanted = [(strip, 10, 10, 190, 10, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
+    if issue:
+        text = "".join(c["c"] for c in sorted(chars, key=lambda c: (round(c["base"]), c["x0"])))
+        if BANNER in text:
+            problems.append("preview text on an issued document")
+        stamp = [c for c in chars if abs(c["base"] - (10 * MM + ASCENT * 10)) <= 0.1 and c["c"].strip()]
+        if any(c["color"] != STAMP_COLOUR for c in stamp):
+            problems.append("the stamp is not in the text colour")
     for text, x, y, width, size, align in wanted:
         base, left, right = y * MM + ASCENT * size, x * MM, (x + width) * MM
         # The characters drawn on this baseline, at this size, within the box.
@@ -852,6 +887,23 @@ def document_corruptions(exp):
     yield changed("a value missing", lambda e: e["elements"].pop())
     yield changed("a value added", lambda e: e["elements"].append({"text": "X", "x": 20, "y": 200, "width": 50, "height": 10, "size": 10, "align": "left"}))
     yield changed("the background flag flipped", lambda e: e.__setitem__("background", not e["background"]))
+    if exp.get("issue"):
+        yield changed("the record's number changed", lambda e: e["issue"].__setitem__("number", e["issue"]["number"] + 1))
+        yield changed("the record's time changed", lambda e: e["issue"].__setitem__("issued_at", "2001-01-01T00:00:00Z"))
+        yield changed("the record's id changed", lambda e: e["issue"].__setitem__("issue_id", "0" * 32))
+        yield changed("the record's stamp changed", lambda e: e["issue"].__setitem__("stamp", e["issue"]["stamp"].replace("ISSUED", "ISSUE")))
+        yield changed("the record's digest changed", lambda e: e["issue"].__setitem__("sha256", "0" * 64))
+        yield changed("the record's page count changed", lambda e: e["issue"].__setitem__("pages", e["issue"]["pages"] + 1))
+        # Self-consistent records that disagree with the drawn stamp alone.
+        def restamped(number=None, issue_id=None):
+            def change(e):
+                i = e["issue"]
+                i["number"] = number if number is not None else i["number"]
+                i["issue_id"] = issue_id if issue_id is not None else i["issue_id"]
+                i["stamp"] = f"ISSUED No. {i['number']:06d} - {i['issued_at']} - {i['issue_id']}"
+            return change
+        yield changed("the record's number and stamp changed together", restamped(number=exp["issue"]["number"] + 1))
+        yield changed("the record's id and stamp changed together", restamped(issue_id="0" * 32))
     if exp.get("table"):
         rows = exp["table"]["rows"] or []
         columns = exp["table"]["columns"]
@@ -907,6 +959,39 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
     # Below the safe region, outside every box and the table.
     free = (105 * MM, 285 * MM)
     yield "extra text", "unexpected text", copy_with("extra", text("X", free))
+    if exp.get("issue"):
+        def preview_instead(target):
+            shutil.copy(os.path.join(directory, exp["issue"]["preview_file"]), os.path.join(target, exp["file"]))
+        previewed = copy_with("preview", lambda doc: None)
+        preview_instead(previewed)
+        yield "the preview in place of the issue", "preview text", previewed
+        yield "the banner text added", "preview text", copy_with("previewword", text(BANNER, (20 * MM, 285 * MM)))
+        strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
+        stamp_colour = (0x13 / 255, 0x22 / 255, 0x38 / 255)
+
+        def restamp(doc):
+            # The strip whited out and a stamp with the next number drawn in the stamp's colour.
+            p = doc[0]
+            p.draw_rect(strip, color=None, fill=(1, 1, 1), overlay=True)
+            other = re.sub(r"No\. (\d{6})", lambda m: f"No. {int(m.group(1)) + 1:06d}", exp["issue"]["stamp"])
+            p.insert_font(fontname="Fx", fontbuffer=font.buffer)
+            p.insert_text((10 * MM, 10 * MM + ASCENT * 10), other, fontname="Fx", fontsize=10, color=stamp_colour)
+        yield "the stamp redrawn with the next number", "is not drawn on one line", copy_with("restamp", restamp)
+
+        def unstamp_last(doc):
+            doc[doc.page_count - 1].draw_rect(strip, color=None, fill=(1, 1, 1), overlay=True)
+        yield "the stamp covered on the last page", "has no ink", copy_with("unstamp", unstamp_last)
+
+        def recolour(doc):
+            page = doc[0]
+            page.clean_contents()
+            xref = page.get_contents()[0]
+            raw = doc.xref_stream(xref).decode("latin1")
+            # The stamp's fill colour, as Typst writes it, becomes the banner's red.
+            new = raw.replace(".07450981 .13333334 .21960785 scn", ".54901966 .23137255 .1254902 scn")
+            assert new != raw, "the stamp's colour was not found"
+            doc.update_stream(xref, new.encode("latin1"))
+        yield "the stamp in the banner's red", "text colour", copy_with("recolour", recolour)
     yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", free, embedded=False))
 
     def cover(doc):
@@ -1309,7 +1394,14 @@ def main():
                 failed |= not caught
             with tempfile.TemporaryDirectory() as scratch:
                 for what, expected, directory in document_pdf_corruptions(args.directory, exp, scratch, args.font):
-                    caught = any(expected in p for p in check_document(directory, exp, args.font)[0])
+                    against = exp
+                    if exp.get("issue"):
+                        # The record names the corrupted file by digest, so that every other
+                        # check is exercised; the digest check has its own control above.
+                        against = copy.deepcopy(exp)
+                        with open(os.path.join(directory, exp["file"]), "rb") as f:
+                            against["issue"]["sha256"] = hashlib.sha256(f.read()).hexdigest()
+                    caught = any(expected in p for p in check_document(directory, against, args.font)[0])
                     print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
                     failed |= not caught
         elif args.negative:

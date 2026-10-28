@@ -40,7 +40,7 @@ func Open(ctx context.Context, dsn string, initialize bool) (*Store, error) {
 	if e = p.QueryRow(ctx, "SELECT profile,version FROM reporting_s01.profile WHERE singleton").Scan(&profile, &version); e != nil {
 		return fail(e)
 	}
-	if profile != "contract-simulator-only" || version != 2 {
+	if profile != "contract-simulator-only" || version != fixtureVersion {
 		return fail(r.ErrDenied)
 	}
 	return s, nil
@@ -49,7 +49,7 @@ func (s *Store) Close() { s.pool.Close() }
 
 // ResetFixture is destructive only inside the database/profile protected by Open.
 func (s *Store) ResetFixture(ctx context.Context) error {
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.issue_numbers")
 	return e
 }
 
@@ -87,18 +87,57 @@ func scanJob(row scanner) (r.Job, error) {
 	}
 	return j, nil
 }
+
+const admitSQL = `INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,snapshot_id,data_sha256)
+VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,encode(sha256(convert_to($10::jsonb::text,'UTF8')),'hex'))
+ON CONFLICT(tenant,integration,issuer,subject,kind,idem_key) DO UPDATE SET request_hash=reporting_s01.jobs.request_hash
+RETURNING ` + jobFields
+
+type querier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if e := r.ValidateAdmission(j); e != nil {
 		return r.Job{}, e
 	}
+	if j.Kind != "issue" {
+		return admit(ctx, s.pool, j)
+	}
+	// An issue job takes the next number of its tenant and integration in the transaction
+	// that admits it: the counter row serializes concurrent admissions, and a replay of an
+	// earlier admission (the insert returns that job) rolls the increment back.
+	tx, e := s.pool.Begin(ctx)
+	if e != nil {
+		return r.Job{}, e
+	}
+	defer func() {
+		cleanup, cancel := fixturedb.RollbackContext(ctx)
+		defer cancel()
+		_ = tx.Rollback(cleanup)
+	}()
+	if e = tx.QueryRow(ctx, `INSERT INTO reporting_s01.issue_numbers(tenant,integration,last) VALUES($1,$2,1)
+ON CONFLICT(tenant,integration) DO UPDATE SET last=reporting_s01.issue_numbers.last+1 RETURNING last`, j.Owner.Tenant, j.Owner.Integration).Scan(&j.Number); e != nil {
+		return r.Job{}, e
+	}
+	v, e := admit(ctx, tx, j)
+	if e != nil {
+		return r.Job{}, e
+	}
+	if v.ID != j.ID {
+		return v, nil // the earlier admission; the rollback gives the number back
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return r.Job{}, e
+	}
+	return v, nil
+}
+func admit(ctx context.Context, q querier, j r.Job) (r.Job, error) {
 	b, e := json.Marshal(j)
 	if e != nil {
 		return r.Job{}, e
 	}
-	v, e := scanJob(s.pool.QueryRow(ctx, `INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,snapshot_id,data_sha256)
-VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,encode(sha256(convert_to($10::jsonb::text,'UTF8')),'hex'))
-ON CONFLICT(tenant,integration,issuer,subject,kind,idem_key) DO UPDATE SET request_hash=reporting_s01.jobs.request_hash
-RETURNING `+jobFields, j.ID, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, j.Kind, j.Key, j.RequestHash, j.Prepared.ExpiresAt, b, j.SnapshotID))
+	v, e := scanJob(q.QueryRow(ctx, admitSQL, j.ID, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, j.Kind, j.Key, j.RequestHash, j.Prepared.ExpiresAt, b, j.SnapshotID))
 	var pgerr *pgconn.PgError
 	if errors.As(e, &pgerr) && pgerr.Code == "23505" {
 		return r.Job{}, r.ErrConflict
@@ -158,25 +197,30 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e = r.ValidatePublication(j, p); e != nil {
 		return e
 	}
-	var id, kind string
-	var b []byte
+	type asset struct {
+		id, kind string
+		value    any
+	}
+	var assets []asset
 	snapshotID, artifactID := j.SnapshotID, j.ArtifactID
 	if p.Snapshot != nil {
-		id = p.Snapshot.ID
-		kind = "snapshot"
-		snapshotID = id
-		b, e = json.Marshal(p.Snapshot)
+		snapshotID = p.Snapshot.ID
+		assets = append(assets, asset{p.Snapshot.ID, "snapshot", p.Snapshot})
 	} else {
-		id = p.Artifact.ID
-		kind = "artifact"
-		artifactID = id
-		b, e = json.Marshal(p.Artifact)
+		artifactID = p.Artifact.ID
+		assets = append(assets, asset{p.Artifact.ID, "artifact", p.Artifact})
+		if p.Issue != nil {
+			assets = append(assets, asset{p.Issue.ID, "issue", p.Issue})
+		}
 	}
-	if e != nil {
-		return e
-	}
-	if _, e = tx.Exec(ctx, "INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,encode(sha256(convert_to($7::jsonb::text,'UTF8')),'hex'))", id, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, kind, b); e != nil {
-		return e
+	for _, a := range assets {
+		b, e := json.Marshal(a.value)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.Exec(ctx, "INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,encode(sha256(convert_to($7::jsonb::text,'UTF8')),'hex'))", a.id, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, a.kind, b); e != nil {
+			return e
+		}
 	}
 	result, e := tx.Exec(ctx, `UPDATE reporting_s01.jobs SET state='succeeded',lease_until=NULL,snapshot_id=$1,artifact_id=$2
 WHERE id=$3 AND state='running' AND generation=$4 AND lease_until>clock_timestamp() AND source_expires_at>clock_timestamp()`, snapshotID, artifactID, j.ID, c.Job.Generation)
@@ -221,6 +265,10 @@ func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out an
 		if v.ID != resourceID || v.Owner != owner || resourceKind != "artifact" {
 			return r.ErrIntegrity
 		}
+	case *r.Issue:
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "issue" || v.Stamp != r.IssueStamp(v.Number, v.IssuedAt, v.ID) {
+			return r.ErrIntegrity
+		}
 	default:
 		return r.ErrIntegrity
 	}
@@ -235,6 +283,33 @@ func (s *Store) Artifact(ctx context.Context, i r.Identity, id string) (r.Artifa
 	var v r.Artifact
 	e := s.asset(ctx, i, id, "artifact", &v)
 	return v, e
+}
+func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, error) {
+	var v r.Issue
+	e := s.asset(ctx, i, id, "issue", &v)
+	return v, e
+}
+func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
+	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() || len(integrations) == 0 {
+		return nil, r.ErrInvalid
+	}
+	rows, e := s.pool.Query(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5", i.Tenant, i.Issuer, i.Subject, integrations, limit)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []r.Job{}
+	for rows.Next() {
+		j, e := scanJob(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, j)
+	}
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	return out, nil
 }
 
 var _ r.Repository = (*Store)(nil)
