@@ -502,6 +502,29 @@ type documentExpectation struct {
 	OffsetX        float64           `json:"offset_x"`
 	OffsetY        float64           `json:"offset_y"`
 	Elements       []documentElement `json:"elements"`
+	Table          *tableExpectation `json:"table,omitempty"`
+}
+
+// tableExpectation describes a document's table for the checker: the region and type size,
+// the columns with their labels and kinds, the raw rows and the snapshot totals; the checker
+// recomputes the carried sums and derives every position itself.
+type tableExpectation struct {
+	X       float64             `json:"x"`
+	Y       float64             `json:"y"`
+	Width   float64             `json:"width"`
+	Height  float64             `json:"height"`
+	Size    int                 `json:"size"`
+	Columns []tableColumnExpect `json:"columns"`
+	Rows    [][]string          `json:"rows"`
+	Totals  map[string]string   `json:"totals"`
+}
+
+type tableColumnExpect struct {
+	Field  string  `json:"field"`
+	Label  string  `json:"label"`
+	Width  float64 `json:"width"`
+	Metric bool    `json:"metric"`
+	Scale  int     `json:"scale"`
 }
 
 type documentElement struct {
@@ -514,13 +537,30 @@ type documentElement struct {
 	Align  string  `json:"align"`
 }
 
-func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background []byte) {
+func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData) {
 	t.Helper()
 	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
 	if dir == "" {
 		return
 	}
 	e := documentExpectation{Kind: "document", File: name + ".pdf", Background: background != nil, OffsetX: d.Print.OffsetX, OffsetY: d.Print.OffsetY, Elements: []documentElement{}}
+	if d.Table != nil {
+		te := &tableExpectation{X: d.Table.X, Y: d.Table.Y, Width: d.Table.Width, Height: d.Table.Height, Size: d.Table.FontSize, Rows: table.Rows, Totals: table.Totals}
+		for i, c := range d.Table.Columns {
+			col := table.Columns[i]
+			label := col.Label
+			switch {
+			case col.Currency != "" && col.Unit != "":
+				label += "（" + col.Currency + " · " + col.Unit + "）"
+			case col.Currency != "":
+				label += "（" + col.Currency + "）"
+			case col.Unit != "":
+				label += "（" + col.Unit + "）"
+			}
+			te.Columns = append(te.Columns, tableColumnExpect{Field: c.Field, Label: label, Width: c.Width, Metric: table.Metric[i] && (col.Type == "decimal" || col.Type == "integer"), Scale: col.Scale})
+		}
+		e.Table = te
+	}
 	if background != nil {
 		e.BackgroundFile = name + ".background.png"
 		if err := os.WriteFile(filepath.Join(dir, e.BackgroundFile), background, 0o644); err != nil {
@@ -583,19 +623,40 @@ func TestTypstRendersDocuments(t *testing.T) {
 	narrowSum := sha256.Sum256(narrow)
 	fitted := doc("full", 0, 0)
 	fitted.Background = &doctemplates.BackgroundRef{ID: strings.Repeat("b", 32), SHA256: hex.EncodeToString(narrowSum[:])}
+	// A document with a detail table (schema 1.3): boxes above, the table below, over several
+	// pages, with and without the background, in full and variables mode.
+	tableDoc := func(mode string, withBackground bool) doctemplates.Document {
+		d := doctemplates.Document{Schema: "1.3", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
+			Elements: []doctemplates.Element{
+				{ID: "n1", Source: "literal", Text: "对账单 Statement", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"},
+				{ID: "n2", Source: "row", Field: "customer", X: 20, Y: 46, Width: 80, Height: 8, FontSize: 10, Align: "left"},
+				{ID: "n3", Source: "total", Field: "ar.open_balance", X: 110.5, Y: 46, Width: 80, Height: 8, FontSize: 10, Align: "right"},
+			},
+			Print: &doctemplates.PrintProfile{Mode: mode},
+			Table: &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 200, FontSize: 9, Columns: []doctemplates.TableColumn{{Field: "customer", Width: 40}, {Field: "note", Width: 80}, {Field: "amount", Width: 60}}}}
+		if withBackground {
+			d.Background = &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: hex.EncodeToString(sum[:])}
+		}
+		return d
+	}
+	tableData := statementRows(60)
+	tableValues := map[string]string{"n1": "对账单 Statement", "n2": "华东区客户", "n3": "9007199254740993.01"}
 	for _, c := range []struct {
 		name   string
 		d      doctemplates.Document
 		values map[string]string
 		png    []byte
+		table  *doctemplates.TableData
 	}{
-		{"document_full", doc("full", 0, 0), values, png},
-		{"document_calibrated", doc("full", 1.2, -0.5), values, png},
-		{"document_variables", doc("variables", -2.3, 4), values, nil},
-		{"document_hard", hardDoc, hardValues, nil},
-		{"document_fitted", fitted, values, narrow},
+		{"document_full", doc("full", 0, 0), values, png, nil},
+		{"document_calibrated", doc("full", 1.2, -0.5), values, png, nil},
+		{"document_variables", doc("variables", -2.3, 4), values, nil, nil},
+		{"document_hard", hardDoc, hardValues, nil, nil},
+		{"document_fitted", fitted, values, narrow, nil},
+		{"document_table", tableDoc("full", true), tableValues, png, tableData},
+		{"document_table_variables", tableDoc("variables", false), tableValues, nil, tableData},
 	} {
-		out, err := w.Render(t.Context(), c.d, c.values, c.png)
+		out, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
 		if err != nil {
 			var re *RenderError
 			if errors.As(err, &re) {
@@ -603,17 +664,17 @@ func TestTypstRendersDocuments(t *testing.T) {
 			}
 			t.Fatalf("%s: %v", c.name, err)
 		}
-		again, err := w.Render(t.Context(), c.d, c.values, c.png)
+		again, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
 		if err != nil || !bytes.Equal(out, again) {
 			t.Fatalf("%s: two renders with the same clock differ (%v)", c.name, err)
 		}
-		documentEvidence(t, c.name, out, c.d, c.values, c.png)
+		documentEvidence(t, c.name, out, c.d, c.values, c.png, c.table)
 	}
 	// Refused before Typst runs: a value too wide for its box, one the fonts lack, a Hangul
 	// tone mark (Typst would add a dotted circle), a tab and a leading combining mark.
 	for value, want := range map[string]error{strings.Repeat("宽", 40): r.ErrUnsupported, "😀": r.ErrUnsupported, "a\u302eb": r.ErrUnsupported, "a\tb": r.ErrUnsupported, "\u0301abc": r.ErrUnsupported} {
 		v := map[string]string{"n1": "x", "n2": value, "n3": "1", "n4": "1"}
-		if _, err := w.Render(t.Context(), doc("variables", 0, 0), v, nil); !errors.Is(err, want) {
+		if _, err := w.Render(t.Context(), doc("variables", 0, 0), v, nil, nil); !errors.Is(err, want) {
 			t.Errorf("%q: %v; want %v", value, err, want)
 		}
 	}
@@ -623,11 +684,11 @@ func TestTypstRendersDocuments(t *testing.T) {
 	}
 	// The template's own assertion: a glyph declared narrower than Typst draws it fails the
 	// render, and that is an unsupported value.
-	p, err := layOut(doc("variables", 0, 0), map[string]string{"n2": "W", "n3": "1", "n4": "1"}, nil, newPlainMeasurer(w.fonts))
+	p, err := layOut(doc("variables", 0, 0), map[string]string{"n2": "W", "n3": "1", "n4": "1"}, nil, nil, newPlainMeasurer(w.fonts))
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.Glyphs[0].Width = 0
+	p.Pages[0].Texts[0].Width = 0
 	if _, err := w.renderDocument(t.Context(), p, nil); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a glyph wider than declared: %v; want unsupported", err)
 	}
@@ -639,7 +700,7 @@ func TestTypstRendersDocuments(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i], errs[i] = w.Render(t.Context(), hardDoc, hardValues, nil)
+			results[i], errs[i] = w.Render(t.Context(), hardDoc, hardValues, nil, nil)
 		}()
 	}
 	wg.Wait()
@@ -676,7 +737,7 @@ func TestTypstSlotsBoundPreviewsAndExports(t *testing.T) {
 	// The only slot is held: a preview, an export and the upload check all wait for the timeout
 	// and are budget errors; once it is free, they render.
 	w.slots <- struct{}{}
-	if _, err := w.Render(t.Context(), d, values, nil); !errors.Is(err, r.ErrBudget) {
+	if _, err := w.Render(t.Context(), d, values, nil, nil); !errors.Is(err, r.ErrBudget) {
 		t.Errorf("preview with no slot: %v; want budget", err)
 	}
 	if _, err := w.Write(t.Context(), probe); !errors.Is(err, r.ErrBudget) {
@@ -686,14 +747,14 @@ func TestTypstSlotsBoundPreviewsAndExports(t *testing.T) {
 		t.Errorf("upload check with no slot: %v; want budget", err)
 	}
 	release(w.slots)
-	if _, err := w.Render(t.Context(), d, values, nil); err != nil {
+	if _, err := w.Render(t.Context(), d, values, nil, nil); err != nil {
 		t.Errorf("preview with the slot free: %v", err)
 	}
 	// Previews hold at most all but one of the slots (here: the one preview slot), which keeps
 	// the export worker from waiting behind them: with the preview slot held, a preview waits
 	// in vain while an export still runs.
 	w.previews <- struct{}{}
-	if _, err := w.Render(t.Context(), d, values, nil); !errors.Is(err, r.ErrBudget) {
+	if _, err := w.Render(t.Context(), d, values, nil, nil); !errors.Is(err, r.ErrBudget) {
 		t.Errorf("preview with no preview slot: %v; want budget", err)
 	}
 	if _, err := w.Write(t.Context(), probe); err != nil {
@@ -716,4 +777,39 @@ func TestNewRefusesBadLimits(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+}
+
+// statementRows is the table of the statement fixtures: a customer, a note that wraps (long
+// Chinese without spaces, English with spaces, a value's own line break, a run wider than the
+// cell) and an exact amount, with the exact total.
+func statementRows(n int) *doctemplates.TableData {
+	data := &doctemplates.TableData{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "note", Label: "备注", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}}, Metric: []bool{false, false, true}, Totals: map[string]string{}}
+	cents := int64(0)
+	for i := range n {
+		note := fmt.Sprintf("第%d行 备注：%s", i, strings.Repeat("甲乙丙丁", i%5))
+		switch {
+		case i%7 == 0:
+			note += "\nsecond line of the note, wrapped at spaces when it is too long for the cell"
+		case i%11 == 0:
+			note += " averyveryverylongwordwithoutanyspaces_abcdefghijklmnopqrstuvwxyz0123456789"
+		case i%13 == 0:
+			note = ""
+		}
+		v := int64(100*i*100 + 25) // 100i + 0.25
+		if i%3 == 0 {
+			v = -v
+		}
+		cents += v
+		sign := ""
+		if v < 0 {
+			sign, v = "-", -v
+		}
+		data.Rows = append(data.Rows, []string{fmt.Sprintf("客户%d", i), note, fmt.Sprintf("%s%d.%02d", sign, v/100, v%100)})
+	}
+	sign := ""
+	if cents < 0 {
+		sign, cents = "-", -cents
+	}
+	data.Totals["amount"] = fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
+	return data
 }

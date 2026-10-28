@@ -9,8 +9,10 @@ import (
 	"net/http"
 )
 
+// DocumentRenderer renders a document bound to a frozen row: the box values, the background
+// and, for a schema 1.3 document, the rows of its table.
 type DocumentRenderer interface {
-	Render(context.Context, doctemplates.Document, map[string]string, []byte) ([]byte, error)
+	Render(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData) ([]byte, error)
 }
 
 // WithDocumentPreviews mounts opt-in ephemeral single-row previews; no issuance or artifact history.
@@ -76,6 +78,13 @@ func authorizeDocument(req *http.Request, s *r.Service, p r.Principal, config do
 			return r.ErrDenied
 		}
 	}
+	if config.Table != nil {
+		for _, c := range config.Table.Columns {
+			if !columns[c.Field] {
+				return r.ErrDenied
+			}
+		}
+	}
 	return nil
 }
 func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Service, p r.Principal, renderer DocumentRenderer, config doctemplates.Document, snapshotID string, index int, assets *doctemplates.Assets) error {
@@ -84,6 +93,10 @@ func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Servic
 		return e
 	}
 	values, e := doctemplates.Bind(config, snap, index)
+	if e != nil {
+		return e
+	}
+	table, e := doctemplates.BindTable(config, snap)
 	if e != nil {
 		return e
 	}
@@ -98,7 +111,7 @@ func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Servic
 	if config.Print != nil && config.Print.Mode == "variables" {
 		background = nil
 	}
-	pdf, e := renderer.Render(req.Context(), config, values, background)
+	pdf, e := renderer.Render(req.Context(), config, values, background, table)
 	if e != nil {
 		return e
 	}

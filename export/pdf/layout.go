@@ -460,18 +460,26 @@ func (m *measurer) cut(text string, size float64, bold bool, width float64) ([]s
 	var out []string
 	start, w := 0, 0.0
 	var prev rune
+	// The plain measurer (documents) counts advances alone: no gap, no slack.
+	k := slack
+	if m.plain {
+		k = 1
+	}
 	for i, ch := range text {
 		e, err := m.em(ch, bold)
 		if err != nil {
 			return nil, err
 		}
-		if e*size*slack > width {
+		if e*size*k > width {
 			return nil, fmt.Errorf("pdf: a character is wider than its cell: %w", r.ErrUnsupported)
 		}
-		adv := (e + gap(prev, ch)) * size * slack
+		adv := e * size * k
+		if !m.plain {
+			adv = (e + gap(prev, ch)) * size * slack
+		}
 		if i > start && w+adv > width && !joins(ch) {
 			out = append(out, text[start:i])
-			start, w, adv = i, 0, e*size*slack
+			start, w, adv = i, 0, e*size*k
 		}
 		w += adv
 		prev = ch

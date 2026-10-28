@@ -44,14 +44,45 @@ const (
 	widerThanMeasured = "reporting: a glyph is wider than measured"
 )
 
-// glyph is one grapheme cluster of a value, placed at the x the plain advances of the fonts
-// give it, as pdfme placed text; Typst checks that it draws no wider than Width.
+// glyph is one piece of text placed at the x the plain advances of the fonts give it, as pdfme
+// placed text: one grapheme cluster of a box value, or one line of a table cell; Typst checks
+// that it draws no wider than Width.
 type glyph struct {
 	X        float64 `json:"x"` // points from the left edge of the page
 	Baseline float64 `json:"baseline"`
 	Size     float64 `json:"size"`
 	Width    float64 `json:"width"`
 	Text     string  `json:"text"`
+	Bold     bool    `json:"bold"`
+}
+
+// rect and rule are the table's fills, cells and the rule above the total row, in points.
+type rect struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+}
+
+type rule struct {
+	X0     float64 `json:"x0"`
+	Y0     float64 `json:"y0"`
+	X1     float64 `json:"x1"`
+	Y1     float64 `json:"y1"`
+	Stroke float64 `json:"stroke"`
+}
+
+// pageData is one page: its texts, header fills, cell rectangles and rules. Every list is
+// present in data.json, empty or not: the template loops over each.
+type pageData struct {
+	Texts []glyph `json:"texts"`
+	Fills []rect  `json:"fills"`
+	Cells []rect  `json:"cells"`
+	Rules []rule  `json:"rules"`
+}
+
+func newPage(texts []glyph) pageData {
+	return pageData{Texts: append([]glyph{}, texts...), Fills: []rect{}, Cells: []rect{}, Rules: []rule{}}
 }
 
 type banner struct {
@@ -65,25 +96,27 @@ type banner struct {
 }
 
 type page struct {
-	Title      string   `json:"title"`
-	Fonts      []string `json:"fonts"`
-	Background bool     `json:"background"`
-	Glyphs     []glyph  `json:"glyphs"`
-	Banner     banner   `json:"banner"`
+	Title      string     `json:"title"`
+	Fonts      []string   `json:"fonts"`
+	Background bool       `json:"background"` // drawn on every page
+	Pages      []pageData `json:"pages"`
+	Banner     banner     `json:"banner"` // on every page
 }
 
 // Render draws one document template preview: an A4 page with the template's background in
 // full mode, each element's value on one line in its box, and a permanent preview banner. It
 // implements httpapi.DocumentRenderer. A value is never shrunk, clipped or wrapped: one that
-// does not fit its box, or holds a character the fonts lack, is unsupported. Previews hold at
-// most all but one of the Config.Concurrency Typst processes, so that they never keep the
-// export worker waiting for more than one render; a preview whose wait and render together
-// take longer than the render timeout is a budget error.
-func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte) ([]byte, error) {
+// does not fit its box, or holds a character the fonts lack, is unsupported. A document with a
+// table (schema 1.3) takes as many pages as its rows need; table is then the rows bound by
+// doctemplates.BindTable. Previews hold at most all but one of the Config.Concurrency Typst
+// processes, so that they never keep the export worker waiting for more than one render; a
+// preview whose wait and render together take longer than the render timeout is a budget
+// error.
+func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	p, err := layOut(d, values, background, newPlainMeasurer(w.fonts))
+	p, err := layOut(d, values, background, table, newPlainMeasurer(w.fonts))
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +187,7 @@ func (w *Writer) BackgroundFits(ctx context.Context, background []byte) error {
 	sum := sha256.Sum256(background)
 	d, values, _ := documentProbe()
 	d.Schema, d.Background = "1.2", &doctemplates.BackgroundRef{ID: strings.Repeat("0", 32), SHA256: hex.EncodeToString(sum[:])}
-	_, err := w.Render(ctx, d, values, background)
+	_, err := w.Render(ctx, d, values, background, nil)
 	return err
 }
 
@@ -163,8 +196,9 @@ var pngSignature = []byte("\x89PNG\r\n\x1a\n")
 // layOut checks a document and its values and computes where every grapheme cluster goes:
 // the value's width is the sum of its characters' plain advances, it starts at the box's left
 // edge, ends at its right edge or is centred, and its baseline is ascent font sizes below the
-// top of the box. Trailing white space is not drawn, as the previews never drew it.
-func layOut(d doctemplates.Document, values map[string]string, background []byte, m *measurer) (*page, error) {
+// top of the box. Trailing white space is not drawn, as the previews never drew it. A table
+// adds its pages after the boxes are placed; the boxes repeat on every page.
+func layOut(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer) (*page, error) {
 	if err := doctemplates.Validate(d); err != nil {
 		return nil, err
 	}
@@ -185,8 +219,9 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 			return nil, r.ErrIntegrity
 		}
 	}
-	p := &page{Title: "Document preview", Fonts: m.families, Background: len(background) > 0, Glyphs: []glyph{},
+	p := &page{Title: "Document preview", Fonts: m.families, Background: len(background) > 0, Pages: []pageData{newPage(nil)},
 		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText}}
+	first := &p.Pages[0]
 	if _, err := m.width(bannerText, bannerSize, false); err != nil {
 		return nil, err
 	}
@@ -231,8 +266,13 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 		}
 		baseline := (e.Y+profile.OffsetY)*mm + ascent*size
 		for i, c := range pieces {
-			p.Glyphs = append(p.Glyphs, glyph{X: x, Baseline: baseline, Size: size, Width: widths[i], Text: c})
+			first.Texts = append(first.Texts, glyph{X: x, Baseline: baseline, Size: size, Width: widths[i], Text: c})
 			x += widths[i]
+		}
+	}
+	if d.Table != nil {
+		if err := layOutTable(p, d, profile, table, m); err != nil {
+			return nil, err
 		}
 	}
 	return p, nil

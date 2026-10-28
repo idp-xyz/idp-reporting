@@ -20,7 +20,7 @@ import (
 
 type backgroundRenderer func(context.Context, doctemplates.Document, map[string]string, []byte) ([]byte, error)
 
-func (f backgroundRenderer) Render(ctx context.Context, d doctemplates.Document, v map[string]string, b []byte) ([]byte, error) {
+func (f backgroundRenderer) Render(ctx context.Context, d doctemplates.Document, v map[string]string, b []byte, _ *doctemplates.TableData) ([]byte, error) {
 	return f(ctx, d, v, b)
 }
 

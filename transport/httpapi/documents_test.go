@@ -19,8 +19,19 @@ import (
 
 type documentRenderer func(context.Context, doctemplates.Document, map[string]string) ([]byte, error)
 
-func (f documentRenderer) Render(ctx context.Context, d doctemplates.Document, v map[string]string, _ []byte) ([]byte, error) {
+func (f documentRenderer) Render(ctx context.Context, d doctemplates.Document, v map[string]string, _ []byte, _ *doctemplates.TableData) ([]byte, error) {
 	return f(ctx, d, v)
+}
+
+// tableRenderer records the table rows the route binds.
+type tableRenderer struct {
+	documentRenderer
+	bound **doctemplates.TableData
+}
+
+func (f tableRenderer) Render(ctx context.Context, d doctemplates.Document, v map[string]string, _ []byte, table *doctemplates.TableData) ([]byte, error) {
+	*f.bound = table
+	return f.documentRenderer(ctx, d, v)
 }
 func TestDocumentPreviewPrivateFrozenAndReauthorizedAfterRender(t *testing.T) {
 	p := contractsim.DemoPrincipal()
@@ -89,6 +100,26 @@ func TestDocumentPreviewPrivateFrozenAndReauthorizedAfterRender(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "application/pdf" || w.Header().Get("X-Content-SHA256") != hex.EncodeToString(hash[:]) || w.Body.String() != string(pdf) {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	// A schema 1.3 template binds its table's rows from the snapshot in the template's column
+	// order; a column the dataset does not have is a denial.
+	withTable := config
+	withTable.Schema, withTable.Print = "1.3", &doctemplates.PrintProfile{Mode: "full"}
+	withTable.Table = &doctemplates.Table{X: 10, Y: 60, Width: 190, Height: 100, FontSize: 9, Columns: []doctemplates.TableColumn{{Field: "ar.open_balance", Width: 90}, {Field: "customer.id", Width: 100}}}
+	input["config"] = withTable
+	var bound *doctemplates.TableData
+	renderer2 := documentRenderer(func(_ context.Context, _ doctemplates.Document, _ map[string]string) ([]byte, error) { return pdf, nil })
+	h2, _ := httpapi.WithDocumentPreviews(fallback, service, wrapped, tableRenderer{renderer2, &bound}, nil)
+	body, _ = json.Marshal(input)
+	if w := request(h2, "POST", "/api/reporting/v1/document-previews", body, true); w.Code != 200 || bound == nil || len(bound.Columns) != 2 || bound.Columns[0].ID != "ar.open_balance" || len(bound.Rows) == 0 || bound.Rows[0][0] == "" || !bound.Metric[0] || bound.Metric[1] {
+		t.Fatalf("table preview: %d %+v", w.Code, bound)
+	}
+	withTable.Table.Columns[1].Field = "nonexistent"
+	input["config"] = withTable
+	body, _ = json.Marshal(input)
+	if w := request(h2, "POST", "/api/reporting/v1/document-previews", body, true); w.Code != 403 {
+		t.Fatalf("table with an unknown field: %d", w.Code)
+	}
+	input["config"] = config
 	// A template naming a background on a server without a background store is unsupported.
 	withBackground := config
 	withBackground.Schema, withBackground.Print = "1.2", &doctemplates.PrintProfile{Mode: "full"}
