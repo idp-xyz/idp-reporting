@@ -235,10 +235,20 @@ type measurer struct {
 	families []string
 	advance  advance
 	ems      map[glyphKey]float64
+	// plain measures the fonts' advances alone, for text Typst lays out one grapheme cluster
+	// at a time (document previews); otherwise the Chinese dash widths and the CJK-Latin
+	// spacing Typst adds within a line count too.
+	plain bool
 }
 
 func newMeasurer(f *fontSet) *measurer {
 	return &measurer{families: f.names(), advance: f.lookup(), ems: map[glyphKey]float64{}}
+}
+
+func newPlainMeasurer(f *fontSet) *measurer {
+	m := newMeasurer(f)
+	m.plain = true
+	return m
 }
 
 // em returns the advance of ch in ems, or ErrUnsupported when no configured font maps ch or ch
@@ -263,7 +273,9 @@ func (m *measurer) em(ch rune, bold bool) (float64, error) {
 		return 0, fmt.Errorf("pdf: a character is not covered by the configured fonts: %w", r.ErrUnsupported)
 	}
 	// In Chinese text Typst draws these dashes wider than their default glyphs.
-	v = math.Max(v, wideDashes[ch])
+	if !m.plain {
+		v = math.Max(v, wideDashes[ch])
+	}
 	m.ems[k] = v
 	return v, nil
 }
@@ -282,7 +294,10 @@ func (m *measurer) width(s string, size float64, bold bool) (float64, error) {
 		if err != nil {
 			return 0, err
 		}
-		w += e + gap(prev, ch)
+		w += e
+		if !m.plain {
+			w += gap(prev, ch)
+		}
 		prev = ch
 	}
 	return w * size, nil

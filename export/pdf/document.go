@@ -9,8 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"idp.local/reporting/doctemplates"
@@ -35,14 +40,17 @@ const (
 	bannerW    = 190.0
 	bannerH    = 8.0
 	bannerSize = 10.0
+	// The message of the template's width assertion, which fails a render in Typst.
+	widerThanMeasured = "reporting: a glyph is wider than measured"
 )
 
-type placed struct {
-	Left     float64 `json:"left"` // points from the left edge of the page
+// glyph is one grapheme cluster of a value, placed at the x the plain advances of the fonts
+// give it, as pdfme placed text; Typst checks that it draws no wider than Width.
+type glyph struct {
+	X        float64 `json:"x"` // points from the left edge of the page
 	Baseline float64 `json:"baseline"`
-	Width    float64 `json:"width"`
 	Size     float64 `json:"size"`
-	Align    string  `json:"align"`
+	Width    float64 `json:"width"`
 	Text     string  `json:"text"`
 }
 
@@ -60,19 +68,21 @@ type page struct {
 	Title      string   `json:"title"`
 	Fonts      []string `json:"fonts"`
 	Background bool     `json:"background"`
-	Elements   []placed `json:"elements"`
+	Glyphs     []glyph  `json:"glyphs"`
 	Banner     banner   `json:"banner"`
 }
 
 // Render draws one document template preview: an A4 page with the template's background in
 // full mode, each element's value on one line in its box, and a permanent preview banner. It
 // implements httpapi.DocumentRenderer. A value is never shrunk, clipped or wrapped: one that
-// does not fit its box, or holds a character the fonts lack, is unsupported.
+// does not fit its box, or holds a character the fonts lack, is unsupported. At most
+// Config.Concurrency renders run at once, exports included; one that waits longer than the
+// render timeout for its turn is a budget error.
 func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	p, err := layOut(d, values, background, newMeasurer(w.fonts))
+	p, err := layOut(d, values, background, newPlainMeasurer(w.fonts))
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +90,10 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	if err != nil {
 		return nil, err
 	}
+	if err := w.acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer w.release()
 	if err := w.unchanged(); err != nil {
 		return nil, err
 	}
@@ -102,7 +116,7 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	}
 	out, err := w.render(ctx, dir, w.cfg.Now())
 	if err != nil {
-		return nil, err
+		return nil, widerThanMeasuredError(err)
 	}
 	if !bytes.HasPrefix(out, []byte("%PDF-")) {
 		return nil, errors.New("pdf: Typst wrote no PDF")
@@ -110,9 +124,34 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	return out, nil
 }
 
+// widerThanMeasuredError turns the template's own assertion failure into an unsupported-value
+// error: Typst would draw a cluster wider than the fonts' advances, so the value cannot be
+// placed exactly.
+func widerThanMeasuredError(err error) error {
+	var re *RenderError
+	if errors.As(err, &re) && bytes.Contains(re.stderr, []byte(widerThanMeasured)) {
+		return fmt.Errorf("pdf: Typst would draw a value wider than measured: %w", r.ErrUnsupported)
+	}
+	return err
+}
+
+// BackgroundFits renders a probe document on the given PNG background and reports whether the
+// result stays within the artifact limit, so that a background is refused at upload rather
+// than failing every later preview. Its errors are those of Render.
+func (w *Writer) BackgroundFits(background []byte) error {
+	sum := sha256.Sum256(background)
+	d, values, _ := documentProbe()
+	d.Schema, d.Background = "1.2", &doctemplates.BackgroundRef{ID: strings.Repeat("0", 32), SHA256: hex.EncodeToString(sum[:])}
+	_, err := w.Render(context.Background(), d, values, background)
+	return err
+}
+
 var pngSignature = []byte("\x89PNG\r\n\x1a\n")
 
-// layOut checks a document and its values and computes where each value goes.
+// layOut checks a document and its values and computes where every grapheme cluster goes:
+// the value's width is the sum of its characters' plain advances, it starts at the box's left
+// edge, ends at its right edge or is centred, and its baseline is ascent font sizes below the
+// top of the box. Trailing white space is not drawn, as the previews never drew it.
 func layOut(d doctemplates.Document, values map[string]string, background []byte, m *measurer) (*page, error) {
 	if err := doctemplates.Validate(d); err != nil {
 		return nil, err
@@ -134,7 +173,7 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 			return nil, r.ErrIntegrity
 		}
 	}
-	p := &page{Title: "Document preview", Fonts: m.families, Background: len(background) > 0, Elements: []placed{},
+	p := &page{Title: "Document preview", Fonts: m.families, Background: len(background) > 0, Glyphs: []glyph{},
 		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText}}
 	if _, err := m.width(bannerText, bannerSize, false); err != nil {
 		return nil, err
@@ -148,19 +187,47 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 			return nil, r.ErrInvalid
 		}
 		size := float64(e.FontSize)
-		width, err := m.width(v, size, false)
-		if err != nil {
-			return nil, err
+		pieces := clusters(strings.TrimRightFunc(v, unicode.IsSpace))
+		widths := make([]float64, len(pieces))
+		total := 0.0
+		for i, c := range pieces {
+			w, err := m.width(c, size, false)
+			if err != nil {
+				return nil, err
+			}
+			widths[i], total = w, total+w
 		}
-		if width*slack > e.Width*mm-fitMargin {
+		left, right := (e.X+profile.OffsetX)*mm, (e.X+profile.OffsetX+e.Width)*mm
+		if total > e.Width*mm-fitMargin {
 			return nil, fmt.Errorf("pdf: a value does not fit its box on one line: %w", r.ErrUnsupported)
 		}
-		p.Elements = append(p.Elements, placed{
-			Left: (e.X + profile.OffsetX) * mm, Baseline: (e.Y+profile.OffsetY)*mm + ascent*size,
-			Width: e.Width * mm, Size: size, Align: e.Align, Text: v,
-		})
+		x := left
+		switch e.Align {
+		case "right":
+			x = right - total
+		case "center":
+			x = (left+right)/2 - total/2
+		}
+		baseline := (e.Y+profile.OffsetY)*mm + ascent*size
+		for i, c := range pieces {
+			p.Glyphs = append(p.Glyphs, glyph{X: x, Baseline: baseline, Size: size, Width: widths[i], Text: c})
+			x += widths[i]
+		}
 	}
 	return p, nil
+}
+
+// clusters splits s into grapheme clusters: a character and the combining marks after it.
+func clusters(s string) []string {
+	var out []string
+	for _, c := range s {
+		if len(out) > 0 && unicode.Is(unicode.M, c) {
+			out[len(out)-1] += string(c)
+		} else {
+			out = append(out, string(c))
+		}
+	}
+	return out
 }
 
 func hasControl(s string) bool {
@@ -173,10 +240,36 @@ func hasControl(s string) bool {
 }
 
 // documentProbe is rendered by New next to the table probe, so that a host that cannot draw
-// documents fails at startup.
-func documentProbe() (doctemplates.Document, map[string]string) {
-	d := doctemplates.Document{Schema: "1.1", Kind: "document", Binding: doctemplates.Binding{Integration: "probe", Dataset: r.Ref{ID: "probe", Version: "1"}},
-		Elements: []doctemplates.Element{{ID: "n1", Source: "literal", Text: "单据 Probe 0123456789", X: 20, Y: 30, Width: 120, Height: 10, FontSize: 10, Align: "left"}},
-		Print:    &doctemplates.PrintProfile{Mode: "full"}}
-	return d, map[string]string{"n1": "单据 Probe 0123456789"}
+// documents fails at startup: every alignment, Chinese punctuation, a dash and a background.
+func documentProbe() (doctemplates.Document, map[string]string, []byte) {
+	background := probeBackground()
+	sum := sha256.Sum256(background)
+	d := doctemplates.Document{Schema: "1.2", Kind: "document", Binding: doctemplates.Binding{Integration: "probe", Dataset: r.Ref{ID: "probe", Version: "1"}},
+		Elements: []doctemplates.Element{
+			{ID: "n1", Source: "literal", Text: "单据 Probe 0123456789", X: 20, Y: 30, Width: 120, Height: 10, FontSize: 10, Align: "left"},
+			{ID: "n2", Source: "literal", Text: "（甲）。", X: 20, Y: 50, Width: 120, Height: 10, FontSize: 12, Align: "right"},
+			{ID: "n3", Source: "literal", Text: "a—b", X: 20, Y: 70, Width: 120, Height: 10, FontSize: 8, Align: "center"},
+		},
+		Print:      &doctemplates.PrintProfile{Mode: "full"},
+		Background: &doctemplates.BackgroundRef{ID: strings.Repeat("0", 32), SHA256: hex.EncodeToString(sum[:])}}
+	return d, map[string]string{"n1": "单据 Probe 0123456789", "n2": "（甲）。", "n3": "a—b"}, background
+}
+
+// probeBackground is the smallest A4 PNG the templates accept: white with a grey frame.
+func probeBackground() []byte {
+	im := image.NewGray(image.Rect(0, 0, 210, 297))
+	for y := 0; y < 297; y++ {
+		for x := 0; x < 210; x++ {
+			if x < 4 || y < 4 || x >= 206 || y >= 293 {
+				im.SetGray(x, y, color.Gray{Y: 160})
+			} else {
+				im.SetGray(x, y, color.Gray{Y: 255})
+			}
+		}
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, im); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
 }

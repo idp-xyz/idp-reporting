@@ -40,6 +40,7 @@ type Config struct {
 	Timeout     time.Duration    // per document; default 15 s, less than reporting.WorkTimeout
 	MemoryBytes uint64           // address-space limit of Typst; default 2 GiB
 	Jobs        int              // Typst worker threads; default 2
+	Concurrency int              // Typst processes at once, exports and previews together; default 2
 	Now         func() time.Time // creation time recorded in documents; default time.Now
 }
 
@@ -50,6 +51,7 @@ type Writer struct {
 	exeID fileID
 	fonts *fontSet
 	ids   map[string]fileID // the font directory and font files
+	slots chan struct{}     // one entry per running Typst
 }
 
 const (
@@ -71,14 +73,17 @@ func New(c Config) (*Writer, error) {
 	if c.Jobs == 0 {
 		c.Jobs = 2
 	}
+	if c.Concurrency == 0 {
+		c.Concurrency = 2
+	}
 	if c.Now == nil {
 		c.Now = time.Now
 	}
 	if c.WorkDir == "" {
 		c.WorkDir = os.TempDir()
 	}
-	if c.Timeout < 0 || c.Timeout >= r.WorkTimeout || c.Jobs < 1 || c.Jobs > 64 || c.MemoryBytes < 256<<20 {
-		return nil, errors.New("pdf: invalid timeout, memory or job limits")
+	if c.Timeout < 0 || c.Timeout >= r.WorkTimeout || c.Jobs < 1 || c.Jobs > 64 || c.Concurrency < 1 || c.Concurrency > 64 || c.MemoryBytes < 256<<20 {
+		return nil, errors.New("pdf: invalid timeout, memory, job or concurrency limits")
 	}
 	if b, err := hex.DecodeString(c.TypstSHA256); err != nil || len(b) != sha256.Size || c.TypstSHA256 != strings.ToLower(c.TypstSHA256) {
 		return nil, errors.New("pdf: the Typst checksum must be 64 lowercase hex digits")
@@ -102,7 +107,7 @@ func New(c Config) (*Writer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pdf: Typst binary: %w", err)
 	}
-	w := &Writer{cfg: c, exe: exe}
+	w := &Writer{cfg: c, exe: exe, slots: make(chan struct{}, c.Concurrency)}
 	ok := false
 	defer func() {
 		if !ok {
@@ -133,8 +138,8 @@ func New(c Config) (*Writer, error) {
 	if _, err := w.Write(context.Background(), probe); err != nil {
 		return nil, fmt.Errorf("pdf: probe document: %w", err)
 	}
-	docProbe, docValues := documentProbe()
-	if _, err := w.Render(context.Background(), docProbe, docValues, nil); err != nil {
+	docProbe, docValues, docBackground := documentProbe()
+	if _, err := w.Render(context.Background(), docProbe, docValues, docBackground); err != nil {
 		return nil, fmt.Errorf("pdf: probe document template: %w", err)
 	}
 	ok = true
@@ -143,6 +148,23 @@ func New(c Config) (*Writer, error) {
 
 // Close releases the Typst binary. The Writer cannot render afterwards.
 func (w *Writer) Close() error { return w.exe.Close() }
+
+// acquire waits for one of the Concurrency slots, at most for the render timeout: more
+// renders than that would start more Typst processes than the host was sized for.
+func (w *Writer) acquire(ctx context.Context) error {
+	wait := time.NewTimer(w.cfg.Timeout)
+	defer wait.Stop()
+	select {
+	case w.slots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-wait.C:
+		return fmt.Errorf("pdf: %d renders are already running: %w", cap(w.slots), r.ErrBudget)
+	}
+}
+
+func (w *Writer) release() { <-w.slots }
 
 // sameFaces lists the fonts as Typst sees them and requires exactly the faces loadFonts found:
 // the same family names, files, styles and weights. A family name Typst does not know would
@@ -242,6 +264,10 @@ func (w *Writer) Write(ctx context.Context, s r.Snapshot) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := w.acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer w.release()
 	if err := w.unchanged(); err != nil {
 		return nil, err
 	}

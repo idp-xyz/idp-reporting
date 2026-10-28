@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -500,12 +501,13 @@ type documentExpectation struct {
 }
 
 type documentElement struct {
-	Text  string  `json:"text"`
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	Width float64 `json:"width"`
-	Size  int     `json:"size"`
-	Align string  `json:"align"`
+	Text   string  `json:"text"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Size   int     `json:"size"`
+	Align  string  `json:"align"`
 }
 
 func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background bool) {
@@ -519,7 +521,7 @@ func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docu
 		if d.Print.Mode == "variables" && el.Source == "literal" {
 			continue
 		}
-		e.Elements = append(e.Elements, documentElement{Text: values[el.ID], X: el.X, Y: el.Y, Width: el.Width, Size: el.FontSize, Align: el.Align})
+		e.Elements = append(e.Elements, documentElement{Text: values[el.ID], X: el.X, Y: el.Y, Width: el.Width, Height: el.Height, Size: el.FontSize, Align: el.Align})
 	}
 	b, _ := json.MarshalIndent(e, "", " ")
 	for file, content := range map[string][]byte{name + ".pdf": pdf, name + ".json": b} {
@@ -547,16 +549,35 @@ func TestTypstRendersDocuments(t *testing.T) {
 		return doctemplates.Document{Schema: "1.2", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}}, Elements: elements,
 			Print: &doctemplates.PrintProfile{Mode: mode, OffsetX: ox, OffsetY: oy}, Background: &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: hex.EncodeToString(sum[:])}}
 	}
+	// Values that Typst would otherwise shape differently from plain advances: Chinese next to
+	// Latin and digits, Chinese punctuation at the start, in a row and alone, dashes, kerned
+	// pairs, combining marks, leading and trailing spaces of both kinds, at every alignment.
+	hard := []string{"张江路123号A座", "客户：华东区「重点」，联系人：张三。", "a—a—a⸺b⸻c", "ab   ", "  ab  ", "café e\u0301", "甲&甲&乙、Receivable。", "……——",
+		"ー#ー%Ⅰ文", "「（中）」。。、", "（甲）", "。", "ab\u3000\u3000", "\u3000ab", "9007199254740893.00", "(j(j(j fV", "W"}
+	hardDoc := doctemplates.Document{Schema: "1.1", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}}, Print: &doctemplates.PrintProfile{Mode: "full"}}
+	hardValues := map[string]string{}
+	aligns := []string{"left", "right", "center"}
+	for i, v := range hard {
+		id := "n" + strconv.Itoa(i+1)
+		e := doctemplates.Element{ID: id, Source: "literal", Text: v, X: 15 + float64(i%2)*95, Y: 30 + float64(i/2)*12, Width: 85, Height: 10, FontSize: 12, Align: aligns[i%3]}
+		if i >= 15 {
+			e.Y, e.Height, e.FontSize = 140, 16, 28
+		}
+		hardDoc.Elements = append(hardDoc.Elements, e)
+		hardValues[id] = v
+	}
 	for _, c := range []struct {
-		name string
-		d    doctemplates.Document
-		png  []byte
+		name   string
+		d      doctemplates.Document
+		values map[string]string
+		png    []byte
 	}{
-		{"document_full", doc("full", 0, 0), png},
-		{"document_calibrated", doc("full", 1.2, -0.5), png},
-		{"document_variables", doc("variables", -2.3, 4), nil},
+		{"document_full", doc("full", 0, 0), values, png},
+		{"document_calibrated", doc("full", 1.2, -0.5), values, png},
+		{"document_variables", doc("variables", -2.3, 4), values, nil},
+		{"document_hard", hardDoc, hardValues, nil},
 	} {
-		out, err := w.Render(t.Context(), c.d, values, c.png)
+		out, err := w.Render(t.Context(), c.d, c.values, c.png)
 		if err != nil {
 			var re *RenderError
 			if errors.As(err, &re) {
@@ -564,17 +585,39 @@ func TestTypstRendersDocuments(t *testing.T) {
 			}
 			t.Fatalf("%s: %v", c.name, err)
 		}
-		again, err := w.Render(t.Context(), c.d, values, c.png)
+		again, err := w.Render(t.Context(), c.d, c.values, c.png)
 		if err != nil || !bytes.Equal(out, again) {
 			t.Fatalf("%s: two renders with the same clock differ (%v)", c.name, err)
 		}
-		documentEvidence(t, c.name, out, c.d, values, c.png != nil)
+		documentEvidence(t, c.name, out, c.d, c.values, c.png != nil)
 	}
-	// Refused before Typst runs: a value too wide for its box, and one the fonts lack.
-	for value, want := range map[string]error{strings.Repeat("宽", 40): r.ErrUnsupported, "😀": r.ErrUnsupported} {
+	// Refused before Typst runs: a value too wide for its box, one the fonts lack, a Hangul
+	// tone mark (Typst would add a dotted circle) and a tab.
+	for value, want := range map[string]error{strings.Repeat("宽", 40): r.ErrUnsupported, "😀": r.ErrUnsupported, "a\u302eb": r.ErrUnsupported, "a\tb": r.ErrInvalid} {
 		v := map[string]string{"n1": "x", "n2": value, "n3": "1", "n4": "1"}
 		if _, err := w.Render(t.Context(), doc("variables", 0, 0), v, nil); !errors.Is(err, want) {
 			t.Errorf("%q: %v; want %v", value, err, want)
+		}
+	}
+	// The upload check renders on the background: a PNG the templates accept passes.
+	if err := w.BackgroundFits(png); err != nil {
+		t.Errorf("background fit: %v", err)
+	}
+	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.
+	results := make([][]byte, 6)
+	errs := make([]error, 6)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = w.Render(t.Context(), hardDoc, hardValues, nil)
+		}()
+	}
+	wg.Wait()
+	for i := range results {
+		if errs[i] != nil || !bytes.Equal(results[i], results[0]) {
+			t.Errorf("concurrent render %d: %v", i, errs[i])
 		}
 	}
 }
