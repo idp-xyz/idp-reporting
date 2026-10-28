@@ -1,3 +1,31 @@
+# IDP Reporting Platform · S03-G
+
+2026-10-28。正式出具记录（docs/S03G_SCOPE.md）：已发布的模板版本按冻结快照的一行正式出具为不带 PREVIEW 标记、带编号印章的 PDF/A-2b 产物，
+并永久留下出具记录。`POST /issues`（幂等键，`{template_id, version, snapshot_id, row_index}`）受理 kind 为 issue 的持久任务：
+只接受模板当前发布的版本（草稿、已撤回或其他版本为 409 TEMPLATE_NOT_PUBLISHED），字段与底稿按预览同样授权，快照须为本人当前未过期的冻结快照，行须存在；
+任务冻结模板的规范化 JSON（以字符串存储，避免 JSONB 重排对象）及其 SHA-256、模板 id 与版本、快照与行号，请求摘要覆盖全部。
+编号由仓储在受理事务中分配：按租户与接入连续、从 1 起、永不重用（PostgreSQL 用 issue_numbers 计数行串行化并发受理，重放回滚增量；失败或取消的任务保留编号作废，缺号总能由该任务解释）。
+工作进程重新校验来源授权与快照摘要，再核对冻结配置仍是当前发布版本（版本号与规范化字节一致，否则任务以 TEMPLATE_NOT_PUBLISHED 失败），
+按预览同样的页面渲染，只是 PREVIEW 横幅位置改印 `ISSUED No. 000012 - 2026-10-28T06:12:03Z - <记录 ID>`（正文色，变量层同样印），
+然后在一个事务里发布 PDF 产物（format pdf、带记录 ID、与导出产物同样随快照授权到期）与记录 `{number, template_id/version/sha256, snapshot_id/sha256, row_index, artifact_id, sha256, pages, stamp, issued_at}`；
+契约拒绝记录与产物或任务不一致的发布（摘要、页数 1–100、由编号/时间/ID 重算的印章）。`GET /issues?limit=N`、`GET /issues/{id}` 列出与读取本人记录；记录永不修改或删除。
+PostgreSQL 夹具升级到 v3（jobs/assets 的 kind 约束加 issue、issue_numbers 表），升级与篡改用例在持久化测试中覆盖。
+控制台：用“打开已发布模板”打开且未改动的发布版本可“正式出具”（幂等键、轮询、按编号下载 issued-000012.pdf），任务列表显示“正式出具 No. 000012”，
+“刷新出具记录”逐条校验记录与印章一致后列出并可再次下载；能力未声明 issuance 时不显示按钮。
+scripts/check_pdf_export.py 对出具文档在预览全部检查之外核对：横幅位置是记录的印章（编号、UTC 秒、ID 重算）、印章为正文色、全文无 PREVIEW 字样、PDF 摘要与页数等于记录，
+负对照含记录各字段篡改、用预览替换出具件、添加 PREVIEW 字样、印章改为横幅红色。
+Go 普通/race 各 {GO_TOP} 项顶层测试通过（{GO_EVENTS} 个通过事件），仅 3 项数据库入口跳过；本机另对 PostgreSQL 16 运行了持久化与出具测试（{PG_RESULT}）；
+DOM {DOM_PASS}/{DOM_TOTAL}（含真实 Typst 出具：下载 issued-000001.pdf、记录摘要等于下载字节、撤回后拒绝）；vet、go mod verify、JS 语法通过。
+检查器核对 {PDF_CHECKED} 份 PDF（含 3 份出具件：三页含底稿、三页变量层、单页），{NEG_CAUGHT} 项负对照全部被抓到，版式与 export/pdf/testdata/golden.json 一致；
+veraPDF 对 {VERA_PASS} 份 PDF（含控制台真实出具的 1 份）判定 PDF/A-2b 通过，负对照判失败。
+两路独立审查（正确性与安全；测试有效性与质量），发现与处理见 docs/CODE_REVIEW_S03G.md。
+GitHub Actions 四项任务在 PR #{PR} 上通过（run {RUN}）。
+未验：真实打印机与实纸对位、真实浏览器、出具 PDF 的保留策略（随快照授权到期即不可下载，记录永久保留）。
+不在本阶段：整快照批量出具、租户与接入以外的编号方案、出具件保留/对象存储、撤销或更正记录、签章与权威时间戳、画布编辑器、生产资格；真实接入最后。
+当前证据 evidence/s03g；规格 docs/S03G_SCOPE.md；决策 docs/ADR_0002_SINGLE_PDF_ENGINE.md；审查 docs/CODE_REVIEW_S03G.md；接口 docs/API.md。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S03-F
 
 2026-10-28。多页单据（docs/S03F_SCOPE.md）：schema 1.3 模板可加一个明细表区域（1–12 个数据集字段、列宽之和等于表宽、8–12 pt），

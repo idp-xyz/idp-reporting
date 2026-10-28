@@ -114,7 +114,9 @@ func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, j := range s.jobs {
+	// In admission order, as the durable store claims by creation time.
+	for _, id := range s.order {
+		j := s.jobs[id]
 		if j.State == "queued" || (j.State == "running" && !j.LeaseUntil.After(s.now())) {
 			j.State = "running"
 			j.Generation++
