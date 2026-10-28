@@ -56,11 +56,11 @@ jobs:
       # and run in the postgres and pdf jobs.
       - name: Test
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
         run: python3 -I scripts/go_test_strict.py -count=1
       - name: Race
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
         run: python3 -I scripts/go_test_strict.py -race -count=1
 
   postgres:
@@ -84,7 +84,7 @@ jobs:
       # A missing DSN fails instead of skipping, and only the Typst tests, which run in the pdf job,
       # may skip in this job.
       REPORTING_S01_REQUIRE_PG: "1"
-      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments
+      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
