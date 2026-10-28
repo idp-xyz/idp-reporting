@@ -350,7 +350,10 @@ type DocumentAuthority interface {
 	ConfirmIssue(context.Context, SourceContext, IssueConfirmation) (IssueReceipt, error)
 	// VoidIssue voids whatever the product holds for the job, reserved or confirmed, recording
 	// the platform's reason; holding nothing is not an error, and voiding twice is not either.
-	// It does not depend on the principal's current grants: the platform cleans up after itself.
+	// A void is final for the job id: even when nothing was held, the product records it, and a
+	// later PrepareDocument for that job id is ErrConflict (a stale worker that lost its lease
+	// cannot reserve or confirm for a job another worker already failed and voided). It does not
+	// depend on the principal's current grants: the platform cleans up after itself.
 	VoidIssue(ctx context.Context, sc SourceContext, jobID, reason string) error
 }
 
