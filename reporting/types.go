@@ -267,6 +267,7 @@ type IssueRequest struct {
 	Job      Job
 	Snapshot Snapshot
 	Stamp    string
+	At       time.Time // the product's issue time: printed in the stamp and the PDF's creation date (S03-H)
 }
 type IssueResult struct {
 	PDF   []byte
@@ -329,4 +330,76 @@ func NewID() string {
 		panic(err)
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// DocumentAuthority is the optional capability of an adapter whose source product issues formal
+// documents (S03-H, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md). The product authorizes the issue,
+// owns the number and confirms the file; the platform renders and keeps it. Every call is
+// idempotent by the platform's job id, so that a re-claimed job reaches the same outcome.
+type DocumentAuthority interface {
+	// PrepareDocument authorizes issuing the document bound to one row of the product's source
+	// snapshot and reserves its number. The same JobID with the same intent returns the same
+	// reservation while it is reserved or confirmed; another intent under that JobID is
+	// ErrConflict; a voided reservation is ErrConflict; an expired one is ErrDenied. The product
+	// refuses (ErrDenied) when the principal may not issue, when the row is not the one its
+	// source snapshot produced (RowSHA256), or when its own approval rules say no.
+	PrepareDocument(context.Context, SourceContext, IssueIntent) (IssueReservation, error)
+	// ConfirmIssue records the issued file under the reserved number. Repeating it with the same
+	// digest returns the same receipt; another digest is ErrConflict; a voided reservation is
+	// ErrConflict and an expired, unconfirmed one ErrDenied.
+	ConfirmIssue(context.Context, SourceContext, IssueConfirmation) (IssueReceipt, error)
+	// VoidIssue voids whatever the product holds for the job, reserved or confirmed, recording
+	// the platform's reason; holding nothing is not an error, and voiding twice is not either.
+	// It does not depend on the principal's current grants: the platform cleans up after itself.
+	VoidIssue(ctx context.Context, sc SourceContext, jobID, reason string) error
+}
+
+// IssueIntent is what the platform asks the product to authorize: one row of a frozen
+// snapshot, printed through one published template version.
+type IssueIntent struct {
+	JobID           string
+	Prepared        PreparedRead // the frozen snapshot's source read
+	RowIndex        int
+	RowSHA256       string // Digest(row) of that row's values as the snapshot holds them
+	TemplateID      string
+	TemplateVersion int
+	TemplateSHA256  string
+}
+
+// IssueReservation is the product's answer to PrepareDocument.
+type IssueReservation struct {
+	Ref       string    // the product's reservation id, 1..128 bytes
+	JobID     string    // the intent's JobID
+	Number    string    // the product's document number (ValidIssueNumber)
+	IssuedAt  time.Time // the product's issue time, UTC, whole second
+	ExpiresAt time.Time // after it an unconfirmed reservation cannot be confirmed
+}
+
+// IssueConfirmation tells the product which file now carries the reserved number.
+type IssueConfirmation struct {
+	JobID          string
+	ReservationRef string
+	SHA256         string
+	Pages          int
+}
+
+// IssueReceipt is the product's record of the confirmation.
+type IssueReceipt struct {
+	Ref         string    // the product's confirmation id, 1..128 bytes
+	ConfirmedAt time.Time // the product's time, UTC, whole second
+}
+
+// ValidIssueNumber: 1..32 characters of A-Z a-z 0-9 . _ -, starting with a letter or a digit,
+// so that a number prints on one line and names a file.
+func ValidIssueNumber(n string) bool {
+	if len(n) < 1 || len(n) > 32 {
+		return false
+	}
+	for i, c := range n {
+		alnum := c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
+		if !alnum && (i == 0 || c != '.' && c != '_' && c != '-') {
+			return false
+		}
+	}
+	return true
 }
