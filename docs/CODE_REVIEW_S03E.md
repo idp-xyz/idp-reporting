@@ -67,4 +67,26 @@ claims apart from findings 4 and 5.
 
 ### Test effectiveness, checker and documentation
 
-Pending.
+Baseline on c03cbc9 reproduced: vet, Go 108/255/2 skips, DOM 53/53, the checker over 15 PDFs with 332 controls
+caught, the four preview PDFs byte-identical to the evidence, and the cross-engine 0.009 pt result from the
+committed scripts. The reviewer ran 44 Go and Typst mutations, 6 console mutations and 13 PDF corruptions of
+their own, rendered 79 further documents through the checker for false positives, 77 odd clusters against the
+assertion and 253 further boxes against pdfme.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Major: the template's width assertion was untested (removing or weakening it survived every suite), none of 77 odd clusters trips it with the pinned fonts, and the ADR explained it with dotted circles that only Hangul tone marks get; a value starting with a combining mark was drawn over the next character (as pdfme did) | Fixed. A real-Typst test renders a page whose glyph is declared narrower than drawn and requires 422 (renderDocument); a value starting with a combining mark, or of marks only, is unsupported; ADR 0002 now says the assertion guards against a later Typst or font and that no accepted cluster trips it today |
+| 2 | Major: the bounded-process guarantee was tested only as a helper; Render and Write without acquire, Concurrency unvalidated and the document probe removed all survived | Fixed. A Writer with one slot, held, refuses a preview, an export and an upload check with BUDGET_EXCEEDED and renders once released; with the preview slots held an export still runs; New's limit checks have a test. Removing the probe is accepted as equivalent for the tests: every Typst test runs it through New |
+| 3 | Minor: the 2 pt fit margin was derived from the constant under test, so 0 passed | Fixed with literal lengths at 10 pt and 8 pt, which pin the margin between 1.7 and 4.7 pt |
+| 4 | Minor: BackgroundFits had no negative test, and no accepted PNG was found whose preview exceeds 8 MiB (Typst keeps the PNG's compression) | Fixed. The upload check is refused while the slot is held (test); the docs call it a guard with the renderer's error and no longer promise the artifact-limit case |
+| 5 | Minor: the checker centred by the first visible glyph, failing correct centred values with leading spaces (both engines centre the whole trimmed value) | Fixed; the hard fixture has such a value |
+| 6 | Minor: leading or mark-only values confused the character count, stacked marks right-aligned failed the order check, and a replaced background of the same size was invisible to the checker; every fixture PNG was A4-shaped, so fitting was never exercised | Fixed. Leading-mark values are refused (finding 1); the order check uses base characters; the expectation names the PNG drawn and the checker compares the embedded image's pixels with it; a fifth fixture draws a 700×891 background |
+| 7 | Minor: several document checks had no negative control (page count, page size, light text, replacement character, order, box edge, background placement) | Fixed. Each has a PDF corruption now: an extra page, a smaller page, light text, U+FFFD, two glyphs swapped in the content stream, the last glyph of a right-aligned value 0.6 pt past its edge, the background shifted 2 pt or replaced by another picture; 379 controls caught |
+| 8 | Minor: documentation: the review record did not exist yet; "8 to 28 pt" while the compared boxes used 10-28 pt; "every character" was horizontal and 23 boxes; two more pdfme substitutions (fi ligature, stacked marks) and the two-em dash moving what follows; compare reports recorded a scratch path; layOut answered 400 where Bind answered 422 | Fixed. The record exists; the hard fixture has an 8 pt box; the ADR says horizontally, names the three substitutions and the shift, and the reports carry only file names; layOut and Bind agree on 422 |
+| 9 | Nit: three console mutations survived: the preview's %PDF- check removed, the previews() guard removed, clear() keeping the buttons | Fixed for two: a DOM test serves a non-PDF body with a correct digest and expects INTEGRITY_FAILURE without a download; the real-preview test asserts both buttons hidden after logout. The guard inside the click handlers is defence in depth behind hidden buttons and stays untested |
+| 10 | Nits: layOut skipping Validate survives (routes validate first); no HTTP test produces 422/413 on the preview routes; a glyph drawn twice at one spot is invisible to PyMuPDF; shifts under 0.1 pt pass by design | Accepted and recorded; the 422 for a background without a store now has an HTTP test |
+
+Solid per the reviewer: the layout unit tests pin the geometry exactly and caught 10 of 14 document.go
+mutations, the checker's plain-advance check caught every placement mutation the Go tests could not and 0.12 pt
+shifts without a false positive on 76 of 79 hard documents (the three were findings 5 and 6), the evidence is
+reproducible byte for byte, and every refusal path has a test that caught its mutation.

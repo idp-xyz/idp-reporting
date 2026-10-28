@@ -10,6 +10,34 @@ document_calibrated.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with a value covered by a white box: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
+document_fitted.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
 document_full.pdf: ok
   negative control, a value changed: caught
   negative control, the offset moved by 0.2 mm: caught
@@ -22,6 +50,14 @@ document_full.pdf: ok
   negative control, PDF with a font that is not embedded: caught
   negative control, PDF with a value covered by a white box: caught
   negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
 document_hard.pdf: ok
   negative control, a value changed: caught
   negative control, the offset moved by 0.2 mm: caught
@@ -35,6 +71,12 @@ document_hard.pdf: ok
   negative control, PDF with a value covered by a white box: caught
   negative control, PDF with the XMP metadata removed: caught
   negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
   negative control, PDF with a glyph moved by 1 pt: caught
 document_variables.pdf: ok
   negative control, a value changed: caught
@@ -49,6 +91,12 @@ document_variables.pdf: ok
   negative control, PDF with a value covered by a white box: caught
   negative control, PDF with the XMP metadata removed: caught
   negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
   negative control, PDF with a glyph moved by 1 pt: caught
 edges.pdf: ok
   negative control, a cell lost a character: caught
@@ -349,6 +397,7 @@ console_document_preview.pdf: veraPDF PDF/A-2b PASS
 console_finance.pdf: veraPDF PDF/A-2b PASS
 console_saved_template_preview.pdf: veraPDF PDF/A-2b PASS
 document_calibrated.pdf: veraPDF PDF/A-2b PASS
+document_fitted.pdf: veraPDF PDF/A-2b PASS
 document_full.pdf: veraPDF PDF/A-2b PASS
 document_hard.pdf: veraPDF PDF/A-2b PASS
 document_variables.pdf: veraPDF PDF/A-2b PASS

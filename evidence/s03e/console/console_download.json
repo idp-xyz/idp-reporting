@@ -1,8 +1,8 @@
 {
   "status": "PASS",
   "source": "DOM actions + real Go loopback HTTP",
-  "sha256": "c990f8dcea605347d8dee0014476fb1d4e8b137290a10da0f4aeb38e56a13ed1",
-  "bytes": 7915,
+  "sha256": "cf692b66b4cfa003a42dcc774b4d1d80f00f547f1fba50271de4f3d1888b7708",
+  "bytes": 7916,
   "exact_total": "9007199254740993.01",
   "browser_visual_qa": false
 }

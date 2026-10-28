@@ -1,5 +1,5 @@
 {
- "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_hard.json",
+ "expectation": "document_hard.json",
  "boxes": [
   {
    "text": "张江路123号A座",
@@ -116,7 +116,7 @@
   {
    "text": "9007199254740893.00",
    "align": "center",
-   "size": 12,
+   "size": 8,
    "typst": "9007199254740893.00",
    "pdfme": "9007199254740893.00",
    "max_dx_pt": 0.003

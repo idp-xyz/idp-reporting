@@ -1,6 +1,7 @@
 {
- "method": "evidence/s03e/cross_engine/pdfme.mjs renders each document expectation with the archived pdfme renderer (delivery 79aa396); compare.py reads both PDFs with PyMuPDF and compares the origin of every character the two engines both drew",
+ "method": "evidence/s03e/cross_engine/pdfme.mjs renders each document expectation (export/pdf writes them with REPORTING_PDF_EVIDENCE) with the archived pdfme renderer (delivery 79aa396); compare.py reads both PDFs with PyMuPDF and compares the horizontal origin of every character the two engines both drew",
  "boxes": 24,
+ "compared_boxes": 23,
  "worst_pt": 0.009,
  "worst_mm": 0.0032,
  "differences": [
@@ -16,7 +17,7 @@
  ],
  "documents": {
   "document_hard": {
-   "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_hard.json",
+   "expectation": "document_hard.json",
    "boxes": [
     {
      "text": "张江路123号A座",
@@ -133,7 +134,7 @@
     {
      "text": "9007199254740893.00",
      "align": "center",
-     "size": 12,
+     "size": 8,
      "typst": "9007199254740893.00",
      "pdfme": "9007199254740893.00",
      "max_dx_pt": 0.003
@@ -159,7 +160,7 @@
    "worst_mm": 0.0032
   },
   "document_calibrated": {
-   "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_calibrated.json",
+   "expectation": "document_calibrated.json",
    "boxes": [
     {
      "text": "套打底稿预览 Form",
@@ -198,7 +199,7 @@
    "worst_mm": 0.0025
   },
   "document_variables": {
-   "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_variables.json",
+   "expectation": "document_variables.json",
    "boxes": [
     {
      "text": "9007199254740893.00",

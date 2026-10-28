@@ -1,11 +1,11 @@
 {
  "phase": "S03-E",
  "date": "2026-10-27 Asia/Shanghai",
- "baseline": "1938c3e (main after PR #6, S03-D1)",
+ "baseline": "1938c3e (main after PR #6, S03-D1); reviewed implementation 67e93aa",
  "ported_from": "temp/ archive, delivery commit 79aa396 (S03-D1..D4 on pdfme), engine replaced by Typst (ADR 0002)",
  "go": {
-  "top_level_passes": 108,
-  "pass_events": 255,
+  "top_level_passes": 110,
+  "pass_events": 257,
   "failures": 0,
   "skips": [
    "TestDurablePostgresContract",
@@ -13,8 +13,8 @@
   ]
  },
  "race": {
-  "top_level_passes": 108,
-  "pass_events": 255,
+  "top_level_passes": 110,
+  "pass_events": 257,
   "failures": 0,
   "skips": [
    "TestDurablePostgresContract",
@@ -31,29 +31,31 @@
   "exit_code": 0
  },
  "dom": {
-  "tests": 53,
-  "pass": 53,
+  "tests": 54,
+  "pass": 54,
   "fail": 0,
   "skipped": 0,
   "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser"
  },
  "pdf_documents": {
-  "checked": 15,
-  "document_previews": 4,
+  "checked": 16,
+  "document_previews": 5,
   "table_exports": 11,
-  "per_character_positions": "every character of a document preview at its plain-advance position (--font NotoSansSC-Regular.otf)",
-  "negative_controls_caught": 332,
+  "per_character_positions": "every character of a document preview at its plain-advance position (--font NotoSansSC-Regular.otf); the embedded background's pixels equal the PNG drawn",
+  "negative_controls_caught": 379,
   "negative_controls_missed": 0,
   "golden": "export/pdf/testdata/golden.json (matched)",
-  "verapdf_pass": 19,
-  "verapdf_negative_control": "FAIL"
+  "verapdf_pass": 20,
+  "verapdf_negative_control": "FAIL",
+  "negative_controls": "every table and document check has at least one control; documents: 7 expectation and up to 13 PDF corruptions each"
  },
  "cross_engine": {
   "boxes": 24,
   "worst_pt": 0.009,
   "worst_mm": 0.0032,
-  "difference": "pdfme substitutes two em dashes in a row by one two-em dash glyph",
-  "file": "evidence/s03e/cross_engine.json"
+  "difference": "pdfme substitutes two em dashes in a row by one two-em dash glyph (the one box whose text differs); the reviewers' 253 further boxes stayed within 0.009 pt apart from pdfme's fi ligature and stacked-mark substitutions",
+  "file": "evidence/s03e/cross_engine.json",
+  "compared_boxes": 23
  },
  "tools": {
   "typst": "0.15.1 binary sha256 29273eaa04f6d00edd0c2bec578f565fc9c65be856bfbffc894567c68ed0b237",

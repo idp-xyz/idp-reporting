@@ -1,5 +1,5 @@
 {
- "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_calibrated.json",
+ "expectation": "document_calibrated.json",
  "boxes": [
   {
    "text": "套打底稿预览 Form",

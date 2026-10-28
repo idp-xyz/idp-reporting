@@ -2,6 +2,7 @@
  "kind": "document",
  "file": "document_calibrated.pdf",
  "background": true,
+ "background_file": "document_calibrated.background.png",
  "offset_x": 1.2,
  "offset_y": -0.5,
  "elements": [

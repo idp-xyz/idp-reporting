@@ -2,6 +2,7 @@
  "kind": "document",
  "file": "document_full.pdf",
  "background": true,
+ "background_file": "document_full.background.png",
  "offset_x": 0,
  "offset_y": 0,
  "elements": [

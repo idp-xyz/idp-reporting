@@ -1,6 +1,6 @@
 {
-  "id": "105e155c7359d6fa2822fff8f4b955f9",
+  "id": "aa6e5234625f98fed07b7a48132f056e",
   "version": 1,
-  "sha256": "6242704d49d26c9a840db0df5273fa18f5c5ad02ec8176644f8dd28153f208fe",
+  "sha256": "f83bb834113eb943d5656e19298fe62d831caa12d97440cd1f2f2f4a8ee10145",
   "source": "real Go saved version route and Node renderer; template v2 contains Draft title, v1 must not"
 }
