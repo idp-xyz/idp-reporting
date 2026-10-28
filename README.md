@@ -14,10 +14,10 @@ PostgreSQL 夹具升级到 v3（jobs/assets 的 kind 约束加 issue、issue_num
 “刷新出具记录”逐条校验记录与印章一致后列出并可再次下载；能力未声明 issuance 时不显示按钮。
 scripts/check_pdf_export.py 对出具文档在预览全部检查之外核对：横幅位置是记录的印章（编号、UTC 秒、ID 重算）、印章为正文色、全文无 PREVIEW 横幅原句（渲染器也拒绝把该原句作为值或单元格出具）、PDF 摘要与页数等于记录，
 负对照含记录各字段篡改、用预览替换出具件、添加 PREVIEW 字样、印章改为横幅红色。
-Go 普通/race 各 {GO_TOP} 项顶层测试通过（{GO_EVENTS} 个通过事件），仅 3 项数据库入口跳过；本机另对 PostgreSQL 16 运行了持久化与出具测试（{PG_RESULT}）；
-DOM {DOM_PASS}/{DOM_TOTAL}（含真实 Typst 出具：下载 issued-000001.pdf、记录摘要等于下载字节、撤回后拒绝）；vet、go mod verify、JS 语法通过。
-检查器核对 {PDF_CHECKED} 份 PDF（含 3 份出具件：三页含底稿、三页变量层、单页），{NEG_CAUGHT} 项负对照全部被抓到，版式与 export/pdf/testdata/golden.json 一致；
-veraPDF 对 {VERA_PASS} 份 PDF（含控制台真实出具的 1 份）判定 PDF/A-2b 通过，负对照判失败。
+Go 普通/race 各 124 项顶层测试通过（271 个通过事件），仅 3 项数据库入口跳过；本机另对 PostgreSQL 16 运行了持久化与出具测试（6 项出具子测试与全部持久化测试通过）；
+DOM 60/60（含真实 Typst 出具：下载 issued-000001.pdf、记录摘要等于下载字节、撤回后拒绝）；vet、go mod verify、JS 语法通过。
+检查器核对 27 份 PDF（含 3 份出具件：三页含底稿、三页变量层、单页），829 项负对照全部被抓到，版式与 export/pdf/testdata/golden.json 一致；
+veraPDF 对 34 份 PDF（含控制台真实出具的 1 份）判定 PDF/A-2b 通过，负对照判失败。
 两路独立审查（正确性与安全；测试有效性与质量），发现与处理见 docs/CODE_REVIEW_S03G.md。
 GitHub Actions 四项任务在 PR #{PR} 上通过（run {RUN}）。
 未验：真实打印机与实纸对位、真实浏览器、出具 PDF 的保留策略（随快照授权到期即不可下载，记录永久保留）。

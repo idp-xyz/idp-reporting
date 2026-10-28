@@ -1,0 +1,23 @@
+{
+  "template_id": "3eba24bdc0991467c9516115f6f91570",
+  "version": 1,
+  "row_index": 2,
+  "sha256": "1a7cc0582c178c2912ab09027cdcdc7f62c5d75f3d28e764a16083f4bd401bff",
+  "record": {
+    "issue_id": "5fd0072e1a036c0cdf5e285915066258",
+    "state": "succeeded",
+    "snapshot_id": "92a4c43d93846072e54a5e182fba77bf",
+    "number": 1,
+    "template_id": "3eba24bdc0991467c9516115f6f91570",
+    "template_version": 1,
+    "template_sha256": "f0663d7506b23d72b0ccad15154265215e36b9ab806a6b7d7c476c4f5772ab05",
+    "row_index": 2,
+    "artifact_id": "748d6716320315dac10f9e71f51be639",
+    "snapshot_sha256": "f8d58b0848225ad4ff93d66b0dd7f31789975efb0a1d0db58cd781dff708ba8f",
+    "sha256": "1a7cc0582c178c2912ab09027cdcdc7f62c5d75f3d28e764a16083f4bd401bff",
+    "pages": 1,
+    "stamp": "ISSUED No. 000001 - 2026-10-28T09:01:55Z - 5fd0072e1a036c0cdf5e285915066258",
+    "issued_at": "2026-10-28T09:01:55Z"
+  },
+  "source": "real Go issue job through the console; the PDF is the artifact the record names"
+}
