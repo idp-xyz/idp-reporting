@@ -427,7 +427,7 @@ async function snapshotReady(a){await a.login();a.configure();a.click('snapshot'
 
 test('PDF export is offered only when the server lists the format',async()=>{
   const a=app(pdfConfigured?async path=>{if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,{headers:{Authorization:'Bearer '+token}})).json();caps.formats=caps.formats.filter(f=>f!=='pdf');return json(caps);}}:undefined);
-  try{await snapshotReady(a);assert.equal(a.$('export-pdf').hidden,true);assert.equal(a.$('overview-formats').textContent,'XLSX');}finally{a.close();}
+  try{await snapshotReady(a);assert.equal(a.$('export-pdf').hidden,true);assert.equal(a.$('overview-formats').textContent,'XLSX');assert.equal(a.$('doc-pdf').hidden,true);assert.equal(a.$('doc-saved-pdf').hidden,true);}finally{a.close();}
   const b=app(offeringPDF(Buffer.from('%PDF-1.7 fixture')));
   try{await b.login();assert.equal(b.$('export-pdf').hidden,false);assert.equal(b.$('export-pdf').disabled,true);b.click('logout');assert.equal(b.$('export-pdf').hidden,true);}finally{b.close();}
 });
@@ -498,7 +498,7 @@ test('background file read is session guarded and invalid references apply atomi
 });
 
 test('document template binds a frozen row and total into a verified real PDF preview',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
- await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');a.w.document.querySelector('[data-page="documents"]').click();assert.equal(a.$('page-documents').hidden,false);a.input('doc-text','应收账款预览');a.click('doc-add-text');a.$('doc-field').value='ar.open_balance';a.click('doc-add-row');a.click('doc-add-total');a.click('doc-json-save');const config=JSON.parse(a.$('doc-json').value);assert.equal(config.elements.length,4);assert.equal(JSON.stringify(config).includes('9007199254740'),false);a.input('doc-row','3');a.click('doc-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'real PDF download',15000);assert.equal(a.downloads[0].name,'document-preview.pdf');const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');a.w.document.querySelector('[data-page="documents"]').click();assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('doc-pdf').hidden,false);a.input('doc-text','应收账款预览');a.click('doc-add-text');a.$('doc-field').value='ar.open_balance';a.click('doc-add-row');a.click('doc-add-total');a.click('doc-json-save');const config=JSON.parse(a.$('doc-json').value);assert.equal(config.elements.length,4);assert.equal(JSON.stringify(config).includes('9007199254740'),false);a.input('doc-row','3');a.click('doc-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'real PDF download',15000);assert.equal(a.downloads[0].name,'document-preview.pdf');const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
  if(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR){await mkdir(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,{recursive:true});await writeFile(join(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,'console_document_preview.pdf'),bytes);}
  a.input('query-companies','company_other');assert.equal(a.$('doc-elements').children.length,0);assert.equal(a.$('doc-json').value,'');a.click('logout');
  }finally{a.close();}});
