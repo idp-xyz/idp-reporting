@@ -233,3 +233,60 @@ func TestWiderThanMeasuredIsUnsupported(t *testing.T) {
 		t.Errorf("probe %+v %v", d, values)
 	}
 }
+
+// TestIssueLayoutIsThePreviewLayoutPlusTheBannerTextRefusal: issueLayout is what an issued document
+// and its check (Writer.CheckIssue, which runs it with the fonts' plain measurer) have in common.
+// It differs from the preview's layOut by one refusal alone: the preview's banner text is never
+// printed on an issued document, not even as data, as a value or as a table cell (in variables mode
+// the literals are not printed, so they are not data). Everything layOut refuses stands, with the
+// same errors, and what passes is the preview's pages: the stamp is the caller's.
+func TestIssueLayoutIsThePreviewLayoutPlusTheBannerTextRefusal(t *testing.T) {
+	columns := []doctemplates.TableColumn{{Field: "customer", Width: 60}, {Field: "amount", Width: 60}}
+	rows := func(cell string) *doctemplates.TableData {
+		data := amounts(3)
+		if cell != "" {
+			data.Rows[1][0] = cell
+		}
+		return data
+	}
+	row := box("n1", "row", "", 20, 30, 80, 10, "left")
+	literal := box("n1", "literal", bannerText, 20, 30, 100, 10, "left")
+	second := box("n2", "row", "", 20, 50, 80, 10, "left")
+	for name, c := range map[string]struct {
+		d      doctemplates.Document
+		values map[string]string
+		table  *doctemplates.TableData
+		banner bool  // issueLayout refuses it for the banner text, layOut does not
+		want   error // what both refuse otherwise
+	}{
+		"a value that fits":                       {form("full", 0, 0, row), map[string]string{"n1": "x"}, nil, false, nil},
+		"the banner text as a value":              {form("full", 0, 0, row), map[string]string{"n1": "x " + bannerText}, nil, true, nil},
+		"the banner text as a literal in full":    {form("full", 0, 0, literal), map[string]string{"n1": bannerText}, nil, true, nil},
+		"the banner text as a literal, variables": {form("variables", 0, 0, literal, second), map[string]string{"n1": bannerText, "n2": "x"}, nil, false, nil},
+		"the banner text as a value, variables":   {form("variables", 0, 0, row), map[string]string{"n1": bannerText}, nil, true, nil},
+		"a table that fits":                       {tabled("full", 20, 40, 120, 60, 10, columns...), map[string]string{"n1": "x"}, rows(""), false, nil},
+		"the banner text as a table cell":         {tabled("full", 20, 40, 120, 60, 10, columns...), map[string]string{"n1": "x"}, rows(bannerText), true, nil},
+		"a value wider than its box":              {form("full", 0, 0, row), map[string]string{"n1": strings.Repeat("宽", 30)}, nil, false, r.ErrUnsupported},
+		"an uncovered character":                  {form("full", 0, 0, row), map[string]string{"n1": "☃"}, nil, false, r.ErrUnsupported},
+		"a missing value":                         {form("full", 0, 0, row), map[string]string{}, nil, false, r.ErrInvalid},
+		"a table total that is not the sum":       {tabled("full", 20, 40, 120, 60, 10, columns...), map[string]string{"n1": "x"}, func() *doctemplates.TableData { d := rows(""); d.Totals["amount"] = "1.00"; return d }(), false, r.ErrIntegrity},
+		"a table without rows":                    {tabled("full", 20, 40, 120, 60, 10, columns...), map[string]string{"n1": "x"}, nil, false, r.ErrInvalid},
+	} {
+		page, issueErr := issueLayout(c.d, c.values, nil, c.table, plainFake('☃'))
+		_, layErr := layOut(c.d, c.values, nil, c.table, plainFake('☃'))
+		switch {
+		case c.banner:
+			if !errors.Is(issueErr, r.ErrUnsupported) || !strings.Contains(issueErr.Error(), "banner text") || layErr != nil {
+				t.Errorf("%s: issue layout %v, preview layout %v; want the banner text refused for the issue alone", name, issueErr, layErr)
+			}
+		case c.want != nil:
+			if !errors.Is(issueErr, c.want) || !errors.Is(layErr, c.want) {
+				t.Errorf("%s: issue layout %v, preview layout %v; want both %v", name, issueErr, layErr, c.want)
+			}
+		default:
+			if issueErr != nil || layErr != nil || page.Banner.Text != bannerText || page.Banner.Fill != bannerFill || page.Title != "Document preview" {
+				t.Errorf("%s: %v %v %+v", name, issueErr, layErr, page)
+			}
+		}
+	}
+}

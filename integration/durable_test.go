@@ -527,7 +527,7 @@ func TestDurablePostgresContract(t *testing.T) {
 		p := fixtureAdmin(t)
 		// A database made before the ledger existed (S04-A): the profile's version alone says
 		// what was applied; the migrator bootstraps the ledger from it and upgrades.
-		if _, e = p.Exec(ctx, `ALTER TABLE reporting_s01.jobs DROP COLUMN data_sha256;ALTER TABLE reporting_s01.assets DROP COLUMN data_sha256;DROP TABLE reporting_s01.schema_migrations;ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check;ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check;ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));DROP TABLE reporting_s01.issue_numbers;UPDATE reporting_s01.profile SET version=1 WHERE singleton;`); e != nil {
+		if _, e = p.Exec(ctx, `ALTER TABLE reporting_s01.jobs DROP COLUMN data_sha256;ALTER TABLE reporting_s01.assets DROP COLUMN data_sha256;DROP TABLE reporting_s01.schema_migrations;ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check;ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check;ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));UPDATE reporting_s01.profile SET version=1 WHERE singleton;`); e != nil {
 			t.Fatal(e)
 		}
 		bad, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false)

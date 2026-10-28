@@ -61,9 +61,13 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig) (*Store, error) {
 }
 
 // dataTables are the tables the application role reads and writes; the ledger and the profile
-// it only reads.
+// it only reads. issue_numbers, S03-G's counters, exists at version 3 only (004 drops it): where
+// it exists it is a data table, and the schemas older than the latest stay serviceable by roles.
 var dataTables = []string{"jobs", "assets", "issue_numbers"}
 var readTables = []string{"profile", "schema_migrations"}
+
+// requiredTables are the tables a store at the latest version has; issue_numbers is not one.
+var requiredTables = []string{"jobs", "assets", "profile", "schema_migrations"}
 
 // RoleProblems lists every way the connected role exceeds or lacks the application role's
 // privileges: superuser, role or database creation, RLS bypass, schema ownership or CREATE on
@@ -145,7 +149,7 @@ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rep
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, t := range append(slices.Clone(dataTables), readTables...) {
+	for _, t := range requiredTables {
 		if !seen[t] {
 			problems = append(problems, "table "+t+" is missing")
 		}

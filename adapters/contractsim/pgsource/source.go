@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/adapters/contractsim"
@@ -44,7 +45,7 @@ func Open(ctx context.Context, dsn string, initialize bool) (*Source, error) {
 	}
 	fail := func(err error) (*Source, error) { p.Close(); return nil, err }
 	if initialize {
-		if _, e = p.Exec(ctx, schema); e != nil {
+		if e = migrate(ctx, p); e != nil {
 			return fail(e)
 		}
 	}
@@ -53,15 +54,58 @@ func Open(ctx context.Context, dsn string, initialize bool) (*Source, error) {
 	if e = p.QueryRow(ctx, "SELECT profile,version FROM reporting_source_s01.profile WHERE singleton").Scan(&name, &version); e != nil {
 		return fail(e)
 	}
-	if name != "durable-contract-simulator-only" || version != 1 {
+	if name != "durable-contract-simulator-only" || version != profileVersion {
 		return fail(r.ErrDenied)
 	}
+	if e = checkShape(ctx, p); e != nil {
+		return fail(e)
+	}
 	return &Source{pool: p}, nil
+}
+
+// checkShape refuses the issues table the first revision of schema version 2 made, before void
+// tombstones: it cannot hold what the void of a job nothing was reserved for records. Schema
+// version 2 was never released, so such a test database is dropped (drop schema
+// reporting_source_s01) and initialized again, not upgraded.
+func checkShape(ctx context.Context, p *pgxpool.Pool) error {
+	var nullable string
+	e := p.QueryRow(ctx, "SELECT is_nullable FROM information_schema.columns WHERE table_schema='reporting_source_s01' AND table_name='issues' AND column_name='number'").Scan(&nullable)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: the issues table is missing", r.ErrDenied)
+	}
+	if e != nil {
+		return e
+	}
+	if nullable != "YES" {
+		return fmt.Errorf("%w: the issues table predates void tombstones; drop schema reporting_source_s01 and initialize again", r.ErrDenied)
+	}
+	return nil
+}
+
+// profileVersion is the schema this code requires: 2 since S03-H added the number sequences and
+// the issue reservations; version 1 databases are upgraded by Open(initialize=true).
+const profileVersion = 2
+
+// migrate creates the schema, or upgrades a version 1 one, in a single transaction. The advisory
+// lock keeps two initializing processes from creating the same tables at once.
+func migrate(ctx context.Context, p *pgxpool.Pool) error {
+	tx, e := p.Begin(ctx)
+	if e != nil {
+		return e
+	}
+	defer rollback(ctx, tx)
+	if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "reporting_source_s01.schema"); e != nil {
+		return e
+	}
+	if _, e = tx.Exec(ctx, schema); e != nil {
+		return e
+	}
+	return tx.Commit(ctx)
 }
 func (s *Source) Close()         { s.pool.Close() }
 func (s *Source) ReadCalls() int { return int(s.reads.Load()) }
 func (s *Source) ResetFixture(ctx context.Context) error {
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_source_s01.prepared,reporting_source_s01.grants,reporting_source_s01.heads,reporting_source_s01.versions")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_source_s01.prepared,reporting_source_s01.grants,reporting_source_s01.heads,reporting_source_s01.versions,reporting_source_s01.issue_numbers,reporting_source_s01.issues")
 	return e
 }
 func rollback(ctx context.Context, tx pgx.Tx) {
@@ -72,6 +116,9 @@ func rollback(ctx context.Context, tx pgx.Tx) {
 func validFixture(id, tenant string, f contractsim.Fixture) error {
 	q := r.QuerySpec{SchemaVersion: "1.0", Integration: id, Dataset: f.Dataset.Ref, Companies: []string{"fixture"}, Dimensions: f.Dataset.Dimensions, Metrics: f.Dataset.Metrics, CurrencyPolicy: f.Dataset.CurrencyPolicy, Timezone: f.Dataset.Timezone, AsOf: "2026-10-26", Page: r.PageSpec{Limit: 50}}
 	if id == "" || tenant == "" || len(id) > 128 || len(tenant) > 128 || r.ValidateQuery(q, f.Dataset) != nil || len(f.Records) > 5000 {
+		return r.ErrInvalid
+	}
+	if f.NumberPrefix != "" && !contractsim.ValidNumberPrefix(f.NumberPrefix) {
 		return r.ErrInvalid
 	}
 	b, e := json.Marshal(f.Records)
@@ -99,7 +146,9 @@ func putVersion(ctx context.Context, tx pgx.Tx, id, tenant string, f contractsim
 	return version, e
 }
 
-// EnsureFixture never updates an existing source version or clears outages.
+// EnsureFixture never updates an existing source version or clears outages. It records the
+// fixture's number prefix for the source, and creates the number sequence of a source whose
+// fixture predates the capability; an existing sequence, its prefix and its switch stay.
 func (s *Source) EnsureFixture(ctx context.Context, id, tenant string, f contractsim.Fixture) error {
 	if e := validFixture(id, tenant, f); e != nil {
 		return e
@@ -116,14 +165,20 @@ func (s *Source) EnsureFixture(ctx context.Context, id, tenant string, f contrac
 	if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM reporting_source_s01.heads WHERE integration=$1 AND source_tenant=$2)", id, tenant).Scan(&exists); e != nil {
 		return e
 	}
-	if exists {
-		return tx.Commit(ctx)
+	if !exists {
+		v, e := putVersion(ctx, tx, id, tenant, f)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.Exec(ctx, "INSERT INTO reporting_source_s01.heads(integration,source_tenant,version_id) VALUES($1,$2,$3)", id, tenant, v); e != nil {
+			return e
+		}
 	}
-	v, e := putVersion(ctx, tx, id, tenant, f)
-	if e != nil {
-		return e
+	prefix := f.NumberPrefix
+	if prefix == "" {
+		prefix = contractsim.DefaultNumberPrefix
 	}
-	if _, e = tx.Exec(ctx, "INSERT INTO reporting_source_s01.heads(integration,source_tenant,version_id) VALUES($1,$2,$3)", id, tenant, v); e != nil {
+	if _, e = tx.Exec(ctx, "INSERT INTO reporting_source_s01.issue_numbers(integration,source_tenant,prefix) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", id, tenant, prefix); e != nil {
 		return e
 	}
 	return tx.Commit(ctx)
@@ -343,6 +398,27 @@ func (s *Source) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.P
 	}
 	return nil
 }
+
+// loadSeed reads the immutable source version a frozen read was made from.
+func loadSeed(ctx context.Context, tx pgx.Tx, sc r.SourceContext, version string) (contractsim.Fixture, error) {
+	var seed contractsim.Fixture
+	var catalog, records []byte
+	var ch, rh string
+	e := tx.QueryRow(ctx, "SELECT catalog::text,catalog_sha,records::text,records_sha FROM reporting_source_s01.versions WHERE integration=$1 AND source_tenant=$2 AND id=$3", sc.Owner.Integration, sc.SourceTenant, version).Scan(&catalog, &ch, &records, &rh)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return seed, r.ErrIntegrity
+	}
+	if e != nil {
+		return seed, r.ErrUnavailable
+	}
+	if e = fixturedb.Decode(catalog, ch, &seed.Dataset); e != nil {
+		return seed, e
+	}
+	if e = fixturedb.Decode(records, rh, &seed.Records); e != nil {
+		return seed, e
+	}
+	return seed, nil
+}
 func (s *Source) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedRead, cursor string, limit int) (r.SourcePage, error) {
 	tx, e := s.begin(ctx, true)
 	if e != nil {
@@ -353,20 +429,8 @@ func (s *Source) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedR
 	if e != nil {
 		return r.SourcePage{}, e
 	}
-	var seed contractsim.Fixture
-	var catalog, records []byte
-	var ch, rh string
-	e = tx.QueryRow(ctx, "SELECT catalog::text,catalog_sha,records::text,records_sha FROM reporting_source_s01.versions WHERE integration=$1 AND source_tenant=$2 AND id=$3", sc.Owner.Integration, sc.SourceTenant, saved.Version).Scan(&catalog, &ch, &records, &rh)
-	if errors.Is(e, pgx.ErrNoRows) {
-		return r.SourcePage{}, r.ErrIntegrity
-	}
+	seed, e := loadSeed(ctx, tx, sc, saved.Version)
 	if e != nil {
-		return r.SourcePage{}, r.ErrUnavailable
-	}
-	if e = fixturedb.Decode(catalog, ch, &seed.Dataset); e != nil {
-		return r.SourcePage{}, e
-	}
-	if e = fixturedb.Decode(records, rh, &seed.Records); e != nil {
 		return r.SourcePage{}, e
 	}
 	s.reads.Add(1)

@@ -52,7 +52,7 @@ func (s *Store) ResetFixture(ctx context.Context) error {
 	if !s.fixture {
 		return r.ErrDenied
 	}
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.issue_numbers")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs")
 	return e
 }
 
@@ -100,40 +100,13 @@ type querier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
+// Admit stores the job as it is: every kind goes through the same insert. An issue job has no
+// number (S03-H): the source product gives it when the worker prepares the document.
 func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if e := r.ValidateAdmission(j); e != nil {
 		return r.Job{}, e
 	}
-	if j.Kind != "issue" {
-		return admit(ctx, s.pool, j)
-	}
-	// An issue job takes the next number of its tenant and integration in the transaction
-	// that admits it: the counter row serializes concurrent admissions, and a replay of an
-	// earlier admission (the insert returns that job) rolls the increment back.
-	tx, e := s.pool.Begin(ctx)
-	if e != nil {
-		return r.Job{}, e
-	}
-	defer func() {
-		cleanup, cancel := fixturedb.RollbackContext(ctx)
-		defer cancel()
-		_ = tx.Rollback(cleanup)
-	}()
-	if e = tx.QueryRow(ctx, `INSERT INTO reporting_s01.issue_numbers(tenant,integration,last) VALUES($1,$2,1)
-ON CONFLICT(tenant,integration) DO UPDATE SET last=reporting_s01.issue_numbers.last+1 RETURNING last`, j.Owner.Tenant, j.Owner.Integration).Scan(&j.Number); e != nil {
-		return r.Job{}, e
-	}
-	v, e := admit(ctx, tx, j)
-	if e != nil {
-		return r.Job{}, e
-	}
-	if v.ID != j.ID {
-		return v, nil // the earlier admission; the rollback gives the number back
-	}
-	if e = tx.Commit(ctx); e != nil {
-		return r.Job{}, e
-	}
-	return v, nil
+	return admit(ctx, s.pool, j)
 }
 func admit(ctx context.Context, q querier, j r.Job) (r.Job, error) {
 	b, e := json.Marshal(j)
@@ -156,10 +129,14 @@ func admit(ctx context.Context, q querier, j r.Job) (r.Job, error) {
 func (s *Store) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
 	return scanJob(s.pool.QueryRow(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4", id, i.Tenant, i.Issuer, i.Subject))
 }
+
+// Cancel cancels a queued job, and a running one of any kind but issue: the source product may
+// hold a reservation for a running issue job (S03-H), which therefore finishes, or fails and voids,
+// and is returned unchanged.
 func (s *Store) Cancel(ctx context.Context, i r.Identity, id string) (r.Job, error) {
 	return scanJob(s.pool.QueryRow(ctx, `UPDATE reporting_s01.jobs SET
-state=CASE WHEN state IN ('queued','running') THEN 'cancelled' ELSE state END,
-lease_until=CASE WHEN state IN ('queued','running') THEN NULL ELSE lease_until END
+state=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN 'cancelled' ELSE state END,
+lease_until=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN NULL ELSE lease_until END
 WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 RETURNING `+jobFields, id, i.Tenant, i.Issuer, i.Subject))
 }
 func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error) {

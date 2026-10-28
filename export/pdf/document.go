@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -40,6 +41,13 @@ const (
 	bannerW    = 190.0
 	bannerH    = 8.0
 	bannerSize = 10.0
+	// stampSize is the size of the issue stamp, which takes the banner's strip and left edge at
+	// 8 pt where the preview banner is 10 pt. At this size every stamp the contract allows fits
+	// the strip (a 32-character number of the widest glyphs ValidIssueNumber accepts, a record
+	// id of the widest hex digit and the widest time: TestTypstIssuesTheWidestLegalStamp), so
+	// that an issue never fails on its layout after the product reserved the number. The
+	// baseline is the strip's top plus ascent font sizes, as for any text.
+	stampSize = 8.0
 	// The message of the template's width assertion, which fails a render in Typst.
 	widerThanMeasured = "reporting: a glyph is wider than measured"
 )
@@ -127,37 +135,98 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	if err != nil {
 		return nil, err
 	}
-	return w.renderDocument(ctx, p, background, w.previews)
+	return w.renderDocument(ctx, p, background, w.previews, w.cfg.Now())
 }
 
 // Issue renders an official document (S03-G): the same pages as Render, with the issue stamp
-// in the strip the preview banner occupies, in the text colour. The stamp is one line of
-// ASCII the fonts cover; one that does not fit the strip is unsupported, as any value. It
-// returns the page count with the PDF. Issues run on the worker and take an export slot, not
-// a preview slot. Errors never carry values.
-func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string) ([]byte, int, error) {
+// in the strip the preview banner occupies, in the text colour, at stampSize. The stamp is one
+// line of ASCII the fonts cover; one that does not fit the strip is unsupported, as any value
+// (the stamp of any number, id and time the contract allows fits). at is the issue time the
+// source product reserved (S03-H): a UTC whole second between 1970 and 9999, else ErrInvalid.
+// It is the PDF's creation date instead of the writer's clock, so that the bytes depend on the
+// arguments alone: issuing them again, with the same Typst and fonts, yields the same file. It
+// returns the page count with the PDF. Issues run on the worker and take an export slot, not a
+// preview slot. Errors never carry values.
+func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, 0, err
+	}
+	if !validIssueTime(at) {
+		return nil, 0, fmt.Errorf("pdf: the issue time is not a UTC whole second between 1970 and 9999: %w", r.ErrInvalid)
 	}
 	p, err := w.issuePage(d, values, background, table, stamp)
 	if err != nil {
 		return nil, 0, err
 	}
-	out, err := w.renderDocument(ctx, p, background, nil)
+	out, err := w.renderDocument(ctx, p, background, nil, at)
 	if err != nil {
 		return nil, 0, err
 	}
 	return out, len(p.Pages), nil
 }
 
-// issuePage lays out an issued document: the preview's pages with the stamp in the strip. A
-// stamp is any one line the fonts cover that fits the strip and is not the banner.
+// CheckIssue is the layout of Issue without the stamp and without the render: the same document,
+// values, background and table, checked the way Issue lays them out, with the plain advances of
+// the fonts and no Typst process or slot. It refuses what Issue refuses for them: the preview
+// banner text as a value or a cell, a value or cell the fonts cannot print exactly or that does not
+// fit, a table that cannot be laid out, a background that is not the one the template names, and
+// every other refusal of the layout. The stamp is not part of it (the stamp of every number, id
+// and time the contract allows fits its strip: TestTypstIssuesTheWidestLegalStamp), nor is the
+// issue time; what only the render can find, a glyph Typst would draw wider than measured or a
+// Typst failure, is not either. The worker asks for it before it asks the source product for a
+// number (S03-H), so that nothing the layout refuses costs the product a reservation to void.
+// Errors never carry values.
+func (w *Writer) CheckIssue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_, err := issueLayout(d, values, background, table, newPlainMeasurer(w.fonts))
+	return err
+}
+
+var (
+	// The creation dates Typst can write: it takes no negative timestamp (a command-line
+	// argument starting with a minus sign is not one) and no date after the year 9999.
+	earliestIssue = time.Unix(0, 0).UTC()
+	latestIssue   = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+)
+
+// validIssueTime: the product's issue time is a UTC whole second (never the zero time) that a
+// PDF can carry as its creation date.
+func validIssueTime(at time.Time) bool {
+	return at.Location() == time.UTC && at.Nanosecond() == 0 && !at.Before(earliestIssue) && !at.After(latestIssue)
+}
+
+// issuePage lays out an issued document: the preview's pages with the stamp in the strip, at
+// stampSize. A stamp is any one line the fonts cover that fits the strip and is not the banner;
+// the width check is a guard, for stamps the contract does not produce.
 func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string) (*page, error) {
 	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
 		return nil, r.ErrInvalid
 	}
-	// The preview's banner text is never printed on an issued document, not even as data
-	// (the literals that variables mode does not print are not data).
+	m := newPlainMeasurer(w.fonts)
+	p, err := issueLayout(d, values, background, table, m)
+	if err != nil {
+		return nil, err
+	}
+	width, err := m.width(stamp, stampSize, false)
+	if err != nil {
+		return nil, err
+	}
+	if width > bannerW*mm+0.05 {
+		return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
+	}
+	p.Title = "Issued document"
+	p.Banner.Text, p.Banner.Fill = stamp, stampFill
+	p.Banner.Size, p.Banner.Baseline = stampSize, bannerY*mm+ascent*stampSize
+	return p, nil
+}
+
+// issueLayout is what an issued document and its check have in common: the preview's pages laid
+// out for the values, the background and the table, after the refusal of the preview's banner
+// text, which is never printed on an issued document, not even as data (the literals that
+// variables mode does not print are not data). The stamp is set by the caller.
+func issueLayout(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer) (*page, error) {
 	full := d.Print == nil || d.Print.Mode == "full"
 	for _, e := range d.Elements {
 		if (full || e.Source != "literal") && strings.Contains(values[e.ID], bannerText) {
@@ -173,25 +242,12 @@ func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, ba
 			}
 		}
 	}
-	m := newPlainMeasurer(w.fonts)
-	p, err := layOut(d, values, background, table, m)
-	if err != nil {
-		return nil, err
-	}
-	width, err := m.width(stamp, bannerSize, false)
-	if err != nil {
-		return nil, err
-	}
-	if width > bannerW*mm+0.05 {
-		return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
-	}
-	p.Title = "Issued document"
-	p.Banner.Text, p.Banner.Fill = stamp, stampFill
-	return p, nil
+	return layOut(d, values, background, table, m)
 }
 
-// renderDocument runs Typst on a laid-out page; with previews, it holds a preview slot first.
-func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte, previews chan struct{}) ([]byte, error) {
+// renderDocument runs Typst on a laid-out page, recording created as the document's creation
+// date; with previews, it holds a preview slot first.
+func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte, previews chan struct{}, created time.Time) ([]byte, error) {
 	data, err := json.Marshal(p)
 	if err != nil {
 		return nil, err
@@ -228,7 +284,7 @@ func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte,
 	if err := os.Mkdir(filepath.Join(dir, "packages"), 0o700); err != nil {
 		return nil, err
 	}
-	out, err := w.render(bounded, dir, w.cfg.Now())
+	out, err := w.render(bounded, dir, created)
 	if err != nil {
 		return nil, budget(widerThanMeasuredError(err))
 	}

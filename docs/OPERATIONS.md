@@ -1,8 +1,8 @@
 # Operating the platform store (S04-A)
 
 The platform store is a PostgreSQL database that holds only the platform's own assets: jobs, snapshots,
-artifacts, issue records and numbers, the schema ledger and the profile row. Source product data never
-lives in it. This page is the operator's reference for the schema lifecycle and the roles; it is not a
+artifacts, issue records (with the numbers and references the source product gave: the platform numbers
+nothing since 004), the schema ledger and the profile row. Source product data never lives in it. This page is the operator's reference for the schema lifecycle and the roles; it is not a
 production admission (docs/s00/MIGRATION.md: that discussion follows S04).
 
 ## Schema lifecycle
@@ -13,7 +13,8 @@ The schema is a sequence of embedded migrations, `storage/postgres/migrations/NN
 |---|---|---|---|
 | 001 | base | the schema, `profile`, `jobs`, `assets` (S01-A) | every row (refused unless accepted) |
 | 002 | payload_digests | `data_sha256` on jobs and assets (S01-B) | nothing (the digests are derived) |
-| 003 | issues | the issue kind on jobs and assets, `issue_numbers` (S03-G) | issue jobs and records (refused unless accepted) |
+| 003 | issues | the issue kind on jobs and assets, `issue_numbers` (S03-G: the platform's own counters, version 3 only) | issue jobs, records and counters (refused unless accepted) |
+| 004 | source_confirmed_issue | drops `issue_numbers`: the source product, not the platform, numbers every document (S03-H, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md) | issue jobs and records (refused unless accepted: an S03-G binary could not read them), and recreates the empty `issue_numbers`; the up step is refused while issue jobs or records exist |
 
 The ledger `reporting_s01.schema_migrations` records every applied step with the SHA-256 of its up file,
 the time and who applied it. The `profile` row names the deployment kind (`production` or
@@ -30,7 +31,8 @@ reporting-migrate plan               # what up would do (--to N for a target)
 reporting-migrate up                 # apply the pending steps, one transaction each
 reporting-migrate init-profile production   # once, after the first up
 reporting-migrate roles --migrator-role reporting_migrator --app-role reporting_app
-reporting-migrate down --to 2        # revert 003; refused while issue rows, issued PDFs or issue counters exist
+reporting-migrate down --to 3        # revert 004; refused while issue jobs or records exist
+reporting-migrate down --to 2        # revert 004 and 003; refused while issue jobs, records or counters exist
 reporting-migrate down --to 2 --accept-data-loss
 ```
 
@@ -41,13 +43,21 @@ does not know, a checksum that differs from the embedded file, a gap, or a profi
 bootstrapped from its profile version on the first `up` (those rows carry the checksum `legacy`).
 
 Rollback is `down --to N`, newest step first; a target above the current version is refused. A down that
-would discard rows is refused unless `--accept-data-loss` is passed; the message names what would go: 003
-discards the issue jobs, the records and the issue counters (after which the numbering of every tenant and
-integration restarts at 1, reusing numbers already printed) while the issued PDFs stay as plain artifacts
-without their records, 001 discards everything including the profile row (`init-profile` is needed after
-the next `up`). Qualification: a fresh database taken up
-to the latest, down to zero and up again has a catalog (columns, types, defaults, nullability, constraints,
-indexes) identical to the first (integration/migrate_test.go).
+would discard rows is refused unless `--accept-data-loss` is passed; the message names what would go: 004
+discards the issue jobs and records (an S03-H issue record carries the source product's string number and
+references, which an S03-G binary could not read) and recreates the empty `issue_numbers`, the issued PDFs
+staying as plain artifacts without their records; 003 discards the issue jobs, the records and the issue
+counters (the counters exist at version 3 only: S03-G's platform numbering, after which the numbering of every
+tenant and integration restarts at 1, reusing numbers already printed) while the issued PDFs stay as plain
+artifacts without their records; 001 discards everything including the profile row (`init-profile` is needed
+after the next `up`). The up step of 004 has the opposite precondition: it is refused, whatever the operator
+accepts, while any issue job or issue record exists, because those are S03-G's documents, numbered by the
+platform and never confirmed by a source product, and cannot become source-confirmed ones. The message names
+the count and the remedy, `reporting-migrate down --to 2 --accept-data-loss`, which deletes them (their issued
+PDFs stay as plain artifacts); then `up` applies 003 and 004. A store that never issued under S03-G migrates
+without ceremony. Qualification: a fresh database taken up to the latest, down to zero and up again has a
+catalog (columns, types, defaults, nullability, constraints, indexes) identical to the first, and 004 down gives
+back exactly the catalog of version 3 (integration/migrate_test.go, integration/testdata/catalog_00{3,4}.txt).
 
 ## Roles
 
@@ -56,7 +66,8 @@ Two roles, created by the DBA with their own login and password policy:
 - the migrator role owns the schema and every table and runs `up`, `down` and `roles`; it needs
   `GRANT CREATE ON DATABASE <db> TO <migrator>` for the very first `up` (it creates the schema), nothing after;
 - the application role is what the server connects as: USAGE on the schema, SELECT on every table, INSERT
-  and UPDATE on the data tables (`jobs`, `assets`, `issue_numbers`), nothing else: no DELETE, no TRUNCATE,
+  and UPDATE on the data tables (`jobs`, `assets`, and S03-G's `issue_numbers` where the schema is at
+  version 3: 004 drops it, and a store at the latest version is not missing it), nothing else: no DELETE, no TRUNCATE,
   no DDL, no CREATE on the schema, no ownership, not a superuser, no role or database creation, no RLS
   bypass, no replication, a member of no role (a membership is a `SET ROLE` away from more), no `SET ROLE`
   in effect, not the owner of the database and without CREATE on it (an owner can drop the database and set

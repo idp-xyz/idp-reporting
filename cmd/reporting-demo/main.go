@@ -36,6 +36,21 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// openFailure is what the demo says when a fixture store cannot be opened. When the error is one of
+// the platform's own refusals its message is kept: it names the reason and the remedy (the
+// precondition of migration 004 with its `down --to 2 --accept-data-loss`, a schema older than the
+// binary's, a database that is not a fixture one) and carries nothing of the connection. Any other
+// error, a connection failure for one, may carry the connection's details and is reduced to the
+// generic text.
+func openFailure(generic string, e error) error {
+	for _, own := range []error{r.ErrDenied, r.ErrIntegrity, r.ErrInvalid, r.ErrConflict} {
+		if errors.Is(e, own) {
+			return fmt.Errorf("%s: %w", generic, e)
+		}
+	}
+	return errors.New(generic)
+}
 func run() error {
 	profile := flag.String("profile", "", "required: contract-simulator")
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
@@ -87,13 +102,13 @@ func run() error {
 		defer cancel()
 		store, e := postgres.Open(dbctx, dsn, *initialize)
 		if e != nil {
-			return fmt.Errorf("guarded fixture could not be opened")
+			return openFailure("guarded fixture could not be opened", e)
 		}
 		defer store.Close()
 		repo = store
 		source, e := pgsource.Open(dbctx, os.Getenv("REPORTING_S01_SOURCE_DSN"), *initialize)
 		if e != nil {
-			return fmt.Errorf("separate durable source fixture could not be opened")
+			return openFailure("separate durable source fixture could not be opened", e)
 		}
 		defer source.Close()
 		for i, seed := range []contractsim.Fixture{contractsim.Financial().Fixture(), contractsim.Shipment().Fixture()} {

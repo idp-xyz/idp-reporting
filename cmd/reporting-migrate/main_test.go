@@ -82,11 +82,11 @@ func TestMigrateCommand(t *testing.T) {
 		}
 		return out
 	}
-	out := expect([]string{"status"}, false, "pending:  001 base", "pending:  003 issues")
+	out := expect([]string{"status"}, false, "pending:  001 base", "pending:  003 issues", "pending:  004 source_confirmed_issue")
 	if strings.Contains(out, "applied:") {
 		t.Fatal(out)
 	}
-	expect([]string{"plan"}, false, "up   001 base", "up   003 issues")
+	expect([]string{"plan"}, false, "up   001 base", "up   003 issues", "up   004 source_confirmed_issue")
 	expect([]string{"up", "--to", "2"}, false, "at version 002")
 	expect([]string{"init-profile", "contract-simulator-only"}, false, "profile contract-simulator-only")
 	expect([]string{"init-profile", "production"}, true, "already")
@@ -100,17 +100,28 @@ func TestMigrateCommand(t *testing.T) {
 		})
 	}
 	expect([]string{"roles", "--migrator-role", "reporting_cli_mig_t", "--app-role", "reporting_cli_app_t"}, false, "owned by reporting_cli_mig_t")
-	expect([]string{"up"}, false, "at version 003")
-	out = expect([]string{"status"}, false, "applied:  001 base", "applied:  003 issues", "the connected role is not the application role")
+	expect([]string{"up"}, false, "at version 004")
+	out = expect([]string{"status"}, false, "applied:  001 base", "applied:  003 issues", "applied:  004 source_confirmed_issue", "the connected role is not the application role")
 	if strings.Contains(out, "pending:") {
 		t.Fatal(out)
 	}
-	expect([]string{"plan", "--to", "1"}, false, "down 003 issues", "down 002 payload_digests")
+	expect([]string{"plan", "--to", "1"}, false, "down 004 source_confirmed_issue", "down 003 issues", "down 002 payload_digests")
 	expect([]string{"down"}, true, "explicit --to")
-	expect([]string{"down", "--to", "4"}, true, "outside")
+	expect([]string{"down", "--to", "5"}, true, "outside")
 	expect([]string{"up", "--to", "1"}, true, "wrong side")
 	expect([]string{"down", "--to", "2"}, false, "at version 002")
-	expect([]string{"plan"}, false, "up   003 issues")
+	expect([]string{"plan"}, false, "up   003 issues", "up   004 source_confirmed_issue")
+	// 004 up is refused while S03-G's platform-numbered documents exist, with the remedy; the
+	// operator removes them with the down that accepts the loss and goes up.
+	expect([]string{"up", "--to", "3"}, false, "at version 003")
+	if _, err := admin.Exec(ctx, `INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,data_sha256) VALUES('11111111111111111111111111111111','t','i','x','y','issue','succeeded','k','h',now(),'{"Number":1}','0')`); err != nil {
+		t.Fatal(err)
+	}
+	expect([]string{"up"}, true, "migration 004 up", "1 issue jobs and records exist", "reporting-migrate down --to 2 --accept-data-loss")
+	expect([]string{"status"}, false, "applied:  003 issues", "pending:  004 source_confirmed_issue")
+	expect([]string{"down", "--to", "2"}, true, "--accept-data-loss")
+	expect([]string{"down", "--to", "2", "--accept-data-loss"}, false, "at version 002")
+	expect([]string{"up"}, false, "at version 004")
 	if _, err := admin.Exec(ctx, "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=1"); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +132,6 @@ func TestMigrateCommand(t *testing.T) {
 	if _, err := admin.Exec(ctx, "DROP SCHEMA reporting_s01 CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	expect([]string{"up"}, false, "at version 003")
+	expect([]string{"up"}, false, "at version 004")
 	expect([]string{"init-profile", "contract-simulator-only"}, false)
 }
