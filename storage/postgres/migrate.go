@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/internal/fixturedb"
 	r "idp.local/reporting/reporting"
+	"io/fs"
 	"regexp"
 	"sort"
 	"strconv"
@@ -68,8 +69,10 @@ const lockKey int64 = 0x5245504f5254 // "REPORT"
 var migrationName = regexp.MustCompile(`^(\d{3})_([a-z0-9_]+)\.(up|down)\.sql$`)
 
 // Migrations lists the embedded steps in order; an inconsistent set is a programming error.
-func Migrations() ([]Migration, error) {
-	entries, err := migrationFiles.ReadDir("migrations")
+func Migrations() ([]Migration, error) { return migrationsFrom(migrationFiles) }
+
+func migrationsFrom(files fs.FS) ([]Migration, error) {
+	entries, err := fs.ReadDir(files, "migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +82,7 @@ func Migrations() ([]Migration, error) {
 		if m == nil {
 			return nil, fmt.Errorf("migration file %q is not NNN_name.up|down.sql", e.Name())
 		}
-		b, err := migrationFiles.ReadFile("migrations/" + e.Name())
+		b, err := fs.ReadFile(files, "migrations/"+e.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +153,11 @@ func Status(ctx context.Context, pool *pgxpool.Pool) (State, error) {
 		}
 	case hasProfile:
 		var version int
-		if err := pool.QueryRow(ctx, "SELECT version FROM reporting_s01.profile WHERE singleton").Scan(&version); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if err := pool.QueryRow(ctx, "SELECT version FROM reporting_s01.profile WHERE singleton").Scan(&version); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				st.Problems = append(st.Problems, "a profile table without a row and no ledger: the database is half-initialised")
+				return st, nil
+			}
 			return State{}, err
 		}
 		st.Legacy = true
@@ -168,6 +175,17 @@ func Status(ctx context.Context, pool *pgxpool.Pool) (State, error) {
 			st.Problems = append(st.Problems, fmt.Sprintf("version %d was applied from a different file (checksum %.12s, embedded %.12s)", a.Version, a.Checksum, known[a.Version-1].Checksum))
 		case a.Checksum != "legacy" && a.Name != known[a.Version-1].Name:
 			st.Problems = append(st.Problems, fmt.Sprintf("version %d was applied under another name (%s)", a.Version, a.Name))
+		case a.Checksum == "legacy" && !st.Legacy && !strings.HasPrefix(a.AppliedBy, "legacy:"):
+			st.Problems = append(st.Problems, fmt.Sprintf("version %d claims to be a legacy row but was not recorded by the bootstrap", a.Version))
+		}
+	}
+	if hasLedger && hasProfile {
+		var version *int
+		if err := pool.QueryRow(ctx, "SELECT version FROM reporting_s01.profile WHERE singleton").Scan(&version); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return State{}, err
+		}
+		if version != nil && *version != st.Current() {
+			st.Problems = append(st.Problems, fmt.Sprintf("the profile says version %d while the ledger is at %d", *version, st.Current()))
 		}
 	}
 	for v := st.Current() + 1; v <= len(known); v++ {
@@ -176,16 +194,29 @@ func Status(ctx context.Context, pool *pgxpool.Pool) (State, error) {
 	return st, nil
 }
 
+// Direction of a plan: Up only applies, Down only reverts; a target on the wrong side of the
+// current version is refused instead of silently doing nothing.
+type Direction int
+
+const (
+	Either Direction = iota
+	Upward
+	Downward
+)
+
 // Plan describes what Up or Down to target would do, without doing it.
-func Plan(st State, target int) ([]string, error) {
+func Plan(st State, target int, dir Direction) ([]string, error) {
 	if target < 0 || target > st.Latest() {
 		return nil, fmt.Errorf("target %d is outside 0..%d: %w", target, st.Latest(), r.ErrInvalid)
 	}
 	if len(st.Problems) > 0 {
 		return nil, fmt.Errorf("the ledger is not usable: %s: %w", strings.Join(st.Problems, "; "), r.ErrIntegrity)
 	}
-	var out []string
 	current := st.Current()
+	if dir == Upward && target < current || dir == Downward && target > current {
+		return nil, fmt.Errorf("target %d is on the wrong side of the current version %d: %w", target, current, r.ErrInvalid)
+	}
+	var out []string
 	for v := current + 1; v <= target; v++ {
 		out = append(out, fmt.Sprintf("up   %03d %s", v, st.Known[v-1].Name))
 	}
@@ -206,7 +237,7 @@ func Up(ctx context.Context, pool *pgxpool.Pool, target int, by string) error {
 	if target == 0 {
 		target = st.Latest()
 	}
-	if _, err := Plan(st, target); err != nil {
+	if _, err := Plan(st, target, Upward); err != nil {
 		return err
 	}
 	if st.Legacy {
@@ -229,7 +260,7 @@ func Down(ctx context.Context, pool *pgxpool.Pool, target int, by string, accept
 	if err != nil {
 		return err
 	}
-	if _, err := Plan(st, target); err != nil {
+	if _, err := Plan(st, target, Downward); err != nil {
 		return err
 	}
 	if st.Legacy {
@@ -256,7 +287,7 @@ func bootstrapLedger(ctx context.Context, pool *pgxpool.Pool, st State, by strin
 		return err
 	}
 	defer rollback(ctx, tx)
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+	if err := lock(ctx, tx); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, ledgerDDL); err != nil {
@@ -275,18 +306,21 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 	var n int64
 	switch m.Version {
 	case 1:
-		if err := tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs)+(SELECT count(*) FROM reporting_s01.assets)").Scan(&n); err != nil {
+		var profiles int64
+		if err := tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs)+(SELECT count(*) FROM reporting_s01.assets), (SELECT count(*) FROM reporting_s01.profile)").Scan(&n, &profiles); err != nil {
 			return "", err
 		}
-		if n > 0 {
-			return fmt.Sprintf("%d jobs and assets", n), nil
+		if n > 0 || profiles > 0 {
+			return fmt.Sprintf("%d jobs and assets and the profile row (init-profile is needed after the next up)", n), nil
 		}
 	case 3:
-		if err := tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&n); err != nil {
+		var counters, issued int64
+		if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue'),
+(SELECT count(*) FROM reporting_s01.issue_numbers), (SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND data ? 'Issue')`).Scan(&n, &counters, &issued); err != nil {
 			return "", err
 		}
-		if n > 0 {
-			return fmt.Sprintf("%d issue jobs and records", n), nil
+		if n > 0 || counters > 0 || issued > 0 {
+			return fmt.Sprintf("%d issue jobs and records, %d issued PDFs and %d issue counters (the numbering of every tenant and integration would restart at 1, reusing numbers already printed)", n, issued, counters), nil
 		}
 	}
 	return "", nil
@@ -300,23 +334,53 @@ func step(ctx context.Context, pool *pgxpool.Pool, m Migration, up bool, by stri
 		return err
 	}
 	defer rollback(ctx, tx)
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+	if err := lock(ctx, tx); err != nil {
 		return err
 	}
 	if m.Version == 1 && up {
-		if _, err := tx.Exec(ctx, "CREATE SCHEMA IF NOT EXISTS reporting_s01"); err != nil {
+		// A backend that waited on the lock has not processed the catalog invalidations of the
+		// migrator it waited for, and a negative syscache entry from the earlier Status would
+		// make CREATE SCHEMA IF NOT EXISTS fail on a duplicate; a catalog scan takes a lock and
+		// accepts them. The schema is created only when absent, so the migrator role needs
+		// CREATE on the database for the very first run only.
+		var schema bool
+		if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname='reporting_s01')").Scan(&schema); err != nil {
 			return err
+		}
+		if !schema {
+			if _, err := tx.Exec(ctx, "CREATE SCHEMA reporting_s01"); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec(ctx, ledgerDDL); err != nil {
 			return err
 		}
 	}
-	var applied bool
-	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM reporting_s01.schema_migrations WHERE version=$1)", m.Version).Scan(&applied); err != nil {
+	// Under the lock, the ledger's head must be exactly where this step expects it: the step
+	// before it for up, the step itself for down. Another migrator may have moved it since the
+	// plan was made; a stale plan is refused, never applied onto the wrong schema.
+	var head int
+	if err := tx.QueryRow(ctx, "SELECT coalesce(max(version),0) FROM reporting_s01.schema_migrations").Scan(&head); err != nil {
 		return err
 	}
-	if applied == up {
-		return nil // another migrator did it; the lock serialized us behind it
+	want := m.Version - 1
+	if !up {
+		want = m.Version
+	}
+	if head != want {
+		if up && head >= m.Version || !up && head < m.Version {
+			return nil // another migrator did this step; the lock serialized us behind it
+		}
+		return fmt.Errorf("the ledger is at version %d, not %d: another migrator changed the schema, rerun: %w", head, want, r.ErrConflict)
+	}
+	if !(m.Version == 1 && up) { // the profile table exists from 001 on
+		var profileVersion *int
+		if err := tx.QueryRow(ctx, "SELECT version FROM reporting_s01.profile WHERE singleton").Scan(&profileVersion); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if profileVersion != nil && *profileVersion != head {
+			return fmt.Errorf("the profile says version %d while the ledger is at %d: %w", *profileVersion, head, r.ErrIntegrity)
+		}
 	}
 	if up {
 		if _, err := tx.Exec(ctx, m.Up); err != nil {
@@ -355,6 +419,18 @@ func step(ctx context.Context, pool *pgxpool.Pool, m Migration, up bool, by stri
 	return tx.Commit(ctx)
 }
 
+// lock takes the migration lock, waiting at most a minute: a session holding it (any login can
+// take an advisory lock) is reported instead of hanging the operator's run.
+func lock(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '60s'"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+		return fmt.Errorf("another session holds the migration lock (pg_locks shows it) or the server did not answer within a minute: %w", err)
+	}
+	return nil
+}
+
 func rollback(ctx context.Context, tx pgx.Tx) {
 	cleanup, cancel := fixturedb.RollbackContext(ctx)
 	defer cancel()
@@ -371,8 +447,20 @@ func Verify(ctx context.Context, pool *pgxpool.Pool, profile string) error {
 	if len(st.Problems) > 0 {
 		return fmt.Errorf("schema ledger: %s: %w", strings.Join(st.Problems, "; "), r.ErrIntegrity)
 	}
-	if st.Legacy || st.Current() != st.Latest() {
+	if st.Legacy {
+		return fmt.Errorf("no schema ledger (the database predates S04-A); run reporting-migrate up to record it: %w", r.ErrDenied)
+	}
+	if st.Current() != st.Latest() {
 		return fmt.Errorf("schema at version %d, the binary needs %d (run reporting-migrate up): %w", st.Current(), st.Latest(), r.ErrDenied)
+	}
+	if profile == ProfileProduction {
+		// No production store existed before the ledger: a legacy row there is not a bootstrap
+		// but an unverifiable step.
+		for _, a := range st.Applied {
+			if a.Checksum == "legacy" {
+				return fmt.Errorf("version %d of a production store has no verifiable checksum: %w", a.Version, r.ErrIntegrity)
+			}
+		}
 	}
 	var name string
 	var version int
@@ -420,3 +508,12 @@ const (
 	ProfileFixture    = "contract-simulator-only"
 	ProfileProduction = "production"
 )
+
+// ApplyStepForTests runs one step as a stale migrator would, for the qualification tests.
+func ApplyStepForTests(ctx context.Context, pool *pgxpool.Pool, version int, up bool) error {
+	known, err := Migrations()
+	if err != nil {
+		return err
+	}
+	return step(ctx, pool, known[version-1], up, "test", true)
+}

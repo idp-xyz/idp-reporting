@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	r "idp.local/reporting/reporting"
 	"slices"
@@ -30,7 +31,7 @@ var fixtureDatabases = []string{"reporting_test_s01", "reporting_test_s01_race"}
 func OpenProduction(ctx context.Context, cfg ProductionConfig) (*Store, error) {
 	c, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
-		return nil, r.ErrInvalid
+		return nil, fmt.Errorf("%v: %w", err, r.ErrInvalid)
 	}
 	if !cfg.InsecureTestOnly {
 		if slices.Contains(fixtureDatabases, c.ConnConfig.Database) {
@@ -70,17 +71,24 @@ var readTables = []string{"profile", "schema_migrations"}
 // INSERT or UPDATE on a data table.
 func RoleProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	var problems []string
-	var super, createRole, createDB, bypassRLS bool
-	if err := pool.QueryRow(ctx, "SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls FROM pg_roles WHERE rolname=current_user").Scan(&super, &createRole, &createDB, &bypassRLS); err != nil {
+	var super, createRole, createDB, bypassRLS, sameSession bool
+	var memberships int
+	if err := pool.QueryRow(ctx, `SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls, session_user=current_user,
+(SELECT count(*) FROM pg_auth_members m WHERE m.member=r.oid) FROM pg_roles r WHERE rolname=current_user`).Scan(&super, &createRole, &createDB, &bypassRLS, &sameSession, &memberships); err != nil {
 		return nil, err
 	}
-	for name, v := range map[string]bool{"superuser": super, "role creation": createRole, "database creation": createDB, "row security bypass": bypassRLS} {
+	for name, v := range map[string]bool{"superuser": super, "role creation": createRole, "database creation": createDB, "row security bypass": bypassRLS, "SET ROLE in effect": !sameSession} {
 		if v {
 			problems = append(problems, name)
 		}
 	}
+	if memberships > 0 {
+		// A member of another role can SET ROLE to it (or inherits its privileges): the
+		// application role is a member of nothing.
+		problems = append(problems, fmt.Sprintf("member of %d roles", memberships))
+	}
 	var ownsSchema, createOnSchema bool
-	if err := pool.QueryRow(ctx, "SELECT pg_catalog.pg_get_userbyid(nspowner)=current_user, has_schema_privilege(current_user,'reporting_s01','CREATE') FROM pg_namespace WHERE nspname='reporting_s01'").Scan(&ownsSchema, &createOnSchema); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT pg_has_role(current_user,nspowner,'USAGE'), has_schema_privilege(current_user,'reporting_s01','CREATE') FROM pg_namespace WHERE nspname='reporting_s01'").Scan(&ownsSchema, &createOnSchema); err != nil {
 		return nil, err
 	}
 	if ownsSchema {
@@ -89,7 +97,7 @@ func RoleProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	if createOnSchema {
 		problems = append(problems, "CREATE on the schema")
 	}
-	rows, err := pool.Query(ctx, `SELECT c.relname, pg_catalog.pg_get_userbyid(c.relowner)=current_user,
+	rows, err := pool.Query(ctx, `SELECT c.relname, pg_has_role(current_user,c.relowner,'USAGE'),
 has_table_privilege(current_user,c.oid,'SELECT'), has_table_privilege(current_user,c.oid,'INSERT'), has_table_privilege(current_user,c.oid,'UPDATE'),
 has_table_privilege(current_user,c.oid,'DELETE'), has_table_privilege(current_user,c.oid,'TRUNCATE')
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r' ORDER BY c.relname`)
@@ -105,6 +113,9 @@ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rep
 			return nil, err
 		}
 		seen[name] = true
+		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {
+			problems = append(problems, "unexpected table "+name)
+		}
 		if owns {
 			problems = append(problems, "owns table "+name)
 		}
@@ -147,21 +158,11 @@ func Grants(ctx context.Context, pool *pgxpool.Pool, migrator, app string) error
 		return err
 	}
 	defer rollback(ctx, tx)
-	q := func(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
-	stmts := []string{
-		"ALTER SCHEMA reporting_s01 OWNER TO " + q(migrator),
-		"REVOKE ALL ON SCHEMA reporting_s01 FROM PUBLIC",
-		"REVOKE ALL ON ALL TABLES IN SCHEMA reporting_s01 FROM PUBLIC",
-		"REVOKE ALL ON ALL TABLES IN SCHEMA reporting_s01 FROM " + q(app),
-		"GRANT USAGE ON SCHEMA reporting_s01 TO " + q(app),
-		"GRANT SELECT ON ALL TABLES IN SCHEMA reporting_s01 TO " + q(app),
-		"ALTER DEFAULT PRIVILEGES FOR ROLE " + q(migrator) + " IN SCHEMA reporting_s01 REVOKE ALL ON TABLES FROM " + q(app),
-		"ALTER DEFAULT PRIVILEGES FOR ROLE " + q(migrator) + " IN SCHEMA reporting_s01 GRANT SELECT ON TABLES TO " + q(app),
-	}
-	for _, t := range dataTables {
-		stmts = append(stmts, "GRANT INSERT, UPDATE ON reporting_s01."+t+" TO "+q(app))
-	}
-	rows, err := tx.Query(ctx, "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r'")
+	q := func(name string) string { return pgx.Identifier{name}.Sanitize() }
+	table := func(name string) string { return pgx.Identifier{"reporting_s01", name}.Sanitize() }
+	// Only the tables the binary knows are touched, and every identifier is quoted: a table
+	// planted in the schema under a name that is SQL is reported, never executed.
+	rows, err := tx.Query(ctx, "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r' ORDER BY 1")
 	if err != nil {
 		return err
 	}
@@ -172,17 +173,36 @@ func Grants(ctx context.Context, pool *pgxpool.Pool, migrator, app string) error
 			rows.Close()
 			return err
 		}
+		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {
+			rows.Close()
+			return fmt.Errorf("unexpected table %q in the schema: %w", name, r.ErrIntegrity)
+		}
 		tables = append(tables, name)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	owners := make([]string, 0, len(tables))
+	stmts := []string{"ALTER SCHEMA reporting_s01 OWNER TO " + q(migrator)}
 	for _, t := range tables {
-		owners = append(owners, "ALTER TABLE reporting_s01."+t+" OWNER TO "+q(migrator))
+		stmts = append(stmts, "ALTER TABLE "+table(t)+" OWNER TO "+q(migrator))
 	}
-	for _, s := range append(owners, stmts...) {
+	stmts = append(stmts,
+		"REVOKE ALL ON SCHEMA reporting_s01 FROM PUBLIC",
+		"REVOKE ALL ON SCHEMA reporting_s01 FROM "+q(app),
+		"REVOKE ALL ON ALL TABLES IN SCHEMA reporting_s01 FROM PUBLIC",
+		"REVOKE ALL ON ALL TABLES IN SCHEMA reporting_s01 FROM "+q(app),
+		"GRANT USAGE ON SCHEMA reporting_s01 TO "+q(app),
+		"ALTER DEFAULT PRIVILEGES FOR ROLE "+q(migrator)+" IN SCHEMA reporting_s01 REVOKE ALL ON TABLES FROM "+q(app),
+		"ALTER DEFAULT PRIVILEGES FOR ROLE "+q(migrator)+" IN SCHEMA reporting_s01 GRANT SELECT ON TABLES TO "+q(app),
+	)
+	for _, t := range tables {
+		stmts = append(stmts, "GRANT SELECT ON "+table(t)+" TO "+q(app))
+		if slices.Contains(dataTables, t) {
+			stmts = append(stmts, "GRANT INSERT, UPDATE ON "+table(t)+" TO "+q(app))
+		}
+	}
+	for _, s := range stmts {
 		if _, err := tx.Exec(ctx, s); err != nil {
 			return fmt.Errorf("%s: %w", s, err)
 		}

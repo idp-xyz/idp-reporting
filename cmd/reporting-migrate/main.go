@@ -11,9 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/postgres"
+	"io"
 	"os"
 	"os/signal"
 	"os/user"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -30,21 +32,19 @@ func usage() error {
 the store is REPORTING_STORE_DSN; up/down/roles/init-profile run as the migrator role (or an owner)`)
 }
 
-func run(args []string, out *os.File) error {
+func run(args []string, out io.Writer) error {
 	if len(args) < 1 {
 		return usage()
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
 	dsn := os.Getenv("REPORTING_STORE_DSN")
 	if dsn == "" {
 		return errors.New("set REPORTING_STORE_DSN")
 	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return r.ErrInvalid
+		return fmt.Errorf("REPORTING_STORE_DSN: %v: %w", err, r.ErrInvalid)
 	}
 	cfg.MaxConns = 2
 	cfg.ConnConfig.ConnectTimeout = 5 * time.Second
@@ -63,9 +63,12 @@ func run(args []string, out *os.File) error {
 	accept := fs.Bool("accept-data-loss", false, "down: discard the rows a step cannot keep")
 	migrator := fs.String("migrator-role", "", "roles: the role that owns the schema and runs migrations")
 	app := fs.String("app-role", "", "roles: the role the server connects as")
+	timeout := fs.Duration("timeout", 5*time.Minute, "the whole run's time limit (002 rewrites every row; size it for the store)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	defer cancel()
 	switch args[0] {
 	case "status":
 		st, err := postgres.Status(ctx, pool)
@@ -90,8 +93,10 @@ func run(args []string, out *os.File) error {
 			fmt.Fprintf(out, "problem:  %s\n", p)
 		}
 		if problems, err := postgres.RoleProblems(ctx, pool); err == nil {
-			for _, p := range problems {
-				fmt.Fprintf(out, "role:     connected role is not the application role: %s\n", p)
+			if len(problems) == 0 {
+				fmt.Fprintln(out, "role:     the connected role satisfies the application role's rules")
+			} else {
+				fmt.Fprintf(out, "role:     the connected role is not the application role (%d rules unmet; expected for the migrator, the server must connect as the application role): %s\n", len(problems), strings.Join(problems, "; "))
 			}
 		}
 		if len(st.Problems) > 0 {
@@ -104,10 +109,11 @@ func run(args []string, out *os.File) error {
 			return err
 		}
 		target := *to
-		if target == 0 {
+		dir := postgres.Either
+		if target == 0 && !isFlagSet(fs, "to") {
 			target = st.Latest()
 		}
-		steps, err := postgres.Plan(st, target)
+		steps, err := postgres.Plan(st, target, dir)
 		if err != nil {
 			return err
 		}
@@ -142,14 +148,17 @@ func run(args []string, out *os.File) error {
 		fmt.Fprintf(out, "at version %03d\n", st.Current())
 		return nil
 	case "roles":
+		if *migrator == "" || *app == "" {
+			return errors.New("roles needs --migrator-role and --app-role (lowercase letters, digits and _, at most 63 characters, different)")
+		}
 		if err := postgres.Grants(ctx, pool, *migrator, *app); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "schema and tables owned by %s; %s may read every table and write the data tables\n", *migrator, *app)
 		return nil
 	case "init-profile":
-		if fs.NArg() != 1 {
-			return usage()
+		if fs.NArg() != 1 || (fs.Arg(0) != postgres.ProfileProduction && fs.Arg(0) != postgres.ProfileFixture) {
+			return fmt.Errorf("init-profile takes %s or %s", postgres.ProfileProduction, postgres.ProfileFixture)
 		}
 		if err := postgres.InitProfile(ctx, pool, fs.Arg(0)); err != nil {
 			return err

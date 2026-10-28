@@ -30,18 +30,21 @@ reporting-migrate plan               # what up would do (--to N for a target)
 reporting-migrate up                 # apply the pending steps, one transaction each
 reporting-migrate init-profile production   # once, after the first up
 reporting-migrate roles --migrator-role reporting_migrator --app-role reporting_app
-reporting-migrate down --to 2        # revert 003; refused while issue rows exist
+reporting-migrate down --to 2        # revert 003; refused while issue rows, issued PDFs or issue counters exist
 reporting-migrate down --to 2 --accept-data-loss
 ```
 
 Each step runs in its own transaction under a transaction-scoped advisory lock, so concurrent migrators
 serialize and a failed step leaves the previous version in place. A ledger that names a version the binary
-does not know, a checksum that differs from the embedded file, or a gap is a problem: `status` reports it,
+does not know, a checksum that differs from the embedded file, a gap, or a profile row at another version is a problem: `status` reports it,
 `up` and `down` refuse, and the server refuses to open. A database made before the ledger existed is
 bootstrapped from its profile version on the first `up` (those rows carry the checksum `legacy`).
 
-Rollback is `down --to N`, newest step first. A down that would discard rows is refused unless
-`--accept-data-loss` is passed; the message names what would go. Qualification: a fresh database taken up
+Rollback is `down --to N`, newest step first; a target above the current version is refused. A down that
+would discard rows is refused unless `--accept-data-loss` is passed; the message names what would go: 003
+discards the issue jobs, records, issued PDFs and the issue counters (after which the numbering of every
+tenant and integration restarts at 1, reusing numbers already printed), 001 discards everything including
+the profile row (`init-profile` is needed after the next `up`). Qualification: a fresh database taken up
 to the latest, down to zero and up again has a catalog (columns, types, defaults, nullability, constraints,
 indexes) identical to the first (integration/migrate_test.go).
 
@@ -49,15 +52,24 @@ indexes) identical to the first (integration/migrate_test.go).
 
 Two roles, created by the DBA with their own login and password policy:
 
-- the migrator role owns the schema and every table and runs `up`, `down` and `roles`;
+- the migrator role owns the schema and every table and runs `up`, `down` and `roles`; it needs
+  `GRANT CREATE ON DATABASE <db> TO <migrator>` for the very first `up` (it creates the schema), nothing after;
 - the application role is what the server connects as: USAGE on the schema, SELECT on every table, INSERT
   and UPDATE on the data tables (`jobs`, `assets`, `issue_numbers`), nothing else: no DELETE, no TRUNCATE,
   no DDL, no CREATE on the schema, no ownership, not a superuser, no role or database creation, no RLS
   bypass. The ledger and the profile it only reads.
 
-`reporting-migrate roles` sets ownership and grants (idempotent) and the migrator's default privileges so
-that tables created by later migrations get the same grants. Run it after `up` when the migration was run
-by another owner (a superuser): the server's role check names any table outside the grants.
+`reporting-migrate roles` sets ownership and grants (idempotent) on the tables that exist; the migrator's
+default privileges give the application role SELECT on tables created later, never INSERT or UPDATE. So
+run `roles` after every `up` or `down` that creates a data table, whoever ran it: until then the server's
+role check names the table and refuses to start (`status` shows the same). `roles` refuses a schema that
+holds a table it does not know, and every identifier it executes is quoted.
+
+Trust boundary: the ledger is written by the migrator role (or an owner, or a superuser). Such a role can
+also rewrite it, drop it or mark rows `legacy`; the checksums detect a changed migration file or a
+mismatched database, not a privileged writer. A production store is never bootstrapped: a `legacy` row
+there is refused. A rollback that discards rows is final; `001 down` leaves the empty schema in place.
+`sslmode=verify-full` verifies the server against the system trust store unless `sslrootcert` names a CA.
 
 The production opening path (`postgres.OpenProduction`) verifies at startup: `sslmode=verify-full`, a
 database that is not a fixture one, the `production` profile row, the ledger at the binary's version, and

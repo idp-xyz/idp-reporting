@@ -22,25 +22,28 @@ the store requires the ledger at the binary's latest version with matching check
 
 A2 · Rollback. Every migration has a down step that is the exact inverse of its up step, qualified by a
 round trip: up to the latest, snapshot the catalog (tables, columns, types, defaults, nullability,
-constraints, indexes), down to zero, up again, and the catalog is identical. A down step that would discard
+constraints, indexes), down to zero, up again, and the catalog is identical (001 down keeps the empty
+schema, whose ownership is the DBA's). A down step that would discard
 rows (003 with issue jobs or records present, 001 with any row) is refused unless the operator passes
 `--accept-data-loss`; 002's down only drops derivable digest columns and is always allowed. Down runs one
 step per transaction, to an explicit target version.
 
-A3 · Least privilege. An operator step (`reporting-migrate roles`) creates or verifies two roles: the
-migrator role that owns the schema and runs the migrations, and the application role that can only read and
+A3 · Least privilege. An operator step (`reporting-migrate roles`) sets the ownership and the grants of two
+roles the DBA created: the migrator role that owns the schema and runs the migrations (it needs CREATE on
+the database for the very first `up`, which creates the schema), and the application role that can only read and
 write rows (USAGE on the schema; SELECT, INSERT and UPDATE on the tables; no DELETE, no TRUNCATE, no DDL, no
 CREATE on the schema, not a superuser, no role or database creation). The production opening path
 (`postgres.OpenProduction`) verifies the connected role against these rules at startup and refuses to run
 otherwise; the guarded fixture path keeps its superuser connections for the destructive test resets, which
-exist only there. The platform's contract suite runs as the application role on the fixture, and the role's
-missing privileges are proven by attempting them.
+exist only there. Every write the server performs (freeze, export, download, issue, cancel) runs as the
+application role on the fixture through the production path, and the role's missing privileges are proven
+by attempting them; the full contract suites keep running through the fixture path.
 
 A4 · Production opening path and the migrate command. `OpenProduction` accepts any database name except the
 fixture names, requires `sslmode=verify-full` (a test-only option disables that check explicitly and is named
 as such), requires the `production` profile row, the ledger at the binary's version and the role rules
 above. `cmd/reporting-migrate` is the operator tool: `status`, `plan`, `up [--to N]`, `down --to N
-[--accept-data-loss]`, `roles --app-role NAME --migrator-role NAME`, `init-profile production|fixture`, on
+[--accept-data-loss]`, `roles --app-role NAME --migrator-role NAME`, `init-profile production|contract-simulator-only`, on
 the DSN in `REPORTING_STORE_DSN`; it never touches source product databases and never runs inside the
 server. The demo server's `-initialize-fixture` applies the migrations through the same migrator.
 

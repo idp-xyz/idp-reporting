@@ -1,5 +1,6 @@
-// Package postgres stores only Reporting assets in a guarded S01 test database.
-// It does not access source product tables. Production roles/migrations are S04.
+// Package postgres stores only the platform's own assets: a guarded test fixture (Open) or a
+// production store (OpenProduction, S04-A), migrated through the embedded migrations. It never
+// accesses source product tables.
 package postgres
 
 import (
@@ -54,9 +55,6 @@ func (s *Store) ResetFixture(ctx context.Context) error {
 	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.issue_numbers")
 	return e
 }
-
-// Pool exposes the connections for the migrate command and the qualification tests.
-func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 type scanner interface{ Scan(...any) error }
 
