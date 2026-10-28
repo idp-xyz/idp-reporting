@@ -67,15 +67,15 @@
   "verapdf": "verapdf/cli v1.30.3"
  },
  "github_actions": {
-  "pull_request": null,
-  "run": null,
-  "head": null,
+  "pull_request": 10,
+  "run": 40673628831,
+  "head": "1248635",
   "jobs": [
    "Go format, vet, build, test and race",
    "PostgreSQL contract and durable tests",
    "Console syntax and DOM tests",
    "PDF export and document previews with the pinned Typst, fonts and veraPDF"
   ],
-  "result": "pending"
+  "result": "all pass"
  }
 }
