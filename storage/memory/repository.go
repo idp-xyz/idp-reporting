@@ -18,15 +18,14 @@ type Store struct {
 	snapshots map[string]r.Snapshot
 	artifacts map[string]r.Artifact
 	issues    map[string]r.Issue
-	numbers   map[[2]string]int64 // the last issue number per tenant and integration
-	order     []string            // job ids in admission order, for the issue listing
+	order     []string // job ids in admission order, for the issue listing
 }
 
 func New(now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}, numbers: map[[2]string]int64{}}
+	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}}
 }
 func clone[T any](v T) T {
 	b, e := json.Marshal(v)
@@ -65,13 +64,6 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if len(s.jobs) >= 10000 {
 		return r.Job{}, r.ErrBudget
 	}
-	if j.Kind == "issue" {
-		// The number is the store's to give: consecutive per tenant and integration, never
-		// reused, taken when the job is admitted so that a failed job explains its gap.
-		k := [2]string{j.Owner.Tenant, j.Owner.Integration}
-		s.numbers[k]++
-		j.Number = s.numbers[k]
-	}
 	s.keys[key] = j.ID
 	s.jobs[j.ID] = clone(j)
 	s.order = append(s.order, j.ID)
@@ -99,7 +91,9 @@ func (s *Store) Cancel(ctx context.Context, i r.Identity, id string) (r.Job, err
 	if !ok || v.Owner.Identity != i {
 		return r.Job{}, r.ErrNotFound
 	}
-	if v.State == "queued" || v.State == "running" {
+	// A running issue job is not cancelled (S03-H): the source product may already hold a
+	// reservation for it, so it finishes, or fails and voids; it is returned unchanged.
+	if v.State == "queued" || (v.State == "running" && v.Kind != "issue") {
 		v.State = "cancelled"
 		v.LeaseUntil = time.Time{}
 		s.jobs[id] = v

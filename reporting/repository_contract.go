@@ -39,8 +39,15 @@ func IssueRequestHash(templateID string, version int, templateSHA256, snapshotID
 	}{templateID, version, templateSHA256, snapshotID, row})
 }
 func issueFields(j Job) bool {
-	return validID(j.TemplateID) && j.TemplateVersion >= 1 && len(j.Template) >= 2 && len(j.Template) <= MaxTemplateBytes && json.Valid([]byte(j.Template)) && j.TemplateSHA256 == bytesDigest([]byte(j.Template)) && j.RowIndex >= 0 && j.RowIndex < MaxRows && j.Number >= 0
+	return validID(j.TemplateID) && j.TemplateVersion >= 1 && len(j.Template) >= 2 && len(j.Template) <= MaxTemplateBytes && json.Valid([]byte(j.Template)) && j.TemplateSHA256 == bytesDigest([]byte(j.Template)) && j.RowIndex >= 0 && j.RowIndex < MaxRows
 }
+
+// validRef: a reference the source product gave (its reservation or its confirmation), 1..128 bytes.
+func validRef(s string) bool { return len(s) >= 1 && len(s) <= 128 }
+
+// wholeSecond: a time that is set and has no fraction of a second. It is judged by value, never by
+// zone or representation: a time read back from a database may carry another location.
+func wholeSecond(t time.Time) bool { return !t.IsZero() && t.Equal(t.Truncate(time.Second)) }
 func ValidateAdmission(j Job) error {
 	if !validID(j.ID) || !j.Owner.Identity.Valid() || j.Owner.Integration == "" || !validKey(j.Key) || j.State != "queued" || j.Generation != 0 || j.RequestHash == "" || j.Prepared.Context.Owner != j.Owner || j.Prepared.QueryHash != QueryHash(j.Query) {
 		return ErrInvalid
@@ -51,7 +58,7 @@ func ValidateAdmission(j Job) error {
 			return ErrInvalid
 		}
 	case "export":
-		if !validID(j.SnapshotID) || !validFormat(j.Format) || j.RequestHash != ExportRequestHash(j.SnapshotID, j.Format) || j.TemplateID != "" || j.Template != "" || j.Number != 0 {
+		if !validID(j.SnapshotID) || !validFormat(j.Format) || j.RequestHash != ExportRequestHash(j.SnapshotID, j.Format) || j.TemplateID != "" || j.Template != "" {
 			return ErrInvalid
 		}
 	case "issue":
@@ -61,7 +68,7 @@ func ValidateAdmission(j Job) error {
 	default:
 		return ErrInvalid
 	}
-	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0 || j.Number != 0) {
+	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0) {
 		return ErrInvalid
 	}
 	return nil
@@ -93,7 +100,13 @@ func ValidatePublication(j Job, p Publication) error {
 		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || len(v.Content) == 0 || len(v.Content) > MaxArtifactBytes || v.SHA256 != bytesDigest(v.Content) || v.Issue != j.ID {
 			return ErrIntegrity
 		}
-		if rec.ID != j.ID || rec.Owner != j.Owner || rec.Number != j.Number || j.Number < 1 || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages || rec.IssuedAt.IsZero() || !rec.IssuedAt.Equal(rec.IssuedAt.Truncate(time.Second)) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
+		if rec.ID != j.ID || rec.Owner != j.Owner || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages {
+			return ErrIntegrity
+		}
+		// What the source product gave (S03-H): its number, the two references of its reservation
+		// and confirmation, the issue time and the confirmation time (never before it); the stamp
+		// is the one the number, the issue time and the record id make.
+		if !ValidIssueNumber(rec.Number) || !validRef(rec.ReservationRef) || !validRef(rec.ConfirmationRef) || !wholeSecond(rec.IssuedAt) || !wholeSecond(rec.ConfirmedAt) || rec.ConfirmedAt.Before(rec.IssuedAt) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
 			return ErrIntegrity
 		}
 	default:

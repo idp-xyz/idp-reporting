@@ -44,6 +44,37 @@ func (a *changingLayoutCatalog) DescribeCatalog(ctx context.Context, source r.So
 	}
 	return list, nil
 }
+
+// The three calls of reporting.DocumentAuthority, forwarded to the wrapped adapter: a struct that
+// embeds r.Adapter alone hides them, and a test that issues through this wrapper needs them. An
+// adapter that cannot issue is unsupported, as the service itself would say.
+func (a *changingLayoutCatalog) authority() (r.DocumentAuthority, error) {
+	if v, ok := a.Adapter.(r.DocumentAuthority); ok {
+		return v, nil
+	}
+	return nil, r.ErrUnsupported
+}
+func (a *changingLayoutCatalog) PrepareDocument(ctx context.Context, source r.SourceContext, in r.IssueIntent) (r.IssueReservation, error) {
+	v, e := a.authority()
+	if e != nil {
+		return r.IssueReservation{}, e
+	}
+	return v.PrepareDocument(ctx, source, in)
+}
+func (a *changingLayoutCatalog) ConfirmIssue(ctx context.Context, source r.SourceContext, c r.IssueConfirmation) (r.IssueReceipt, error) {
+	v, e := a.authority()
+	if e != nil {
+		return r.IssueReceipt{}, e
+	}
+	return v.ConfirmIssue(ctx, source, c)
+}
+func (a *changingLayoutCatalog) VoidIssue(ctx context.Context, source r.SourceContext, jobID, reason string) error {
+	v, e := a.authority()
+	if e != nil {
+		return e
+	}
+	return v.VoidIssue(ctx, source, jobID, reason)
+}
 func TestPublicationChecksTargetColumnsAfterCatalogChange(t *testing.T) {
 	p := contractsim.DemoPrincipal()
 	source := contractsim.Financial()

@@ -270,7 +270,14 @@ func validateTotals(t map[string]string, q QuerySpec, cols []Column) error {
 func validKey(key string) bool {
 	return len(key) > 0 && len(key) <= 128 && !strings.ContainsAny(key, "\r\n\x00")
 }
-func validID(id string) bool { b, e := hex.DecodeString(id); return e == nil && len(b) == 16 }
+
+// validID accepts the canonical form of a platform id only: 32 lowercase hexadecimal characters,
+// which is what NewID makes. An uppercase spelling decodes to the same bytes but is another
+// string, and the issue stamp's width guarantee (docs/S03H_SCOPE.md) assumes the lowercase form.
+func validID(id string) bool {
+	b, e := hex.DecodeString(id)
+	return e == nil && len(b) == 16 && hex.EncodeToString(b) == id
+}
 func offset(s string) (int, error) {
 	v, e := strconv.Atoi(s)
 	if e != nil || v < 0 {

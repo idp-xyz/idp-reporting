@@ -82,8 +82,8 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 	if _, e = issuance.New(nil, nil, renderer); !errors.Is(e, r.ErrInvalid) {
 		t.Fatal("issuer without a store")
 	}
-	job := r.Job{ID: strings.Repeat("7", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 1, Number: 4}
-	req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000004 - 2026-10-28T00:00:00Z - " + job.ID, At: issuedAt}
+	job := r.Job{ID: strings.Repeat("7", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 1}
+	req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: r.IssueStamp("AR-000004", issuedAt, job.ID), At: issuedAt}
 	// Not published yet.
 	if _, e = issuer.Issue(ctx, req); !errors.Is(e, r.ErrUnpublished) || renderer.calls != 0 {
 		t.Fatal("unpublished template rendered", e)
@@ -202,8 +202,8 @@ func TestIssuerResolvesTheBackgroundAsThePreviewDoes(t *testing.T) {
 			t.Fatal(e)
 		}
 		frozen, _ := doctemplates.Canonical(v.Layout)
-		job := r.Job{ID: strings.Repeat("8", 32), Owner: owner, Kind: "issue", TemplateID: v.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 0, Number: 1}
-		req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000001 - 2026-10-28T00:00:00Z - " + job.ID, At: issuedAt}
+		job := r.Job{ID: strings.Repeat("8", 32), Owner: owner, Kind: "issue", TemplateID: v.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 0}
+		req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: r.IssueStamp("AR-000001", issuedAt, job.ID), At: issuedAt}
 		renderer := &fakeRenderer{out: []byte("%PDF-1.7 issued"), pages: 1}
 		without, _ := issuance.New(store, nil, renderer)
 		if _, e := without.Issue(ctx, req); !errors.Is(e, r.ErrUnsupported) || renderer.calls != 0 {

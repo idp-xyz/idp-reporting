@@ -83,7 +83,7 @@ func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	admin := fixtureAdmin(t)
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 3 || known[0].Name != "base" || known[2].Name != "issues" {
+	if e != nil || len(known) != 4 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	t.Run("round_trip_reproduces_the_catalog_exactly", func(t *testing.T) {
@@ -95,25 +95,26 @@ func TestPostgresMigrations(t *testing.T) {
 			t.Fatal(e)
 		}
 		first := catalog(t, admin)
-		if !strings.Contains(first, "constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))") || !strings.Contains(first, "column issue_numbers.last") || !strings.Contains(first, "column schema_migrations.checksum") {
+		if !strings.Contains(first, "constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))") || strings.Contains(first, "issue_numbers") || !strings.Contains(first, "column schema_migrations.checksum") {
 			t.Fatalf("unexpected catalog:\n%s", first)
 		}
-		// The catalog of version 3 is committed: a later edit of an earlier migration file (which
-		// the checksums would also flag) changes a fresh database and fails here.
+		// The catalogs of the latest version (4) and of version 3 are committed: a later edit of an
+		// earlier migration file (which the checksums would also flag) changes a fresh database and
+		// fails here.
 		if os.Getenv("REPORTING_WRITE_CATALOG") == "1" { // after a reviewed migration change only
-			if e := os.WriteFile("testdata/catalog_003.txt", []byte(first), 0o644); e != nil {
+			if e := os.WriteFile("testdata/catalog_004.txt", []byte(first), 0o644); e != nil {
 				t.Fatal(e)
 			}
 		}
-		want, e := os.ReadFile("testdata/catalog_003.txt")
+		want, e := os.ReadFile("testdata/catalog_004.txt")
 		if e != nil {
 			t.Fatal(e)
 		}
 		if string(want) != first {
-			t.Fatalf("the catalog differs from testdata/catalog_003.txt:\n%s", first)
+			t.Fatalf("the catalog differs from testdata/catalog_004.txt:\n%s", first)
 		}
 		st, e := postgres.Status(ctx, admin)
-		if e != nil || st.Current() != 3 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
+		if e != nil || st.Current() != 4 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
 			t.Fatalf("%+v %v", st, e)
 		}
 		for _, a := range st.Applied {
@@ -122,7 +123,7 @@ func TestPostgresMigrations(t *testing.T) {
 			}
 		}
 		// Down to zero and up again: the catalog is byte for byte the same, the profile is gone
-		// and back at 3. The profile row counts as data: 001 down needs the acceptance.
+		// and back at 4. The profile row counts as data: 001 down needs the acceptance.
 		if e := postgres.Down(ctx, admin, 0, "test", false); !errors.Is(e, r.ErrDenied) {
 			t.Fatal("001 down with the profile row accepted", e)
 		}
@@ -143,6 +144,28 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 		if e := postgres.Verify(ctx, admin, postgres.ProfileFixture); e != nil {
 			t.Fatal(e)
+		}
+		// Version 3 is where S03-G left the schema, and its catalog is committed as well: 004 down
+		// must give it back exactly, the counters table as 003 created it, empty, and 004 up must
+		// take it away again.
+		if e := postgres.Down(ctx, admin, 3, "test", false); e != nil {
+			t.Fatal("004 down with no issue rows needs no acceptance:", e)
+		}
+		at3 := catalog(t, admin)
+		if os.Getenv("REPORTING_WRITE_CATALOG") == "1" {
+			if e := os.WriteFile("testdata/catalog_003.txt", []byte(at3), 0o644); e != nil {
+				t.Fatal(e)
+			}
+		}
+		want3, e := os.ReadFile("testdata/catalog_003.txt")
+		if e != nil || string(want3) != at3 || !strings.Contains(at3, "column issue_numbers.last") {
+			t.Fatalf("the catalog at version 3 differs from testdata/catalog_003.txt (%v):\n%s", e, at3)
+		}
+		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+			t.Fatal(e)
+		}
+		if catalog(t, admin) != first {
+			t.Fatal("up from 3 to 4 did not give the catalog of 4")
 		}
 		// Partial targets: down to 1 keeps the base tables without digests, up to 2 adds them.
 		if e := postgres.Down(ctx, admin, 1, "test", false); e != nil {
@@ -166,6 +189,9 @@ func TestPostgresMigrations(t *testing.T) {
 		if e != nil || len(plan) != 1 || plan[0] != "up   003 issues" {
 			t.Fatal(plan, e)
 		}
+		if plan, e = postgres.Plan(must(postgres.Status(ctx, admin)), 4, postgres.Upward); e != nil || len(plan) != 2 || plan[1] != "up   004 source_confirmed_issue" {
+			t.Fatal(plan, e)
+		}
 		// A target on the wrong side of the current version is refused, not silently ignored.
 		if e := postgres.Down(ctx, admin, 3, "test", false); !errors.Is(e, r.ErrInvalid) {
 			t.Fatal("down to a higher version accepted", e)
@@ -176,9 +202,6 @@ func TestPostgresMigrations(t *testing.T) {
 		if _, e := postgres.Plan(must(postgres.Status(ctx, admin)), 1, postgres.Either); e != nil {
 			t.Fatal("plan either way", e)
 		}
-		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
-			t.Fatal(e)
-		}
 	})
 	t.Run("refusals_checksum_newer_binary_gap_and_data_loss", func(t *testing.T) {
 		v := newDurable(t)
@@ -188,17 +211,42 @@ func TestPostgresMigrations(t *testing.T) {
 		if _, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 0), "one"); e != nil {
 			t.Fatal(e)
 		}
-		// Down over 003 would discard the issue job, the counter and the issued PDF: refused with
-		// all three named (the counters restart the numbering); accepted, it goes.
-		e := postgres.Down(ctx, admin, 2, "test", false)
-		if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 issue jobs and records and 1 issue counters") || !strings.Contains(e.Error(), "restart at 1") || !strings.Contains(e.Error(), "0 issued PDFs would lose their records") {
+		if _, e := s.RunOne(ctx); e != nil {
+			t.Fatal(e)
+		}
+		// Down over 004 would discard the issue job and its record (an S03-G binary could not read
+		// them: the number is the product's string) and leave the issued PDF as a plain artifact:
+		// refused with all three named; down to 2 meets that refusal first and stays at 4.
+		e := postgres.Down(ctx, admin, 3, "test", false)
+		if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "2 issue jobs and records") || !strings.Contains(e.Error(), "S03-G binary could not read them") || !strings.Contains(e.Error(), "1 issued PDFs would lose their records and stay as plain artifacts") {
 			t.Fatal("down with issue rows accepted or counted wrongly", e)
 		}
-		// A counter alone (its rows gone) is still data: the numbering would restart.
+		if e := postgres.Down(ctx, admin, 2, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "migration 004 down") {
+			t.Fatal("down over 004 with issue rows accepted", e)
+		}
+		if st := must(postgres.Status(ctx, admin)); st.Current() != 4 {
+			t.Fatal(st)
+		}
+		// A record alone (its job gone) is data as well.
 		if _, e := admin.Exec(ctx, "DELETE FROM reporting_s01.jobs WHERE kind='issue'"); e != nil {
 			t.Fatal(e)
 		}
-		if e := postgres.Down(ctx, admin, 2, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 issue counters") {
+		if e := postgres.Down(ctx, admin, 3, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 issue jobs and records") {
+			t.Fatal("down with a record alone accepted", e)
+		}
+		if e := postgres.Down(ctx, admin, 3, "test", true); e != nil {
+			t.Fatal(e)
+		}
+		var n, issued, issueRows int
+		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs), (SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND data ? 'Issue'), (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&n, &issued, &issueRows); e != nil || n < 1 || issued != 1 || issueRows != 0 {
+			t.Fatal("the snapshot job and the issued PDF must survive 004 down, the issue job and record must not", n, issued, issueRows, e)
+		}
+		// Version 3 has the counters table again, empty. S03-G's counters are data there: a counter
+		// alone is enough to refuse 003 down, because the numbering would restart.
+		if _, e := admin.Exec(ctx, "INSERT INTO reporting_s01.issue_numbers(tenant,integration,last) VALUES('platform_demo','brant-contract-demo',3)"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Down(ctx, admin, 2, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 issue counters") || !strings.Contains(e.Error(), "restart at 1") || !strings.Contains(e.Error(), "1 issued PDFs would lose their records") {
 			t.Fatal("down with a counter alone accepted", e)
 		}
 		if st := must(postgres.Status(ctx, admin)); st.Current() != 3 {
@@ -206,10 +254,6 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 		if e := postgres.Down(ctx, admin, 2, "test", true); e != nil {
 			t.Fatal(e)
-		}
-		var n int
-		if e := admin.QueryRow(ctx, "SELECT count(*) FROM reporting_s01.jobs").Scan(&n); e != nil || n < 1 {
-			t.Fatal("the snapshot job must survive 003 down", n, e)
 		}
 		// 002 down loses nothing and needs no acceptance; 001 down with rows is refused, and so
 		// is 001 down with the profile row alone.
@@ -263,11 +307,12 @@ func TestPostgresMigrations(t *testing.T) {
 		// binary does not know, a gap, a profile at another version.
 		for _, c := range []struct{ name, tamper, restore, reason string }{
 			{"checksum", "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=2", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[1].Checksum + "' WHERE version=2", "version 2 was applied from a different file"},
-			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(4,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=4", "version 4 was applied by a newer binary"},
+			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(5,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=5", "version 5 was applied by a newer binary"},
 			{"gap", "DELETE FROM reporting_s01.schema_migrations WHERE version=2", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(2,'payload_digests','" + known[1].Checksum + "','test')", "gap before version 3"},
 			{"other name", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET name='issues' WHERE version=3", "under another name"},
 			{"fake legacy", "UPDATE reporting_s01.schema_migrations SET checksum='legacy' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[2].Checksum + "' WHERE version=3", "claims to be a legacy row"},
-			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=3", "profile says version 2"},
+			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=4", "profile says version 2"},
+			{"other name of 004", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=4", "UPDATE reporting_s01.schema_migrations SET name='source_confirmed_issue' WHERE version=4", "under another name"},
 		} {
 			before := catalog(t, admin)
 			if _, e := admin.Exec(ctx, c.tamper); e != nil {
@@ -320,9 +365,95 @@ func TestPostgresMigrations(t *testing.T) {
 			t.Fatal("not restored", e)
 		}
 	})
+	// S03-H, migration 004: the platform's issue counters go. S03-G's documents were numbered by the
+	// platform and never confirmed by a source product, so while any exists 004 up is refused, whatever
+	// the operator accepts; the remedy it names is the down that accepts losing them.
+	t.Run("source_confirmed_issue_step_refuses_platform_numbered_documents", func(t *testing.T) {
+		dropSchema(t, admin)
+		if e := postgres.Up(ctx, admin, 3, "test"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.InitProfile(ctx, admin, postgres.ProfileFixture); e != nil {
+			t.Fatal(e)
+		}
+		at3 := catalog(t, admin)
+		// A step whose DDL fails leaves version 3 as it was: the counters table cannot be dropped
+		// while something depends on it.
+		if _, e := admin.Exec(ctx, "CREATE VIEW reporting_s01.counters AS SELECT * FROM reporting_s01.issue_numbers"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Up(ctx, admin, 0, "test"); e == nil || !strings.Contains(e.Error(), "depend") {
+			t.Fatal("a table with a dependent did not fail 004", e)
+		}
+		var profileVersion int
+		if e := admin.QueryRow(ctx, "SELECT version FROM reporting_s01.profile").Scan(&profileVersion); e != nil || profileVersion != 3 || must(postgres.Status(ctx, admin)).Current() != 3 || catalog(t, admin) != at3 {
+			t.Fatal("a failed 004 changed something", profileVersion, e)
+		}
+		if _, e := admin.Exec(ctx, "DROP VIEW reporting_s01.counters"); e != nil {
+			t.Fatal(e)
+		}
+		// S03-G's documents as that binary stored them, numbered by the platform: an issue job, an
+		// issue record, and the counter that numbered them.
+		const id = "11111111111111111111111111111111"
+		job := `INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,data_sha256) VALUES('` + id + `','t','i','x','y','issue','succeeded','k','h',now(),'{"Number":1}','0')`
+		record := `INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES('` + id + `','t','i','x','y','issue','{"Number":1}','0')`
+		refused := func(what string, count int) {
+			t.Helper()
+			e := postgres.Up(ctx, admin, 0, "test")
+			if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "migration 004 up") || !strings.Contains(e.Error(), fmt.Sprintf("%d issue jobs and records exist", count)) || !strings.Contains(e.Error(), "reporting-migrate down --to 2 --accept-data-loss") {
+				t.Fatalf("004 up with %s: %v", what, e)
+			}
+			var version int
+			if e := admin.QueryRow(ctx, "SELECT version FROM reporting_s01.profile").Scan(&version); e != nil || version != 3 || must(postgres.Status(ctx, admin)).Current() != 3 || catalog(t, admin) != at3 {
+				t.Fatalf("a refused 004 changed something with %s: %d %v", what, version, e)
+			}
+		}
+		if _, e := admin.Exec(ctx, job); e != nil {
+			t.Fatal(e)
+		}
+		refused("a job", 1)
+		if _, e := admin.Exec(ctx, "DELETE FROM reporting_s01.jobs"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := admin.Exec(ctx, record); e != nil {
+			t.Fatal(e)
+		}
+		refused("a record", 1)
+		if _, e := admin.Exec(ctx, job); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := admin.Exec(ctx, "INSERT INTO reporting_s01.issue_numbers(tenant,integration,last) VALUES('t','i',1)"); e != nil {
+			t.Fatal(e)
+		}
+		refused("a job and a record", 2)
+		// The remedy it names: the down that accepts the loss (refused without the acceptance, with
+		// the rows and the counters named), then the up.
+		if e := postgres.Down(ctx, admin, 2, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "2 issue jobs and records and 1 issue counters") {
+			t.Fatal(e)
+		}
+		if e := postgres.Down(ctx, admin, 2, "test", true); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+			t.Fatal("004 up after the documents were removed:", e)
+		}
+		var rows int
+		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&rows); e != nil || rows != 0 {
+			t.Fatal(rows, e)
+		}
+		want4, e := os.ReadFile("testdata/catalog_004.txt")
+		if e != nil || string(want4) != catalog(t, admin) {
+			t.Fatalf("the catalog after the remedy differs from testdata/catalog_004.txt (%v)", e)
+		}
+		// Documents numbered by a source product (S03-H) do not block it: they are what the
+		// migration leaves in place; and with them the migrator refuses nothing on the way up again.
+		if e := postgres.Verify(ctx, admin, postgres.ProfileFixture); e != nil {
+			t.Fatal(e)
+		}
+	})
 	t.Run("concurrent_migrators_serialize_on_the_lock", func(t *testing.T) {
 		// Several rounds on a pool whose connections have seen the schema absent (a negative
-		// catalog cache entry): every migrator must end at version 3 with one ledger.
+		// catalog cache entry): every migrator must end at version 4 with one ledger.
 		const n = 6
 		for round := range 5 {
 			dropSchema(t, admin)
@@ -348,7 +479,7 @@ func TestPostgresMigrations(t *testing.T) {
 				}
 			}
 			st := must(postgres.Status(ctx, admin))
-			if st.Current() != 3 || len(st.Applied) != 3 || len(st.Problems) != 0 {
+			if st.Current() != 4 || len(st.Applied) != 4 || len(st.Problems) != 0 {
 				t.Fatalf("round %d: %+v", round, st)
 			}
 		}
@@ -381,15 +512,16 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 	})
 	t.Run("legacy_database_without_a_ledger_is_bootstrapped", func(t *testing.T) {
-		// A database at profile version 2 made before S04-A: no ledger, no issue tables.
-		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.schema_migrations; DROP TABLE reporting_s01.issue_numbers;
+		// A database at profile version 2 made before S04-A: no ledger, no issue tables (the
+		// counters table that 003 made is not there at the latest version either).
+		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.schema_migrations;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check; ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));
 ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check; ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));
 UPDATE reporting_s01.profile SET version=2`); e != nil {
 			t.Fatal(e)
 		}
 		st := must(postgres.Status(ctx, admin))
-		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 1 || len(st.Problems) != 0 {
+		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 2 || len(st.Problems) != 0 {
 			t.Fatalf("%+v", st)
 		}
 		if _, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false); !errors.Is(e, r.ErrDenied) {
@@ -401,12 +533,18 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 3 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum {
+		if st.Legacy || st.Current() != 4 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum {
 			t.Fatalf("%+v", st)
 		}
-		// The realistic pre-S04-A database: the old fixture at version 3 without a ledger. The
-		// server refuses it for the right reason; initialising records three legacy rows.
-		if _, e := admin.Exec(ctx, "DROP TABLE reporting_s01.schema_migrations"); e != nil {
+		// The realistic pre-S04-A database: the old fixture at version 3 (S03-G's, with its counters
+		// table) without a ledger. The server refuses it for the right reason; initialising records
+		// three legacy rows and applies 004.
+		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.schema_migrations;
+CREATE TABLE reporting_s01.issue_numbers (
+  tenant text NOT NULL, integration text NOT NULL, last bigint NOT NULL CHECK(last >= 0),
+  PRIMARY KEY(tenant,integration)
+);
+UPDATE reporting_s01.profile SET version=3`); e != nil {
 			t.Fatal(e)
 		}
 		if _, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "no schema ledger") {
@@ -418,8 +556,11 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 3 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") {
+		if st.Legacy || st.Current() != 4 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
 			t.Fatalf("%+v", st)
+		}
+		if want4, e := os.ReadFile("testdata/catalog_004.txt"); e != nil || string(want4) != catalog(t, admin) {
+			t.Fatalf("the bootstrapped database does not have the catalog of version 4 (%v)", e)
 		}
 		// A production store is never a bootstrap: those rows are refused there.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile='"+postgres.ProfileProduction+"'"); e != nil {
@@ -518,6 +659,14 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		if e := postgres.Grants(ctx, migPool, "reporting_migrator_t", "reporting_app_t"); e != nil {
 			t.Fatal("roles at version 2", e)
+		}
+		// At version 3 (S03-G's) the counters table is a known table and a data table: roles accepts
+		// it; 004 then drops it, as the migrator role that owns it.
+		if e := postgres.Up(ctx, migPool, 3, "migrator"); e != nil {
+			t.Fatal("the migrator role cannot migrate to 3", e)
+		}
+		if e := postgres.Grants(ctx, migPool, "reporting_migrator_t", "reporting_app_t"); e != nil {
+			t.Fatal("roles at version 3", e)
 		}
 		if e := postgres.Up(ctx, migPool, 0, "migrator"); e != nil {
 			t.Fatal(e)
@@ -664,17 +813,32 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		if st := must(postgres.Status(ctx, admin)); st.Current() != 2 {
 			t.Fatal("a failed step changed the ledger", st.Current())
 		}
-		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+		// A table created by a migration the migrator role did not run (here the superuser: version
+		// 3 makes S03-G's counters table) is not covered by the migrator's default privileges: the
+		// role check says so, and the roles step repairs it, the counters table being a data table
+		// where it exists.
+		if e := postgres.Up(ctx, admin, 3, "test"); e != nil {
 			t.Fatal(e)
 		}
-		// A table created by a migration the migrator role did not run (here the superuser) is
-		// not covered by the migrator's default privileges: the role check says so, and the
-		// roles step repairs it.
 		if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) == 0 {
 			t.Fatal("a table outside the grants passed", problems, e)
 		}
 		if e := postgres.Grants(ctx, admin, "reporting_migrator_t", "reporting_app_t"); e != nil {
 			t.Fatal(e)
+		}
+		if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) != 0 {
+			t.Fatal("roles at version 3 left problems", problems, e)
+		}
+		var counters bool
+		if e := admin.QueryRow(ctx, "SELECT has_table_privilege('reporting_app_t','reporting_s01.issue_numbers','INSERT') AND has_table_privilege('reporting_app_t','reporting_s01.issue_numbers','UPDATE') AND NOT has_table_privilege('reporting_app_t','reporting_s01.issue_numbers','DELETE')").Scan(&counters); e != nil || !counters {
+			t.Fatal("the application role cannot write the counters table at version 3, or can delete from it", counters, e)
+		}
+		// At the latest version the table is gone, and the role check does not miss it.
+		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+			t.Fatal(e)
+		}
+		if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) != 0 {
+			t.Fatal("a store at the latest version reports problems for the missing counters table", problems, e)
 		}
 		// The whole platform contract passes as the application role on the production path
 		// (the test-only option lifts TLS and the fixture name; the profile row is production
@@ -699,7 +863,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		if e := store.ResetFixture(ctx); !errors.Is(e, r.ErrDenied) {
 			t.Fatal("a production store can reset", e)
 		}
-		if _, e := admin.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.issue_numbers"); e != nil {
+		if _, e := admin.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs"); e != nil {
 			t.Fatal(e)
 		}
 		s := issueDurableService(t, durableEnv{repo: store, source: v.source, p: v.p}, &stampIssuer{})
@@ -710,13 +874,13 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 			t.Fatal(e)
 		}
 		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 0), "one")
-		if e != nil || j.Issue.Number != 1 {
+		if e != nil || j.Issue.Number != "" {
 			t.Fatal(j, e)
 		}
 		if _, e = s.RunOne(ctx); e != nil {
 			t.Fatal(e)
 		}
-		if rec, e := s.Issue(ctx, v.p, j.ID); e != nil || rec.State != "succeeded" || rec.Pages != 3 {
+		if rec, e := s.Issue(ctx, v.p, j.ID); e != nil || rec.State != "succeeded" || rec.Pages != 3 || rec.Number != "AR-000001" {
 			t.Fatalf("%+v %v", rec, e)
 		}
 		if c, e := s.Cancel(ctx, v.p, j.ID); e != nil || c.State != "succeeded" {

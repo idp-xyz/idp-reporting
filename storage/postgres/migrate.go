@@ -305,6 +305,28 @@ func bootstrapLedger(ctx context.Context, pool *pgxpool.Pool, st State, by strin
 	return tx.Commit(ctx)
 }
 
+// blocked says why a step cannot run on the rows the store holds, whatever the operator accepts: an
+// up step that cannot carry them over. It is read under the lock before the step runs. A down step
+// is never blocked here: what it discards is dataLoss's, accepted with --accept-data-loss.
+func blocked(ctx context.Context, tx pgx.Tx, m Migration, up bool) (string, error) {
+	if !up {
+		return "", nil
+	}
+	switch m.Version {
+	case 4:
+		// S03-G's documents were numbered by the platform and never confirmed by a source product
+		// (docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): they cannot become source-confirmed ones.
+		var n int64
+		if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')`).Scan(&n); err != nil {
+			return "", err
+		}
+		if n > 0 {
+			return fmt.Sprintf("%d issue jobs and records exist, numbered by the platform (S03-G) and never confirmed by a source product, so they cannot be carried over; run reporting-migrate down --to 2 --accept-data-loss first, which deletes them (their issued PDFs stay as plain artifacts)", n), nil
+		}
+	}
+	return "", nil
+}
+
 // dataLoss says which rows a down step discards; the operator must accept that explicitly.
 func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 	var n int64
@@ -325,6 +347,15 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 		}
 		if n > 0 || counters > 0 || issued > 0 {
 			return fmt.Sprintf("%d issue jobs and records and %d issue counters (the numbering of every tenant and integration would restart at 1, reusing numbers already printed); %d issued PDFs would lose their records and stay as plain artifacts", n, counters, issued), nil
+		}
+	case 4:
+		var issued int64
+		if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue'),
+(SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND data ? 'Issue')`).Scan(&n, &issued); err != nil {
+			return "", err
+		}
+		if n > 0 || issued > 0 {
+			return fmt.Sprintf("%d issue jobs and records (an S03-G binary could not read them: the numbers are the source product's strings, not platform counters); %d issued PDFs would lose their records and stay as plain artifacts", n, issued), nil
 		}
 	}
 	return "", nil
@@ -389,6 +420,11 @@ func step(ctx context.Context, pool *pgxpool.Pool, m Migration, up bool, by stri
 		if profileVersion != nil && *profileVersion != head {
 			return fmt.Errorf("the profile says version %d while the ledger is at %d: %w", *profileVersion, head, r.ErrIntegrity)
 		}
+	}
+	if reason, err := blocked(ctx, tx, m, up); err != nil {
+		return err
+	} else if reason != "" {
+		return fmt.Errorf("%s: %w", reason, r.ErrDenied)
 	}
 	if up {
 		if _, err := tx.Exec(ctx, m.Up); err != nil {

@@ -14,7 +14,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
 | POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission |
 | GET /jobs/{id} | Owner-scoped status; current source authority even after success |
-| POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned |
+| POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned. A running issue job is not cancelled (the source product may already hold a reservation for it): it is returned unchanged, and a queued one is cancelled |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
 | POST /exports | `{ "snapshot_id": "…", "format": "pdf" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports |
 | GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256; an issued PDF is named `issued-<issue id>.pdf` (the console saves it as `issued-<number>.pdf`) |
@@ -63,21 +63,46 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET /document-templates/{id}/published | The published version |
 | POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
 | GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
-| POST /issues | Official issue (S03-G, docs/S03G_SCOPE.md): `{template_id, version, snapshot_id, row_index}` with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403); the job view carries `issue: {number, template_id, template_version, template_sha256, row_index}` |
-| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25), each with its record once it succeeded: `issue_id, state, error_code, number, template_*, snapshot_id, row_index, artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` |
+| POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}`, and the product's `number` once the job succeeded (read from its record) |
+| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there) |
 | GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's, so once the snapshot expired it is refused (403 with the contract simulators, whose adapter denies an expired read; 409 for the download), while `GET /issues/{id}` still answers; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
 
 An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
-row; the repository assigns the number at admission, consecutive per tenant and integration and never reused (a
-failed or cancelled job keeps its number, so the gap is explained by that job). The worker re-checks that the
-frozen configuration is still the published version (else the job fails with TEMPLATE_NOT_PUBLISHED), renders
-the preview's pages with the issue stamp `ISSUED No. 000012 - 2026-10-28T06:12:03Z - <issue id>` in the banner
-strip (in the text colour, in variables mode too) and publishes the PDF artifact (format "pdf", carrying the
-issue id; downloaded as `issued-<id>.pdf` through GET /artifacts/{id}/content, with the snapshot's expiry and
-authorization rules, and only when the record names that artifact and its digest) together with the permanent
-record in one transaction. Records are never changed or deleted. `POST /issues` is mounted with the template
-routes (`template_routes` in the capabilities) and answers 422 UNSUPPORTED_COMBINATION when the deployment cannot
-issue (`issuance: false`); the preview's banner text is refused as a value or a cell of an issued document.
+row. The source product, not the platform, authorizes the issue, owns the number and confirms the file (S03-H);
+the platform never numbers a document, so the job has no number. The worker re-checks the source, the snapshot
+and the row, and asks the product to prepare the document (`PrepareDocument`, idempotent by the job id) with the
+frozen read, the row's index and the digest of its values, and the template's id, version and digest. The
+product refuses (the job fails with AUTH_SCOPE_DENIED, nothing reserved) when the principal may not issue
+documents, the row is not the one its own source snapshot produced, or its approval rules say no; otherwise it
+answers with a reservation: its reference, the number (1..32 of `A-Za-z0-9._-`, starting with a letter or a digit:
+the finance simulator gives `AR-000001`, `AR-000002`, ..., the shipment one `SH-000001`, ..., per integration and
+never reused), the issue time (UTC, whole second) and an expiry; an answer that is not that fails the job with
+INTEGRITY_FAILURE. The worker then re-checks that the frozen configuration is still the published version (else
+the job fails with TEMPLATE_NOT_PUBLISHED), renders the preview's pages with the issue stamp `ISSUED No.
+AR-000012 - 2026-10-28T06:12:03Z - <issue id>` (the product's number and issue time) in the banner strip (in the
+text colour, in variables mode too) and with the issue time as the PDF's creation date, so that the same inputs
+give the same bytes, has the product confirm the file (`ConfirmIssue`: the reference, the SHA-256 and the page
+count; it answers with its confirmation reference and time), re-checks the source and publishes the PDF artifact
+(format "pdf", carrying the issue id; downloaded as `issued-<id>.pdf` through GET /artifacts/{id}/content, with the
+snapshot's expiry and authorization rules, and only when the record names that artifact and its digest) together
+with the permanent record in one transaction. The record holds the product's number, `issued_at`, the product's
+`reservation_ref` and `confirmation_ref` and its `confirmed_at`. Records are never changed or deleted. There is no
+atomicity across the two systems (README), so every outcome is reconcilable: when a job fails after the worker called
+`PrepareDocument` (whatever it answered), or on a claim later than the first (an earlier attempt may have reserved
+or confirmed), other than by losing its lease, the worker calls `VoidIssue` with the job id and the job's error
+code as the reason, with a context of its own bounded to 5 seconds, before it fails the job; the product voids
+whatever it holds for the job, reserved or confirmed, and the number stays voided. A void that cannot be
+delivered fails the job with ISSUE_UNRECONCILED instead of its own code, and the product can find the reservation
+by the job id. A first attempt that fails before it reached the product calls nothing there. A worker that
+loses its lease never voids: the worker that holds the job reuses the reservation (the product answers the same
+job id again), renders the same bytes and has them confirmed again, which the product does idempotently. A
+running issue job cannot be cancelled (it finishes, or fails and voids; its cancel returns it unchanged); a
+queued one can. `POST /issues` is mounted with the template routes (`template_routes` in the capabilities) and
+answers 422 UNSUPPORTED_COMBINATION when the deployment cannot issue (`issuance: false`: no issuer or no PDF
+format) or the integration's adapter does not implement the product's document authority; a stored job whose
+adapter lost it fails with UNSUPPORTED_COMBINATION. `issuance` says only that the server renders issue jobs;
+whether an integration can issue is the product's (the adapter's) capability. The preview's banner text is refused
+as a value or a cell of an issued document.
 
 A preview places each value on one line with its baseline 1.16 font sizes below the top of its box, at the box's
 left edge, right edge or centre, every character at the position the fonts' plain advances give it (ADR 0002);
@@ -101,6 +126,9 @@ Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source 
 per page, 20 s work timeout and 30 s repository lease. These are test-profile
 limits, not production SLOs. A job that loses its lease or is cancelled cannot
 publish. No retry/backoff or heartbeat is claimed.
+
+Job error codes beyond the HTTP ones (a failed job's `error_code`): ISSUE_UNRECONCILED, an issue job that failed
+after the source product may have reserved or confirmed a number for it and whose void could not be delivered.
 
 Errors: invalid request 400; missing/invalid authentication 401; scope denied 403;
 owner-not-found 404; idempotency/integrity/lease conflict 409; unsupported shape

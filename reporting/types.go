@@ -22,6 +22,10 @@ var (
 	ErrUnavailable = errors.New("AUTHORITY_UNAVAILABLE")
 	// ErrUnpublished: an issue names a template version that is not the published one.
 	ErrUnpublished = errors.New("TEMPLATE_NOT_PUBLISHED")
+	// ErrUnreconciled: an issue job failed after the source product may have reserved or confirmed
+	// a number for it, and the platform could not void that at the product (S03-H). The product
+	// can find the reservation by the job id.
+	ErrUnreconciled = errors.New("ISSUE_UNRECONCILED")
 )
 
 type Identity struct {
@@ -183,22 +187,24 @@ type Job struct {
 	Generation  int64
 	LeaseUntil  time.Time
 	// An issue job (S03-G) freezes the template it issues: the published version's canonical
-	// configuration, its digest, the row and the number the repository assigned at admission.
+	// configuration, its digest and the row. It carries no number: the source product gives the
+	// number when the worker asks it to prepare the document (S03-H).
 	TemplateID      string `json:",omitempty"`
 	TemplateVersion int    `json:",omitempty"`
 	TemplateSHA256  string `json:",omitempty"`
 	Template        string `json:",omitempty"` // the canonical JSON text, as a string: JSONB would reorder an object
 	RowIndex        int    `json:",omitempty"`
-	Number          int64  `json:",omitempty"`
 }
 
 // Issue is the permanent record of one officially issued document: which template version,
 // which row of which frozen snapshot, the artifact that holds the PDF and what the PDF says
-// about itself. Its ID is the ID of the job that issued it.
+// about itself. Its ID is the ID of the job that issued it. The number, the issue time and the
+// two references are the source product's (S03-H): the reservation it made when it authorized
+// the document and the confirmation it gave when it accepted the file's digest.
 type Issue struct {
 	ID              string
 	Owner           Owner
-	Number          int64
+	Number          string
 	TemplateID      string
 	TemplateVersion int
 	TemplateSHA256  string
@@ -209,7 +215,10 @@ type Issue struct {
 	SHA256          string
 	Pages           int
 	Stamp           string
-	IssuedAt        time.Time
+	IssuedAt        time.Time // the product's issue time, UTC, whole second
+	ReservationRef  string
+	ConfirmationRef string
+	ConfirmedAt     time.Time // the product's confirmation time, UTC, whole second
 }
 type JobView struct {
 	ID         string        `json:"job_id"`
@@ -222,9 +231,10 @@ type JobView struct {
 	Issue      *IssueSummary `json:"issue,omitempty"`
 }
 
-// IssueSummary is what an issue job says about itself before and after it ran.
+// IssueSummary is what an issue job says about itself before and after it ran. The number is
+// the source product's and is known once the job succeeded: it is read from the record.
 type IssueSummary struct {
-	Number          int64  `json:"number"`
+	Number          string `json:"number,omitempty"`
 	TemplateID      string `json:"template_id"`
 	TemplateVersion int    `json:"template_version"`
 	TemplateSHA256  string `json:"template_sha256"`
@@ -244,6 +254,10 @@ type IssueView struct {
 	Pages          int    `json:"pages,omitempty"`
 	Stamp          string `json:"stamp,omitempty"`
 	IssuedAt       string `json:"issued_at,omitempty"`
+	// The product's references: its reservation of the number and its confirmation of the file.
+	ReservationRef  string `json:"reservation_ref,omitempty"`
+	ConfirmationRef string `json:"confirmation_ref,omitempty"`
+	ConfirmedAt     string `json:"confirmed_at,omitempty"` // RFC 3339, UTC
 }
 type Claim struct{ Job Job }
 type Publication struct {
@@ -253,9 +267,9 @@ type Publication struct {
 }
 
 // IssueStamp is the line an issued document carries instead of the preview banner: the
-// number, the issue time in UTC to the second and the record id.
-func IssueStamp(number int64, at time.Time, id string) string {
-	return fmt.Sprintf("ISSUED No. %06d - %s - %s", number, at.UTC().Format("2006-01-02T15:04:05Z"), id)
+// product's number, the issue time in UTC to the second and the record id.
+func IssueStamp(number string, at time.Time, id string) string {
+	return fmt.Sprintf("ISSUED No. %s - %s - %s", number, at.UTC().Format("2006-01-02T15:04:05Z"), id)
 }
 
 // Issuer renders an issue job: the frozen template bound to the snapshot's row, stamped. It
@@ -276,9 +290,11 @@ type IssueResult struct {
 
 // Repository owns only platform assets. Publish must atomically insert one immutable asset
 // (two for an issue job: the artifact and the record) and finish a current, unexpired,
-// uncancelled job generation. Admit assigns the number of an issue job: consecutive per tenant
-// and integration, never reused. Issues lists an identity's issue jobs under the given
-// integrations, newest first, at most limit of them.
+// uncancelled job generation. Numbers are never the repository's: an issue job is admitted
+// without one and its record carries the number the source product gave (S03-H). Cancel
+// cancels a queued job, and a running job of any kind but issue; a running issue job is
+// returned unchanged, because the product may already hold a reservation for it. Issues lists
+// an identity's issue jobs under the given integrations, newest first, at most limit of them.
 type Repository interface {
 	Admit(context.Context, Job) (Job, error)
 	Job(context.Context, Identity, string) (Job, error)
@@ -323,6 +339,11 @@ const MaxTemplateBytes = 65536
 const SourcePageSize = 50
 const LeaseDuration = 30 * time.Second
 const WorkTimeout = 20 * time.Second
+
+// VoidTimeout bounds the call that voids a failed issue job at the source product (S03-H). It runs in
+// a context of its own, after the job's work time may have run out; with the 2 s allowed to fail
+// the job, a worker is done within its lease (WorkTimeout + VoidTimeout + 2 s < LeaseDuration).
+const VoidTimeout = 5 * time.Second
 
 func NewID() string {
 	var b [16]byte

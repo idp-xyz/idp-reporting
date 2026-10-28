@@ -50,10 +50,11 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 	}
 	// Official issue (S03-G): the published version, frozen into a durable job; the row is
 	// bound here once so that a wrong row, a field the snapshot lacks or a value the previews
-	// could not print is refused at once (layout refusals are the worker's and consume a
-	// number), and again by the worker from the stored snapshot. Mounted with the templates
-	// whether or not the service can issue, so that a deployment without the renderer answers
-	// 422, not 404.
+	// could not print is refused at once (layout refusals are the worker's, after the source
+	// product reserved a number, which it then voids), and again by the worker from the stored
+	// snapshot. Mounted with the templates whether or not the service can issue, so that a
+	// deployment without the renderer answers 422, not 404; so does an integration whose adapter
+	// cannot issue (S03-H): the source product numbers and confirms every document.
 	{
 		mux.HandleFunc("POST /api/reporting/v1/issues", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			var input struct {
