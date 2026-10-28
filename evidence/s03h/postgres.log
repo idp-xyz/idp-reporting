@@ -1,0 +1,200 @@
+=== RUN   TestMemoryContract
+=== RUN   TestMemoryContract/two_domains_full_chain
+=== RUN   TestMemoryContract/admission_does_not_read
+=== RUN   TestMemoryContract/idempotency_conflict_and_owner_axes
+=== RUN   TestMemoryContract/same_user_id_different_issuer
+=== RUN   TestMemoryContract/cross_tenant_source_ids_not_equivalent
+=== RUN   TestMemoryContract/cross_product_requires_explicit_grant
+=== RUN   TestMemoryContract/company_selector_is_not_authority
+=== RUN   TestMemoryContract/frozen_source_not_live_refresh
+=== RUN   TestMemoryContract/scope_expansion_does_not_widen
+=== RUN   TestMemoryContract/queued_revocation_and_cleanup
+=== RUN   TestMemoryContract/completed_revocation_all_disclosures
+=== RUN   TestMemoryContract/completed_currency_change
+=== RUN   TestMemoryContract/completed_timezone_change
+=== RUN   TestMemoryContract/authority_outage_is_distinct_and_closed
+=== RUN   TestMemoryContract/cancelled_claim_cannot_publish
+=== RUN   TestMemoryContract/concurrent_admission_and_claim
+=== RUN   TestMemoryContract/lease_expiry_generation_and_atomicity
+=== RUN   TestMemoryContract/fail_is_fenced_by_the_claim_and_the_lease
+=== RUN   TestMemoryContract/resolve_failure_is_fenced_by_the_claim_the_state_and_the_code
+--- PASS: TestMemoryContract (2.22s)
+    --- PASS: TestMemoryContract/two_domains_full_chain (0.00s)
+    --- PASS: TestMemoryContract/admission_does_not_read (0.00s)
+    --- PASS: TestMemoryContract/idempotency_conflict_and_owner_axes (0.00s)
+    --- PASS: TestMemoryContract/same_user_id_different_issuer (0.00s)
+    --- PASS: TestMemoryContract/cross_tenant_source_ids_not_equivalent (0.00s)
+    --- PASS: TestMemoryContract/cross_product_requires_explicit_grant (0.00s)
+    --- PASS: TestMemoryContract/company_selector_is_not_authority (0.00s)
+    --- PASS: TestMemoryContract/frozen_source_not_live_refresh (0.00s)
+    --- PASS: TestMemoryContract/scope_expansion_does_not_widen (0.00s)
+    --- PASS: TestMemoryContract/queued_revocation_and_cleanup (0.00s)
+    --- PASS: TestMemoryContract/completed_revocation_all_disclosures (0.00s)
+    --- PASS: TestMemoryContract/completed_currency_change (0.00s)
+    --- PASS: TestMemoryContract/completed_timezone_change (0.00s)
+    --- PASS: TestMemoryContract/authority_outage_is_distinct_and_closed (0.00s)
+    --- PASS: TestMemoryContract/cancelled_claim_cannot_publish (0.00s)
+    --- PASS: TestMemoryContract/concurrent_admission_and_claim (0.00s)
+    --- PASS: TestMemoryContract/lease_expiry_generation_and_atomicity (1.10s)
+    --- PASS: TestMemoryContract/fail_is_fenced_by_the_claim_and_the_lease (1.10s)
+    --- PASS: TestMemoryContract/resolve_failure_is_fenced_by_the_claim_the_state_and_the_code (0.00s)
+=== RUN   TestPostgresContract
+=== RUN   TestPostgresContract/two_domains_full_chain
+=== RUN   TestPostgresContract/admission_does_not_read
+=== RUN   TestPostgresContract/idempotency_conflict_and_owner_axes
+=== RUN   TestPostgresContract/same_user_id_different_issuer
+=== RUN   TestPostgresContract/cross_tenant_source_ids_not_equivalent
+=== RUN   TestPostgresContract/cross_product_requires_explicit_grant
+=== RUN   TestPostgresContract/company_selector_is_not_authority
+=== RUN   TestPostgresContract/frozen_source_not_live_refresh
+=== RUN   TestPostgresContract/scope_expansion_does_not_widen
+=== RUN   TestPostgresContract/queued_revocation_and_cleanup
+=== RUN   TestPostgresContract/completed_revocation_all_disclosures
+=== RUN   TestPostgresContract/completed_currency_change
+=== RUN   TestPostgresContract/completed_timezone_change
+=== RUN   TestPostgresContract/authority_outage_is_distinct_and_closed
+=== RUN   TestPostgresContract/cancelled_claim_cannot_publish
+=== RUN   TestPostgresContract/concurrent_admission_and_claim
+=== RUN   TestPostgresContract/lease_expiry_generation_and_atomicity
+=== RUN   TestPostgresContract/fail_is_fenced_by_the_claim_and_the_lease
+=== RUN   TestPostgresContract/resolve_failure_is_fenced_by_the_claim_the_state_and_the_code
+--- PASS: TestPostgresContract (2.72s)
+    --- PASS: TestPostgresContract/two_domains_full_chain (0.05s)
+    --- PASS: TestPostgresContract/admission_does_not_read (0.02s)
+    --- PASS: TestPostgresContract/idempotency_conflict_and_owner_axes (0.02s)
+    --- PASS: TestPostgresContract/same_user_id_different_issuer (0.03s)
+    --- PASS: TestPostgresContract/cross_tenant_source_ids_not_equivalent (0.02s)
+    --- PASS: TestPostgresContract/cross_product_requires_explicit_grant (0.03s)
+    --- PASS: TestPostgresContract/company_selector_is_not_authority (0.01s)
+    --- PASS: TestPostgresContract/frozen_source_not_live_refresh (0.02s)
+    --- PASS: TestPostgresContract/scope_expansion_does_not_widen (0.02s)
+    --- PASS: TestPostgresContract/queued_revocation_and_cleanup (0.02s)
+    --- PASS: TestPostgresContract/completed_revocation_all_disclosures (0.03s)
+    --- PASS: TestPostgresContract/completed_currency_change (0.03s)
+    --- PASS: TestPostgresContract/completed_timezone_change (0.03s)
+    --- PASS: TestPostgresContract/authority_outage_is_distinct_and_closed (0.03s)
+    --- PASS: TestPostgresContract/cancelled_claim_cannot_publish (0.02s)
+    --- PASS: TestPostgresContract/concurrent_admission_and_claim (0.03s)
+    --- PASS: TestPostgresContract/lease_expiry_generation_and_atomicity (1.13s)
+    --- PASS: TestPostgresContract/fail_is_fenced_by_the_claim_and_the_lease (1.12s)
+    --- PASS: TestPostgresContract/resolve_failure_is_fenced_by_the_claim_the_state_and_the_code (0.04s)
+=== RUN   TestDurablePostgresContract
+=== RUN   TestDurablePostgresContract/source_metadata_admission_no_fact_projection
+=== RUN   TestDurablePostgresContract/durable_handles_and_old_source_version
+=== RUN   TestDurablePostgresContract/seed_never_resurrects_revocation
+=== RUN   TestDurablePostgresContract/owner_matrix_and_idempotency_namespaces
+=== RUN   TestDurablePostgresContract/durable_source_scope_and_policy_binding
+=== RUN   TestDurablePostgresContract/source_handle_cannot_cross_owner_or_product
+=== RUN   TestDurablePostgresContract/durable_outage_blocks_cached_file
+=== RUN   TestDurablePostgresContract/duplicate_publication_has_one_asset
+=== RUN   TestDurablePostgresContract/cancel_publish_race_is_atomic
+=== RUN   TestDurablePostgresContract/rollback_after_asset_insert
+=== RUN   TestDurablePostgresContract/lease_expires_inside_publication_transaction
+=== RUN   TestDurablePostgresContract/corrupt_asset_payload_fails_before_disclosure
+=== RUN   TestDurablePostgresContract/sql_payload_owner_mismatch_fails_even_with_hash
+=== RUN   TestDurablePostgresContract/job_payload_hash_rejects_corruption
+=== RUN   TestDurablePostgresContract/fixture_v1_upgrade_preserves_existing_assets
+=== RUN   TestDurablePostgresContract/company_selection_is_never_authority
+=== RUN   TestDurablePostgresContract/currency_change_survives_source_reopen
+=== RUN   TestDurablePostgresContract/corrupt_source_handle_denies_cached_artifact
+=== RUN   TestDurablePostgresContract/multiple_source_pages_stay_on_original_durable_version
+--- PASS: TestDurablePostgresContract (3.15s)
+    --- PASS: TestDurablePostgresContract/source_metadata_admission_no_fact_projection (0.08s)
+    --- PASS: TestDurablePostgresContract/durable_handles_and_old_source_version (0.10s)
+    --- PASS: TestDurablePostgresContract/seed_never_resurrects_revocation (0.10s)
+    --- PASS: TestDurablePostgresContract/owner_matrix_and_idempotency_namespaces (0.31s)
+    --- PASS: TestDurablePostgresContract/durable_source_scope_and_policy_binding (0.09s)
+    --- PASS: TestDurablePostgresContract/source_handle_cannot_cross_owner_or_product (0.07s)
+    --- PASS: TestDurablePostgresContract/durable_outage_blocks_cached_file (0.11s)
+    --- PASS: TestDurablePostgresContract/duplicate_publication_has_one_asset (0.08s)
+    --- PASS: TestDurablePostgresContract/cancel_publish_race_is_atomic (0.14s)
+    --- PASS: TestDurablePostgresContract/rollback_after_asset_insert (0.09s)
+    --- PASS: TestDurablePostgresContract/lease_expires_inside_publication_transaction (1.20s)
+    --- PASS: TestDurablePostgresContract/corrupt_asset_payload_fails_before_disclosure (0.11s)
+    --- PASS: TestDurablePostgresContract/sql_payload_owner_mismatch_fails_even_with_hash (0.09s)
+    --- PASS: TestDurablePostgresContract/job_payload_hash_rejects_corruption (0.08s)
+    --- PASS: TestDurablePostgresContract/fixture_v1_upgrade_preserves_existing_assets (0.14s)
+    --- PASS: TestDurablePostgresContract/company_selection_is_never_authority (0.07s)
+    --- PASS: TestDurablePostgresContract/currency_change_survives_source_reopen (0.11s)
+    --- PASS: TestDurablePostgresContract/corrupt_source_handle_denies_cached_artifact (0.11s)
+    --- PASS: TestDurablePostgresContract/multiple_source_pages_stay_on_original_durable_version (0.08s)
+=== RUN   TestLeaseGenerationAndAtomicPublication
+--- PASS: TestLeaseGenerationAndAtomicPublication (0.00s)
+=== RUN   TestCancelPublicationRaceHasOneOutcome
+--- PASS: TestCancelPublicationRaceHasOneOutcome (0.00s)
+=== RUN   TestRevocationAtFinalReadDoesNotPublish
+--- PASS: TestRevocationAtFinalReadDoesNotPublish (0.00s)
+=== RUN   TestSourceBindingMismatchRejected
+--- PASS: TestSourceBindingMismatchRejected (0.00s)
+=== RUN   TestExpiredAssetsCannotDisclose
+--- PASS: TestExpiredAssetsCannotDisclose (0.00s)
+=== RUN   TestDurablePostgresIssues
+=== RUN   TestDurablePostgresIssues/numbers_records_and_listing
+=== RUN   TestDurablePostgresIssues/concurrent_workers_take_distinct_consecutive_numbers_from_the_product
+=== RUN   TestDurablePostgresIssues/failure_voids_at_the_product_and_unreconciled_when_it_cannot
+=== RUN   TestDurablePostgresIssues/lost_lease_does_not_void_and_the_next_claim_confirms_again
+=== RUN   TestDurablePostgresIssues/an_expired_source_at_publication_is_denied_and_voided_not_a_lost_lease
+=== RUN   TestDurablePostgresIssues/a_lost_lease_wins_over_an_expired_source
+=== RUN   TestDurablePostgresIssues/failure_is_recorded_before_the_void_and_resolved_after_and_a_crash_between_leaves_it_unreconciled
+=== RUN   TestDurablePostgresIssues/a_failure_recorded_after_the_lease_never_voids_a_published_number
+=== RUN   TestDurablePostgresIssues/a_running_issue_job_is_not_cancelled
+=== RUN   TestDurablePostgresIssues/fixture_v2_upgrade_adds_issues_and_keeps_assets
+=== RUN   TestDurablePostgresIssues/tampered_record_or_job_is_integrity_failure
+=== RUN   TestDurablePostgresIssues/download_requires_the_record_to_name_the_artifact
+=== RUN   TestDurablePostgresIssues/missing_record_of_a_succeeded_job_is_integrity_failure
+--- PASS: TestDurablePostgresIssues (9.50s)
+    --- PASS: TestDurablePostgresIssues/numbers_records_and_listing (0.20s)
+    --- PASS: TestDurablePostgresIssues/concurrent_workers_take_distinct_consecutive_numbers_from_the_product (0.17s)
+    --- PASS: TestDurablePostgresIssues/failure_voids_at_the_product_and_unreconciled_when_it_cannot (1.29s)
+    --- PASS: TestDurablePostgresIssues/lost_lease_does_not_void_and_the_next_claim_confirms_again (2.35s)
+    --- PASS: TestDurablePostgresIssues/an_expired_source_at_publication_is_denied_and_voided_not_a_lost_lease (0.12s)
+    --- PASS: TestDurablePostgresIssues/a_lost_lease_wins_over_an_expired_source (2.31s)
+    --- PASS: TestDurablePostgresIssues/failure_is_recorded_before_the_void_and_resolved_after_and_a_crash_between_leaves_it_unreconciled (0.12s)
+    --- PASS: TestDurablePostgresIssues/a_failure_recorded_after_the_lease_never_voids_a_published_number (2.33s)
+    --- PASS: TestDurablePostgresIssues/a_running_issue_job_is_not_cancelled (0.10s)
+    --- PASS: TestDurablePostgresIssues/fixture_v2_upgrade_adds_issues_and_keeps_assets (0.15s)
+    --- PASS: TestDurablePostgresIssues/tampered_record_or_job_is_integrity_failure (0.12s)
+    --- PASS: TestDurablePostgresIssues/download_requires_the_record_to_name_the_artifact (0.12s)
+    --- PASS: TestDurablePostgresIssues/missing_record_of_a_succeeded_job_is_integrity_failure (0.12s)
+=== RUN   TestPostgresMigrations
+=== RUN   TestPostgresMigrations/round_trip_reproduces_the_catalog_exactly
+=== RUN   TestPostgresMigrations/refusals_checksum_newer_binary_gap_and_data_loss
+=== RUN   TestPostgresMigrations/source_confirmed_issue_step_refuses_platform_numbered_documents
+=== RUN   TestPostgresMigrations/concurrent_migrators_serialize_on_the_lock
+=== RUN   TestPostgresMigrations/half_initialised_database_is_a_problem_not_version_zero
+=== RUN   TestPostgresMigrations/legacy_database_without_a_ledger_is_bootstrapped
+=== RUN   TestPostgresMigrations/application_role_reads_and_writes_rows_and_nothing_else
+=== RUN   TestPostgresMigrations/production_dsn_rules
+--- PASS: TestPostgresMigrations (1.53s)
+    --- PASS: TestPostgresMigrations/round_trip_reproduces_the_catalog_exactly (0.15s)
+    --- PASS: TestPostgresMigrations/refusals_checksum_newer_binary_gap_and_data_loss (0.30s)
+    --- PASS: TestPostgresMigrations/source_confirmed_issue_step_refuses_platform_numbered_documents (0.08s)
+    --- PASS: TestPostgresMigrations/concurrent_migrators_serialize_on_the_lock (0.26s)
+    --- PASS: TestPostgresMigrations/half_initialised_database_is_a_problem_not_version_zero (0.05s)
+    --- PASS: TestPostgresMigrations/legacy_database_without_a_ledger_is_bootstrapped (0.10s)
+    --- PASS: TestPostgresMigrations/application_role_reads_and_writes_rows_and_nothing_else (0.53s)
+    --- PASS: TestPostgresMigrations/production_dsn_rules (0.00s)
+=== RUN   TestSourceMultiplePagesUseSameFrozenVersion
+--- PASS: TestSourceMultiplePagesUseSameFrozenVersion (0.00s)
+=== RUN   TestSourceBudgetRejectsWholeResult
+--- PASS: TestSourceBudgetRejectsWholeResult (0.02s)
+=== RUN   TestInvalidTypedSourceCellRejected
+--- PASS: TestInvalidTypedSourceCellRejected (0.00s)
+PASS
+ok  	idp.local/reporting/integration	19.147s
+=== RUN   TestStoreRefusesAValueItCannotCopyWithoutPanicking
+--- PASS: TestStoreRefusesAValueItCannotCopyWithoutPanicking (0.00s)
+PASS
+ok  	idp.local/reporting/storage/memory	0.001s
+=== RUN   TestMigrationSetRules
+--- PASS: TestMigrationSetRules (0.00s)
+=== RUN   TestFixtureRefusesOtherDatabaseAndRemoteHost
+--- PASS: TestFixtureRefusesOtherDatabaseAndRemoteHost (0.00s)
+PASS
+ok  	idp.local/reporting/storage/postgres	0.002s
+=== RUN   TestMigrateCommandArguments
+--- PASS: TestMigrateCommandArguments (0.00s)
+=== RUN   TestMigrateCommand
+--- PASS: TestMigrateCommand (0.27s)
+PASS
+ok  	idp.local/reporting/cmd/reporting-migrate	0.275s

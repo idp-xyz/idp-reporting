@@ -1,0 +1,92 @@
+{
+ "phase": "S03-H",
+ "date": "2026-10-28 Asia/Shanghai",
+ "baseline": "10ffa30 (main after PR #10, S04-A); implementation by work packages (simulators, rendering, console, core), merged as PR #11; the major review finding fixed in PR #12 and the others in the follow-up PR; evidence from 3ba5f99",
+ "go": {
+  "top_level_passes": 178,
+  "pass_events": 489,
+  "failures": 0,
+  "skips": [
+   "TestDurableDocumentAuthority",
+   "TestDurablePostgresContract",
+   "TestDurablePostgresIssues",
+   "TestMigrateCommand",
+   "TestPostgresContract",
+   "TestPostgresMigrations"
+  ]
+ },
+ "race": {
+  "top_level_passes": 178,
+  "pass_events": 489,
+  "failures": 0,
+  "skips": [
+   "TestDurableDocumentAuthority",
+   "TestDurablePostgresContract",
+   "TestDurablePostgresIssues",
+   "TestMigrateCommand",
+   "TestPostgresContract",
+   "TestPostgresMigrations"
+  ]
+ },
+ "vet": {
+  "exit_code": 0
+ },
+ "mod_verify": {
+  "exit_code": 0
+ },
+ "app_syntax": {
+  "exit_code": 0
+ },
+ "dom": {
+  "tests": 68,
+  "pass": 68,
+  "fail": 0,
+  "skipped": 0,
+  "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser",
+  "s03h": "issue of the open published template through the in-memory product simulator: the product's number AR-000001, download issued-AR-000001.pdf, record with reservation and confirmation, digest equal to the download"
+ },
+ "console_issued_record": {
+  "number": "AR-000001",
+  "state": "succeeded",
+  "pages": 1,
+  "issued_at": "2026-10-28T16:05:09Z",
+  "confirmed_at": "2026-10-28T16:05:09Z"
+ },
+ "postgres_local": {
+  "database": "PostgreSQL 16.14 in a throwaway container on 127.0.0.1:55433 (CI runs the same tests in its postgres job)",
+  "top_level_passes": 18,
+  "issue_subtests": 13,
+  "authority_subtests": 77,
+  "exit_code": 0,
+  "authority_log": "authority.log: ./adapters/... on the same databases (both product simulators, the durable one on PostgreSQL)",
+  "authority_top_level_passes": 10
+ },
+ "pdf_documents": {
+  "checked": 28,
+  "issued": 3,
+  "checks": "everything a preview is checked for, plus: the stamp at 8 pt in the banner strip equal to the record's (product number, issue time, record id), the stamp in the text colour, the banner phrase nowhere, the PDF's creation dates equal to the record's issue time, the PDF's digest and page count equal to the record's",
+  "negative_controls_caught": 968,
+  "negative_controls_missed": 0,
+  "issued_controls_caught": 218,
+  "golden": "export/pdf/testdata/golden.json (matched)",
+  "verapdf_pass": 35,
+  "verapdf_negative_control": "FAIL"
+ },
+ "migrate_cli": "migrate_cli.log: status, plan and down/up through 004 on the fixture database",
+ "reviews": "docs/CODE_REVIEW_S03H.md",
+ "tools": {
+  "go": "go1.26.10",
+  "postgres": "16.14",
+  "node": "v24.22.0",
+  "typst": "0.15.1",
+  "fonts": "Noto Sans SC 2.004",
+  "verapdf": "verapdf/cli v1.30.3",
+  "pymupdf": "1.27.2.3"
+ },
+ "github_actions": {
+  "pull_request": null,
+  "run": null,
+  "head": null,
+  "result": "pending"
+ }
+}

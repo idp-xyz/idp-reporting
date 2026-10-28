@@ -1,0 +1,323 @@
+=== RUN   TestDocumentAuthority
+=== RUN   TestDocumentAuthority/finance
+=== RUN   TestDocumentAuthority/finance/the_frozen_read_has_the_documented_rows
+=== RUN   TestDocumentAuthority/finance/numbers_carry_the_prefix_and_count_from_one
+=== RUN   TestDocumentAuthority/shipment
+=== RUN   TestDocumentAuthority/shipment/the_frozen_read_has_the_documented_rows
+=== RUN   TestDocumentAuthority/shipment/numbers_carry_the_prefix_and_count_from_one
+=== RUN   TestDocumentAuthority/reservation_describes_the_job
+=== RUN   TestDocumentAuthority/numbers_are_consecutive_in_reservation_order
+=== RUN   TestDocumentAuthority/refused_calls_consume_no_number
+=== RUN   TestDocumentAuthority/numbers_belong_to_the_integration
+=== RUN   TestDocumentAuthority/numbers_are_not_reused_after_a_void
+=== RUN   TestDocumentAuthority/the_same_intent_returns_the_same_reservation
+=== RUN   TestDocumentAuthority/another_intent_under_the_job_conflicts
+=== RUN   TestDocumentAuthority/a_voided_reservation_conflicts
+=== RUN   TestDocumentAuthority/an_expired_unconfirmed_reservation_is_denied
+=== RUN   TestDocumentAuthority/a_confirmed_reservation_is_returned_after_its_expiry
+=== RUN   TestDocumentAuthority/a_grant_without_issue_documents_is_denied
+=== RUN   TestDocumentAuthority/a_revoked_principal_is_denied_even_for_an_existing_reservation
+=== RUN   TestDocumentAuthority/the_approval_switch_refuses_as_not_approved
+=== RUN   TestDocumentAuthority/the_context_must_be_the_intents
+=== RUN   TestDocumentAuthority/the_source_read_must_be_the_products_own
+=== RUN   TestDocumentAuthority/the_source_read_must_still_be_authorized
+=== RUN   TestDocumentAuthority/the_row_must_be_the_one_the_frozen_read_produced
+=== RUN   TestDocumentAuthority/the_row_is_the_frozen_reads_not_the_current_data
+=== RUN   TestDocumentAuthority/rows_beyond_the_first_source_pages_are_checked
+=== RUN   TestDocumentAuthority/an_intent_that_is_not_well_formed_is_invalid
+=== RUN   TestDocumentAuthority/confirming_binds_the_file_to_the_reserved_number
+=== RUN   TestDocumentAuthority/confirming_again_returns_the_same_receipt
+=== RUN   TestDocumentAuthority/confirming_another_file_conflicts
+=== RUN   TestDocumentAuthority/confirming_needs_the_reservations_reference
+=== RUN   TestDocumentAuthority/confirming_an_unknown_job_is_not_found
+=== RUN   TestDocumentAuthority/a_confirmation_that_is_not_well_formed_is_invalid
+=== RUN   TestDocumentAuthority/confirming_a_voided_reservation_conflicts
+=== RUN   TestDocumentAuthority/an_expired_reservation_cannot_be_confirmed
+=== RUN   TestDocumentAuthority/a_confirmed_reservation_is_confirmed_again_after_its_expiry
+=== RUN   TestDocumentAuthority/confirming_does_not_check_the_principal_again
+=== RUN   TestDocumentAuthority/confirming_is_scoped_to_the_source
+=== RUN   TestDocumentAuthority/voiding_a_job_the_source_holds_nothing_for_records_a_tombstone
+=== RUN   TestDocumentAuthority/a_voided_job_id_cannot_be_prepared_and_uses_no_number
+=== RUN   TestDocumentAuthority/a_voided_job_id_cannot_be_confirmed
+=== RUN   TestDocumentAuthority/voiding_a_tombstone_again_keeps_the_first_reason
+=== RUN   TestDocumentAuthority/the_lookup_prefers_a_reservation_to_a_tombstone_of_the_same_job_id
+=== RUN   TestDocumentAuthority/a_tombstone_belongs_to_its_source
+=== RUN   TestDocumentAuthority/voiding_a_reservation_records_the_reason
+=== RUN   TestDocumentAuthority/voiding_twice_keeps_the_first_reason
+=== RUN   TestDocumentAuthority/voiding_a_confirmed_document_voids_it
+=== RUN   TestDocumentAuthority/voiding_does_not_check_the_principal
+=== RUN   TestDocumentAuthority/an_expired_reservation_can_be_voided
+=== RUN   TestDocumentAuthority/void_reasons_are_cut_to_200_bytes_at_a_rune_boundary
+=== RUN   TestDocumentAuthority/a_job_id_that_is_not_well_formed_cannot_be_voided
+=== RUN   TestDocumentAuthority/voiding_is_scoped_to_the_source
+=== RUN   TestDocumentAuthority/an_unavailable_source_refuses_every_call
+--- PASS: TestDocumentAuthority (0.01s)
+    --- PASS: TestDocumentAuthority/finance (0.00s)
+        --- PASS: TestDocumentAuthority/finance/the_frozen_read_has_the_documented_rows (0.00s)
+        --- PASS: TestDocumentAuthority/finance/numbers_carry_the_prefix_and_count_from_one (0.00s)
+    --- PASS: TestDocumentAuthority/shipment (0.00s)
+        --- PASS: TestDocumentAuthority/shipment/the_frozen_read_has_the_documented_rows (0.00s)
+        --- PASS: TestDocumentAuthority/shipment/numbers_carry_the_prefix_and_count_from_one (0.00s)
+    --- PASS: TestDocumentAuthority/reservation_describes_the_job (0.00s)
+    --- PASS: TestDocumentAuthority/numbers_are_consecutive_in_reservation_order (0.00s)
+    --- PASS: TestDocumentAuthority/refused_calls_consume_no_number (0.00s)
+    --- PASS: TestDocumentAuthority/numbers_belong_to_the_integration (0.00s)
+    --- PASS: TestDocumentAuthority/numbers_are_not_reused_after_a_void (0.00s)
+    --- PASS: TestDocumentAuthority/the_same_intent_returns_the_same_reservation (0.00s)
+    --- PASS: TestDocumentAuthority/another_intent_under_the_job_conflicts (0.00s)
+    --- PASS: TestDocumentAuthority/a_voided_reservation_conflicts (0.00s)
+    --- PASS: TestDocumentAuthority/an_expired_unconfirmed_reservation_is_denied (0.00s)
+    --- PASS: TestDocumentAuthority/a_confirmed_reservation_is_returned_after_its_expiry (0.00s)
+    --- PASS: TestDocumentAuthority/a_grant_without_issue_documents_is_denied (0.00s)
+    --- PASS: TestDocumentAuthority/a_revoked_principal_is_denied_even_for_an_existing_reservation (0.00s)
+    --- PASS: TestDocumentAuthority/the_approval_switch_refuses_as_not_approved (0.00s)
+    --- PASS: TestDocumentAuthority/the_context_must_be_the_intents (0.00s)
+    --- PASS: TestDocumentAuthority/the_source_read_must_be_the_products_own (0.00s)
+    --- PASS: TestDocumentAuthority/the_source_read_must_still_be_authorized (0.00s)
+    --- PASS: TestDocumentAuthority/the_row_must_be_the_one_the_frozen_read_produced (0.00s)
+    --- PASS: TestDocumentAuthority/the_row_is_the_frozen_reads_not_the_current_data (0.00s)
+    --- PASS: TestDocumentAuthority/rows_beyond_the_first_source_pages_are_checked (0.00s)
+    --- PASS: TestDocumentAuthority/an_intent_that_is_not_well_formed_is_invalid (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_binds_the_file_to_the_reserved_number (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_again_returns_the_same_receipt (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_another_file_conflicts (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_needs_the_reservations_reference (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_an_unknown_job_is_not_found (0.00s)
+    --- PASS: TestDocumentAuthority/a_confirmation_that_is_not_well_formed_is_invalid (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_a_voided_reservation_conflicts (0.00s)
+    --- PASS: TestDocumentAuthority/an_expired_reservation_cannot_be_confirmed (0.00s)
+    --- PASS: TestDocumentAuthority/a_confirmed_reservation_is_confirmed_again_after_its_expiry (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_does_not_check_the_principal_again (0.00s)
+    --- PASS: TestDocumentAuthority/confirming_is_scoped_to_the_source (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_a_job_the_source_holds_nothing_for_records_a_tombstone (0.00s)
+    --- PASS: TestDocumentAuthority/a_voided_job_id_cannot_be_prepared_and_uses_no_number (0.00s)
+    --- PASS: TestDocumentAuthority/a_voided_job_id_cannot_be_confirmed (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_a_tombstone_again_keeps_the_first_reason (0.00s)
+    --- PASS: TestDocumentAuthority/the_lookup_prefers_a_reservation_to_a_tombstone_of_the_same_job_id (0.00s)
+    --- PASS: TestDocumentAuthority/a_tombstone_belongs_to_its_source (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_a_reservation_records_the_reason (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_twice_keeps_the_first_reason (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_a_confirmed_document_voids_it (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_does_not_check_the_principal (0.00s)
+    --- PASS: TestDocumentAuthority/an_expired_reservation_can_be_voided (0.00s)
+    --- PASS: TestDocumentAuthority/void_reasons_are_cut_to_200_bytes_at_a_rune_boundary (0.00s)
+    --- PASS: TestDocumentAuthority/a_job_id_that_is_not_well_formed_cannot_be_voided (0.00s)
+    --- PASS: TestDocumentAuthority/voiding_is_scoped_to_the_source (0.00s)
+    --- PASS: TestDocumentAuthority/an_unavailable_source_refuses_every_call (0.00s)
+=== RUN   TestDocumentAuthorityConcurrentCalls
+=== RUN   TestDocumentAuthorityConcurrentCalls/different_jobs_get_distinct_consecutive_numbers
+=== RUN   TestDocumentAuthorityConcurrentCalls/calls_for_one_job_make_one_reservation
+=== RUN   TestDocumentAuthorityConcurrentCalls/confirmations_of_one_file_return_one_receipt
+=== RUN   TestDocumentAuthorityConcurrentCalls/confirmations_of_two_files_have_one_winner
+=== RUN   TestDocumentAuthorityConcurrentCalls/a_void_and_prepares_racing_on_an_unknown_job_never_leave_a_live_reservation
+=== RUN   TestDocumentAuthorityConcurrentCalls/voids_of_one_unknown_job_record_one_tombstone
+=== RUN   TestDocumentAuthorityConcurrentCalls/confirmations_and_voids_of_one_job_settle_on_void
+--- PASS: TestDocumentAuthorityConcurrentCalls (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/different_jobs_get_distinct_consecutive_numbers (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/calls_for_one_job_make_one_reservation (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/confirmations_of_one_file_return_one_receipt (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/confirmations_of_two_files_have_one_winner (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/a_void_and_prepares_racing_on_an_unknown_job_never_leave_a_live_reservation (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/voids_of_one_unknown_job_record_one_tombstone (0.00s)
+    --- PASS: TestDocumentAuthorityConcurrentCalls/confirmations_and_voids_of_one_job_settle_on_void (0.00s)
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/a_reservation_made_with_its_read_expires_first
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/a_reservation_made_later_expires_with_the_read
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/the_confirmation_time_is_the_clock_and_never_before_the_issue_time
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/the_void_time_is_the_clock_to_the_second
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/the_tombstone_time_is_the_clock_to_the_second
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/a_reservation_is_over_at_its_expiry_instant
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/the_source_read_ends_with_the_clock
+=== RUN   TestDocumentAuthorityFollowsTheSimulatorsClock/a_nil_clock_is_the_real_one
+--- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/a_reservation_made_with_its_read_expires_first (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/a_reservation_made_later_expires_with_the_read (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/the_confirmation_time_is_the_clock_and_never_before_the_issue_time (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/the_void_time_is_the_clock_to_the_second (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/the_tombstone_time_is_the_clock_to_the_second (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/a_reservation_is_over_at_its_expiry_instant (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/the_source_read_ends_with_the_clock (0.00s)
+    --- PASS: TestDocumentAuthorityFollowsTheSimulatorsClock/a_nil_clock_is_the_real_one (0.00s)
+=== RUN   TestDocumentAuthorityDoesNotCountItsOwnRowCheckAsARead
+--- PASS: TestDocumentAuthorityDoesNotCountItsOwnRowCheckAsARead (0.00s)
+=== RUN   TestFixtureCarriesTheNumberPrefix
+--- PASS: TestFixtureCarriesTheNumberPrefix (0.00s)
+=== RUN   TestGrantIssueDocuments
+--- PASS: TestGrantIssueDocuments (0.00s)
+=== RUN   TestIssueRuleHelpers
+=== RUN   TestIssueRuleHelpers/number_prefixes
+=== RUN   TestIssueRuleHelpers/numbers_are_six_digits_then_more_and_always_valid
+=== RUN   TestIssueRuleHelpers/reservation_times
+=== RUN   TestIssueRuleHelpers/an_intent_has_one_digest_in_any_zone
+=== RUN   TestIssueRuleHelpers/hexadecimal_ids
+--- PASS: TestIssueRuleHelpers (0.00s)
+    --- PASS: TestIssueRuleHelpers/number_prefixes (0.00s)
+    --- PASS: TestIssueRuleHelpers/numbers_are_six_digits_then_more_and_always_valid (0.00s)
+    --- PASS: TestIssueRuleHelpers/reservation_times (0.00s)
+    --- PASS: TestIssueRuleHelpers/an_intent_has_one_digest_in_any_zone (0.00s)
+    --- PASS: TestIssueRuleHelpers/hexadecimal_ids (0.00s)
+=== RUN   TestPersistableFixtureProjectsOriginalScope
+--- PASS: TestPersistableFixtureProjectsOriginalScope (0.00s)
+PASS
+ok  	idp.local/reporting/adapters/contractsim	0.013s
+?   	idp.local/reporting/adapters/contractsim/internal/authoritytest	[no test files]
+=== RUN   TestDurableDocumentAuthority
+=== RUN   TestDurableDocumentAuthority/conformance
+=== RUN   TestDurableDocumentAuthority/conformance/finance
+=== RUN   TestDurableDocumentAuthority/conformance/finance/the_frozen_read_has_the_documented_rows
+=== RUN   TestDurableDocumentAuthority/conformance/finance/numbers_carry_the_prefix_and_count_from_one
+=== RUN   TestDurableDocumentAuthority/conformance/shipment
+=== RUN   TestDurableDocumentAuthority/conformance/shipment/the_frozen_read_has_the_documented_rows
+=== RUN   TestDurableDocumentAuthority/conformance/shipment/numbers_carry_the_prefix_and_count_from_one
+=== RUN   TestDurableDocumentAuthority/conformance/reservation_describes_the_job
+=== RUN   TestDurableDocumentAuthority/conformance/numbers_are_consecutive_in_reservation_order
+=== RUN   TestDurableDocumentAuthority/conformance/refused_calls_consume_no_number
+=== RUN   TestDurableDocumentAuthority/conformance/numbers_belong_to_the_integration
+=== RUN   TestDurableDocumentAuthority/conformance/numbers_are_not_reused_after_a_void
+=== RUN   TestDurableDocumentAuthority/conformance/the_same_intent_returns_the_same_reservation
+=== RUN   TestDurableDocumentAuthority/conformance/another_intent_under_the_job_conflicts
+=== RUN   TestDurableDocumentAuthority/conformance/a_voided_reservation_conflicts
+=== RUN   TestDurableDocumentAuthority/conformance/an_expired_unconfirmed_reservation_is_denied
+=== RUN   TestDurableDocumentAuthority/conformance/a_confirmed_reservation_is_returned_after_its_expiry
+=== RUN   TestDurableDocumentAuthority/conformance/a_grant_without_issue_documents_is_denied
+=== RUN   TestDurableDocumentAuthority/conformance/a_revoked_principal_is_denied_even_for_an_existing_reservation
+=== RUN   TestDurableDocumentAuthority/conformance/the_approval_switch_refuses_as_not_approved
+=== RUN   TestDurableDocumentAuthority/conformance/the_context_must_be_the_intents
+=== RUN   TestDurableDocumentAuthority/conformance/the_source_read_must_be_the_products_own
+=== RUN   TestDurableDocumentAuthority/conformance/the_source_read_must_still_be_authorized
+=== RUN   TestDurableDocumentAuthority/conformance/the_row_must_be_the_one_the_frozen_read_produced
+=== RUN   TestDurableDocumentAuthority/conformance/the_row_is_the_frozen_reads_not_the_current_data
+=== RUN   TestDurableDocumentAuthority/conformance/rows_beyond_the_first_source_pages_are_checked
+=== RUN   TestDurableDocumentAuthority/conformance/an_intent_that_is_not_well_formed_is_invalid
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_binds_the_file_to_the_reserved_number
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_again_returns_the_same_receipt
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_another_file_conflicts
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_needs_the_reservations_reference
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_an_unknown_job_is_not_found
+=== RUN   TestDurableDocumentAuthority/conformance/a_confirmation_that_is_not_well_formed_is_invalid
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_a_voided_reservation_conflicts
+=== RUN   TestDurableDocumentAuthority/conformance/an_expired_reservation_cannot_be_confirmed
+=== RUN   TestDurableDocumentAuthority/conformance/a_confirmed_reservation_is_confirmed_again_after_its_expiry
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_does_not_check_the_principal_again
+=== RUN   TestDurableDocumentAuthority/conformance/confirming_is_scoped_to_the_source
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_a_job_the_source_holds_nothing_for_records_a_tombstone
+=== RUN   TestDurableDocumentAuthority/conformance/a_voided_job_id_cannot_be_prepared_and_uses_no_number
+=== RUN   TestDurableDocumentAuthority/conformance/a_voided_job_id_cannot_be_confirmed
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_a_tombstone_again_keeps_the_first_reason
+=== RUN   TestDurableDocumentAuthority/conformance/the_lookup_prefers_a_reservation_to_a_tombstone_of_the_same_job_id
+=== RUN   TestDurableDocumentAuthority/conformance/a_tombstone_belongs_to_its_source
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_a_reservation_records_the_reason
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_twice_keeps_the_first_reason
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_a_confirmed_document_voids_it
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_does_not_check_the_principal
+=== RUN   TestDurableDocumentAuthority/conformance/an_expired_reservation_can_be_voided
+=== RUN   TestDurableDocumentAuthority/conformance/void_reasons_are_cut_to_200_bytes_at_a_rune_boundary
+=== RUN   TestDurableDocumentAuthority/conformance/a_job_id_that_is_not_well_formed_cannot_be_voided
+=== RUN   TestDurableDocumentAuthority/conformance/voiding_is_scoped_to_the_source
+=== RUN   TestDurableDocumentAuthority/conformance/an_unavailable_source_refuses_every_call
+=== RUN   TestDurableDocumentAuthority/concurrency
+=== RUN   TestDurableDocumentAuthority/concurrency/different_jobs_get_distinct_consecutive_numbers
+=== RUN   TestDurableDocumentAuthority/concurrency/calls_for_one_job_make_one_reservation
+=== RUN   TestDurableDocumentAuthority/concurrency/confirmations_of_one_file_return_one_receipt
+=== RUN   TestDurableDocumentAuthority/concurrency/confirmations_of_two_files_have_one_winner
+=== RUN   TestDurableDocumentAuthority/concurrency/a_void_and_prepares_racing_on_an_unknown_job_never_leave_a_live_reservation
+=== RUN   TestDurableDocumentAuthority/concurrency/voids_of_one_unknown_job_record_one_tombstone
+=== RUN   TestDurableDocumentAuthority/concurrency/confirmations_and_voids_of_one_job_settle_on_void
+=== RUN   TestDurableDocumentAuthority/numbers_belong_to_the_source_tenant
+=== RUN   TestDurableDocumentAuthority/ensuring_a_fixture_records_its_number_prefix
+=== RUN   TestDurableDocumentAuthority/resetting_the_fixture_clears_reservations_and_sequences
+=== RUN   TestDurableDocumentAuthority/reservations_survive_reopening_the_source
+=== RUN   TestDurableDocumentAuthority/a_grant_stored_before_the_capability_does_not_issue
+=== RUN   TestDurableDocumentAuthority/a_source_without_its_number_sequence_is_an_integrity_failure
+=== RUN   TestDurableDocumentAuthority/the_approval_switch_belongs_to_one_source
+=== RUN   TestDurableDocumentAuthority/the_row_check_is_not_a_data_read
+=== RUN   TestDurableDocumentAuthority/an_expired_source_read_is_denied
+=== RUN   TestDurableDocumentAuthority/the_schema_refuses_reused_numbers_and_inconsistent_records
+=== RUN   TestDurableDocumentAuthority/the_schema_allows_a_tombstone_and_no_other_row_without_a_reservation
+=== RUN   TestDurableDocumentAuthority/voiding_needs_the_source_and_its_sequence
+=== RUN   TestDurableDocumentAuthority/a_database_with_the_first_revision_of_the_issues_table_is_refused
+=== RUN   TestDurableDocumentAuthority/a_fresh_database_gets_the_version_2_schema
+=== RUN   TestDurableDocumentAuthority/opening_requires_profile_version_2
+=== RUN   TestDurableDocumentAuthority/a_version_1_database_is_upgraded_in_one_transaction_and_keeps_its_data
+--- PASS: TestDurableDocumentAuthority (8.23s)
+    --- PASS: TestDurableDocumentAuthority/conformance (4.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/finance (0.11s)
+            --- PASS: TestDurableDocumentAuthority/conformance/finance/the_frozen_read_has_the_documented_rows (0.06s)
+            --- PASS: TestDurableDocumentAuthority/conformance/finance/numbers_carry_the_prefix_and_count_from_one (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/shipment (0.11s)
+            --- PASS: TestDurableDocumentAuthority/conformance/shipment/the_frozen_read_has_the_documented_rows (0.05s)
+            --- PASS: TestDurableDocumentAuthority/conformance/shipment/numbers_carry_the_prefix_and_count_from_one (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/reservation_describes_the_job (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/numbers_are_consecutive_in_reservation_order (0.12s)
+        --- PASS: TestDurableDocumentAuthority/conformance/refused_calls_consume_no_number (0.08s)
+        --- PASS: TestDurableDocumentAuthority/conformance/numbers_belong_to_the_integration (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/numbers_are_not_reused_after_a_void (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_same_intent_returns_the_same_reservation (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/another_intent_under_the_job_conflicts (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_voided_reservation_conflicts (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/an_expired_unconfirmed_reservation_is_denied (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_confirmed_reservation_is_returned_after_its_expiry (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_grant_without_issue_documents_is_denied (0.10s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_revoked_principal_is_denied_even_for_an_existing_reservation (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_approval_switch_refuses_as_not_approved (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_context_must_be_the_intents (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_source_read_must_be_the_products_own (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_source_read_must_still_be_authorized (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_row_must_be_the_one_the_frozen_read_produced (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_row_is_the_frozen_reads_not_the_current_data (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/rows_beyond_the_first_source_pages_are_checked (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/an_intent_that_is_not_well_formed_is_invalid (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_binds_the_file_to_the_reserved_number (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_again_returns_the_same_receipt (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_another_file_conflicts (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_needs_the_reservations_reference (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_an_unknown_job_is_not_found (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_confirmation_that_is_not_well_formed_is_invalid (0.16s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_a_voided_reservation_conflicts (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/an_expired_reservation_cannot_be_confirmed (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_confirmed_reservation_is_confirmed_again_after_its_expiry (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_does_not_check_the_principal_again (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/confirming_is_scoped_to_the_source (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_a_job_the_source_holds_nothing_for_records_a_tombstone (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_voided_job_id_cannot_be_prepared_and_uses_no_number (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_voided_job_id_cannot_be_confirmed (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_a_tombstone_again_keeps_the_first_reason (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/the_lookup_prefers_a_reservation_to_a_tombstone_of_the_same_job_id (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_tombstone_belongs_to_its_source (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_a_reservation_records_the_reason (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_twice_keeps_the_first_reason (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_a_confirmed_document_voids_it (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_does_not_check_the_principal (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/an_expired_reservation_can_be_voided (0.06s)
+        --- PASS: TestDurableDocumentAuthority/conformance/void_reasons_are_cut_to_200_bytes_at_a_rune_boundary (0.94s)
+        --- PASS: TestDurableDocumentAuthority/conformance/a_job_id_that_is_not_well_formed_cannot_be_voided (0.05s)
+        --- PASS: TestDurableDocumentAuthority/conformance/voiding_is_scoped_to_the_source (0.07s)
+        --- PASS: TestDurableDocumentAuthority/conformance/an_unavailable_source_refuses_every_call (0.06s)
+    --- PASS: TestDurableDocumentAuthority/concurrency (1.33s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/different_jobs_get_distinct_consecutive_numbers (0.24s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/calls_for_one_job_make_one_reservation (0.16s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/confirmations_of_one_file_return_one_receipt (0.18s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/confirmations_of_two_files_have_one_winner (0.18s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/a_void_and_prepares_racing_on_an_unknown_job_never_leave_a_live_reservation (0.24s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/voids_of_one_unknown_job_record_one_tombstone (0.15s)
+        --- PASS: TestDurableDocumentAuthority/concurrency/confirmations_and_voids_of_one_job_settle_on_void (0.18s)
+    --- PASS: TestDurableDocumentAuthority/numbers_belong_to_the_source_tenant (0.08s)
+    --- PASS: TestDurableDocumentAuthority/ensuring_a_fixture_records_its_number_prefix (0.06s)
+    --- PASS: TestDurableDocumentAuthority/resetting_the_fixture_clears_reservations_and_sequences (0.11s)
+    --- PASS: TestDurableDocumentAuthority/reservations_survive_reopening_the_source (0.09s)
+    --- PASS: TestDurableDocumentAuthority/a_grant_stored_before_the_capability_does_not_issue (0.06s)
+    --- PASS: TestDurableDocumentAuthority/a_source_without_its_number_sequence_is_an_integrity_failure (0.06s)
+    --- PASS: TestDurableDocumentAuthority/the_approval_switch_belongs_to_one_source (0.06s)
+    --- PASS: TestDurableDocumentAuthority/the_row_check_is_not_a_data_read (0.06s)
+    --- PASS: TestDurableDocumentAuthority/an_expired_source_read_is_denied (0.05s)
+    --- PASS: TestDurableDocumentAuthority/the_schema_refuses_reused_numbers_and_inconsistent_records (0.11s)
+    --- PASS: TestDurableDocumentAuthority/the_schema_allows_a_tombstone_and_no_other_row_without_a_reservation (0.11s)
+    --- PASS: TestDurableDocumentAuthority/voiding_needs_the_source_and_its_sequence (0.06s)
+    --- PASS: TestDurableDocumentAuthority/a_database_with_the_first_revision_of_the_issues_table_is_refused (0.07s)
+    --- PASS: TestDurableDocumentAuthority/a_fresh_database_gets_the_version_2_schema (0.11s)
+    --- PASS: TestDurableDocumentAuthority/opening_requires_profile_version_2 (0.06s)
+    --- PASS: TestDurableDocumentAuthority/a_version_1_database_is_upgraded_in_one_transaction_and_keeps_its_data (1.64s)
+=== RUN   TestDurableSourceRejectsPlatformDBAndRemoteFallback
+--- PASS: TestDurableSourceRejectsPlatformDBAndRemoteFallback (0.00s)
+PASS
+ok  	idp.local/reporting/adapters/contractsim/pgsource	8.237s

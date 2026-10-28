@@ -1,0 +1,28 @@
+{
+ "background": false,
+ "elements": [
+  {
+   "align": "left",
+   "height": 12,
+   "size": 14,
+   "text": "华东区客户",
+   "width": 120,
+   "x": 20,
+   "y": 30
+  }
+ ],
+ "file": "document_issue_single.pdf",
+ "issue": {
+  "number": "AR-000001",
+  "issue_id": "77777777777777777777777777777777",
+  "issued_at": "2026-10-28T06:12:03Z",
+  "stamp": "ISSUED No. AR-000001 - 2026-10-28T06:12:03Z - 77777777777777777777777777777777",
+  "sha256": "8072d0a3b16e2760a3dbbd93f4c4be4f126fd06654c90f223af11f38ca3a1d6e",
+  "pages": 1,
+  "preview_file": "document_issue_single.preview.pdf"
+ },
+ "kind": "document",
+ "mode": "full",
+ "offset_x": 0,
+ "offset_y": 0
+}

@@ -1,0 +1,32 @@
+$ reporting-migrate status
+embedded: 4 steps (latest 004)
+applied:  001 base                     2026-10-28T16:07:19Z by reporting-migrate:tops (baf28b62b0de)
+applied:  002 payload_digests          2026-10-28T16:07:19Z by reporting-migrate:tops (d67baa0269f3)
+applied:  003 issues                   2026-10-28T16:07:19Z by reporting-migrate:tops (0fecd792e697)
+applied:  004 source_confirmed_issue   2026-10-28T16:07:19Z by reporting-migrate:tops (619349ea14ce)
+role:     the connected role is not the application role (19 rules unmet; expected for the migrator, the server must connect as the application role): CREATE on the database; CREATE on the schema; DELETE or TRUNCATE on assets; DELETE or TRUNCATE on jobs; DELETE or TRUNCATE on profile; DELETE or TRUNCATE on schema_migrations; INSERT or UPDATE on profile; INSERT or UPDATE on schema_migrations; database creation; owns table assets; owns table jobs; owns table profile; owns table schema_migrations; owns the database; owns the schema; replication; role creation; row security bypass; superuser
+$ reporting-migrate plan --to 1
+down 004 source_confirmed_issue
+down 003 issues
+down 002 payload_digests
+$ reporting-migrate down --to 1
+at version 001
+exit 0
+$ reporting-migrate down --to 1 --accept-data-loss
+at version 001
+$ reporting-migrate status
+embedded: 4 steps (latest 004)
+applied:  001 base                     2026-10-28T16:07:19Z by reporting-migrate:tops (baf28b62b0de)
+pending:  002 payload_digests
+pending:  003 issues
+pending:  004 source_confirmed_issue
+role:     the connected role is not the application role (19 rules unmet; expected for the migrator, the server must connect as the application role): CREATE on the database; CREATE on the schema; DELETE or TRUNCATE on assets; DELETE or TRUNCATE on jobs; DELETE or TRUNCATE on profile; DELETE or TRUNCATE on schema_migrations; INSERT or UPDATE on profile; INSERT or UPDATE on schema_migrations; database creation; owns table assets; owns table jobs; owns table profile; owns table schema_migrations; owns the database; owns the schema; replication; role creation; row security bypass; superuser
+$ reporting-migrate up
+at version 004
+$ reporting-migrate status
+embedded: 4 steps (latest 004)
+applied:  001 base                     2026-10-28T16:07:19Z by reporting-migrate:tops (baf28b62b0de)
+applied:  002 payload_digests          2026-10-28T16:07:19Z by reporting-migrate:tops (d67baa0269f3)
+applied:  003 issues                   2026-10-28T16:07:19Z by reporting-migrate:tops (0fecd792e697)
+applied:  004 source_confirmed_issue   2026-10-28T16:07:19Z by reporting-migrate:tops (619349ea14ce)
+role:     the connected role is not the application role (19 rules unmet; expected for the migrator, the server must connect as the application role): CREATE on the database; CREATE on the schema; DELETE or TRUNCATE on assets; DELETE or TRUNCATE on jobs; DELETE or TRUNCATE on profile; DELETE or TRUNCATE on schema_migrations; INSERT or UPDATE on profile; INSERT or UPDATE on schema_migrations; database creation; owns table assets; owns table jobs; owns table profile; owns table schema_migrations; owns the database; owns the schema; replication; role creation; row security bypass; superuser
