@@ -1,3 +1,25 @@
+# IDP Reporting Platform · S04-A
+
+2026-10-28。生产存储基础（docs/S04A_SCOPE.md，操作手册 docs/OPERATIONS.md）：平台库从“守护的测试夹具”变为有完整生命周期的模式。
+模式由嵌入二进制的编号迁移对 `storage/postgres/migrations/NNN_name.{up,down}.sql` 定义（001 基础表、002 载荷摘要、003 出具），
+逐列逐约束复现夹具原有模式；账本 `schema_migrations` 记录每步的 up 文件 SHA-256、时间与执行者，profile 行版本与账本同步；
+每步一个事务并持有事务级 advisory lock（并发迁移串行、失败步骤不影响前一版本）；账本出现二进制不认识的版本、校验和不一致或缺号即拒绝（status 报告、up/down 拒绝、服务拒绝打开）；
+没有账本的旧库按 profile 版本引导。回滚 `down --to N` 逐步逆向，会丢行的步骤（001、003）须显式 `--accept-data-loss`；
+鉴定：新库 up→快照目录→down 到 0→up，目录（列、类型、默认值、可空、约束、索引）逐字节相同。
+最小权限：迁移角色拥有模式与全部表；应用角色只有 USAGE、全表 SELECT、数据表 INSERT/UPDATE（无 DELETE/TRUNCATE/DDL/CREATE/所有权/超级用户/建角色建库/RLS 绕过），
+`reporting-migrate roles` 幂等设置所有权、授权与默认权限；`postgres.OpenProduction` 启动时校验 sslmode=verify-full、非夹具库名、production profile、账本版本与连接角色的每条规则，任一不满足即拒绝启动；
+夹具路径保留超级用户连接以供破坏性重置，生产库不能重置。`cmd/reporting-migrate`：status/plan/up/down/roles/init-profile，只作用于 REPORTING_STORE_DSN，不进服务进程、不碰来源库；
+演示服务的 -initialize-fixture 通过同一迁移器初始化。
+测试 `TestPostgresMigrations`（PostgreSQL 任务）：往返目录相等、部分目标、篡改账本（校验和/未知版本/缺号/改名/profile 过期）全部拒绝且目录不变、6 个并发迁移器、丢行拒绝与接受、旧库引导、
+创建两个角色后应用角色跑通整条平台契约（出具含）并逐条尝试被禁语句、超级用户与夹具 profile 被生产路径拒绝、DSN 规则（disable/prefer/require/verify-ca/夹具库名）。
+Go 普通/race 各 126 项顶层测试通过（273 个通过事件），仅 5 项数据库入口跳过（含迁移鉴定与命令测试）；本机 PostgreSQL 16：17 项顶层测试通过，其中迁移鉴定 7 项子测试；DOM 60/60；vet、go mod verify、JS 语法通过；
+检查器与 veraPDF 结果与 S03-G 一致（本阶段不改渲染）。两路独立审查见 docs/CODE_REVIEW_S04A.md。GitHub Actions 四项任务在 PR #10 上通过（run 40673628831）。
+未验：真实 TLS 生产库（生产路径的 TLS 规则只验证了拒绝分支）、真实 DBA 角色与密码策略、生产准入。
+不在本阶段：行级安全（单一应用角色，租户隔离仍在服务层）、产物对象存储、过期资产清理与保留、配额、备份与恢复鉴定、容量、密钥生命周期；真实接入最后。
+当前证据 evidence/s04a；规格 docs/S04A_SCOPE.md；手册 docs/OPERATIONS.md；审查 docs/CODE_REVIEW_S04A.md。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S03-G
 
 2026-10-28。正式出具记录（docs/S03G_SCOPE.md）：已发布的模板版本按冻结快照的一行正式出具为不带 PREVIEW 标记、带编号印章的 PDF/A-2b 产物，
@@ -265,6 +287,8 @@ export REPORTING_S01_TEST_DSN='postgresql://postgres@127.0.0.1:55432/reporting_t
 export REPORTING_S01_SOURCE_DSN='postgresql://postgres@127.0.0.1:55432/reporting_source_test_s01?sslmode=disable'
 ./bin/reporting-demo -profile contract-simulator -initialize-fixture
 ```
+
+-initialize-fixture 通过 storage/postgres 的迁移器应用全部迁移并写入夹具 profile；生产库的迁移、回滚与角色见 docs/OPERATIONS.md。
 
 普通/race 平台库为 reporting_test_s01 / reporting_test_s01_race，来源库为
 reporting_source_test_s01 / reporting_source_test_s01_race。生产库名及非回环地址拒绝。

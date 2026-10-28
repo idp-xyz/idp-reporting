@@ -1,10 +1,10 @@
-// Package postgres stores only Reporting assets in a guarded S01 test database.
-// It does not access source product tables. Production roles/migrations are S04.
+// Package postgres stores only the platform's own assets: a guarded test fixture (Open) or a
+// production store (OpenProduction, S04-A), migrated through the embedded migrations. It never
+// accesses source product tables.
 package postgres
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5"
@@ -15,33 +15,33 @@ import (
 	"time"
 )
 
-//go:embed fixture.sql
-var fixtureSQL string
+type Store struct {
+	pool    *pgxpool.Pool
+	fixture bool // opened through the guarded fixture path: resets are allowed
+}
 
-type Store struct{ pool *pgxpool.Pool }
-
+// Open opens the guarded test fixture: one of the fixture database names on a loopback address,
+// the contract-simulator profile, the schema at the binary's version. With initialize, the
+// migrations are applied first and the profile row inserted; a database at an older version
+// (made before the ledger existed included) is upgraded. Production stores open through
+// OpenProduction.
 func Open(ctx context.Context, dsn string, initialize bool) (*Store, error) {
-	p, e := fixturedb.Open(ctx, dsn, "reporting_test_s01", "reporting_test_s01_race")
+	p, e := fixturedb.Open(ctx, dsn, fixtureDatabases...)
 	if e != nil {
 		return nil, e
 	}
-	s := &Store{pool: p}
+	s := &Store{pool: p, fixture: true}
 	fail := func(err error) (*Store, error) { p.Close(); return nil, err }
 	if initialize {
-		if _, e = p.Exec(ctx, fixtureSQL); e != nil {
+		if e = Up(ctx, p, 0, "fixture"); e != nil {
 			return fail(e)
 		}
-		if e = upgradeFixture(ctx, p); e != nil {
+		if e = InitProfile(ctx, p, ProfileFixture); e != nil {
 			return fail(e)
 		}
 	}
-	var profile string
-	var version int
-	if e = p.QueryRow(ctx, "SELECT profile,version FROM reporting_s01.profile WHERE singleton").Scan(&profile, &version); e != nil {
+	if e = Verify(ctx, p, ProfileFixture); e != nil {
 		return fail(e)
-	}
-	if profile != "contract-simulator-only" || version != fixtureVersion {
-		return fail(r.ErrDenied)
 	}
 	return s, nil
 }
@@ -49,6 +49,9 @@ func (s *Store) Close() { s.pool.Close() }
 
 // ResetFixture is destructive only inside the database/profile protected by Open.
 func (s *Store) ResetFixture(ctx context.Context) error {
+	if !s.fixture {
+		return r.ErrDenied
+	}
 	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.issue_numbers")
 	return e
 }

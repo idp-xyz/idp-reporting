@@ -195,6 +195,8 @@ func TestDurablePostgresIssues(t *testing.T) {
 			seen[numbers[i]] = true
 		}
 	})
+	// A ledger at version 2 (an S04-A database taken down to 2): the upgrade keeps an export
+	// artifact. The pre-ledger v2 database is the migrate test's legacy case.
 	t.Run("fixture_v2_upgrade_adds_issues_and_keeps_assets", func(t *testing.T) {
 		v := newDurable(t)
 		s := issueDurableService(t, v, &stampIssuer{})
@@ -208,6 +210,7 @@ func TestDurablePostgresIssues(t *testing.T) {
 		v.repo.Close()
 		p := fixtureAdmin(t)
 		if _, e = p.Exec(ctx, `DROP TABLE reporting_s01.issue_numbers;
+DELETE FROM reporting_s01.schema_migrations WHERE version>2;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check;
 ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));
 ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check;

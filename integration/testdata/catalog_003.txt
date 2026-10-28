@@ -1,0 +1,57 @@
+column assets.id 1 text null=NO default=
+column assets.tenant 2 text null=NO default=
+column assets.integration 3 text null=NO default=
+column assets.issuer 4 text null=NO default=
+column assets.subject 5 text null=NO default=
+column assets.kind 6 text null=NO default=
+column assets.data 7 jsonb null=NO default=
+column assets.created_at 8 timestamp with time zone null=NO default=clock_timestamp()
+column assets.data_sha256 9 text null=NO default=
+column issue_numbers.tenant 1 text null=NO default=
+column issue_numbers.integration 2 text null=NO default=
+column issue_numbers.last 3 bigint null=NO default=
+column jobs.id 1 text null=NO default=
+column jobs.tenant 2 text null=NO default=
+column jobs.integration 3 text null=NO default=
+column jobs.issuer 4 text null=NO default=
+column jobs.subject 5 text null=NO default=
+column jobs.kind 6 text null=NO default=
+column jobs.state 7 text null=NO default=
+column jobs.idem_key 8 text null=NO default=
+column jobs.request_hash 9 text null=NO default=
+column jobs.generation 10 bigint null=NO default=0
+column jobs.lease_until 11 timestamp with time zone null=YES default=
+column jobs.source_expires_at 12 timestamp with time zone null=NO default=
+column jobs.snapshot_id 13 text null=NO default=''::text
+column jobs.artifact_id 14 text null=NO default=''::text
+column jobs.error_code 15 text null=NO default=''::text
+column jobs.data 16 jsonb null=NO default=
+column jobs.created_at 17 timestamp with time zone null=NO default=clock_timestamp()
+column jobs.data_sha256 18 text null=NO default=
+column profile.singleton 1 boolean null=NO default=true
+column profile.profile 2 text null=NO default=
+column profile.version 3 integer null=NO default=
+column schema_migrations.version 1 integer null=NO default=
+column schema_migrations.name 2 text null=NO default=
+column schema_migrations.checksum 3 text null=NO default=
+column schema_migrations.applied_at 4 timestamp with time zone null=NO default=clock_timestamp()
+column schema_migrations.applied_by 5 text null=NO default=
+constraint reporting_s01.assets assets_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'artifact'::text, 'issue'::text])))
+constraint reporting_s01.assets assets_pkey PRIMARY KEY (id)
+constraint reporting_s01.issue_numbers issue_numbers_last_check CHECK ((last >= 0))
+constraint reporting_s01.issue_numbers issue_numbers_pkey PRIMARY KEY (tenant, integration)
+constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))
+constraint reporting_s01.jobs jobs_pkey PRIMARY KEY (id)
+constraint reporting_s01.jobs jobs_state_check CHECK ((state = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))
+constraint reporting_s01.jobs jobs_tenant_integration_issuer_subject_kind_idem_key_key UNIQUE (tenant, integration, issuer, subject, kind, idem_key)
+constraint reporting_s01.profile profile_pkey PRIMARY KEY (singleton)
+constraint reporting_s01.profile profile_singleton_check CHECK (singleton)
+constraint reporting_s01.schema_migrations schema_migrations_pkey PRIMARY KEY (version)
+constraint reporting_s01.schema_migrations schema_migrations_version_check CHECK ((version > 0))
+index assets assets_pkey CREATE UNIQUE INDEX assets_pkey ON reporting_s01.assets USING btree (id)
+index issue_numbers issue_numbers_pkey CREATE UNIQUE INDEX issue_numbers_pkey ON reporting_s01.issue_numbers USING btree (tenant, integration)
+index jobs jobs_claim CREATE INDEX jobs_claim ON reporting_s01.jobs USING btree (state, created_at)
+index jobs jobs_pkey CREATE UNIQUE INDEX jobs_pkey ON reporting_s01.jobs USING btree (id)
+index jobs jobs_tenant_integration_issuer_subject_kind_idem_key_key CREATE UNIQUE INDEX jobs_tenant_integration_issuer_subject_kind_idem_key_key ON reporting_s01.jobs USING btree (tenant, integration, issuer, subject, kind, idem_key)
+index profile profile_pkey CREATE UNIQUE INDEX profile_pkey ON reporting_s01.profile USING btree (singleton)
+index schema_migrations schema_migrations_pkey CREATE UNIQUE INDEX schema_migrations_pkey ON reporting_s01.schema_migrations USING btree (version)

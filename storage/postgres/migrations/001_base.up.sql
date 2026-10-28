@@ -1,12 +1,12 @@
--- S01-A contract-simulator fixture only. Not a production migration or role plan.
-CREATE SCHEMA IF NOT EXISTS reporting_s01;
-CREATE TABLE IF NOT EXISTS reporting_s01.profile (
+-- 001 base: the platform's own assets (S01-A). The profile row names the deployment kind and
+-- carries the highest applied migration; it is inserted by the operator (init-profile), not here.
+-- The schema itself is created by the migrator when absent (the first run needs CREATE on the
+-- database); a later 001, after a down to zero, finds it in place.
+CREATE TABLE reporting_s01.profile (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   profile text NOT NULL, version integer NOT NULL
 );
-INSERT INTO reporting_s01.profile(singleton,profile,version)
-VALUES(true,'contract-simulator-only',1) ON CONFLICT DO NOTHING;
-CREATE TABLE IF NOT EXISTS reporting_s01.jobs (
+CREATE TABLE reporting_s01.jobs (
   id text PRIMARY KEY, tenant text NOT NULL, integration text NOT NULL,
   issuer text NOT NULL, subject text NOT NULL, kind text NOT NULL CHECK(kind IN ('snapshot','export')),
   state text NOT NULL CHECK(state IN ('queued','running','succeeded','failed','cancelled')),
@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS reporting_s01.jobs (
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   UNIQUE(tenant,integration,issuer,subject,kind,idem_key)
 );
-CREATE INDEX IF NOT EXISTS jobs_claim ON reporting_s01.jobs(state,created_at);
-CREATE TABLE IF NOT EXISTS reporting_s01.assets (
+CREATE INDEX jobs_claim ON reporting_s01.jobs(state,created_at);
+CREATE TABLE reporting_s01.assets (
   id text PRIMARY KEY, tenant text NOT NULL, integration text NOT NULL,
   issuer text NOT NULL, subject text NOT NULL,
   kind text NOT NULL CHECK(kind IN ('snapshot','artifact')),
