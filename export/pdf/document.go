@@ -93,7 +93,13 @@ type banner struct {
 	Height   float64 `json:"height"`
 	Size     float64 `json:"size"`
 	Text     string  `json:"text"`
+	Fill     string  `json:"fill"` // the text colour: the preview's red or the issue stamp's text colour
 }
+
+const (
+	bannerFill = "#8C3B20" // the preview banner
+	stampFill  = "#132238" // the issue stamp, in the text colour
+)
 
 type page struct {
 	Title       string     `json:"title"`
@@ -121,21 +127,56 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	if err != nil {
 		return nil, err
 	}
-	return w.renderDocument(ctx, p, background)
+	return w.renderDocument(ctx, p, background, w.previews)
 }
 
-// renderDocument runs Typst on a laid-out page.
-func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte) ([]byte, error) {
+// Issue renders an official document (S03-G): the same pages as Render, with the issue stamp
+// in the strip the preview banner occupies, in the text colour. The stamp is one line of
+// ASCII the fonts cover; one that does not fit the strip is unsupported, as any value. It
+// returns the page count with the PDF. Issues run on the worker and take an export slot, not
+// a preview slot. Errors never carry values.
+func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string) ([]byte, int, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
+	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
+		return nil, 0, r.ErrInvalid
+	}
+	m := newPlainMeasurer(w.fonts)
+	p, err := layOut(d, values, background, table, m)
+	if err != nil {
+		return nil, 0, err
+	}
+	width, err := m.width(stamp, bannerSize, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	if width > bannerW*mm+0.05 {
+		return nil, 0, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
+	}
+	p.Title = "Issued document"
+	p.Banner.Text, p.Banner.Fill = stamp, stampFill
+	out, err := w.renderDocument(ctx, p, background, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	return out, len(p.Pages), nil
+}
+
+// renderDocument runs Typst on a laid-out page; with previews, it holds a preview slot first.
+func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte, previews chan struct{}) ([]byte, error) {
 	data, err := json.Marshal(p)
 	if err != nil {
 		return nil, err
 	}
 	bounded, cancel, budget := w.bounded(ctx)
 	defer cancel()
-	if err := acquire(bounded, w.previews); err != nil {
-		return nil, budget(err)
+	if previews != nil {
+		if err := acquire(bounded, previews); err != nil {
+			return nil, budget(err)
+		}
+		defer release(previews)
 	}
-	defer release(w.previews)
 	if err := acquire(bounded, w.slots); err != nil {
 		return nil, budget(err)
 	}
@@ -221,7 +262,7 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 		}
 	}
 	p := &page{Title: "Document preview", Fonts: m.families, Background: len(background) > 0, Pages: []pageData{newPage(nil)},
-		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText}}
+		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText, Fill: bannerFill}}
 	first := &p.Pages[0]
 	if _, err := m.width(bannerText, bannerSize, false); err != nil {
 		return nil, err

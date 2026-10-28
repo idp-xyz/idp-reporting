@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"idp.local/reporting/doctemplates"
 	r "idp.local/reporting/reporting"
 	"net/http"
@@ -45,6 +46,63 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			w.Header().Set("X-Template-ID", entry.ID)
 			w.Header().Set("X-Template-Version", strconv.Itoa(entry.Version))
 			return renderDocumentPreview(w, req, service, p, renderer, entry.Layout, input.SnapshotID, *input.RowIndex, assets)
+		}))
+		// Official issue (S03-G): the published version, frozen into a durable job; the row is
+		// bound here once so that a wrong row or an unprintable value is refused at once, and
+		// again by the worker from the stored snapshot.
+		mux.HandleFunc("POST /api/reporting/v1/issues", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			var input struct {
+				TemplateID string `json:"template_id"`
+				Version    *int   `json:"version"`
+				SnapshotID string `json:"snapshot_id"`
+				RowIndex   *int   `json:"row_index"`
+			}
+			if e := decode(req, &input); e != nil {
+				return e
+			}
+			if input.Version == nil || input.RowIndex == nil {
+				return r.ErrInvalid
+			}
+			key, e := idem(req)
+			if e != nil {
+				return e
+			}
+			if !service.CanIssue() {
+				return r.ErrUnsupported
+			}
+			if _, e = store.Get(p.Identity, input.TemplateID, *input.Version); e != nil {
+				return e
+			}
+			entry, e := store.Published(p.Identity, input.TemplateID)
+			if errors.Is(e, r.ErrNotFound) || (e == nil && entry.Version != *input.Version) {
+				return r.ErrUnpublished
+			}
+			if e != nil {
+				return e
+			}
+			if e = authorize(req, p, entry.Layout); e != nil {
+				return e
+			}
+			frozen, e := doctemplates.Canonical(entry.Layout)
+			if e != nil {
+				return e
+			}
+			snap, e := service.AuthorizedSnapshot(req.Context(), p, input.SnapshotID)
+			if e != nil {
+				return e
+			}
+			if _, e = doctemplates.Bind(entry.Layout, snap, *input.RowIndex); e != nil {
+				return e
+			}
+			if _, e = doctemplates.BindTable(entry.Layout, snap); e != nil {
+				return e
+			}
+			v, e := service.SubmitIssue(req.Context(), p, r.IssueInput{TemplateID: entry.ID, TemplateVersion: entry.Version, Template: frozen, SnapshotID: snap.ID, RowIndex: *input.RowIndex}, key)
+			if e != nil {
+				return e
+			}
+			w.Header().Set("Location", "/api/reporting/v1/jobs/"+v.ID)
+			return send(w, 202, v)
 		}))
 	}
 	return mux, nil

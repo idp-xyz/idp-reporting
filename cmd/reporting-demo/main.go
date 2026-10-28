@@ -14,6 +14,7 @@ import (
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
+	"idp.local/reporting/issuance"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -122,8 +123,36 @@ func run() error {
 	case *typst != "" || *typstSum != "" || *pdfFonts != "":
 		return fmt.Errorf("PDF export needs -pdf-typst, -pdf-typst-sha256 and -pdf-fonts together")
 	}
+	// The template and background stores open before the service: the worker issues from them.
+	var assets *doctemplates.Assets
+	if *assetDir != "" {
+		var err error
+		if assets, err = doctemplates.OpenAssets(*assetDir); err != nil {
+			return err
+		}
+		defer assets.Close()
+		if renderer != nil {
+			assets.Fits = renderer.BackgroundFits
+		}
+	}
+	var templates *doctemplates.Store
+	if *templateDir != "" {
+		var err error
+		if templates, err = doctemplates.Open(*templateDir); err != nil {
+			return err
+		}
+		defer templates.Close()
+	}
+	var issuer r.Issuer
+	if templates != nil && renderer != nil {
+		v, err := issuance.New(templates, assets, renderer)
+		if err != nil {
+			return err
+		}
+		issuer = v
+	}
 	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + secret))
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer})
 	if e != nil {
 		return e
 	}
@@ -155,18 +184,9 @@ func run() error {
 			return err
 		}
 	}
-	var assets *doctemplates.Assets
-	if *assetDir != "" {
-		var err error
-		if assets, err = doctemplates.OpenAssets(*assetDir); err != nil {
-			return err
-		}
-		defer assets.Close()
-		if renderer != nil {
-			assets.Fits = renderer.BackgroundFits
-		}
-		if handler, err = httpapi.WithDocumentAssets(handler, s, auth, assets); err != nil {
-			return err
+	if assets != nil {
+		if handler, e = httpapi.WithDocumentAssets(handler, s, auth, assets); e != nil {
+			return e
 		}
 	}
 	var documents httpapi.DocumentRenderer
@@ -176,14 +196,9 @@ func run() error {
 			return e
 		}
 	}
-	if *templateDir != "" {
-		store, err := doctemplates.Open(*templateDir)
-		if err != nil {
-			return err
-		}
-		defer store.Close()
-		if handler, err = httpapi.WithDocumentTemplates(handler, s, auth, store, documents, assets); err != nil {
-			return err
+	if templates != nil {
+		if handler, e = httpapi.WithDocumentTemplates(handler, s, auth, templates, documents, assets); e != nil {
+			return e
 		}
 	}
 	handler, e = console.Handler(handler)
@@ -221,7 +236,7 @@ func run() error {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, os.Getpid(), listener.Addr())
+	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, os.Getpid(), listener.Addr())
 	e = server.Serve(listener)
 	stop()
 	workers.Wait()

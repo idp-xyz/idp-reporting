@@ -56,11 +56,11 @@ jobs:
       # and run in the postgres and pdf jobs.
       - name: Test
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestDurablePostgresIssues TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments
         run: python3 -I scripts/go_test_strict.py -count=1
       - name: Race
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestDurablePostgresIssues TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments
         run: python3 -I scripts/go_test_strict.py -race -count=1
 
   postgres:
@@ -84,7 +84,7 @@ jobs:
       # A missing DSN fails instead of skipping, and only the Typst tests, which run in the pdf job,
       # may skip in this job.
       REPORTING_S01_REQUIRE_PG: "1"
-      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
+      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -182,7 +182,7 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test console/dom.test.mjs
-          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$RUNNER_TEMP/pdf-evidence/"
       - name: Check the documents, the negative controls and PDF/A-2b
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"

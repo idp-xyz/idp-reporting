@@ -42,6 +42,15 @@ type Document struct {
 	Table      *Table         `json:"table,omitempty"` // schema 1.3: the detail table (S03-F)
 }
 
+// Canonical is the configuration an issue job freezes (S03-G): the validated document as the
+// store marshals it, so that a later read of the same version yields the same bytes.
+func Canonical(d Document) ([]byte, error) {
+	if e := Validate(d); e != nil {
+		return nil, e
+	}
+	return json.Marshal(d)
+}
+
 func Validate(d Document) error {
 	b, e := json.Marshal(d)
 	if e != nil || len(b) > 65536 {

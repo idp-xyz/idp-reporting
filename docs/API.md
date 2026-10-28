@@ -63,6 +63,18 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET /document-templates/{id}/published | The published version |
 | POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
 | GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
+| POST /issues | Official issue (S03-G, docs/S03G_SCOPE.md): `{template_id, version, snapshot_id, row_index}` with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403); the job view carries `issue: {number, template_id, template_version, template_sha256, row_index}` |
+| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25), each with its record once it succeeded: `issue_id, state, error_code, number, template_*, snapshot_id, row_index, artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` |
+| GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's |
+
+An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
+row; the repository assigns the number at admission, consecutive per tenant and integration and never reused (a
+failed or cancelled job keeps its number, so the gap is explained by that job). The worker re-checks that the
+frozen configuration is still the published version (else the job fails with TEMPLATE_NOT_PUBLISHED), renders
+the preview's pages with the issue stamp `ISSUED No. 000012 - 2026-10-28T06:12:03Z - <issue id>` in the banner
+strip (in the text colour, in variables mode too) and publishes the PDF artifact (format "pdf", carrying the
+issue id; downloaded as `issued-<id>.pdf` through GET /artifacts/{id}/content, with the snapshot's expiry and
+authorization rules) together with the permanent record in one transaction. Records are never changed or deleted.
 
 A preview places each value on one line with its baseline 1.16 font sizes below the top of its box, at the box's
 left edge, right edge or centre, every character at the position the fonts' plain advances give it (ADR 0002);

@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -20,6 +21,7 @@ type Service struct {
 	connections map[[2]string]Connection
 	key         []byte
 	writers     map[string]WorkbookWriter // by format; "" is the workbook
+	issuer      Issuer                    // nil: issuing is unsupported
 	now         func() time.Time
 }
 
@@ -27,7 +29,7 @@ func NewService(c Config) (*Service, error) {
 	if c.Repository == nil || len(c.CursorKey) < 32 || len(c.Connections) == 0 {
 		return nil, ErrInvalid
 	}
-	s := &Service{repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, now: c.Now}
+	s := &Service{repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -316,7 +318,112 @@ func (s *Service) SubmitExportFormat(ctx context.Context, p Principal, id, forma
 	return view(j), nil
 }
 func view(j Job) JobView {
-	return JobView{ID: j.ID, Kind: j.Kind, State: j.State, SnapshotID: j.SnapshotID, Format: j.Format, ArtifactID: j.ArtifactID, ErrorCode: j.ErrorCode}
+	v := JobView{ID: j.ID, Kind: j.Kind, State: j.State, SnapshotID: j.SnapshotID, Format: j.Format, ArtifactID: j.ArtifactID, ErrorCode: j.ErrorCode}
+	if j.Kind == "issue" {
+		v.Issue = &IssueSummary{Number: j.Number, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, RowIndex: j.RowIndex}
+	}
+	return v
+}
+
+// CanIssue reports whether the service renders issue jobs.
+func (s *Service) CanIssue() bool { return s.issuer != nil }
+
+// IssueInput is what the caller freezes when it asks for an official issue: the published
+// version's canonical configuration as the template store holds it.
+type IssueInput struct {
+	TemplateID      string
+	TemplateVersion int
+	Template        []byte
+	SnapshotID      string
+	RowIndex        int
+}
+
+// SubmitIssue admits an issue job for the caller's current, unexpired snapshot. The caller
+// (the HTTP layer, which owns the template store) has checked that the version is the
+// published one and that the principal may use the template; the job freezes the
+// configuration so that what was checked is what gets issued. The repository assigns the
+// number.
+func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, key string) (JobView, error) {
+	if s.issuer == nil || s.writers["pdf"] == nil {
+		return JobView{}, ErrUnsupported
+	}
+	if !validKey(key) || !validID(in.TemplateID) || in.TemplateVersion < 1 || len(in.Template) < 2 || len(in.Template) > MaxTemplateBytes || !json.Valid(in.Template) || in.RowIndex < 0 {
+		return JobView{}, ErrInvalid
+	}
+	snap, e := s.snapshot(ctx, p, in.SnapshotID)
+	if e != nil {
+		return JobView{}, e
+	}
+	if in.RowIndex >= len(snap.Result.Rows) {
+		return JobView{}, ErrInvalid
+	}
+	sum := bytesDigest(in.Template)
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "issue", State: "queued", Key: key, RequestHash: IssueRequestHash(in.TemplateID, in.TemplateVersion, sum, in.SnapshotID, in.RowIndex), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: in.SnapshotID, Format: "pdf",
+		TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: sum, Template: string(in.Template), RowIndex: in.RowIndex})
+	if e != nil {
+		return JobView{}, e
+	}
+	return view(j), nil
+}
+
+// Issues lists the caller's issue jobs, newest first, with the record of each that succeeded.
+// The records are read as the job views are: the integration must still be the caller's.
+func (s *Service) Issues(ctx context.Context, p Principal, limit int) ([]IssueView, error) {
+	if !p.Identity.Valid() {
+		return nil, ErrNotFound
+	}
+	if limit < 1 || limit > MaxIssueListing {
+		return nil, ErrInvalid
+	}
+	jobs, e := s.repo.Issues(ctx, p.Identity, limit)
+	if e != nil {
+		return nil, e
+	}
+	out := []IssueView{}
+	for _, j := range jobs {
+		if _, _, e := s.source(p, j.Owner.Integration); e != nil {
+			continue
+		}
+		v, e := s.issueView(ctx, p, j)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// Issue reads one issue job with its record.
+func (s *Service) Issue(ctx context.Context, p Principal, id string) (IssueView, error) {
+	if !p.Identity.Valid() || !validID(id) {
+		return IssueView{}, ErrNotFound
+	}
+	j, e := s.repo.Job(ctx, p.Identity, id)
+	if e != nil {
+		return IssueView{}, e
+	}
+	if j.Kind != "issue" {
+		return IssueView{}, ErrNotFound
+	}
+	if _, _, e = s.source(p, j.Owner.Integration); e != nil {
+		return IssueView{}, e
+	}
+	return s.issueView(ctx, p, j)
+}
+func (s *Service) issueView(ctx context.Context, p Principal, j Job) (IssueView, error) {
+	v := IssueView{ID: j.ID, State: j.State, ErrorCode: j.ErrorCode, SnapshotID: j.SnapshotID, IssueSummary: IssueSummary{Number: j.Number, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, RowIndex: j.RowIndex}}
+	if j.State != "succeeded" {
+		return v, nil
+	}
+	rec, e := s.repo.Issue(ctx, p.Identity, j.ID)
+	if e != nil {
+		return IssueView{}, e
+	}
+	if rec.Owner != j.Owner || rec.Number != j.Number || rec.ArtifactID != j.ArtifactID || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || rec.RowIndex != j.RowIndex || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
+		return IssueView{}, ErrIntegrity
+	}
+	v.ArtifactID, v.SnapshotSHA256, v.SHA256, v.Pages, v.Stamp, v.IssuedAt = rec.ArtifactID, rec.SnapshotSHA256, rec.SHA256, rec.Pages, rec.Stamp, rec.IssuedAt.UTC().Format(time.RFC3339)
+	return v, nil
 }
 func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, error) {
 	if !p.Identity.Valid() || !validID(id) {
@@ -396,7 +503,7 @@ func (s *Service) RunOne(ctx context.Context) (bool, error) {
 	e = s.execute(ctx, *claim)
 	if e != nil {
 		code := "EXECUTION_FAILED"
-		for _, known := range []error{ErrDenied, ErrUnavailable, ErrInvalid, ErrIntegrity, ErrBudget, ErrLease, ErrUnsupported, ErrNotFound} {
+		for _, known := range []error{ErrDenied, ErrUnavailable, ErrInvalid, ErrIntegrity, ErrBudget, ErrLease, ErrUnsupported, ErrNotFound, ErrUnpublished} {
 			if errors.Is(e, known) {
 				code = known.Error()
 				break
@@ -439,6 +546,34 @@ func (s *Service) execute(ctx context.Context, claim Claim) error {
 			return ErrBudget
 		}
 		pub.Artifact = &Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt, Content: b, SHA256: bytesDigest(b)}
+	case "issue":
+		if s.issuer == nil || j.Number < 1 {
+			return ErrUnsupported
+		}
+		p := Principal{Identity: j.Owner.Identity, Integrations: []string{j.Owner.Integration}}
+		snap, e := s.snapshot(ctx, p, j.SnapshotID)
+		if e != nil {
+			return e
+		}
+		if j.RowIndex >= len(snap.Result.Rows) {
+			return ErrIntegrity
+		}
+		at := s.now().UTC().Truncate(time.Second)
+		stamp := IssueStamp(j.Number, at, j.ID)
+		result, e := s.issuer.Issue(ctx, IssueRequest{Job: j, Snapshot: snap, Stamp: stamp})
+		if e != nil {
+			return e
+		}
+		b := result.PDF
+		if len(b) == 0 || len(b) > MaxArtifactBytes {
+			return ErrBudget
+		}
+		if result.Pages < 1 || result.Pages > MaxIssuePages || !bytes.HasPrefix(b, []byte("%PDF-")) {
+			return ErrIntegrity
+		}
+		id := NewID()
+		pub.Artifact = &Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: snap.ExpiresAt, Content: b, SHA256: bytesDigest(b), Issue: j.ID}
+		pub.Issue = &Issue{ID: j.ID, Owner: j.Owner, Number: j.Number, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, SnapshotID: snap.ID, SnapshotSHA256: snap.SHA256, RowIndex: j.RowIndex, ArtifactID: id, SHA256: pub.Artifact.SHA256, Pages: result.Pages, Stamp: stamp, IssuedAt: at}
 	default:
 		return ErrIntegrity
 	}

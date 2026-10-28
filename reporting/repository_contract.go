@@ -28,6 +28,19 @@ func ExportRequestHash(snapshotID, format string) string {
 	return Digest(struct{ SnapshotID, Format string }{snapshotID, format})
 }
 
+// IssueRequestHash binds an issue job to everything it freezes.
+func IssueRequestHash(templateID string, version int, templateSHA256, snapshotID string, row int) string {
+	return Digest(struct {
+		TemplateID      string
+		TemplateVersion int
+		TemplateSHA256  string
+		SnapshotID      string
+		RowIndex        int
+	}{templateID, version, templateSHA256, snapshotID, row})
+}
+func issueFields(j Job) bool {
+	return validID(j.TemplateID) && j.TemplateVersion >= 1 && len(j.Template) >= 2 && len(j.Template) <= MaxTemplateBytes && json.Valid([]byte(j.Template)) && j.TemplateSHA256 == bytesDigest([]byte(j.Template)) && j.RowIndex >= 0 && j.RowIndex < MaxRows && j.Number >= 0
+}
 func ValidateAdmission(j Job) error {
 	if !validID(j.ID) || !j.Owner.Identity.Valid() || j.Owner.Integration == "" || !validKey(j.Key) || j.State != "queued" || j.Generation != 0 || j.RequestHash == "" || j.Prepared.Context.Owner != j.Owner || j.Prepared.QueryHash != QueryHash(j.Query) {
 		return ErrInvalid
@@ -38,10 +51,17 @@ func ValidateAdmission(j Job) error {
 			return ErrInvalid
 		}
 	case "export":
-		if !validID(j.SnapshotID) || !validFormat(j.Format) || j.RequestHash != ExportRequestHash(j.SnapshotID, j.Format) {
+		if !validID(j.SnapshotID) || !validFormat(j.Format) || j.RequestHash != ExportRequestHash(j.SnapshotID, j.Format) || j.TemplateID != "" || j.Template != "" || j.Number != 0 {
+			return ErrInvalid
+		}
+	case "issue":
+		if !validID(j.SnapshotID) || j.Format != "pdf" || !issueFields(j) || j.RequestHash != IssueRequestHash(j.TemplateID, j.TemplateVersion, j.TemplateSHA256, j.SnapshotID, j.RowIndex) {
 			return ErrInvalid
 		}
 	default:
+		return ErrInvalid
+	}
+	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0 || j.Number != 0) {
 		return ErrInvalid
 	}
 	return nil
@@ -65,7 +85,15 @@ func ValidatePublication(j Job, p Publication) error {
 		}
 	case "export":
 		v := p.Artifact
-		if v == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != j.Format || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || len(v.Content) == 0 || len(v.Content) > MaxArtifactBytes || v.SHA256 != bytesDigest(v.Content) {
+		if v == nil || p.Snapshot != nil || p.Issue != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != j.Format || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || len(v.Content) == 0 || len(v.Content) > MaxArtifactBytes || v.SHA256 != bytesDigest(v.Content) || v.Issue != "" {
+			return ErrIntegrity
+		}
+	case "issue":
+		v, rec := p.Artifact, p.Issue
+		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || len(v.Content) == 0 || len(v.Content) > MaxArtifactBytes || v.SHA256 != bytesDigest(v.Content) || v.Issue != j.ID {
+			return ErrIntegrity
+		}
+		if rec.ID != j.ID || rec.Owner != j.Owner || rec.Number != j.Number || j.Number < 1 || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages || rec.IssuedAt.IsZero() || !rec.IssuedAt.Equal(rec.IssuedAt.Truncate(time.Second)) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
 			return ErrIntegrity
 		}
 	default:

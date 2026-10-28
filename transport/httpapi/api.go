@@ -197,7 +197,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": slices.Clone(p.Integrations)})
 	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content"}})
+		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "POST /issues", "GET /issues", "GET /issues/{id}"}})
 	})
 	bind("GET "+base+"/catalog", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		values := req.URL.Query()
@@ -308,14 +308,44 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		default:
 			return r.ErrIntegrity
 		}
+		name := "report-" + v.ID
+		if v.Issue != "" {
+			name = "issued-" + v.Issue
+		}
 		w.Header().Set("Content-Type", media)
-		w.Header().Set("Content-Disposition", `attachment; filename="report-`+v.ID+`.`+extension+`"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.`+extension+`"`)
 		w.Header().Set("Content-Length", strconv.Itoa(len(v.Content)))
 		w.Header().Set("X-Content-SHA256", v.SHA256)
 		if _, e = w.Write(v.Content); e != nil {
 			panic(http.ErrAbortHandler)
 		}
 		return nil
+	})
+	bind("GET "+base+"/issues", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		values := req.URL.Query()
+		limit := 25
+		if len(values) > 1 || (len(values) == 1 && len(values["limit"]) != 1) {
+			return r.ErrInvalid
+		}
+		if len(values["limit"]) == 1 {
+			n, e := strconv.Atoi(values.Get("limit"))
+			if e != nil || n < 1 || n > r.MaxIssueListing {
+				return r.ErrInvalid
+			}
+			limit = n
+		}
+		v, e := service.Issues(req.Context(), p, limit)
+		if e != nil {
+			return e
+		}
+		return send(w, 200, v)
+	})
+	bind("GET "+base+"/issues/{id}", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		v, e := service.Issue(req.Context(), p, req.PathValue("id"))
+		if e != nil {
+			return e
+		}
+		return send(w, 200, v)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -361,7 +391,7 @@ func problem(w http.ResponseWriter, e error, status int) {
 	for _, candidate := range []struct {
 		err    error
 		status int
-	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}} {
+	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
 		if errors.Is(e, candidate.err) {
 			code = candidate.err.Error()
 			if status != 401 {
