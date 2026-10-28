@@ -53,21 +53,39 @@ window.createReportingDocuments=function(ports){
  function changeRelease(name){action(()=>{const id=name==='publish'?cleanSaved():savedID();if(!release)throw Error('请先刷新发布状态，冲突或结果未确认时必须重新读取。');if(name==='withdraw'&&!release.published_version)throw Error('当前没有发布版本。');const expected=release.revision,version=name==='publish'?saved.version:0;resetRelease();ports.exchange('/document-templates/'+id+'/release',{method:'POST',body:{action:name,version,expected_revision:expected}},v=>{if(v.revision!==expected+1||v.published_version!==version)throw Error('意外发布修订，请刷新核对。');showRelease(v);},'模板发布变更');});}
  $('doc-release-publish').addEventListener('click',()=>changeRelease('publish'));$('doc-release-withdraw').addEventListener('click',()=>changeRelease('withdraw'));
  $('doc-published-open').addEventListener('click',()=>action(()=>{const id=savedID();resetRelease();ports.exchange('/document-templates/'+id+'/published',undefined,v=>{serverEntry(v,id);apply(v.config);saved=v;publishedOpen=true;resetRelease();$('doc-server-status').textContent='已打开发布模板 '+id+' · 版本 '+v.version;},'发布模板打开');}));
- const issueNumber=n=>String(n).padStart(6,'0');
+ // The number is the source product's (1..32 of A-Za-z0-9._-, starting with a letter or digit): a string, present only on a succeeded record.
+ const validNumber=n=>typeof n==='string'&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(n);
  function issuance(){previews();if(!ports.issuance())throw Error('服务端未启用正式出具。');}
  $('doc-issue').addEventListener('click',()=>action(()=>{issuance();const id=cleanSaved();if(!publishedOpen)throw Error('正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。');const row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');$('doc-issue-status').textContent='正在提交正式出具：模板 '+id+' · 版本 '+saved.version+' · 第 '+row+' 行。';ports.issue({template_id:id,version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1});}));
+ const issueStates={queued:'排队中',running:'执行中',succeeded:'已出具',failed:'失败',cancelled:'已取消'};
+ // A failed record shows its code, and for these two what it means; other codes stand as they are.
+ const issueFailures={AUTH_SCOPE_DENIED:'来源产品拒绝出具',ISSUE_UNRECONCILED:'未能通知来源产品作废预留，请联系管理员'};
  function showIssues(values){
   try{checkIssues(values);}catch(e){$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent=e.message;return;}
   const body=$('doc-issues-body');body.replaceChildren();
-  for(const v of values){const row=node('tr');const cells=[node('td','No. '+issueNumber(v.number)),node('td',{queued:'排队中',running:'执行中',succeeded:'已出具',failed:'失败（编号作废）',cancelled:'已取消（编号作废）'}[v.state]+(v.error_code?' · '+v.error_code:'')),node('td',v.issued_at||'—'),node('td',v.template_id+' · 版本 '+v.template_version),node('td',v.snapshot_id+' · 第 '+(v.row_index+1)+' 行'),node('td',v.sha256?v.sha256+' · '+v.pages+' 页':'—')];for(const c of cells)row.append(c);const actions=node('td');if(v.state==='succeeded'){const b=node('button','下载');b.type='button';b.className='button secondary';b.addEventListener('click',()=>action(()=>ports.issued(v.artifact_id,v.number,v.sha256)));actions.append(b);}row.append(actions);body.append(row);}
+  for(const v of values){
+   const state=issueStates[v.state]+(v.error_code?' · '+v.error_code+(Object.hasOwn(issueFailures,v.error_code)?'（'+issueFailures[v.error_code]+'）':''):'');
+   const row=node('tr');
+   // Number, state, issue time, template, snapshot and row, file digest and pages, the product's confirmation, then the action.
+   for(const text of [v.state==='succeeded'?'No. '+v.number:'—',state,v.issued_at||'—',v.template_id+' · 版本 '+v.template_version,v.snapshot_id+' · 第 '+(v.row_index+1)+' 行',v.sha256?v.sha256+' · '+v.pages+' 页':'—',v.confirmation_ref?v.confirmation_ref+' · '+v.confirmed_at:'—'])row.append(node('td',text));
+   const actions=node('td');if(v.state==='succeeded'){const b=node('button','下载');b.type='button';b.className='button secondary';b.addEventListener('click',()=>action(()=>ports.issued(v.artifact_id,v.number,v.sha256)));actions.append(b);}row.append(actions);body.append(row);
+  }
   $('doc-issues-wrap').hidden=!values.length;$('doc-issue-status').textContent=values.length?'当前身份共 '+values.length+' 条出具记录（最新在前，最多显示 50 条）。':'当前身份尚无出具记录。';
  }
+ const hex64=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),reference=v=>typeof v==='string'&&v.length>=1&&v.length<=128;
+ // A UTC time to the second as the server writes it (YYYY-MM-DDTHH:MM:SSZ) that is a real instant; the fixed width makes string order time order.
+ const utc=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,19)+'Z'===v;
+ const confirmedFields=['number','artifact_id','snapshot_sha256','sha256','pages','stamp','issued_at','reservation_ref','confirmation_ref','confirmed_at'];
  function checkIssues(values){
   if(!Array.isArray(values)||values.length>100)throw Error('无法验证出具记录列表。');
-  const hex64=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
-  for(const v of values){if(!v||typeof v!=='object'||!validID(v.issue_id)||!['queued','running','succeeded','failed','cancelled'].includes(v.state)||!Number.isSafeInteger(v.number)||v.number<1||!validID(v.template_id)||!Number.isSafeInteger(v.template_version)||v.template_version<1||!hex64(v.template_sha256)||!validID(v.snapshot_id)||!Number.isSafeInteger(v.row_index)||v.row_index<0)throw Error('无法验证出具记录。');
-   if(v.state==='succeeded'&&(!validID(v.artifact_id)||!hex64(v.sha256)||!hex64(v.snapshot_sha256)||!Number.isSafeInteger(v.pages)||v.pages<1||v.pages>100||typeof v.issued_at!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(v.issued_at)||v.stamp!=='ISSUED No. '+issueNumber(v.number)+' - '+v.issued_at+' - '+v.issue_id))throw Error('出具记录与其印章不一致。');
-   if(v.state!=='succeeded'&&(v.artifact_id!==undefined||v.sha256!==undefined||v.stamp!==undefined))throw Error('未完成的出具不应带有产物。');}
+  for(const v of values){
+   if(!v||typeof v!=='object'||!validID(v.issue_id)||!Object.hasOwn(issueStates,v.state)||!validID(v.template_id)||!Number.isSafeInteger(v.template_version)||v.template_version<1||!hex64(v.template_sha256)||!validID(v.snapshot_id)||!Number.isSafeInteger(v.row_index)||v.row_index<0||(v.error_code!==undefined&&(v.state!=='failed'||typeof v.error_code!=='string'||!/^[A-Z][A-Z0-9_]{0,63}$/.test(v.error_code))))throw Error('无法验证出具记录。');
+   // Until the source product has confirmed there is no number, no file and no confirmation.
+   if(v.state!=='succeeded'){if(confirmedFields.some(k=>v[k]!==undefined))throw Error('未完成的出具不应带有编号、产物或确认信息。');continue;}
+   if(!validNumber(v.number)||!validID(v.artifact_id)||!hex64(v.sha256)||!hex64(v.snapshot_sha256)||!Number.isSafeInteger(v.pages)||v.pages<1||v.pages>100||!utc(v.issued_at)||!reference(v.reservation_ref)||!reference(v.confirmation_ref)||!utc(v.confirmed_at))throw Error('无法验证出具记录。');
+   if(v.confirmed_at<v.issued_at)throw Error('出具记录的确认时间早于出具时间。');
+   if(v.stamp!=='ISSUED No. '+v.number+' - '+v.issued_at+' - '+v.issue_id)throw Error('出具记录与其印章不一致。');
+  }
  }
  $('doc-issues-refresh').addEventListener('click',()=>action(()=>ports.exchange('/issues?limit=50',undefined,showIssues,'出具记录')));
  function previews(){if(!ports.previews())throw Error('服务端未启用 PDF 渲染，无法生成预览。');}
