@@ -1,0 +1,71 @@
+{
+ "kind": "document",
+ "file": "document_table_empty.pdf",
+ "background": false,
+ "mode": "full",
+ "offset_x": 0,
+ "offset_y": 0,
+ "elements": [
+  {
+   "text": "对账单 Statement",
+   "x": 20,
+   "y": 30,
+   "width": 120,
+   "height": 12,
+   "size": 14,
+   "align": "left"
+  },
+  {
+   "text": "华东区客户",
+   "x": 20,
+   "y": 46,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "left"
+  },
+  {
+   "text": "9007199254740993.01",
+   "x": 110.5,
+   "y": 46,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "right"
+  }
+ ],
+ "table": {
+  "x": 15,
+  "y": 60,
+  "width": 180,
+  "height": 200,
+  "size": 9,
+  "columns": [
+   {
+    "field": "customer",
+    "label": "客户",
+    "width": 40,
+    "metric": false,
+    "scale": 0
+   },
+   {
+    "field": "note",
+    "label": "备注",
+    "width": 80,
+    "metric": false,
+    "scale": 0
+   },
+   {
+    "field": "amount",
+    "label": "金额（CNY）",
+    "width": 60,
+    "metric": true,
+    "scale": 2
+   }
+  ],
+  "rows": [],
+  "totals": {
+   "amount": "0.00"
+  }
+ }
+}

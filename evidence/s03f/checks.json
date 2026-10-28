@@ -1,7 +1,7 @@
 {
  "phase": "S03-F",
  "date": "2026-10-28 Asia/Shanghai",
- "baseline": "668ee86 (main after PR #7, S03-E)",
+ "baseline": "668ee86 (main after PR #7, S03-E); reviewed implementation 4c999e3, fixes 35e1169 and 7fdb959",
  "go": {
   "top_level_passes": 116,
   "pass_events": 263,
@@ -30,23 +30,23 @@
   "exit_code": 0
  },
  "dom": {
-  "tests": 56,
-  "pass": 56,
+  "tests": 57,
+  "pass": 57,
   "fail": 0,
   "skipped": 0,
   "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser"
  },
  "pdf_documents": {
-  "checked": 18,
+  "checked": 21,
   "table_exports": 11,
   "document_previews": 5,
-  "multi_page_tables": 2,
-  "pages_per_table_document": 3,
-  "checks": "per page: A4, banner, boxes, background; header per page; every row complete, in order, on one page; lines at plain-advance positions (Bold face for bold lines); carried and total sums recomputed exactly; snapshot totals equal the sums; ink outside boxes/table/banner",
-  "negative_controls_caught": 441,
+  "multi_page_tables": 5,
+  "pages_per_table_document": "3, 3, 3, 1, 2",
+  "checks": "per page: A4, banner, boxes, background; header per page; every row complete, in order, on one page; each line at its plain-advance position (Bold face for bold lines) and at the baseline its row and line give it; carried and total sums recomputed exactly; snapshot totals equal the sums; in full mode one stroked cell per column of every row, header fills and the 1 pt total rule on the last page only, no drawing in the variable layer; ink outside boxes/table/banner",
+  "negative_controls_caught": 565,
   "negative_controls_missed": 0,
   "golden": "export/pdf/testdata/golden.json (matched; table documents record pages and first rows)",
-  "verapdf_pass": 23,
+  "verapdf_pass": 26,
   "verapdf_negative_control": "FAIL"
  },
  "tools": {
