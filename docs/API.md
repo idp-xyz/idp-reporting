@@ -16,8 +16,8 @@ it does not change the simulator data classification or qualify a real issuer.
 | GET /jobs/{id} | Owner-scoped status; current source authority even after success |
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
-| POST /exports | `{ "snapshot_id": "…" }` + one Idempotency-Key; asynchronous XLSX only |
-| GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX, exact byte length and SHA-256 |
+| POST /exports | `{ "snapshot_id": "…", "format": "pdf" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports |
+| GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256 |
 
 The standalone HTML/CSS/JS console is served at /console/. Static assets contain
 no credentials or private rows; they do not bypass protected API routes.
@@ -39,6 +39,17 @@ negative values and integers beyond JavaScript/Excel precision survive unchanged
 External strings beginning '=' do not generate formulas. Consumers wanting Excel
 arithmetic must use an approved typed import; automatic numeric coercion is not
 promised by this slice.
+
+A PDF is PDF/A-2b, rendered by a pinned Typst binary from a server-owned template
+(export/pdf): the same rows in snapshot order, the column labels repeated on every page,
+metric numbers with thousands separators and every digit kept, the metric totals, and a
+footer with page X of Y, snapshot ID, dataset@version, as-of date, source watermark and
+data class. A character the configured fonts do not cover (with Noto Sans SC this includes emoji and
+zero-width spaces and joiners), a soft hyphen (Typst would print it
+as "-" at a line break), or more than 32 columns fails the job with UNSUPPORTED_COMBINATION;
+a document over the artifact limit, or one that exceeds the renderer's own time (15 s) or
+memory (2 GiB) limit, fails with BUDGET_EXCEEDED. Such snapshots remain available as
+workbooks. Other renderer failures, and the 20 s job timeout, are EXECUTION_FAILED.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile

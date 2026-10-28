@@ -1,3 +1,29 @@
+# IDP Reporting Platform · S03-D1
+
+2026-10-27。新增 PDF 导出：冻结快照可另存为 PDF/A-2b 表格，与 Excel 同属异步导出任务（POST /exports 加 `"format":"pdf"`）。
+引擎为按校验和固定的 Typst 0.15.1，决策与条件见 docs/ADR_0001_PDF_ENGINE.md。Go 端完成全部准备，Typst 只排版：
+数值不计算，指标数字只加千分位；逐字核对字库覆盖（含模板文字），并要求 Typst 自报的字体与 Go 加载的完全一致；
+按字体度量定列宽（关闭字距与标点悬挂，度量精确或偏大），比单元格宽的连续串预切成一行一段并强制换行，不溢出、不乱序、不丢字；
+软连字符、缺字（含 emoji 与零宽字符）、比单元格还宽的单字或超过32列拒绝（UNSUPPORTED_COMBINATION）。
+Typst 在沙箱中运行：空环境、独立用户与网络命名空间、空包目录、仅配置字体、私有根目录，从启动时校验过的文件描述符执行
+（二进制、字体及其上级目录只能由 root 或服务用户修改）；
+15秒、2GiB、输出≤8MiB，超限为 BUDGET_EXCEEDED；core 限制取1（可挡住管道式崩溃收集器），任何警告都判失败；拒绝以 root 运行。
+演示服务需同时给出 -pdf-typst、-pdf-typst-sha256、-pdf-fonts 才提供 PDF；scripts/fetch_pdf_tools.py 按校验和下载 Typst 与 Noto Sans SC。
+控制台在服务端提供 PDF 时显示“导出 PDF”，下载按格式校验类型、文件头与摘要。核心 reporting/ 自 S01-A 以来首次改动：
+任务与产物增加 format（omitempty，旧记录编码不变），仍为纯标准库。宿主需允许非特权用户命名空间（Ubuntu 24.04 默认由 AppArmor 限制）。
+Go 普通/race 各84项顶层测试通过（230个通过事件），仅2项数据库入口跳过；41项 DOM（含真实 Typst 导出）、vet 通过。
+scripts/check_pdf_export.py 从快照原值独立推导应显示内容，逐单元格核对11份文档（恶意字符串、超过一页的行、长标点串、字距对、
+随机混排、宽表、千行等）：换行与空格、行基线对齐、列内边距、墨迹、行内顺序、加粗与右对齐；275项负对照全部被抓到，
+版式与 export/pdf/testdata/golden.json 一致；另有90份随机混排文档全部通过。veraPDF 对12份 PDF 判定 PDF/A-2b 通过，负对照判失败。
+两路独立审查各两轮（正确性与安全；测试有效性与质量），发现均已核实并修复，见 docs/CODE_REVIEW_S03D1.md。
+回滚注意：回到 cf9960e 后，已存的 PDF 产物会被旧程序当作 xlsx 下发，排队中的 PDF 任务会反复失败；回滚前应清理 PDF 任务与产物。
+未验：GitHub Actions 上的 pdf 任务、真实浏览器、无用户命名空间的主机（启动即拒绝）、PostgreSQL 存储下的 PDF 任务；
+被攻破的 Typst 仍可读取服务用户可读的文件（未做 Landlock/挂载命名空间隔离）。
+不在本阶段：模板设计器/用户模板、分组与承前过次、图片/条码/签章、OFD、生产资格；真实接入最后。
+当前证据 evidence/s03d1；规格 docs/S03D1_SCOPE.md；审查 docs/CODE_REVIEW_S03D1.md；接口 docs/API.md。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S03-C4
 
 2026-10-27。新增当前页柱状图：选择分类字段与数值字段，逐行显示前50行。
@@ -11,8 +37,6 @@
 Go普通/race各47项顶层测试通过（183个含子测试通过事件），2项数据库入口显式跳过；37项软件DOM、vet/JS语法及两轴审查通过。
 审查后已用无头Chrome 155做七档视口(含手机/320px模拟)的视觉及Excel下载验收，173项通过，修复6处界面问题(超大数撑破页面、窄屏溢出、总额折行、间距、favicon等)，仅改index.html与styles.css；真机/触控、其他浏览器、无障碍与键盘、PG重跑、生产或崩溃恢复未验。图表只支持当前页柱状图；其他图型、多数据集/共享、文档模板设计器、PDF及运维仍待开发；真实接入最后。
 当前证据evidence/s03c4(审查后变更见post_review.json、浏览器截图见browser_visual)；规格docs/S03C4_SCOPE.md；审查docs/CODE_REVIEW_S03C4.md；浏览器验收docs/BROWSER_ACCEPTANCE_S03C4.md。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S03-C3
 

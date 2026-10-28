@@ -1,0 +1,93 @@
+{
+ "edges.pdf": {
+  "first_rows": [
+   0,
+   26
+  ],
+  "pages": 2
+ },
+ "empty.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "emptynodims.pdf": {
+  "first_rows": [
+   null
+  ],
+  "pages": 1
+ },
+ "financial.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "hostile.pdf": {
+  "first_rows": [
+   0,
+   null,
+   10
+  ],
+  "pages": 3
+ },
+ "kerned.pdf": {
+  "first_rows": [
+   0,
+   32
+  ],
+  "pages": 2
+ },
+ "mixed.pdf": {
+  "first_rows": [
+   0,
+   5,
+   11,
+   17
+  ],
+  "pages": 4
+ },
+ "nodims.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "punctuation.pdf": {
+  "first_rows": [
+   0,
+   6
+  ],
+  "pages": 2
+ },
+ "rows1000.pdf": {
+  "first_rows": [
+   0,
+   59,
+   121,
+   183,
+   245,
+   307,
+   369,
+   431,
+   493,
+   555,
+   617,
+   679,
+   741,
+   803,
+   865,
+   927,
+   989
+  ],
+  "pages": 17
+ },
+ "wide.pdf": {
+  "first_rows": [
+   0,
+   24
+  ],
+  "pages": 2
+ }
+}

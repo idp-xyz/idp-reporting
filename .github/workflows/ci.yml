@@ -52,14 +52,15 @@ jobs:
           if [ -n "$external" ]; then echo "reporting/ depends on: $external"; exit 1; fi
       - run: go vet ./...
       - run: go build ./...
-      # The two PostgreSQL entry tests are the only expected skips: this job has no database.
+      # This job has neither a database nor Typst: the PostgreSQL entry tests and the Typst tests skip,
+      # and run in the postgres and pdf jobs.
       - name: Test
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero
         run: python3 -I scripts/go_test_strict.py -count=1
       - name: Race
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero
         run: python3 -I scripts/go_test_strict.py -race -count=1
 
   postgres:
@@ -80,9 +81,10 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     env:
-      # A missing DSN fails instead of skipping, and no test may skip in this job.
+      # A missing DSN fails instead of skipping, and only the Typst tests, which run in the pdf job,
+      # may skip in this job.
       REPORTING_S01_REQUIRE_PG: "1"
-      EXPECTED_SKIPS: ""
+      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,3 +136,62 @@ jobs:
           node --check console/assets/dashboard.js
           node --check scripts/browser_visual_s03c4.mjs
       - run: node --test console/dom.test.mjs
+
+  pdf:
+    name: PDF export with the pinned Typst, fonts and veraPDF
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # The Typst tests fail instead of skipping, in Go and in the console suite.
+      REPORTING_PDF_REQUIRE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.0
+          cache: npm
+      - name: Fetch the pinned Typst binary and fonts
+        run: python3 -I scripts/fetch_pdf_tools.py "$RUNNER_TEMP/pdf-tools" --github-env
+      - name: Allow the user namespaces of the Typst sandbox
+        # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor. This changes only
+        # the throwaway runner; export/pdf refuses to start without them.
+        run: |
+          if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          unshare --user --net true
+      - name: Typst tests and documents
+        env:
+          REPORTING_PDF_EVIDENCE: ${{ runner.temp }}/pdf-evidence
+        run: |
+          mkdir -p "$REPORTING_PDF_EVIDENCE"
+          go test -count=1 -v ./export/pdf
+          go test -race -count=1 ./export/pdf
+      # The whole DOM suite: PDF export and document previews render through the demo server.
+      - name: Console with the Typst renderer
+        env:
+          REPORTING_S03A_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --test console/dom.test.mjs
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$RUNNER_TEMP/pdf-evidence/"
+      - name: Check the documents, the negative controls and PDF/A-2b
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pdfcheck"
+          "$RUNNER_TEMP/pdfcheck/bin/pip" install --require-hashes --only-binary :all: --no-deps -r scripts/requirements-pdfcheck.txt
+          "$RUNNER_TEMP/pdfcheck/bin/python" -I scripts/check_pdf_export.py "$RUNNER_TEMP/pdf-evidence" --negative \
+            --golden export/pdf/testdata/golden.json \
+            --verapdf verapdf/cli@sha256:d565095c67a083e693aebf7d1a15784007370571053fc1aa5b502665b9a78f9c
+      - name: Keep the documents of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pdf-evidence
+          path: ${{ runner.temp }}/pdf-evidence
+          retention-days: 14

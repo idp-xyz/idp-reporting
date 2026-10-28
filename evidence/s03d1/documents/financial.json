@@ -1,0 +1,80 @@
+{
+ "file": "financial.pdf",
+ "landscape": false,
+ "columns": [
+  [
+   34.02,
+   88.28
+  ],
+  [
+   88.28,
+   129.25
+  ],
+  [
+   129.25,
+   240.82999999999998
+  ]
+ ],
+ "margin": 34.02,
+ "inset": 4,
+ "min_pages": 1,
+ "title": "receivables.aging",
+ "labels": [
+  {
+   "label": "客户",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "账龄区间",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "应收余额",
+   "currency": "CNY",
+   "unit": ""
+  }
+ ],
+ "metric": [
+  false,
+  false,
+  true
+ ],
+ "dimensions": 2,
+ "rows": [
+  [
+   "customer_a",
+   "current",
+   "100.25"
+  ],
+  [
+   "customer_b",
+   "1_30",
+   "-0.24"
+  ],
+  [
+   "customer_c",
+   "31_60",
+   "9007199254740893.00"
+  ]
+ ],
+ "totals": [
+  "9007199254740993.01"
+ ],
+ "meta": [
+  "receivables.aging@1.0.0",
+  "截至 2026-10-26",
+  "Asia/Shanghai",
+  "company_demo",
+  "3 行",
+  "生成于 2026-10-27 08:30:00 UTC"
+ ],
+ "footer": [
+  "合同模拟器 / 合成数据（非真实业务数据）",
+  "快照 98a135dc7300e3eefee0e61d7c2fe31b",
+  "receivables.aging@1.0.0",
+  "截至 2026-10-26",
+  "来源水位 fixture-v1"
+ ]
+}

@@ -1,0 +1,54 @@
+{
+ "file": "empty.pdf",
+ "landscape": false,
+ "columns": [
+  [
+   34.02,
+   65.43
+  ],
+  [
+   65.43,
+   129.67000000000002
+  ]
+ ],
+ "margin": 34.02,
+ "inset": 4,
+ "min_pages": 1,
+ "title": "finance.ledger",
+ "labels": [
+  {
+   "label": "维度0",
+   "currency": "",
+   "unit": ""
+  },
+  {
+   "label": "金额0",
+   "currency": "CNY",
+   "unit": ""
+  }
+ ],
+ "metric": [
+  false,
+  true
+ ],
+ "dimensions": 1,
+ "rows": [],
+ "totals": [
+  "1234567.89"
+ ],
+ "meta": [
+  "finance.ledger@2026.10",
+  "截至 2026-10-27",
+  "Asia/Shanghai",
+  "c-east、c-west",
+  "0 行",
+  "生成于 2026-10-27 08:30:00 UTC"
+ ],
+ "footer": [
+  "合同模拟器 / 合成数据（非真实业务数据）",
+  "快照 0123456789abcdef0123456789abcdef",
+  "finance.ledger@2026.10",
+  "截至 2026-10-27",
+  "来源水位 wm-42"
+ ]
+}

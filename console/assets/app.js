@@ -12,6 +12,8 @@
   function button(text,fn,className) { const b=node('button',text,'button '+(className||'quiet small')); b.type='button'; b.addEventListener('click',fn); return b; }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   function isID(id) { return typeof id==='string' && /^[a-f0-9]{32}$/.test(id); }
+  // The workbook is the export without a format; other formats are named in the request.
+  const exportFormats={xlsx:{label:'Excel',media:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',extension:'xlsx',magic:'PK'},pdf:{label:'PDF',media:'application/pdf',extension:'pdf',magic:'%PDF-'}};
   function current(mark) { return mark.epoch===state.epoch && mark.view===state.view; }
   function mark() { return {epoch:state.epoch,view:state.view}; }
   function notify(message,type) { $('notice').textContent=message; $('notice').className='notice'+(type?' '+type:''); $('notice').hidden=false; }
@@ -19,7 +21,7 @@
     state.busy=Math.max(0,state.busy+change);
     const blocked=!state.session||state.busy>0||state.catalogLoading;
     document.querySelectorAll('.action').forEach(b=>b.disabled=blocked);
-    $('export').disabled=blocked||!state.snapshot;
+    $('export').disabled=blocked||!state.snapshot;$('export-pdf').disabled=blocked||!state.snapshot;
     $('next-page').disabled=blocked||!state.cursor;$('first-page').disabled=blocked||state.page<=1;$('page-size').disabled=blocked||!state.snapshot;
     for(const id of ['query-dataset','query-companies','query-date','refresh-catalog'])$(id).disabled=!state.session||state.catalogLoading;
   }
@@ -30,13 +32,13 @@
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
     $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(node('span','▤','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
     $('result-kind').textContent='尚未查询';$('result-kind').className='badge neutral';$('result-title').textContent='查询结果';
-    $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;
+    $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
     dashboard.clear(true);state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
-    $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';
+    $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
     $('query-companies').value='';$('query-date').value='';$('query-timezone').textContent='—';$('query-currency').textContent='—';$('query-shape').textContent='选择数据集后显示批准组合';
     $('restore-id').value='';$('access-token').value='';$('actor-label').textContent='未连接';$('tenant-label').textContent='访问令牌仅保留在本次会话';$('connection-label').textContent='尚未连接';$('connection-dot').className='status-dot';$('logout').disabled=true;
@@ -88,7 +90,7 @@
         throw new Failure(response.status,code);
       }
       if(settings.binary) {
-        if(response.headers.get('Content-Type')!=='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')throw new Failure(409,'INTEGRITY_FAILURE');
+        if(response.headers.get('Content-Type')!==settings.binary)throw new Failure(409,'INTEGRITY_FAILURE');
         const expected=response.headers.get('X-Content-SHA256');
         if(!/^[a-f0-9]{64}$/.test(expected||'')||!window.crypto.subtle)throw new Failure(409,'INTEGRITY_FAILURE');
         const actual=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -148,7 +150,7 @@
       const session=await request('/session');const caps=await request('/capabilities');
       if(epoch!==state.epoch)throw new Stale();
       if(!session.identity||!['tenant','issuer','subject'].every(k=>typeof session.identity[k]==='string'&&session.identity[k])||!Array.isArray(session.integrations)||!session.integrations.length||session.integrations.length>32||!session.integrations.every(i=>typeof i==='string'&&i.length<=128)||!Array.isArray(caps.formats))throw new Failure(0,'INVALID_RESPONSE');
-      state.session=session;state.capabilities=caps;
+      state.session=session;state.capabilities=caps;$('export-pdf').hidden=!caps.formats.includes('pdf');
       for(const id of ['catalog-product','query-product'])for(const integration of session.integrations){const option=node('option',integration);option.value=integration;$(id).append(option);}
       $('overview-products').textContent=String(session.integrations.length);$('overview-formats').textContent=caps.formats.map(f=>String(f).toUpperCase()).join(' / ');
       $('actor-label').textContent=session.identity.subject;$('tenant-label').textContent=session.identity.tenant;$('connection-label').textContent='API 已连接';$('connection-dot').className='status-dot connected';$('logout').disabled=false;
@@ -230,20 +232,20 @@
     evidence.hidden=!evidence.children.length;$('refresh-result').disabled=false;
     $('result-pager').hidden=!meta;
     if(meta){$('page-info').textContent='第 '+state.page+' 页 · 共 '+meta.total+' 行';$('next-page').disabled=!state.cursor;$('first-page').disabled=state.page<=1;}
-    $('export').disabled=!state.snapshot||state.busy>0;
+    $('export').disabled=!state.snapshot||state.busy>0;$('export-pdf').disabled=!state.snapshot||state.busy>0;
   }
   function renderJobs() {
     const values=Array.from(state.jobs.values()).reverse();$('task-count').textContent=String(values.length);$('overview-jobs').textContent=String(values.length);$('tasks-note').textContent=values.length+' 项';
     $('tasks-empty').hidden=!!values.length;$('tasks-table-wrap').hidden=!values.length;const body=$('tasks-body');body.replaceChildren();
-    for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?'Excel 导出':j.kind==='snapshot'?'报表快照':'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',statuses[j.state]||'待刷新','badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
+    for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?exportFormats[j.format||'xlsx'].label+' 导出':j.kind==='snapshot'?'报表快照':'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',statuses[j.state]||'待刷新','badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
       actions.append(button('刷新',()=>refreshTask(j.job_id)));
       if(j.snapshot_id&&j.state==='succeeded')actions.append(button('查看结果',()=>perform(async m=>{await loadSnapshot(j.snapshot_id,j.query||null,m,true);if(current(m))openPage('workspace');},taskContext(j.job_id,'任务查看'))));
-      if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m),taskContext(j.job_id,'任务下载'))));
+      if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m,j.format),taskContext(j.job_id,'任务下载'))));
       if(['queued','running'].includes(j.state))actions.append(button('取消',()=>cancelJob(j.job_id),'danger'));
       row.append(title,id,status,actions);body.append(row);
     }
   }
-  function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id)))throw new Failure(0,'INVALID_RESPONSE');}
+  function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind!=='export'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format))))throw new Failure(0,'INVALID_RESPONSE');}
   function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
   async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
@@ -279,16 +281,19 @@
     if(done.state==='succeeded'&&done.snapshot_id){await loadSnapshot(done.snapshot_id,q,m,true);if(current(m))notify('冻结快照已生成，可分页查看或导出。','success');}
     else notify(done.state==='cancelled'?'快照任务已取消。':'快照任务失败，请检查当前授权与查询范围。',done.state==='cancelled'?'':'error');
   }
-  async function createExport(m) {
-    const id=state.snapshot;const query=copy(state.query);if(!id)throw new Failure(400,'INVALID_REQUEST');
-    const job=await submit('export',{snapshot_id:id},{query:query,integration:query.integration_id});if(!current(m))throw new Stale();
-    notify('Excel 导出任务已提交。');const done=await poll(job.job_id,m);if(!done)return;
-    if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m);
+  async function createExport(m,format) {
+    const id=state.snapshot;const query=copy(state.query);const kind=exportFormats[format];if(!id||!kind)throw new Failure(400,'INVALID_REQUEST');
+    const job=await submit('export',format==='xlsx'?{snapshot_id:id}:{snapshot_id:id,format:format},{query:query,integration:query.integration_id});if(!current(m))throw new Stale();
+    if(job.kind!=='export'||(job.format||'xlsx')!==format)throw new Failure(0,'INVALID_RESPONSE');
+    notify(kind.label+' 导出任务已提交。');const done=await poll(job.job_id,m);if(!done)return;
+    if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m,done.format);
     else notify(done.state==='cancelled'?'导出任务已取消。':'导出任务失败，未生成可下载文件。',done.state==='cancelled'?'':'error');
   }
-  async function download(id,m) {
-    if(!isID(id))throw new Failure(400,'INVALID_REQUEST');const bytes=await request('/artifacts/'+id+'/content',{binary:true});if(!current(m))throw new Stale();
-    const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const link=node('a');link.href=url;link.download='report-'+id+'.xlsx';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Excel 已通过摘要校验，下载已发起。','success');
+  async function download(id,m,format) {
+    const kind=exportFormats[format||'xlsx'];if(!isID(id)||!kind||format==='xlsx')throw new Failure(400,'INVALID_REQUEST');
+    const bytes=await request('/artifacts/'+id+'/content',{binary:kind.media});if(!current(m))throw new Stale();
+    if(String.fromCharCode(...bytes.subarray(0,kind.magic.length))!==kind.magic)throw new Failure(409,'INTEGRITY_FAILURE');
+    const url=URL.createObjectURL(new Blob([bytes],{type:kind.media}));const link=node('a');link.href=url;link.download='report-'+id+'.'+kind.extension;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify(kind.label+' 已通过摘要校验，下载已发起。','success');
   }
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));
@@ -297,7 +302,7 @@
   $('query-dataset').addEventListener('change',()=>{queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';});
   for(const id of ['query-companies','query-date'])$(id).addEventListener('input',queryChanged);
   $('refresh-catalog').addEventListener('click',()=>{if(state.product)loadProduct(state.product,true).then(()=>notify('数据目录已刷新。','success')).catch(error=>fail(error));});
-  $('preview').addEventListener('click',()=>perform(preview));$('snapshot').addEventListener('click',()=>perform(createSnapshot));$('export').addEventListener('click',()=>perform(createExport));
+  $('preview').addEventListener('click',()=>perform(preview));$('snapshot').addEventListener('click',()=>perform(createSnapshot));$('export').addEventListener('click',()=>perform(m=>createExport(m,'xlsx')));$('export-pdf').addEventListener('click',()=>perform(m=>createExport(m,'pdf')));
   $('refresh-result').addEventListener('click',()=>perform(m=>state.snapshot?loadSnapshot(state.snapshot,state.query,m,true):preview(m)));
   $('first-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,true)));$('next-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,false)));
   $('page-size').addEventListener('change',()=>{if(state.busy||state.catalogLoading){$('page-size').value=state.pageLimit;return;}if(state.snapshot){state.view++;perform(m=>loadSnapshot(state.snapshot,state.query,m,true));}});

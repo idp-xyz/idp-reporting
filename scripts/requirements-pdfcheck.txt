@@ -1,0 +1,3 @@
+# PDF evidence checker (scripts/check_pdf_export.py); CI installs it with --require-hashes.
+pymupdf==1.27.2.3 \
+    --hash=sha256:857842b4888827bd6155a1131341b2822a7ebe9a8c15a975fd7d490d7a64a30c

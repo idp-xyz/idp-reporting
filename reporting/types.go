@@ -150,10 +150,14 @@ type Snapshot struct {
 	ExpiresAt time.Time
 	SHA256    string
 }
+
+// Format names an export format. The empty value is the original workbook format, so jobs and
+// artifacts stored before formats existed keep their exact encoding.
 type Artifact struct {
 	ID         string
 	Owner      Owner
 	SnapshotID string
+	Format     string `json:",omitempty"`
 	ExpiresAt  time.Time
 	SHA256     string
 	Content    []byte
@@ -169,6 +173,7 @@ type Job struct {
 	Prepared    PreparedRead
 	Columns     []Column
 	SnapshotID  string
+	Format      string `json:",omitempty"`
 	ArtifactID  string
 	ErrorCode   string
 	Generation  int64
@@ -179,6 +184,7 @@ type JobView struct {
 	Kind       string `json:"kind"`
 	State      string `json:"state"`
 	SnapshotID string `json:"snapshot_id,omitempty"`
+	Format     string `json:"format,omitempty"`
 	ArtifactID string `json:"artifact_id,omitempty"`
 	ErrorCode  string `json:"error_code,omitempty"`
 }
@@ -200,6 +206,9 @@ type Repository interface {
 	Snapshot(context.Context, Identity, string) (Snapshot, error)
 	Artifact(context.Context, Identity, string) (Artifact, error)
 }
+
+// WorkbookWriter renders a snapshot in one export format. The name predates formats other than
+// the workbook.
 type WorkbookWriter interface {
 	Write(context.Context, Snapshot) ([]byte, error)
 }
@@ -207,7 +216,8 @@ type Config struct {
 	Repository  Repository
 	Connections []Connection
 	CursorKey   []byte
-	Writer      WorkbookWriter
+	Writer      WorkbookWriter            // the default workbook format
+	Formats     map[string]WorkbookWriter // further export formats by name, such as "pdf"
 	Now         func() time.Time
 }
 type RowsPage struct {

@@ -19,7 +19,7 @@ type Service struct {
 	repo        Repository
 	connections map[[2]string]Connection
 	key         []byte
-	writer      WorkbookWriter
+	writers     map[string]WorkbookWriter // by format; "" is the workbook
 	now         func() time.Time
 }
 
@@ -27,9 +27,18 @@ func NewService(c Config) (*Service, error) {
 	if c.Repository == nil || len(c.CursorKey) < 32 || len(c.Connections) == 0 {
 		return nil, ErrInvalid
 	}
-	s := &Service{repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writer: c.Writer, now: c.Now}
+	s := &Service{repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if c.Writer != nil {
+		s.writers[""] = c.Writer
+	}
+	for name, w := range c.Formats {
+		if name == "" || !validFormat(name) || w == nil {
+			return nil, ErrInvalid
+		}
+		s.writers[name] = w
 	}
 	for _, v := range c.Connections {
 		k := [2]string{v.Tenant, v.Integration}
@@ -264,8 +273,33 @@ func (s *Service) Rows(ctx context.Context, p Principal, id string, limit int, c
 	}
 	return out, nil
 }
+
+// Formats lists the configured export formats, the workbook first as "xlsx".
+func (s *Service) Formats() []string {
+	out := []string{} // never nil: clients expect a list
+	for name := range s.writers {
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	if s.writers[""] != nil {
+		out = append([]string{"xlsx"}, out...)
+	}
+	return out
+}
+
+// SubmitExport exports a snapshot as the workbook.
 func (s *Service) SubmitExport(ctx context.Context, p Principal, id, key string) (JobView, error) {
-	if s.writer == nil {
+	return s.SubmitExportFormat(ctx, p, id, "", key)
+}
+
+// SubmitExportFormat exports a snapshot in a configured format; "" and "xlsx" mean the workbook.
+func (s *Service) SubmitExportFormat(ctx context.Context, p Principal, id, format, key string) (JobView, error) {
+	if format == "xlsx" {
+		format = ""
+	}
+	if s.writers[format] == nil {
 		return JobView{}, ErrUnsupported
 	}
 	if !validKey(key) {
@@ -275,14 +309,14 @@ func (s *Service) SubmitExport(ctx context.Context, p Principal, id, key string)
 	if e != nil {
 		return JobView{}, e
 	}
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: Digest(id), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id})
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHash(id, format), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format})
 	if e != nil {
 		return JobView{}, e
 	}
 	return view(j), nil
 }
 func view(j Job) JobView {
-	return JobView{ID: j.ID, Kind: j.Kind, State: j.State, SnapshotID: j.SnapshotID, ArtifactID: j.ArtifactID, ErrorCode: j.ErrorCode}
+	return JobView{ID: j.ID, Kind: j.Kind, State: j.State, SnapshotID: j.SnapshotID, Format: j.Format, ArtifactID: j.ArtifactID, ErrorCode: j.ErrorCode}
 }
 func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, error) {
 	if !p.Identity.Valid() || !validID(id) {
@@ -388,7 +422,8 @@ func (s *Service) execute(ctx context.Context, claim Claim) error {
 		}
 		pub.Snapshot = &Snapshot{ID: NewID(), Owner: j.Owner, Query: j.Query, Prepared: j.Prepared, Result: result, ExpiresAt: j.Prepared.ExpiresAt, SHA256: Digest(result)}
 	case "export":
-		if s.writer == nil {
+		w := s.writers[j.Format]
+		if w == nil {
 			return ErrUnsupported
 		}
 		p := Principal{Identity: j.Owner.Identity, Integrations: []string{j.Owner.Integration}}
@@ -396,14 +431,14 @@ func (s *Service) execute(ctx context.Context, claim Claim) error {
 		if e != nil {
 			return e
 		}
-		b, e := s.writer.Write(ctx, snap)
+		b, e := w.Write(ctx, snap)
 		if e != nil {
 			return e
 		}
 		if len(b) == 0 || len(b) > MaxArtifactBytes {
 			return ErrBudget
 		}
-		pub.Artifact = &Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, ExpiresAt: snap.ExpiresAt, Content: b, SHA256: bytesDigest(b)}
+		pub.Artifact = &Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt, Content: b, SHA256: bytesDigest(b)}
 	default:
 		return ErrIntegrity
 	}
