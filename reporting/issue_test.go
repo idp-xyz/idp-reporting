@@ -192,7 +192,7 @@ func TestIssueJobsNumberRenderStampAndRecord(t *testing.T) {
 		t.Fatal(shipped, e)
 	}
 	finance := p
-	finance.Integrations = []string{contractsim.FinanceIntegration}
+	finance.Integrations = []string{contractsim.FinanceIntegration, "an-integration-without-a-connection"}
 	if list, e := s.Issues(ctx, finance, 1); e != nil || len(list) != 1 || list[0].ID != third.ID {
 		t.Fatalf("a page of one for finance: %+v %v", list, e)
 	}

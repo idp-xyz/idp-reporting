@@ -340,6 +340,10 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		return send(w, 200, v)
 	})
+	bind("POST "+base+"/issues", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		// Mounted for its answer only: the template handler (S03-G) overrides it when templates exist.
+		return r.ErrUnsupported
+	})
 	bind("GET "+base+"/issues/{id}", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		v, e := service.Issue(req.Context(), p, req.PathValue("id"))
 		if e != nil {

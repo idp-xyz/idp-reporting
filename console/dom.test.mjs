@@ -600,6 +600,8 @@ test('official issue of the open published template downloads the stamped PDF an
  // saving it as a new (unpublished) version of the same configuration.
  a.input('doc-text','Changed');a.click('doc-add-text');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/先保存/);a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'reopened');
  a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'saved v2');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/打开已发布模板/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0);a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'reopened again');
+ // Opening the saved draft version with 打开模板版本 disarms it as well.
+ a.click('doc-server-list');await until(()=>a.$('doc-server-listing').options.length>0&&!a.$('preview').disabled,'list');a.$('doc-server-listing').value=id;a.$('doc-server-version').value='2';a.click('doc-server-open');await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板')&&!a.$('preview').disabled,'draft open');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/打开已发布模板/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0);a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'reopened once more');
  a.click('doc-issue');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'issued PDF',20000);
  assert.equal(a.downloads[0].name,'issued-000001.pdf');const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
  const submitted=a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST');assert.equal(submitted.length,1);assert.ok(submitted[0].key);
@@ -661,9 +663,16 @@ test('an issue job whose view lacks its number, a record whose stamp disagrees a
   const b=app(offeringIssuance({submit}));
   try{
     await snapshotReady(b);b.click('doc-server-save');await until(()=>b.$('doc-server-status').textContent.includes('版本 1')&&!b.$('preview').disabled,'save');b.click('doc-release-read');await until(()=>b.$('doc-release-status').textContent.includes('修订 0')&&!b.$('preview').disabled,'release');b.click('doc-release-publish');await until(()=>b.$('doc-release-status').textContent.includes('已发布版本 1')&&!b.$('preview').disabled,'publish');b.click('doc-published-open');await until(()=>b.$('doc-server-status').textContent.includes('已打开发布模板')&&!b.$('preview').disabled,'open');
-    // A well-formed job view naming another template or row is a server job under our key: it
-    // is listed as a task, but never followed or downloaded.
-    b.click('doc-issue');await until(()=>b.$('notice').textContent.includes('无法验证的响应')&&!b.$('preview').disabled,'mismatch');assert.equal(b.downloads.length,0);assert.equal([...b.$('tasks-body').rows].filter(r=>r.cells[0].textContent==='正式出具 No. 000012').length,1);assert.equal(b.trace.filter(v=>v.path.endsWith('/jobs/'+pdfJob)).length,0);
+    const idB=b.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+    // A well-formed job view naming another template or row is not the job that was asked
+    // for: not remembered, not followed, not downloaded, and the idempotency key is kept.
+    b.click('doc-issue');await until(()=>b.$('notice').textContent.includes('无法验证的响应')&&!b.$('preview').disabled,'mismatch');assert.equal(b.downloads.length,0);assert.equal([...b.$('tasks-body').rows].filter(r=>r.cells[0].textContent.startsWith('正式出具')).length,0);assert.equal(b.trace.filter(v=>v.path.endsWith('/jobs/'+pdfJob)).length,0);
+    const keys=b.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').map(v=>v.key);assert.equal(keys.length,1);
+    const rowB=app(offeringIssuance({submit:()=>json({job_id:pdfJob,kind:'issue',state:'queued',format:'pdf',snapshot_id:'c'.repeat(32),issue:{number:12,template_id:idB,template_version:1,template_sha256:'e'.repeat(64),row_index:5}},202)}));
+    try{
+      await snapshotReady(rowB);rowB.click('doc-server-list');await until(()=>rowB.$('doc-server-listing').options.length>0&&!rowB.$('preview').disabled,'list');rowB.$('doc-server-listing').value=idB;rowB.$('doc-server-version').value='1';rowB.click('doc-server-open');await until(()=>rowB.$('doc-server-status').textContent.includes('正在编辑模板')&&!rowB.$('preview').disabled,'open');rowB.click('doc-published-open');await until(()=>rowB.$('doc-server-status').textContent.includes('已打开发布模板')&&!rowB.$('preview').disabled,'published');
+      rowB.input('doc-row','2');rowB.click('doc-issue');await until(()=>rowB.$('notice').textContent.includes('无法验证的响应')&&!rowB.$('preview').disabled,'row mismatch');assert.equal(rowB.downloads.length,0);assert.equal(rowB.trace.filter(v=>v.path.endsWith('/jobs/'+pdfJob)).length,0);
+    }finally{rowB.close();}
   }finally{b.close();}
   // The job view must name the template, version and row that were submitted.
   const c=app(offeringIssuance({submit:()=>json({job_id:pdfJob,kind:'issue',state:'queued',format:'pdf',snapshot_id:'c'.repeat(32),issue:{number:12,template_id:'d'.repeat(32),template_version:1,template_sha256:'e'.repeat(64),row_index:0}},202)}));

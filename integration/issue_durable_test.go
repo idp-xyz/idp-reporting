@@ -312,5 +312,44 @@ UPDATE reporting_s01.profile SET version=2 WHERE singleton;`); e != nil {
 		mustError(t, e, r.ErrIntegrity)
 		_, e = s.Job(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
+		// The artifact rewritten consistently and no longer claiming the record: it downloads
+		// as an export would, but the issue job's view, which checks both directions, refuses.
+		for _, sql := range []string{`UPDATE reporting_s01.assets SET data=data - 'Issue' WHERE id=$1 AND kind='artifact'`, `UPDATE reporting_s01.assets SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex') WHERE id=$1 AND kind='artifact'`} {
+			if _, e = p.Exec(ctx, sql, done.ArtifactID); e != nil {
+				t.Fatal(e)
+			}
+		}
+		_, e = s.Job(ctx, v.p, j.ID)
+		mustError(t, e, r.ErrIntegrity)
+	})
+	t.Run("missing_record_of_a_succeeded_job_is_integrity_failure", func(t *testing.T) {
+		v := newDurable(t)
+		s := issueDurableService(t, v, &stampIssuer{})
+		env := durableEnv{s: s, repo: v.repo, source: v.source, p: v.p}
+		snap := durableFreeze(t, env, contractsim.FinancialQuery(), "snap")
+		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 0), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.RunOne(ctx); e != nil {
+			t.Fatal(e)
+		}
+		done, e := s.Job(ctx, v.p, j.ID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = fixtureAdmin(t).Exec(ctx, `DELETE FROM reporting_s01.assets WHERE id=$1 AND kind='issue'`, j.ID); e != nil {
+			t.Fatal(e)
+		}
+		for name, read := range map[string]func() error{
+			"record":   func() error { _, e := s.Issue(ctx, v.p, j.ID); return e },
+			"listing":  func() error { _, e := s.Issues(ctx, v.p, 10); return e },
+			"job":      func() error { _, e := s.Job(ctx, v.p, j.ID); return e },
+			"download": func() error { _, e := s.Download(ctx, v.p, done.ArtifactID); return e },
+		} {
+			if e := read(); !errors.Is(e, r.ErrIntegrity) {
+				t.Errorf("%s with the record missing: %v; want integrity failure", name, e)
+			}
+		}
 	})
 }

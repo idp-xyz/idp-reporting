@@ -256,11 +256,11 @@
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
   async function refreshTask(id,m=mark()) {const context=taskContext(id,'任务刷新');try{await refreshJob(id);return true;}catch(error){fail(error,m,context);return false;}}
   async function cancelJob(id) {const m=mark(),context=taskContext(id,'任务取消');try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
-  async function submit(kind,payload,context) {
+  async function submit(kind,payload,context,verify) {
     const fingerprint=kind+JSON.stringify(payload);
     if(!state.pending||state.pending.fingerprint!==fingerprint)state.pending={fingerprint:fingerprint,key:crypto.randomUUID()};
     const key=state.pending.key;
-    try {const job=await request(kind==='snapshot'?'/snapshot-jobs':kind==='issue'?'/issues':'/exports',{method:'POST',body:payload,key:key});rememberJob(job,context);state.pending=null;return job;}
+    try {const job=await request(kind==='snapshot'?'/snapshot-jobs':kind==='issue'?'/issues':'/exports',{method:'POST',body:payload,key:key});checkJob(job);if(verify)verify(job);rememberJob(job,context);state.pending=null;return job;}
     catch(error){if(error.status>=400&&error.status<500)state.pending=null;throw error;}
   }
   async function poll(id,m) {
@@ -296,8 +296,8 @@
   }
   async function createIssue(m,body) {
     const query=copy(state.query);if(!state.snapshot||body.snapshot_id!==state.snapshot)throw new Failure(400,'INVALID_REQUEST');
-    const job=await submit('issue',body,{query:query,integration:query.integration_id});if(!current(m))throw new Stale();
-    if(job.kind!=='issue'||job.issue.template_id!==body.template_id||job.issue.template_version!==body.version||job.issue.row_index!==body.row_index)throw new Failure(0,'INVALID_RESPONSE');
+    // The view must be the job that was asked for, before the key is spent or the task kept.
+    const job=await submit('issue',body,{query:query,integration:query.integration_id},j=>{if(j.kind!=='issue'||j.issue.template_id!==body.template_id||j.issue.template_version!==body.version||j.issue.row_index!==body.row_index)throw new Failure(0,'INVALID_RESPONSE');});if(!current(m))throw new Stale();
     notify('正式出具任务已提交，编号 No. '+issueNumber(job.issue.number)+'。');const done=await poll(job.job_id,m);if(!done)return;
     if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m,'pdf',issuedName(done.issue.number));
     else notify(done.state==='cancelled'?'出具任务已取消；编号 No. '+issueNumber(done.issue.number)+' 作废，不再使用。':'出具任务失败（'+(done.error_code||'未知原因')+'）；编号 No. '+issueNumber(done.issue.number)+' 作废，不再使用。',done.state==='cancelled'?'':'error');

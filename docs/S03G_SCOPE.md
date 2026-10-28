@@ -49,8 +49,10 @@ issue records (number, state, time, template, row, digest) and downloads them. T
 repositories implement the job kind, the numbering and the two assets; the PostgreSQL fixture gains the
 kind, the asset kind and a counter table, with a v2→v3 upgrade of the protected test fixture.
 scripts/check_pdf_export.py checks an issued document as it checks a preview, plus: the stamp in place of
-the banner with the record's number, time and id, no PREVIEW text anywhere, the PDF's digest and page count
-equal to the record's, and a negative control for each.
+the banner with the record's number, time and id, the banner text nowhere, the PDF's digest and page count
+equal to the record's, and a negative control for each. "Preview text" means the exact banner phrase
+`PREVIEW - NOT AN ISSUED DOCUMENT`: the renderer refuses it as a value or a cell of an issued document and the
+checker refuses it anywhere on one; other words are data.
 
 Not in this slice: issuing several rows or a whole snapshot at once, numbering schemes other than one
 sequence per tenant and integration, a retention or object-storage policy for issued PDFs, revocation or

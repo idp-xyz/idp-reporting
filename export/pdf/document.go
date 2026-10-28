@@ -156,9 +156,11 @@ func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, ba
 	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
 		return nil, r.ErrInvalid
 	}
-	// The preview's banner text is never printed on an issued document, not even as data.
-	for _, v := range values {
-		if strings.Contains(v, bannerText) {
+	// The preview's banner text is never printed on an issued document, not even as data
+	// (the literals that variables mode does not print are not data).
+	full := d.Print == nil || d.Print.Mode == "full"
+	for _, e := range d.Elements {
+		if (full || e.Source != "literal") && strings.Contains(values[e.ID], bannerText) {
 			return nil, fmt.Errorf("pdf: a value of an issued document holds the preview banner text: %w", r.ErrUnsupported)
 		}
 	}

@@ -426,6 +426,9 @@ func (s *Service) issueView(ctx context.Context, p Principal, j Job) (IssueView,
 		return v, nil
 	}
 	rec, e := s.repo.Issue(ctx, p.Identity, j.ID)
+	if errors.Is(e, ErrNotFound) {
+		return IssueView{}, fmt.Errorf("the record of a succeeded issue job is missing: %w", ErrIntegrity)
+	}
 	if e != nil {
 		return IssueView{}, e
 	}
@@ -453,7 +456,15 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 		if j.Kind == "snapshot" {
 			_, e = s.snapshot(ctx, p, j.SnapshotID)
 		} else {
-			_, e = s.Download(ctx, p, j.ArtifactID)
+			var a Artifact
+			a, e = s.Download(ctx, p, j.ArtifactID)
+			if e == nil && j.Kind == "issue" {
+				// The artifact must claim the record and the record must name the artifact.
+				var v IssueView
+				if v, e = s.issueView(ctx, p, j); e == nil && (a.Issue != j.ID || v.ArtifactID != a.ID || v.SHA256 != a.SHA256) {
+					e = ErrIntegrity
+				}
+			}
 		}
 		if e != nil {
 			return JobView{}, e
@@ -503,6 +514,9 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (Artifac
 	if a.Issue != "" {
 		// An issued PDF is served only as the record it was issued under describes it.
 		rec, e := s.repo.Issue(ctx, p.Identity, a.Issue)
+		if errors.Is(e, ErrNotFound) {
+			return Artifact{}, fmt.Errorf("the record an artifact names is missing: %w", ErrIntegrity)
+		}
 		if e != nil {
 			return Artifact{}, e
 		}

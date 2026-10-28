@@ -962,7 +962,7 @@ func TestTypstIssuesDocuments(t *testing.T) {
 			for _, g := range pg.Texts {
 				texts += g.Text
 			}
-			if strings.Contains(texts, "PREVIEW") {
+			if strings.Contains(texts, bannerText) {
 				t.Errorf("%s: a page of the issue draws the banner text", c.name)
 			}
 		}

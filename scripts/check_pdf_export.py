@@ -894,6 +894,16 @@ def document_corruptions(exp):
         yield changed("the record's stamp changed", lambda e: e["issue"].__setitem__("stamp", e["issue"]["stamp"].replace("ISSUED", "ISSUE")))
         yield changed("the record's digest changed", lambda e: e["issue"].__setitem__("sha256", "0" * 64))
         yield changed("the record's page count changed", lambda e: e["issue"].__setitem__("pages", e["issue"]["pages"] + 1))
+        # Self-consistent records that disagree with the drawn stamp alone.
+        def restamped(number=None, issue_id=None):
+            def change(e):
+                i = e["issue"]
+                i["number"] = number if number is not None else i["number"]
+                i["issue_id"] = issue_id if issue_id is not None else i["issue_id"]
+                i["stamp"] = f"ISSUED No. {i['number']:06d} - {i['issued_at']} - {i['issue_id']}"
+            return change
+        yield changed("the record's number and stamp changed together", restamped(number=exp["issue"]["number"] + 1))
+        yield changed("the record's id and stamp changed together", restamped(issue_id="0" * 32))
     if exp.get("table"):
         rows = exp["table"]["rows"] or []
         columns = exp["table"]["columns"]
@@ -954,7 +964,7 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
             shutil.copy(os.path.join(directory, exp["issue"]["preview_file"]), os.path.join(target, exp["file"]))
         previewed = copy_with("preview", lambda doc: None)
         preview_instead(previewed)
-        yield "the preview in place of the issue", "is not drawn on one line", previewed
+        yield "the preview in place of the issue", "preview text", previewed
         yield "the banner text added", "preview text", copy_with("previewword", text(BANNER, (20 * MM, 285 * MM)))
         strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
         stamp_colour = (0x13 / 255, 0x22 / 255, 0x38 / 255)

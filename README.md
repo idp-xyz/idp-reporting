@@ -12,7 +12,7 @@
 PostgreSQL 夹具升级到 v3（jobs/assets 的 kind 约束加 issue、issue_numbers 表），升级与篡改用例在持久化测试中覆盖。
 控制台：用“打开已发布模板”打开且未改动的发布版本可“正式出具”（幂等键、轮询、按编号下载 issued-000012.pdf），任务列表显示“正式出具 No. 000012”，
 “刷新出具记录”逐条校验记录与印章一致后列出并可再次下载；能力未声明 issuance 时不显示按钮。
-scripts/check_pdf_export.py 对出具文档在预览全部检查之外核对：横幅位置是记录的印章（编号、UTC 秒、ID 重算）、印章为正文色、全文无 PREVIEW 字样、PDF 摘要与页数等于记录，
+scripts/check_pdf_export.py 对出具文档在预览全部检查之外核对：横幅位置是记录的印章（编号、UTC 秒、ID 重算）、印章为正文色、全文无 PREVIEW 横幅原句（渲染器也拒绝把该原句作为值或单元格出具）、PDF 摘要与页数等于记录，
 负对照含记录各字段篡改、用预览替换出具件、添加 PREVIEW 字样、印章改为横幅红色。
 Go 普通/race 各 {GO_TOP} 项顶层测试通过（{GO_EVENTS} 个通过事件），仅 3 项数据库入口跳过；本机另对 PostgreSQL 16 运行了持久化与出具测试（{PG_RESULT}）；
 DOM {DOM_PASS}/{DOM_TOTAL}（含真实 Typst 出具：下载 issued-000001.pdf、记录摘要等于下载字节、撤回后拒绝）；vet、go mod verify、JS 语法通过。

@@ -100,7 +100,7 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 	// Capabilities announce issuance; a draft (unpublished) version is refused as such; a
 	// missing version is not found; the caller cannot pass a configuration.
 	caps := request(h, "GET", "/api/reporting/v1/capabilities", nil, true)
-	if caps.Code != 200 || !strings.Contains(caps.Body.String(), `"issuance":true`) || !strings.Contains(caps.Body.String(), `"GET /issues/{id}"`) || !strings.Contains(caps.Body.String(), `"template_routes":["POST /issues"`) {
+	if caps.Code != 200 || !strings.Contains(caps.Body.String(), `"issuance":true`) || !strings.Contains(caps.Body.String(), `"GET /issues/{id}"`) || !strings.Contains(caps.Body.String(), `"template_routes":["POST /issues"`) || strings.Contains(caps.Body.String(), `"GET /artifacts/{id}/content","POST /issues"`) {
 		t.Fatal(caps.Body.String())
 	}
 	if code, out := post(input, ""); code != 409 || out["error"] != "TEMPLATE_NOT_PUBLISHED" {
@@ -111,6 +111,13 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 	}
 	if _, e = store.Publish(p.Identity, v1.ID, "publish", 1, 0); e != nil {
 		t.Fatal(e)
+	}
+	// A saved later version that is not the published one is refused like a draft.
+	if _, e = store.Save(p.Identity, v1.ID, 1, savedTemplate("customer.id")); e != nil {
+		t.Fatal(e)
+	}
+	if code, out := post(map[string]any{"template_id": v1.ID, "version": 2, "snapshot_id": job.SnapshotID, "row_index": 2}, ""); code != 409 || out["error"] != "TEMPLATE_NOT_PUBLISHED" {
+		t.Fatal("superseding draft issued", code, out)
 	}
 	withConfig := map[string]any{"template_id": v1.ID, "version": 1, "snapshot_id": job.SnapshotID, "row_index": 2, "config": savedTemplate("customer.id")}
 	if code, _ := post(withConfig, ""); code != 400 {
@@ -203,8 +210,12 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 	if w.Code != 200 || rec.State != "failed" || rec.ErrorCode != "TEMPLATE_NOT_PUBLISHED" || rec.Number != 2 {
 		t.Fatal(w.Body.String())
 	}
-	// Anonymous and without issuance.
+	// Anonymous, without the templates mounted (422 in the problem shape, not the mux's 405) and
+	// without issuance.
 	b, _ := json.Marshal(input)
+	if w := request(fallback, "POST", "/api/reporting/v1/issues", b, true); w.Code != 422 || !strings.Contains(w.Body.String(), "UNSUPPORTED_COMBINATION") {
+		t.Fatal("without templates", w.Code, w.Body.String())
+	}
 	if request(h, "POST", "/api/reporting/v1/issues", b, false).Code != 401 {
 		t.Fatal("anonymous")
 	}
