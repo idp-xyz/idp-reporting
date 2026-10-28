@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/xlsx"
@@ -27,11 +29,28 @@ type stampingRenderer struct {
 	values map[string]string
 	stamp  string
 	at     time.Time
+	checks int
+	// refuse is the layout's refusal of some values, which the real renderer makes in CheckIssue and
+	// again in Issue.
+	refuse func(values map[string]string) error
+}
+
+func (f *stampingRenderer) CheckIssue(_ context.Context, _ doctemplates.Document, values map[string]string, _ []byte, _ *doctemplates.TableData) error {
+	f.checks++
+	if f.refuse != nil {
+		return f.refuse(values)
+	}
+	return nil
 }
 
 func (f *stampingRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, _ []byte, _ *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
 	f.calls++
 	f.doc, f.values, f.stamp, f.at = d, values, stamp, at
+	if f.refuse != nil {
+		if e := f.refuse(values); e != nil {
+			return nil, 0, e
+		}
+	}
 	return []byte("%PDF-1.7\n" + stamp + "\n%%EOF"), 2, nil
 }
 
@@ -294,13 +313,18 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	v.other = false
-	// Withdrawn after admission: the queued second job fails with TEMPLATE_NOT_PUBLISHED after the
-	// product reserved a number for it; the product voided it, and the job shows none.
+	// Withdrawn after admission: the queued second job fails with TEMPLATE_NOT_PUBLISHED, which the
+	// issuer's check finds before the product is asked: nothing is reserved or voided at the product,
+	// the job shows no number, and no number is spent.
 	if _, e := store.Publish(p.Identity, v.template, "withdraw", 0, 1); e != nil {
 		t.Fatal(e)
 	}
+	renders := drawn.calls
 	if _, e := service.RunOne(ctx); e == nil {
 		t.Fatal("withdrawn template issued")
+	}
+	if drawn.calls != renders {
+		t.Fatal("a withdrawn template was rendered")
 	}
 	w = request(h, "GET", "/api/reporting/v1/issues/"+secondID, nil, true)
 	var failed map[string]any
@@ -309,8 +333,25 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	absent(t, "the failed job", failed, "number", "reservation_ref", "confirmation_ref", "confirmed_at")
-	if voided, held := v.source.IssueRecord(secondID); !held || voided.State != contractsim.IssueVoid || voided.Reason != "TEMPLATE_NOT_PUBLISHED" || voided.Number != "AR-000002" {
-		t.Fatalf("the product's record of the failed job: %+v %v", voided, held)
+	if rec, held := v.source.IssueRecord(secondID); held {
+		t.Fatalf("the product holds %+v for a job refused before it was asked", rec)
+	}
+	// Published again, the next job takes the number the withdrawn one would have taken.
+	if _, e := store.Publish(p.Identity, v.template, "publish", 1, 2); e != nil {
+		t.Fatal(e)
+	}
+	code, next := post(input, "next")
+	if code != 202 {
+		t.Fatal(code, next)
+	}
+	if _, e := service.RunOne(ctx); e != nil {
+		t.Fatal(e)
+	}
+	w = request(h, "GET", "/api/reporting/v1/jobs/"+next["job_id"].(string), nil, true)
+	var after r.JobView
+	json.Unmarshal(w.Body.Bytes(), &after)
+	if w.Code != 200 || after.State != "succeeded" || after.Issue == nil || after.Issue.Number != "AR-000002" {
+		t.Fatal(w.Code, w.Body.String())
 	}
 	// Anonymous, without the templates mounted (422 in the problem shape, not the mux's 405) and
 	// without issuance.
@@ -333,6 +374,56 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 		if w := request(h2, "GET", "/api/reporting/v1/capabilities", nil, true); !strings.Contains(w.Body.String(), `"issuance":false`) || strings.Contains(w.Body.String(), `"routes":[`+`"GET /catalog"`) == false {
 			t.Fatal(w.Body.String())
 		}
+	}
+}
+
+// A value the renderer's layout refuses (too wide for its box, say) is found by the issuer's check
+// before the product is asked for a number: the job fails with UNSUPPORTED_COMBINATION, nothing is
+// rendered, nothing is reserved at the product and no number is spent.
+func TestIssueRefusedByTheLayoutLeavesNothingReservedAtTheProduct(t *testing.T) {
+	v := newIssueHTTP(t, nil)
+	v.publish()
+	v.drawn.refuse = func(values map[string]string) error {
+		if values["n1"] == "9007199254740893.00" { // the amount of row 2, too wide for its box
+			return fmt.Errorf("pdf: a value does not fit its box: %w", r.ErrUnsupported)
+		}
+		return nil
+	}
+	code, wide := v.post(v.input(2), "wide")
+	if code != 202 {
+		t.Fatal(code, wide)
+	}
+	ctx := t.Context()
+	if _, e := v.service.RunOne(ctx); !errors.Is(e, r.ErrUnsupported) {
+		t.Fatal(e)
+	}
+	id := wide["job_id"].(string)
+	w := request(v.h, "GET", "/api/reporting/v1/issues/"+id, nil, true)
+	var failed map[string]any
+	json.Unmarshal(w.Body.Bytes(), &failed)
+	if w.Code != 200 || failed["state"] != "failed" || failed["error_code"] != "UNSUPPORTED_COMBINATION" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	absent(t, "the refused job", failed, "number", "reservation_ref", "confirmation_ref", "confirmed_at")
+	if v.drawn.checks != 1 || v.drawn.calls != 0 {
+		t.Fatalf("checks %d, renders %d", v.drawn.checks, v.drawn.calls)
+	}
+	if rec, held := v.source.IssueRecord(id); held {
+		t.Fatalf("the product holds %+v for a document its renderer cannot lay out", rec)
+	}
+	// A row that does fit is issued, and takes the first number.
+	code, fits := v.post(v.input(0), "fits")
+	if code != 202 {
+		t.Fatal(code, fits)
+	}
+	if _, e := v.service.RunOne(ctx); e != nil {
+		t.Fatal(e)
+	}
+	w = request(v.h, "GET", "/api/reporting/v1/jobs/"+fits["job_id"].(string), nil, true)
+	var done r.JobView
+	json.Unmarshal(w.Body.Bytes(), &done)
+	if w.Code != 200 || done.State != "succeeded" || done.Issue == nil || done.Issue.Number != "AR-000001" {
+		t.Fatal(w.Code, w.Body.String())
 	}
 }
 

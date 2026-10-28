@@ -274,7 +274,16 @@ func IssueStamp(number string, at time.Time, id string) string {
 
 // Issuer renders an issue job: the frozen template bound to the snapshot's row, stamped. It
 // fails with ErrUnpublished when the template's published version is no longer the frozen one.
+//
+// Check is everything the issuer can verify about a job and its verified snapshot without
+// rendering it and without a stamp: the frozen configuration is the template's published
+// version, the row and the table bind, the background resolves and the renderer's layout accepts
+// the values. The worker calls it before it asks the source product for a number (S03-H), so that
+// a withdrawn template or a document the layout refuses costs the product no reservation to void;
+// it fails exactly as Issue would for those reasons. Issue repeats every check it can, because
+// the template may be withdrawn between the two calls: that race still voids.
 type Issuer interface {
+	Check(context.Context, Job, Snapshot) error
 	Issue(context.Context, IssueRequest) (IssueResult, error)
 }
 type IssueRequest struct {

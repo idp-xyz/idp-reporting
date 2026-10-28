@@ -28,6 +28,25 @@ type fakeRenderer struct {
 	out   []byte
 	pages int
 	err   error
+	// What CheckIssue was given, and how it answers.
+	checks        int
+	checkedValues map[string]string
+	checkedMode   string
+	checkedBg     int
+	checkedRows   int
+	checkErr      error
+}
+
+func (f *fakeRenderer) CheckIssue(_ context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData) error {
+	f.checks++
+	f.checkedValues, f.checkedBg, f.checkedMode, f.checkedRows = values, len(background), "full", 0
+	if d.Print != nil {
+		f.checkedMode = d.Print.Mode
+	}
+	if table != nil {
+		f.checkedRows = len(table.Rows)
+	}
+	return f.checkErr
 }
 
 func (f *fakeRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
@@ -166,6 +185,100 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 	}
 }
 
+// TestIssuerChecksWhatItCanWithoutRendering: Check is the issuer's part that needs neither the
+// product's number nor the render (S03-H): the frozen configuration is the published version, the row
+// and the table bind, the background resolves, and the renderer's layout accepts the values. It fails
+// as Issue does for the same reasons, takes no stamp and no issue time, never renders, and Issue still
+// repeats its checks, because the template can be withdrawn between the two.
+func TestIssuerChecksWhatItCanWithoutRendering(t *testing.T) {
+	ctx := context.Background()
+	owner := snapshot().Owner
+	store, e := doctemplates.Open(filepath.Join(t.TempDir(), "templates"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	v1, e := store.Save(owner.Identity, "", 0, document())
+	if e != nil {
+		t.Fatal(e)
+	}
+	frozen, e := doctemplates.Canonical(v1.Layout)
+	if e != nil {
+		t.Fatal(e)
+	}
+	renderer := &fakeRenderer{out: []byte("%PDF-1.7 issued"), pages: 1}
+	issuer, e := issuance.New(store, nil, renderer)
+	if e != nil {
+		t.Fatal(e)
+	}
+	job := r.Job{ID: strings.Repeat("7", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 1}
+	// Not published yet: refused before the renderer is asked anything.
+	if e = issuer.Check(ctx, job, snapshot()); !errors.Is(e, r.ErrUnpublished) || renderer.checks != 0 {
+		t.Fatal("an unpublished template passed the check", e)
+	}
+	if _, e = store.Publish(owner.Identity, v1.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	// Published: the renderer is asked once, with the values of the row and the table of the
+	// snapshot, and nothing is rendered; no stamp and no issue time are needed.
+	if e = issuer.Check(ctx, job, snapshot()); e != nil {
+		t.Fatal(e)
+	}
+	if renderer.checks != 1 || renderer.calls != 0 || renderer.checkedValues["n1"] != "乙" || renderer.checkedRows != 2 || renderer.checkedMode != "full" || renderer.checkedBg != 0 {
+		t.Fatalf("%+v", renderer)
+	}
+	// It refuses what Issue refuses for the same reasons, with the same errors, and neither asks the
+	// renderer for anything: frozen bytes that are not the stored version, another version, a row the
+	// snapshot lacks, another dataset, a job that is not an issue.
+	req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: r.IssueStamp("AR-000004", issuedAt, job.ID), At: issuedAt}
+	for name, c := range map[string]struct {
+		change func(*r.Job, r.Snapshot) r.Snapshot
+		want   error
+	}{
+		"other bytes":   {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = `{"x":1}`; return s }, r.ErrIntegrity},
+		"other version": {func(j *r.Job, s r.Snapshot) r.Snapshot { j.TemplateVersion = 2; return s }, r.ErrUnpublished},
+		"other row":     {func(j *r.Job, s r.Snapshot) r.Snapshot { j.RowIndex = 2; return s }, r.ErrInvalid},
+		"other dataset": {func(j *r.Job, s r.Snapshot) r.Snapshot { s.Query.Dataset.Version = "2"; return s }, r.ErrDenied},
+		"export job":    {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Kind = "export"; return s }, r.ErrInvalid},
+		"no template":   {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = ""; return s }, r.ErrInvalid},
+	} {
+		j := job
+		s := c.change(&j, snapshot())
+		checks, calls := renderer.checks, renderer.calls
+		checked := issuer.Check(ctx, j, s)
+		_, issued := issuer.Issue(ctx, r.IssueRequest{Job: j, Snapshot: s, Stamp: req.Stamp, At: req.At})
+		if !errors.Is(checked, c.want) || !errors.Is(issued, c.want) || renderer.checks != checks || renderer.calls != calls {
+			t.Errorf("%s: check %v, issue %v; want both %v and no call to the renderer", name, checked, issued, c.want)
+		}
+	}
+	// The renderer's layout refuses: its error is the check's, and nothing is rendered.
+	renderer.checkErr = r.ErrUnsupported
+	if e = issuer.Check(ctx, job, snapshot()); !errors.Is(e, r.ErrUnsupported) || renderer.calls != 0 {
+		t.Fatal("the layout's refusal was not passed on", e)
+	}
+	renderer.checkErr = nil
+	// A context that has ended is not asked of the renderer.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	checks := renderer.checks
+	if e = issuer.Check(cancelled, job, snapshot()); !errors.Is(e, context.Canceled) || renderer.checks != checks {
+		t.Fatal(e)
+	}
+	// The check passes, then the template is withdrawn: Issue still refuses it, and renders nothing.
+	if e = issuer.Check(ctx, job, snapshot()); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = store.Publish(owner.Identity, v1.ID, "withdraw", 0, 1); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = issuer.Issue(ctx, req); !errors.Is(e, r.ErrUnpublished) || renderer.calls != 0 {
+		t.Fatal("a template withdrawn after the check was rendered", e)
+	}
+	if e = issuer.Check(ctx, job, snapshot()); !errors.Is(e, r.ErrUnpublished) {
+		t.Fatal("a withdrawn template passed the check", e)
+	}
+}
+
 // TestIssuerResolvesTheBackgroundAsThePreviewDoes: a published template naming a background
 // issues with that PNG in full mode and without it in variables mode; on a deployment without
 // a background store it is unsupported.
@@ -209,12 +322,19 @@ func TestIssuerResolvesTheBackgroundAsThePreviewDoes(t *testing.T) {
 		if _, e := without.Issue(ctx, req); !errors.Is(e, r.ErrUnsupported) || renderer.calls != 0 {
 			t.Fatalf("%s without a background store: %v", mode, e)
 		}
+		if e := without.Check(ctx, job, snapshot()); !errors.Is(e, r.ErrUnsupported) || renderer.checks != 0 {
+			t.Fatalf("%s without a background store, checked: %v", mode, e)
+		}
 		with, _ := issuance.New(store, assets, renderer)
 		if _, e := with.Issue(ctx, req); e != nil || renderer.calls != 1 || renderer.mode != mode || !renderer.at.Equal(issuedAt) {
 			t.Fatalf("%s: %v %+v", mode, e, renderer)
 		}
 		if (mode == "full") != (renderer.bg > 0) {
 			t.Errorf("%s: background of %d bytes passed to the renderer", mode, renderer.bg)
+		}
+		// The check hands the renderer the same background: the PNG in full mode, none in variables mode.
+		if e := with.Check(ctx, job, snapshot()); e != nil || renderer.checks != 1 || renderer.checkedMode != mode || (mode == "full") != (renderer.checkedBg > 0) || renderer.calls != 1 {
+			t.Fatalf("%s checked: %v %+v", mode, e, renderer)
 		}
 	}
 }

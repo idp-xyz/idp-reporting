@@ -23,10 +23,17 @@ func (fakePDFWriter) Write(context.Context, r.Snapshot) ([]byte, error) {
 // stampIssuer answers with a PDF carrying the stamp and the issue time, from its request alone as
 // the real issuer does (the same request gives the same bytes); it never touches a template store.
 type stampIssuer struct {
-	mu    sync.Mutex
-	calls int
-	err   error
-	hook  func() // runs inside the call: the world changes while the document renders
+	mu       sync.Mutex
+	calls    int
+	err      error  // Issue fails with it, after the product reserved a number
+	checkErr error  // Check fails with it, before the product is asked
+	hook     func() // runs inside the call: the world changes while the document renders
+}
+
+func (f *stampIssuer) Check(context.Context, r.Job, r.Snapshot) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.checkErr
 }
 
 func (f *stampIssuer) Issue(_ context.Context, req r.IssueRequest) (r.IssueResult, error) {
@@ -347,8 +354,29 @@ func TestDurablePostgresIssues(t *testing.T) {
 		if e = v.source.SetIssueRefused(ctx, contractsim.FinanceIntegration, "tenant_a", false); e != nil {
 			t.Fatal(e)
 		}
+		// The issuer's check refuses (the template was withdrawn while the job waited): before the
+		// product is asked, so nothing is reserved or voided and no number is spent.
+		issuer.mu.Lock()
+		issuer.checkErr = r.ErrUnpublished
+		issuer.mu.Unlock()
+		checked, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 0), "checked")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.RunOne(ctx); !errors.Is(e, r.ErrUnpublished) {
+			t.Fatal(e)
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, checked.ID); e != nil || st.State != "failed" || st.ErrorCode != "TEMPLATE_NOT_PUBLISHED" || st.Generation != 1 {
+			t.Fatalf("%+v %v", st, e)
+		}
+		if rec, held := productRecord(t, v, checked.ID); held {
+			t.Fatalf("the product holds %+v for a job its issuer's check refused", rec)
+		}
+		issuer.mu.Lock()
+		issuer.checkErr = nil
+		issuer.mu.Unlock()
 		// After the product: the render fails; the product voids what it reserved (AR-000001, the
-		// first number given out) with the code as the reason.
+		// first number given out: none was spent above) with the code as the reason.
 		issuer.mu.Lock()
 		issuer.err = r.ErrUnpublished
 		issuer.mu.Unlock()

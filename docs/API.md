@@ -70,22 +70,30 @@ demo has the matching directories, and previews when it has the PDF flags:
 An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
 row. The source product, not the platform, authorizes the issue, owns the number and confirms the file (S03-H);
 the platform never numbers a document, so the job has no number. The worker re-checks the source, the snapshot
-and the row, and asks the product to prepare the document (`PrepareDocument`, idempotent by the job id) with the
-frozen read, the row's index and the digest of its values, and the template's id, version and digest. The
-product refuses (the job fails with AUTH_SCOPE_DENIED, nothing reserved) when the principal may not issue
-documents, the row is not the one its own source snapshot produced, or its approval rules say no; otherwise it
-answers with a reservation: its reference, the number (1..32 of `A-Za-z0-9._-`, starting with a letter or a digit:
-the finance simulator gives `AR-000001`, `AR-000002`, ..., the shipment one `SH-000001`, ..., per integration and
-never reused), the issue time (UTC, whole second) and an expiry; an answer that is not that fails the job with
-INTEGRITY_FAILURE. The worker then re-checks that the frozen configuration is still the published version (else
-the job fails with TEMPLATE_NOT_PUBLISHED), renders the preview's pages with the issue stamp `ISSUED No.
-AR-000012 - 2026-10-28T06:12:03Z - <issue id>` (the product's number and issue time) in the banner strip (in the
-text colour, in variables mode too) and with the issue time as the PDF's creation date, so that the same inputs
-give the same bytes, has the product confirm the file (`ConfirmIssue`: the reference, the SHA-256 and the page
-count; it answers with its confirmation reference and time), re-checks the source and publishes the PDF artifact
-(format "pdf", carrying the issue id; downloaded as `issued-<id>.pdf` through GET /artifacts/{id}/content, with the
-snapshot's expiry and authorization rules, and only when the record names that artifact and its digest) together
-with the permanent record in one transaction. The record holds the product's number, `issued_at`, the product's
+and the row, and has the issuer check everything it can without the product and without rendering: that the
+frozen configuration is still the published version (else the job fails with TEMPLATE_NOT_PUBLISHED), that the
+row and the table bind, that the background resolves and that the renderer's layout accepts the values (a value
+too wide for its box, a character the fonts lack, a table that cannot be laid out and the like fail the job with
+UNSUPPORTED_COMBINATION, as do the other refusals of the preview with their codes). A product must account for
+every number it voids, so none of these may cost it a reservation: they are checked first, and a job refused by
+them has asked the product nothing. Only then does the worker ask the product to prepare the document
+(`PrepareDocument`, idempotent by the job id) with the frozen read, the row's index and the digest of its
+values, and the template's id, version and digest. The product refuses (the job fails with AUTH_SCOPE_DENIED,
+nothing reserved) when the principal may not issue documents, the row is not the one its own source snapshot
+produced, or its approval rules say no; otherwise it answers with a reservation: its reference, the number
+(1..32 of `A-Za-z0-9._-`, starting with a letter or a digit: the finance simulator gives `AR-000001`,
+`AR-000002`, ..., the shipment one `SH-000001`, ..., per integration and never reused), the issue time (UTC,
+whole second) and an expiry; an answer that is not that fails the job with INTEGRITY_FAILURE. The worker then
+renders the preview's pages with the issue stamp `ISSUED No. AR-000012 - 2026-10-28T06:12:03Z - <issue id>`
+(the product's number and issue time) in the banner strip (in the text colour, in variables mode too) and with
+the issue time as the PDF's creation date, so that the same inputs give the same bytes; the issuer repeats its
+checks, because the template can be withdrawn between the check and the render, and a job that fails there
+(TEMPLATE_NOT_PUBLISHED) voids the reservation; what only the render can find, a glyph Typst would draw wider
+than measured, fails the same way. It has the product confirm the file (`ConfirmIssue`: the reference, the
+SHA-256 and the page count; it answers with its confirmation reference and time), re-checks the source and
+publishes the PDF artifact (format "pdf", carrying the issue id; downloaded as `issued-<id>.pdf` through
+GET /artifacts/{id}/content, with the snapshot's expiry and authorization rules, and only when the record names
+that artifact and its digest) together with the permanent record in one transaction. The record holds the product's number, `issued_at`, the product's
 `reservation_ref` and `confirmation_ref` and its `confirmed_at`. Records are never changed or deleted. There is no
 atomicity across the two systems (README), so every outcome is reconcilable: when a job fails after the worker called
 `PrepareDocument` (whatever it answered), or on a claim later than the first (an earlier attempt may have reserved
@@ -93,11 +101,11 @@ or confirmed), other than by losing its lease, the worker calls `VoidIssue` with
 code as the reason, with a context of its own bounded to 5 seconds, before it fails the job; the product voids
 whatever it holds for the job, reserved or confirmed, and the number stays voided. A void that cannot be
 delivered fails the job with ISSUE_UNRECONCILED instead of its own code, and the product can find the reservation
-by the job id. A first attempt that fails before it reached the product calls nothing there. A worker that
-loses its lease never voids: the worker that holds the job reuses the reservation (the product answers the same
-job id again), renders the same bytes and has them confirmed again, which the product does idempotently. A
-running issue job cannot be cancelled (it finishes, or fails and voids; its cancel returns it unchanged); a
-queued one can. `POST /issues` is mounted with the template routes (`template_routes` in the capabilities) and
+by the job id. A first attempt that fails before it reached the product (at the source, snapshot or row check
+or at the issuer's check) calls nothing there. A worker that loses its lease never voids: the worker that holds
+the job reuses the reservation (the product answers the same job id again), renders the same bytes and has them
+confirmed again, which the product does idempotently. A running issue job cannot be cancelled (it finishes, or
+fails and voids; its cancel returns it unchanged); a queued one can. `POST /issues` is mounted with the template routes (`template_routes` in the capabilities) and
 answers 422 UNSUPPORTED_COMBINATION when the deployment cannot issue (`issuance: false`: no issuer or no PDF
 format) or the integration's adapter does not implement the product's document authority; a stored job whose
 adapter lost it fails with UNSUPPORTED_COMBINATION. `issuance` says only that the server renders issue jobs;

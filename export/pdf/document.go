@@ -165,6 +165,25 @@ func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[
 	return out, len(p.Pages), nil
 }
 
+// CheckIssue is the layout of Issue without the stamp and without the render: the same document,
+// values, background and table, checked the way Issue lays them out, with the plain advances of
+// the fonts and no Typst process or slot. It refuses what Issue refuses for them: the preview
+// banner text as a value or a cell, a value or cell the fonts cannot print exactly or that does not
+// fit, a table that cannot be laid out, a background that is not the one the template names, and
+// every other refusal of the layout. The stamp is not part of it (the stamp of every number, id
+// and time the contract allows fits its strip: TestTypstIssuesTheWidestLegalStamp), nor is the
+// issue time; what only the render can find, a glyph Typst would draw wider than measured or a
+// Typst failure, is not either. The worker asks for it before it asks the source product for a
+// number (S03-H), so that nothing the layout refuses costs the product a reservation to void.
+// Errors never carry values.
+func (w *Writer) CheckIssue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_, err := issueLayout(d, values, background, table, newPlainMeasurer(w.fonts))
+	return err
+}
+
 var (
 	// The creation dates Typst can write: it takes no negative timestamp (a command-line
 	// argument starting with a minus sign is not one) and no date after the year 9999.
@@ -185,8 +204,29 @@ func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, ba
 	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
 		return nil, r.ErrInvalid
 	}
-	// The preview's banner text is never printed on an issued document, not even as data
-	// (the literals that variables mode does not print are not data).
+	m := newPlainMeasurer(w.fonts)
+	p, err := issueLayout(d, values, background, table, m)
+	if err != nil {
+		return nil, err
+	}
+	width, err := m.width(stamp, stampSize, false)
+	if err != nil {
+		return nil, err
+	}
+	if width > bannerW*mm+0.05 {
+		return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
+	}
+	p.Title = "Issued document"
+	p.Banner.Text, p.Banner.Fill = stamp, stampFill
+	p.Banner.Size, p.Banner.Baseline = stampSize, bannerY*mm+ascent*stampSize
+	return p, nil
+}
+
+// issueLayout is what an issued document and its check have in common: the preview's pages laid
+// out for the values, the background and the table, after the refusal of the preview's banner
+// text, which is never printed on an issued document, not even as data (the literals that
+// variables mode does not print are not data). The stamp is set by the caller.
+func issueLayout(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer) (*page, error) {
 	full := d.Print == nil || d.Print.Mode == "full"
 	for _, e := range d.Elements {
 		if (full || e.Source != "literal") && strings.Contains(values[e.ID], bannerText) {
@@ -202,22 +242,7 @@ func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, ba
 			}
 		}
 	}
-	m := newPlainMeasurer(w.fonts)
-	p, err := layOut(d, values, background, table, m)
-	if err != nil {
-		return nil, err
-	}
-	width, err := m.width(stamp, stampSize, false)
-	if err != nil {
-		return nil, err
-	}
-	if width > bannerW*mm+0.05 {
-		return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
-	}
-	p.Title = "Issued document"
-	p.Banner.Text, p.Banner.Fill = stamp, stampFill
-	p.Banner.Size, p.Banner.Baseline = stampSize, bannerY*mm+ascent*stampSize
-	return p, nil
+	return layOut(d, values, background, table, m)
 }
 
 // renderDocument runs Typst on a laid-out page, recording created as the document's creation

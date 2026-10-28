@@ -36,14 +36,30 @@ func (c *testClock) Advance(d time.Duration) {
 }
 
 // fakeIssuer renders from its request alone, as the real issuer does: the same request gives
-// the same bytes. Like the renderer behind the real one it takes only a UTC whole second.
+// the same bytes. Like the renderer behind the real one it takes only a UTC whole second. Check
+// fails with checkErr and Issue with err, so that a test can tell a refusal before the product is
+// asked from one after.
 type fakeIssuer struct {
-	calls   int
-	last    r.IssueRequest
-	err     error
-	pages   int
-	content []byte // replaces the rendering
-	hook    func() // runs inside the call: time passes or the world changes while the document renders
+	calls     int
+	last      r.IssueRequest
+	err       error
+	pages     int
+	content   []byte // replaces the rendering
+	hook      func() // runs inside the call: time passes or the world changes while the document renders
+	checks    int
+	checkedAs r.Job      // the job and the snapshot of the last Check
+	checkedOn r.Snapshot //
+	checkErr  error
+	checkHook func() // runs inside Check
+}
+
+func (f *fakeIssuer) Check(_ context.Context, j r.Job, s r.Snapshot) error {
+	f.checks++
+	f.checkedAs, f.checkedOn = j, s
+	if f.checkHook != nil {
+		f.checkHook()
+	}
+	return f.checkErr
 }
 
 func (f *fakeIssuer) Issue(_ context.Context, req r.IssueRequest) (r.IssueResult, error) {
@@ -656,11 +672,92 @@ func TestIssueRefusedByTheProductLeavesNothingReserved(t *testing.T) {
 	}
 }
 
+// The issuer checks what it can without the product and without rendering before the worker asks
+// the product for a number (S03-H): a product must account for every number it voids, so a withdrawn
+// template or a document the layout refuses must not cost it a reservation. The check gets the job
+// and its verified snapshot, and runs after the source and the row were checked and before the
+// product is called.
+func TestIssueIsCheckedBeforeTheProductIsAsked(t *testing.T) {
+	v := newIssueEnv(t, envOpts{})
+	var asked []int // the calls the product had received when each check ran
+	v.issuer.checkHook = func() { asked = append(asked, len(v.finance.intents)+len(v.finance.confirmed)+len(v.finance.voids)) }
+	j := v.submit(1, "one")
+	if v.issuer.checks != 0 {
+		t.Fatal("admission ran the check")
+	}
+	if _, e := v.run(); e != nil {
+		t.Fatal(e)
+	}
+	if v.issuer.checks != 1 || len(asked) != 1 || asked[0] != 0 || v.issuer.calls != 1 {
+		t.Fatalf("checks %d, product calls at the check %v, renders %d", v.issuer.checks, asked, v.issuer.calls)
+	}
+	if v.issuer.checkedAs.ID != j.ID || v.issuer.checkedAs.Kind != "issue" || v.issuer.checkedAs.RowIndex != 1 || v.issuer.checkedAs.Template != template || v.issuer.checkedOn.ID != v.snapshot || len(v.issuer.checkedOn.Result.Rows) != 3 {
+		t.Fatalf("the check was given %+v and %q", v.issuer.checkedAs, v.issuer.checkedOn.ID)
+	}
+	// The check is the worker's: a source that is revoked fails the job before it, and a row beyond the
+	// snapshot cannot reach it.
+	w := newIssueEnv(t, envOpts{})
+	w.submit(0, "two")
+	w.finance.Revoke(w.owner)
+	if _, e := w.run(); !errors.Is(e, r.ErrDenied) || w.issuer.checks != 0 {
+		t.Fatal(e, w.issuer.checks)
+	}
+}
+
+// What the check refuses fails the job with the code of its error before the product is asked: nothing
+// is reserved, nothing is voided and no number is spent (the next job takes AR-000001): the template
+// withdrawn while the job waited, a value the renderer's layout will not print, a row that does not
+// bind, a field the catalog no longer allows.
+func TestIssueRefusedByTheCheckLeavesNothingReserved(t *testing.T) {
+	for name, c := range map[string]struct {
+		err  error
+		code string
+	}{
+		"the template was withdrawn":         {r.ErrUnpublished, "TEMPLATE_NOT_PUBLISHED"},
+		"a value the layout refuses":         {r.ErrUnsupported, "UNSUPPORTED_COMBINATION"},
+		"a row that does not bind":           {r.ErrIntegrity, "INTEGRITY_FAILURE"},
+		"a field the catalog no longer has":  {r.ErrDenied, "AUTH_SCOPE_DENIED"},
+		"a background that does not resolve": {r.ErrNotFound, "NOT_FOUND"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := newIssueEnv(t, envOpts{})
+			v.issuer.checkErr = c.err
+			j := v.submit(1, "refused")
+			ran, e := v.run()
+			if !ran || !errors.Is(e, c.err) {
+				t.Fatal(ran, e)
+			}
+			if st := v.stored(j.ID); st.State != "failed" || st.ErrorCode != c.code || st.Generation != 1 {
+				t.Fatalf("%+v; want failed with %s", st, c.code)
+			}
+			if v.issuer.checks != 1 || v.issuer.calls != 0 {
+				t.Fatalf("checks %d, renders %d", v.issuer.checks, v.issuer.calls)
+			}
+			if len(v.finance.intents) != 0 || len(v.finance.confirmed) != 0 || len(v.finance.voids) != 0 {
+				t.Fatalf("the product was called: %d prepares, %d confirmations, voids %+v", len(v.finance.intents), len(v.finance.confirmed), v.finance.voids)
+			}
+			if rec, held := held(v, j.ID); held {
+				t.Fatalf("the product holds %+v for a job refused before it was asked", rec)
+			}
+			// The next job takes the first number: the refused one spent none.
+			v.issuer.checkErr = nil
+			next := v.submit(2, "next")
+			if _, e := v.run(); e != nil {
+				t.Fatal(e)
+			}
+			if got := v.job(next.ID); got.State != "succeeded" || got.Issue.Number != "AR-000001" {
+				t.Fatalf("%+v %+v", got, got.Issue)
+			}
+		})
+	}
+}
+
 // Whatever goes wrong after the worker called the product to prepare a document, the job fails with
-// its own code and the product is told to void the job under that code: a render failure, a file
-// the worker refuses, a confirmation the product refuses, a reservation or a receipt that is not
-// what the contract says, a source revoked meanwhile, a publication that fails, an answer lost on
-// its way back. The voided number is never handed out again.
+// its own code and the product is told to void the job under that code: a render failure (the
+// template can still be withdrawn between the check and the render), a file the worker refuses, a
+// confirmation the product refuses, a reservation or a receipt that is not what the contract says,
+// a source revoked meanwhile, a publication that fails, an answer lost on its way back. The voided
+// number is never handed out again.
 func TestIssueFailuresVoidAtTheProduct(t *testing.T) {
 	type scene struct {
 		code      string
@@ -671,14 +768,14 @@ func TestIssueFailuresVoidAtTheProduct(t *testing.T) {
 		mend      func(v *issueEnv) // what a test undoes to issue again
 	}
 	scenes := map[string]scene{
-		"the template is no longer published":    {code: "TEMPLATE_NOT_PUBLISHED", setup: func(v *issueEnv) { v.issuer.err = r.ErrUnpublished }},
-		"an unclassified render failure":         {code: "EXECUTION_FAILED", setup: func(v *issueEnv) { v.issuer.err = errors.New("the renderer broke") }},
-		"the product refuses the confirmation":   {code: "AUTH_SCOPE_DENIED", asked: true, setup: func(v *issueEnv) { v.finance.confirmE = r.ErrDenied }},
-		"the product is unavailable to confirm":  {code: "AUTHORITY_UNAVAILABLE", asked: true, setup: func(v *issueEnv) { v.finance.confirmE = r.ErrUnavailable }},
-		"the answer to the reservation is lost":  {code: "AUTHORITY_UNAVAILABLE", setup: func(v *issueEnv) { v.finance.prepareE = r.ErrUnavailable }},
-		"the source is revoked while rendering":  {code: "AUTH_SCOPE_DENIED", asked: true, confirmed: true, setup: func(v *issueEnv) { v.issuer.hook = func() { v.finance.Revoke(v.owner) } }, mend: func(v *issueEnv) { v.finance.Grant(v.owner, contractsim.DefaultGrant()) }},
-		"the publication is refused as invalid":  {code: "INTEGRITY_FAILURE", asked: true, confirmed: true, publish: r.ErrIntegrity},
-		"the publication fails for the database": {code: "EXECUTION_FAILED", asked: true, confirmed: true, publish: errors.New("the database is down")},
+		"the template is withdrawn after the check": {code: "TEMPLATE_NOT_PUBLISHED", setup: func(v *issueEnv) { v.issuer.err = r.ErrUnpublished }},
+		"an unclassified render failure":            {code: "EXECUTION_FAILED", setup: func(v *issueEnv) { v.issuer.err = errors.New("the renderer broke") }},
+		"the product refuses the confirmation":      {code: "AUTH_SCOPE_DENIED", asked: true, setup: func(v *issueEnv) { v.finance.confirmE = r.ErrDenied }},
+		"the product is unavailable to confirm":     {code: "AUTHORITY_UNAVAILABLE", asked: true, setup: func(v *issueEnv) { v.finance.confirmE = r.ErrUnavailable }},
+		"the answer to the reservation is lost":     {code: "AUTHORITY_UNAVAILABLE", setup: func(v *issueEnv) { v.finance.prepareE = r.ErrUnavailable }},
+		"the source is revoked while rendering":     {code: "AUTH_SCOPE_DENIED", asked: true, confirmed: true, setup: func(v *issueEnv) { v.issuer.hook = func() { v.finance.Revoke(v.owner) } }, mend: func(v *issueEnv) { v.finance.Grant(v.owner, contractsim.DefaultGrant()) }},
+		"the publication is refused as invalid":     {code: "INTEGRITY_FAILURE", asked: true, confirmed: true, publish: r.ErrIntegrity},
+		"the publication fails for the database":    {code: "EXECUTION_FAILED", asked: true, confirmed: true, publish: errors.New("the database is down")},
 	}
 	for name, change := range map[string]func(*r.IssueReservation){
 		"a reservation without a reference":          func(res *r.IssueReservation) { res.Ref = "" },
@@ -920,28 +1017,39 @@ func TestIssueVoidsOnLaterGenerationsAndNotOnFirstAttemptsThatNeverReachedThePro
 	if len(w.finance.intents) != 0 || len(w.finance.voids) != 1 || w.finance.voids[0] != (voidCall{k.ID, "AUTH_SCOPE_DENIED"}) {
 		t.Fatalf("a claim of generation 2 did not void: voids %+v", w.finance.voids)
 	}
-	// A claim of generation 2 whose predecessor reserved and confirmed: it fails at rendering, and
-	// voids the confirmed document of the earlier attempt.
-	x := newIssueEnv(t, envOpts{})
-	l := x.submit(0, "three")
-	x.store.lose = 1
-	if _, e := x.run(); !errors.Is(e, r.ErrLease) {
-		t.Fatal(e)
-	}
-	confirmed, ok := held(x, l.ID)
-	if !ok || confirmed.State != contractsim.IssueConfirmed {
-		t.Fatalf("%+v %v", confirmed, ok)
-	}
-	x.issuer.err = r.ErrUnpublished
-	if _, e := x.run(); !errors.Is(e, r.ErrUnpublished) {
-		t.Fatal(e)
-	}
-	if st := x.stored(l.ID); st.State != "failed" || st.ErrorCode != "TEMPLATE_NOT_PUBLISHED" || st.Generation != 2 {
-		t.Fatalf("%+v", st)
-	}
-	rec := assertVoided(t, x, l.ID, "TEMPLATE_NOT_PUBLISHED")
-	if rec.SHA256 != confirmed.SHA256 || rec.Number != confirmed.Number {
-		t.Fatalf("the voided confirmed document: %+v, was %+v", rec, confirmed)
+	// A claim of generation 2 whose predecessor reserved and confirmed: the template is withdrawn
+	// while the job waits, so it fails at the check (before it would call the product) or at the
+	// render (after the check passed), and either way voids the confirmed document of the earlier
+	// attempt.
+	for name, withdraw := range map[string]func(*fakeIssuer){
+		"at the check":  func(i *fakeIssuer) { i.checkErr = r.ErrUnpublished },
+		"at the render": func(i *fakeIssuer) { i.err = r.ErrUnpublished },
+	} {
+		x := newIssueEnv(t, envOpts{})
+		l := x.submit(0, "three")
+		x.store.lose = 1
+		if _, e := x.run(); !errors.Is(e, r.ErrLease) {
+			t.Fatal(name, e)
+		}
+		confirmed, ok := held(x, l.ID)
+		if !ok || confirmed.State != contractsim.IssueConfirmed {
+			t.Fatalf("%s: %+v %v", name, confirmed, ok)
+		}
+		withdraw(x.issuer)
+		prepares := len(x.finance.intents)
+		if _, e := x.run(); !errors.Is(e, r.ErrUnpublished) {
+			t.Fatal(name, e)
+		}
+		if st := x.stored(l.ID); st.State != "failed" || st.ErrorCode != "TEMPLATE_NOT_PUBLISHED" || st.Generation != 2 {
+			t.Fatalf("%s: %+v", name, st)
+		}
+		if (len(x.finance.intents) > prepares) != (name == "at the render") {
+			t.Errorf("%s: the second claim asked the product %d times", name, len(x.finance.intents)-prepares)
+		}
+		rec := assertVoided(t, x, l.ID, "TEMPLATE_NOT_PUBLISHED")
+		if rec.SHA256 != confirmed.SHA256 || rec.Number != confirmed.Number {
+			t.Fatalf("%s: the voided confirmed document: %+v, was %+v", name, rec, confirmed)
+		}
 	}
 }
 

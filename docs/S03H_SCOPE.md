@@ -19,8 +19,11 @@ snapshot. A reservation carries the product's reference, the number (`ValidIssue
 the product's confirmation reference and time. An integration whose adapter does not implement the interface
 cannot issue: `POST /issues` answers 422 and a stored job fails with UNSUPPORTED_COMBINATION.
 
-H2 · The worker. For an issue job the worker, after the S03-G checks (template still published, snapshot
-current and verified, row present), calls `PrepareDocument`; validates the reservation (reference 1..128
+H2 · The worker. For an issue job the worker, after the S03-G checks (snapshot current and verified, row
+present), first runs every check the issuer can make without rendering (`Issuer.Check`: the frozen
+template still the published version, the row and the table bind, the background resolves, the layout
+accepts the values), so that a withdrawn template or an unprintable row reserves nothing at the product;
+only then calls `PrepareDocument`; validates the reservation (reference 1..128
 bytes, the job's id, a valid number, issue time a UTC whole second, expiry after it; else
 INTEGRITY_FAILURE); renders with the stamp `ISSUED No. <number> - <issue time> - <record id>`, set at 8 pt in
 the banner strip so that the stamp of every number the contract allows fits with every record id and time

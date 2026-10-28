@@ -664,11 +664,12 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		}
 		pub.Artifact = &Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt, Content: b, SHA256: bytesDigest(b)}
 	case "issue":
-		// Under the source product's authority (S03-H): it authorizes the issue and gives the
-		// number and the issue time, the platform renders from what is frozen and what the
-		// product reserved, the product confirms the file, and only then are the artifact and
-		// the record published. Every call to the product is idempotent by the job id, so a job
-		// claimed again reuses its reservation and, rendering the same bytes, its confirmation.
+		// Under the source product's authority (S03-H): the issuer checks what it can without
+		// the product, the product authorizes the issue and gives the number and the issue time,
+		// the platform renders from what is frozen and what the product reserved, the product
+		// confirms the file, and only then are the artifact and the record published. Every call
+		// to the product is idempotent by the job id, so a job claimed again reuses its
+		// reservation and, rendering the same bytes, its confirmation.
 		c, sc, e := s.sourceOwner(j.Owner)
 		if e != nil {
 			return e
@@ -684,6 +685,14 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		}
 		if j.RowIndex >= len(snap.Result.Rows) {
 			return ErrIntegrity
+		}
+		// The product is asked only after everything that can be checked without it has passed
+		// (the template is still the published version, the row and the table bind, the
+		// background resolves, the layout accepts the values): a product must account for every
+		// number it voids, so none of these may cost it a reservation. Issue repeats the checks
+		// that can change meanwhile.
+		if e := s.issuer.Check(ctx, j, snap); e != nil {
+			return e
 		}
 		attempt.prepared = true
 		res, e := authority.PrepareDocument(ctx, sc, IssueIntent{JobID: j.ID, Prepared: snap.Prepared, RowIndex: j.RowIndex, RowSHA256: Digest(snap.Result.Rows[j.RowIndex]), TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256})
