@@ -41,7 +41,7 @@ type Config struct {
 	MemoryBytes uint64           // address-space limit of Typst; default 2 GiB
 	Jobs        int              // Typst worker threads; default 2
 	Concurrency int              // Typst processes at once, exports and previews together; default 2. Previews take at most all but one of them, so the export worker always finds one
-	Now         func() time.Time // creation time recorded in documents; default time.Now
+	Now         func() time.Time // creation time recorded in exports and previews, not in issues, which carry the product's issue time; default time.Now
 }
 
 // Writer is safe for concurrent use.

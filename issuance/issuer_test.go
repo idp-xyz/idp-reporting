@@ -11,11 +11,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+// issuedAt is the issue time the product reserved: the stamps below print it, and the issuer
+// hands it to the renderer as it came.
+var issuedAt = time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)
 
 type fakeRenderer struct {
 	calls int
 	stamp string
+	at    time.Time
 	mode  string
 	bg    int
 	rows  int
@@ -24,9 +30,9 @@ type fakeRenderer struct {
 	err   error
 }
 
-func (f *fakeRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string) ([]byte, int, error) {
+func (f *fakeRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
 	f.calls++
-	f.stamp, f.bg = stamp, len(background)
+	f.stamp, f.at, f.bg = stamp, at, len(background)
 	f.mode = "full"
 	if d.Print != nil {
 		f.mode = d.Print.Mode
@@ -77,7 +83,7 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 		t.Fatal("issuer without a store")
 	}
 	job := r.Job{ID: strings.Repeat("7", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 1, Number: 4}
-	req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000004 - 2026-10-28T00:00:00Z - " + job.ID}
+	req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000004 - 2026-10-28T00:00:00Z - " + job.ID, At: issuedAt}
 	// Not published yet.
 	if _, e = issuer.Issue(ctx, req); !errors.Is(e, r.ErrUnpublished) || renderer.calls != 0 {
 		t.Fatal("unpublished template rendered", e)
@@ -86,11 +92,12 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 		t.Fatal(e)
 	}
 	out, e := issuer.Issue(ctx, req)
-	if e != nil || string(out.PDF) != "%PDF-1.7 issued" || out.Pages != 1 || renderer.calls != 1 || renderer.stamp != req.Stamp || renderer.rows != 2 || renderer.mode != "full" || renderer.bg != 0 {
+	if e != nil || string(out.PDF) != "%PDF-1.7 issued" || out.Pages != 1 || renderer.calls != 1 || renderer.stamp != req.Stamp || !renderer.at.Equal(issuedAt) || renderer.rows != 2 || renderer.mode != "full" || renderer.bg != 0 {
 		t.Fatalf("%+v %v %+v", out, e, renderer)
 	}
 	// Frozen bytes that are not the stored version, a wrong version number, a withdrawn and a
-	// superseded publication all refuse; so does a row the snapshot lacks.
+	// superseded publication all refuse; so does a row the snapshot lacks, and a request
+	// without the product's issue time (the zero time) is invalid before anything renders.
 	for name, c := range map[string]struct {
 		change func(*r.Job, r.Snapshot) r.Snapshot
 		want   error
@@ -101,12 +108,16 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 		"other dataset": {func(j *r.Job, s r.Snapshot) r.Snapshot { s.Query.Dataset.Version = "2"; return s }, r.ErrDenied},
 		"export job":    {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Kind = "export"; return s }, r.ErrInvalid},
 		"empty stamp":   {func(j *r.Job, s r.Snapshot) r.Snapshot { return s }, r.ErrInvalid},
+		"no issue time": {func(j *r.Job, s r.Snapshot) r.Snapshot { return s }, r.ErrInvalid},
 	} {
 		j := job
 		s := c.change(&j, snapshot())
-		q := r.IssueRequest{Job: j, Snapshot: s, Stamp: req.Stamp}
-		if name == "empty stamp" {
+		q := r.IssueRequest{Job: j, Snapshot: s, Stamp: req.Stamp, At: req.At}
+		switch name {
+		case "empty stamp":
 			q.Stamp = ""
+		case "no issue time":
+			q.At = time.Time{}
 		}
 		calls := renderer.calls
 		if _, e := issuer.Issue(ctx, q); !errors.Is(e, c.want) || renderer.calls != calls {
@@ -142,7 +153,7 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 	jb := job
 	jb.Template = string(frozenBg)
 	// The frozen bytes must match the published version, which has no background: integrity.
-	if _, e = issuer.Issue(ctx, r.IssueRequest{Job: jb, Snapshot: snapshot(), Stamp: req.Stamp}); !errors.Is(e, r.ErrUnpublished) {
+	if _, e = issuer.Issue(ctx, r.IssueRequest{Job: jb, Snapshot: snapshot(), Stamp: req.Stamp, At: req.At}); !errors.Is(e, r.ErrUnpublished) {
 		t.Fatal("frozen configuration differing from the published one", e)
 	}
 	renderer.out = []byte("not a pdf")
@@ -192,14 +203,14 @@ func TestIssuerResolvesTheBackgroundAsThePreviewDoes(t *testing.T) {
 		}
 		frozen, _ := doctemplates.Canonical(v.Layout)
 		job := r.Job{ID: strings.Repeat("8", 32), Owner: owner, Kind: "issue", TemplateID: v.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 0, Number: 1}
-		req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000001 - 2026-10-28T00:00:00Z - " + job.ID}
+		req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000001 - 2026-10-28T00:00:00Z - " + job.ID, At: issuedAt}
 		renderer := &fakeRenderer{out: []byte("%PDF-1.7 issued"), pages: 1}
 		without, _ := issuance.New(store, nil, renderer)
 		if _, e := without.Issue(ctx, req); !errors.Is(e, r.ErrUnsupported) || renderer.calls != 0 {
 			t.Fatalf("%s without a background store: %v", mode, e)
 		}
 		with, _ := issuance.New(store, assets, renderer)
-		if _, e := with.Issue(ctx, req); e != nil || renderer.calls != 1 || renderer.mode != mode {
+		if _, e := with.Issue(ctx, req); e != nil || renderer.calls != 1 || renderer.mode != mode || !renderer.at.Equal(issuedAt) {
 			t.Fatalf("%s: %v %+v", mode, e, renderer)
 		}
 		if (mode == "full") != (renderer.bg > 0) {

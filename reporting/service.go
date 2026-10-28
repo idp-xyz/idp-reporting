@@ -594,7 +594,7 @@ func (s *Service) execute(ctx context.Context, claim Claim) error {
 		}
 		at := s.now().UTC().Truncate(time.Second)
 		stamp := IssueStamp(j.Number, at, j.ID)
-		result, e := s.issuer.Issue(ctx, IssueRequest{Job: j, Snapshot: snap, Stamp: stamp})
+		result, e := s.issuer.Issue(ctx, IssueRequest{Job: j, Snapshot: snap, Stamp: stamp, At: at})
 		if e != nil {
 			return e
 		}

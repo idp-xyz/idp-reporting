@@ -10,11 +10,13 @@ import (
 	"idp.local/reporting/doctemplates"
 	r "idp.local/reporting/reporting"
 	"strings"
+	"time"
 )
 
-// Renderer draws an issued document: export/pdf.Writer.Issue.
+// Renderer draws an issued document: export/pdf.Writer.Issue. Its last two arguments are the
+// stamp and the issue time the product reserved, which is also the PDF's creation date.
 type Renderer interface {
-	Issue(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData, string) ([]byte, int, error)
+	Issue(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData, string, time.Time) ([]byte, int, error)
 }
 
 // Issuer renders issue jobs against the template store they were admitted from. Assets may be
@@ -35,13 +37,15 @@ func New(store *doctemplates.Store, assets *doctemplates.Assets, renderer Render
 // Issue renders one issue job. The frozen configuration must still be the template's published
 // version (the same version number and the same canonical bytes), else ErrUnpublished: a
 // withdrawn or superseded template issues nothing, however long the job waited. The values are
-// bound from the snapshot the worker verified, never from the request.
+// bound from the snapshot the worker verified, never from the request. The request's issue
+// time (S03-H) is the product's: a request without one is invalid, and the renderer dates the
+// document with it, so that the same request renders the same bytes.
 func (i *Issuer) Issue(ctx context.Context, req r.IssueRequest) (r.IssueResult, error) {
 	if e := ctx.Err(); e != nil {
 		return r.IssueResult{}, e
 	}
 	j := req.Job
-	if j.Kind != "issue" || j.Template == "" || req.Stamp == "" {
+	if j.Kind != "issue" || j.Template == "" || req.Stamp == "" || req.At.IsZero() {
 		return r.IssueResult{}, r.ErrInvalid
 	}
 	var d doctemplates.Document
@@ -89,7 +93,7 @@ func (i *Issuer) Issue(ctx context.Context, req r.IssueRequest) (r.IssueResult, 
 	if d.Print != nil && d.Print.Mode == "variables" {
 		background = nil
 	}
-	pdf, pages, e := i.renderer.Issue(ctx, d, values, background, table, req.Stamp)
+	pdf, pages, e := i.renderer.Issue(ctx, d, values, background, table, req.Stamp, req.At)
 	if e != nil {
 		return r.IssueResult{}, e
 	}

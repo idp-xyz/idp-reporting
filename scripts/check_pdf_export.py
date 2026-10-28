@@ -32,6 +32,12 @@ DOCUMENT" at 10 mm, 10 mm; the background PNG, when expected, fitted into the A4
 centred; nothing else, and without a background no ink at all outside the boxes and the
 banner; with the same font, colour, ink and PDF/A checks as tables.
 
+An expectation with an "issue" record describes an issued document (S03-G, S03-H): it is checked
+as a preview, except that the strip holds the record's stamp "ISSUED No. <number> - <issue time>
+- <record id>" in the text colour at 8 pt in place of the banner, the number is the source
+product's string, the PDF is the one the record names by digest, and its creation date (the
+information dictionary's and the XMP create date, each when present) is the record's issue time.
+
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
@@ -43,6 +49,7 @@ Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | -
 """
 import argparse
 import copy
+import datetime
 import decimal
 import hashlib
 import json
@@ -364,6 +371,8 @@ def check(directory, exp):
 MM = 72 / 25.4
 ASCENT = 1.16  # baseline below the top of a box, in font sizes (the document contract)
 BANNER = "PREVIEW - NOT AN ISSUED DOCUMENT"
+BANNER_SIZE = 10  # the preview banner, in the strip at 10 mm, 10 mm
+STAMP_SIZE = 8  # the issue stamp: the same strip and left edge, at 8 pt so that every legal number fits
 STAMP_COLOUR = 0x132238  # the issue stamp is drawn in the text colour, never the banner's red
 
 
@@ -425,6 +434,8 @@ def check_document(directory, exp, font=None):
     xmp = doc.get_xml_metadata()
     if not re.search(r"pdfaid:part[^0-9]{0,4}2\b", xmp) or not re.search(r"pdfaid:conformance[^A-Z]{0,4}B\b", xmp):
         problems.append("no PDF/A-2b identification in the XMP metadata")
+    if issue:
+        problems += check_creation_date(doc, xmp, issue)
     table = exp.get("table")
     if table is None and doc.page_count != 1:
         return problems + [f"{doc.page_count} pages, expected one"], {"pages": doc.page_count}
@@ -448,22 +459,87 @@ def check_document(directory, exp, font=None):
     return problems, layout
 
 
+# The source product's number (S03-H): 1..32 of A-Z a-z 0-9 . _ -, starting with a letter or a
+# digit, as reporting.ValidIssueNumber has it.
+PRODUCT_NUMBER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
+
+# Dates as a PDF's information dictionary (D:20261028061203Z, or +08'00') and its XMP metadata
+# (2026-10-28T06:12:03+00:00, or Z) write them: only with a zone are they an instant.
+PDF_DATE = re.compile(r"D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:(Z)|([+-])(\d{2})'?(\d{2})'?)")
+XMP_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:(Z)|([+-])(\d{2}):(\d{2}))")
+
+
+def utc_instant(match):
+    """The UTC time that a date matched by PDF_DATE or XMP_DATE denotes; None when there is no such date."""
+    year, month, day, hour, minute, second = (int(g) for g in match.groups()[:6])
+    try:
+        at = datetime.datetime(year, month, day, hour, minute, second, tzinfo=datetime.timezone.utc)
+        if match.group(7) is None:
+            offset = datetime.timedelta(hours=int(match.group(9)), minutes=int(match.group(10)))
+            at = at - offset if match.group(8) == "+" else at + offset
+    except (ValueError, OverflowError):
+        return None
+    return at
+
+
+def utc_second(text):
+    """The UTC time of a record's issued_at (YYYY-MM-DDTHH:MM:SSZ); None when it is not one."""
+    match = XMP_DATE.fullmatch(text) if isinstance(text, str) else None
+    return utc_instant(match) if match and match.group(7) else None
+
+
+def issue_stamp(number, issued_at, issue_id):
+    """The line an issued document carries: the product's number, the issue time and the record id."""
+    return f"ISSUED No. {number} - {issued_at} - {issue_id}"
+
+
+def another_number(number):
+    """A valid product number that differs from the given one in its last character alone: the
+    next number a forger would print."""
+    return number[:-1] + ("1" if number[-1] != "1" else "2")
+
+
 def check_issue_record(directory, exp, issue):
-    """An issued document's record (S03-G): the stamp is the contract's line for the number,
-    the time and the id; the PDF is the one the record names, by digest."""
+    """An issued document's record (S03-G, S03-H): the number is the source product's string,
+    the stamp is the contract's line for the number, the time and the id; the PDF is the one
+    the record names, by digest."""
     problems = []
-    if not isinstance(issue.get("number"), int) or issue["number"] < 1:
-        problems.append("the record has no number")
+    number = issue.get("number")
+    if not isinstance(number, str) or not PRODUCT_NUMBER.fullmatch(number):
+        problems.append("the record's number is not a product number")
     if not re.fullmatch(r"[0-9a-f]{32}", str(issue.get("issue_id", ""))):
         problems.append("the record has no id")
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", str(issue.get("issued_at", ""))):
+    if utc_second(issue.get("issued_at")) is None:
         problems.append("the record's time is not a UTC second")
-    if not problems and issue["stamp"] != f"ISSUED No. {issue['number']:06d} - {issue['issued_at']} - {issue['issue_id']}":
+    if not problems and issue["stamp"] != issue_stamp(number, issue["issued_at"], issue["issue_id"]):
         problems.append("the stamp is not the record's number, time and id")
     with open(os.path.join(directory, exp["file"]), "rb") as f:
         digest = hashlib.sha256(f.read()).hexdigest()
     if digest != issue.get("sha256"):
         problems.append("the PDF is not the one the record names (digest)")
+    return problems
+
+
+def check_creation_date(doc, xmp, issue):
+    """The PDF's creation date is the record's issue time (S03-H): the product's time, not the
+    renderer's clock. The information dictionary's CreationDate and the XMP create date, each
+    when the file carries it (it must carry one), name that second."""
+    issued = utc_second(issue.get("issued_at"))
+    if issued is None:
+        return []  # check_issue_record says so
+    dates = []
+    if (doc.metadata or {}).get("creationDate"):
+        dates.append(("the information dictionary", PDF_DATE, doc.metadata["creationDate"]))
+    for text in re.findall(r"<xmp:CreateDate>\s*([^<]*?)\s*</xmp:CreateDate>", xmp) + re.findall(r'xmp:CreateDate="([^"]*)"', xmp):
+        dates.append(("the XMP metadata", XMP_DATE, text))
+    problems = [] if dates else ["the PDF carries no creation date"]
+    for where, pattern, text in dates:
+        match = pattern.fullmatch(text)
+        found = utc_instant(match) if match else None
+        if found is None:
+            problems.append(f"the PDF's creation date in {where} ({text!r}) is not a date with a time zone")
+        elif found != issued:
+            problems.append(f"the PDF's creation date in {where} is {found:%Y-%m-%dT%H:%M:%SZ}, not the record's issue time {issue['issued_at']}")
     return problems
 
 
@@ -503,12 +579,12 @@ def check_page(directory, page, number, exp, metrics, region):
     used = set()
     issue = exp.get("issue")
     strip = issue["stamp"] if issue else BANNER
-    wanted = [(strip, 10, 10, 190, 10, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
+    wanted = [(strip, 10, 10, 190, STAMP_SIZE if issue else BANNER_SIZE, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
     if issue:
         text = "".join(c["c"] for c in sorted(chars, key=lambda c: (round(c["base"]), c["x0"])))
         if BANNER in text:
             problems.append("preview text on an issued document")
-        stamp = [c for c in chars if abs(c["base"] - (10 * MM + ASCENT * 10)) <= 0.1 and c["c"].strip()]
+        stamp = [c for c in chars if abs(c["base"] - (10 * MM + ASCENT * STAMP_SIZE)) <= 0.1 and c["c"].strip()]
         if any(c["color"] != STAMP_COLOUR for c in stamp):
             problems.append("the stamp is not in the text colour")
     for text, x, y, width, size, align in wanted:
@@ -875,10 +951,12 @@ def same_picture(a, b):
 
 
 def document_corruptions(exp):
-    def changed(name, change):
+    def changed(name, change, expected=""):
+        # expected: what a problem found in the corrupted expectation must say; any problem
+        # counts when it is empty.
         e = copy.deepcopy(exp)
         change(e)
-        return name, e
+        return name, e, expected
     yield changed("a value changed", lambda e: e["elements"][0].__setitem__("text", e["elements"][0]["text"] + "X"))
     yield changed("the offset moved by 0.2 mm", lambda e: e.__setitem__("offset_y", e["offset_y"] + 0.2))
     yield changed("a box moved by 0.2 mm", lambda e: e["elements"][0].__setitem__("x", e["elements"][0]["x"] + 0.2))
@@ -888,7 +966,7 @@ def document_corruptions(exp):
     yield changed("a value added", lambda e: e["elements"].append({"text": "X", "x": 20, "y": 200, "width": 50, "height": 10, "size": 10, "align": "left"}))
     yield changed("the background flag flipped", lambda e: e.__setitem__("background", not e["background"]))
     if exp.get("issue"):
-        yield changed("the record's number changed", lambda e: e["issue"].__setitem__("number", e["issue"]["number"] + 1))
+        yield changed("the record's number changed", lambda e: e["issue"].__setitem__("number", another_number(e["issue"]["number"])))
         yield changed("the record's time changed", lambda e: e["issue"].__setitem__("issued_at", "2001-01-01T00:00:00Z"))
         yield changed("the record's id changed", lambda e: e["issue"].__setitem__("issue_id", "0" * 32))
         yield changed("the record's stamp changed", lambda e: e["issue"].__setitem__("stamp", e["issue"]["stamp"].replace("ISSUED", "ISSUE")))
@@ -900,10 +978,21 @@ def document_corruptions(exp):
                 i = e["issue"]
                 i["number"] = number if number is not None else i["number"]
                 i["issue_id"] = issue_id if issue_id is not None else i["issue_id"]
-                i["stamp"] = f"ISSUED No. {i['number']:06d} - {i['issued_at']} - {i['issue_id']}"
+                i["stamp"] = issue_stamp(i["number"], i["issued_at"], i["issue_id"])
             return change
-        yield changed("the record's number and stamp changed together", restamped(number=exp["issue"]["number"] + 1))
+        yield changed("the record's number and stamp changed together", restamped(number=another_number(exp["issue"]["number"])))
         yield changed("the record's id and stamp changed together", restamped(issue_id="0" * 32))
+        # Numbers the product could not have reserved: one with a space (ValidIssueNumber has
+        # none) and an integer (S03-G's encoding, the digits of the number). The first leaves the
+        # stamp and the PDF as they were; the second makes the record consistent with its own
+        # integer. Either way only the check of the number itself says so.
+        yield changed("the record's number is not a product number", lambda e: e["issue"].__setitem__("number", e["issue"]["number"] + " 1"), expected="is not a product number")
+
+        def integer_number(e):
+            i = e["issue"]
+            i["number"] = int(re.sub(r"\D", "", i["number"]) or "1")
+            i["stamp"] = issue_stamp(i["number"], i["issued_at"], i["issue_id"])
+        yield changed("the record's number is an integer", integer_number, expected="is not a product number")
     if exp.get("table"):
         rows = exp["table"]["rows"] or []
         columns = exp["table"]["columns"]
@@ -970,17 +1059,43 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
         stamp_colour = (0x13 / 255, 0x22 / 255, 0x38 / 255)
 
         def restamp(doc):
-            # The strip whited out and a stamp with the next number drawn in the stamp's colour.
+            # The strip whited out and a stamp with another valid number (the next, as a forger
+            # would print it) drawn in the stamp's colour.
             p = doc[0]
             p.draw_rect(strip, color=None, fill=(1, 1, 1), overlay=True)
-            other = re.sub(r"No\. (\d{6})", lambda m: f"No. {int(m.group(1)) + 1:06d}", exp["issue"]["stamp"])
+            i = exp["issue"]
+            other = issue_stamp(another_number(i["number"]), i["issued_at"], i["issue_id"])
             p.insert_font(fontname="Fx", fontbuffer=font.buffer)
-            p.insert_text((10 * MM, 10 * MM + ASCENT * 10), other, fontname="Fx", fontsize=10, color=stamp_colour)
-        yield "the stamp redrawn with the next number", "is not drawn on one line", copy_with("restamp", restamp)
+            p.insert_text((10 * MM, 10 * MM + ASCENT * STAMP_SIZE), other, fontname="Fx", fontsize=STAMP_SIZE, color=stamp_colour)
+        yield "the stamp redrawn with another number", "is not drawn on one line", copy_with("restamp", restamp)
 
         def unstamp_last(doc):
             doc[doc.page_count - 1].draw_rect(strip, color=None, fill=(1, 1, 1), overlay=True)
         yield "the stamp covered on the last page", "has no ink", copy_with("unstamp", unstamp_last)
+
+        def redate(info=True, xmp=True):
+            # Only the creation date changes, by one second: the information dictionary's, the
+            # XMP's or both. (The record's digest is recomputed for it like for every PDF-level
+            # control, so that nothing but the date comparison can catch it.)
+            earlier = utc_second(exp["issue"]["issued_at"]) - datetime.timedelta(seconds=1)
+
+            def change(doc):
+                if info:
+                    doc.set_metadata({"creationDate": earlier.strftime("D:%Y%m%d%H%M%SZ")})
+                if xmp:
+                    old = doc.get_xml_metadata()
+                    new = re.sub(r"(<xmp:CreateDate>)[^<]*(</xmp:CreateDate>)", lambda m: m.group(1) + earlier.strftime("%Y-%m-%dT%H:%M:%S+00:00") + m.group(2), old)
+                    assert new != old, "the XMP create date was not found"
+                    doc.set_xml_metadata(new)
+            return change
+        yield "another creation date", "creation date", copy_with("created", redate())
+        yield "another creation date in the information dictionary alone", "creation date", copy_with("created_info", redate(xmp=False))
+        yield "another creation date in the XMP metadata alone", "creation date", copy_with("created_xmp", redate(info=False))
+
+        def undate(doc):
+            doc.set_metadata({"creationDate": ""})
+            doc.set_xml_metadata(re.sub(r"<xmp:CreateDate>[^<]*</xmp:CreateDate>", "", doc.get_xml_metadata()))
+        yield "no creation date", "carries no creation date", copy_with("undated", undate)
 
         def recolour(doc):
             page = doc[0]
@@ -1388,8 +1503,8 @@ def main():
             print("  " + p)
         failed |= bool(problems)
         if args.negative and document:
-            for what, corrupted in document_corruptions(exp):
-                caught = bool(check_document(args.directory, corrupted, args.font)[0])
+            for what, corrupted, expected in document_corruptions(exp):
+                caught = any(expected in p for p in check_document(args.directory, corrupted, args.font)[0])
                 print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")
                 failed |= not caught
             with tempfile.TemporaryDirectory() as scratch:
