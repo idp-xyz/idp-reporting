@@ -26,10 +26,12 @@ INTEGRITY_FAILURE); renders with the stamp `ISSUED No. <number> - <issue time> -
 time as the PDF's creation date, so the bytes depend only on frozen inputs and the reservation; calls
 `ConfirmIssue` with the digest and page count and validates the receipt (reference 1..128 bytes, time a UTC
 whole second not before the issue time); re-checks the source as before; publishes the artifact and the
-record. When anything fails after the job was claimed, other than the lease being lost to another worker,
-the worker calls `VoidIssue(job id, error code)` with a detached context of at most 5 seconds before
-failing the job; if the void cannot be delivered the job fails with ISSUE_UNRECONCILED instead of its own
-code. A lost lease never voids: the worker that holds the job reuses the same reservation (idempotent by job
+record. When the job fails after this attempt called `PrepareDocument` (whatever its outcome), or after a
+claim of a later generation (an earlier attempt may have reserved or confirmed), other than by the lease
+being lost to another worker, the worker calls `VoidIssue(job id, error code)` with a detached context of at
+most 5 seconds before failing the job; if the void cannot be delivered the job fails with
+ISSUE_UNRECONCILED instead of its own code. A first attempt that fails before reaching the product calls
+nothing there. A lost lease never voids: the worker that holds the job reuses the same reservation (idempotent by job
 id), renders the same bytes and confirms idempotently. Issue jobs can be cancelled only while queued; the
 cancel route returns a running issue job unchanged.
 
