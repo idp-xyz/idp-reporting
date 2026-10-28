@@ -208,6 +208,19 @@ WHERE id=$3 AND state='running' AND generation=$4 AND lease_until>clock_timestam
 		return e
 	}
 	if result.RowsAffected() != 1 {
+		// Two things refuse the update, and they are not the same. A claim that still holds the
+		// job (running, its generation, its lease not run out) whose source read has expired by the
+		// store's clock has not lost anything: it is denied, as in the memory store, so that the
+		// worker voids what the product confirmed. Whatever else refuses it, the lease is lost.
+		var expired bool
+		e = tx.QueryRow(ctx, `SELECT source_expires_at<=clock_timestamp() FROM reporting_s01.jobs
+WHERE id=$1 AND state='running' AND generation=$2 AND lease_until>clock_timestamp()`, j.ID, c.Job.Generation).Scan(&expired)
+		if e == nil && expired {
+			return r.ErrDenied
+		}
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
 		return r.ErrLease
 	}
 	return tx.Commit(ctx)
