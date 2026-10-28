@@ -1,0 +1,81 @@
+{
+ "phase": "S04-A",
+ "date": "2026-10-28 Asia/Shanghai",
+ "baseline": "d0c828f (main after PR #9, S03-G); reviewed implementation ee77e5f, fixes 4249a8d (round 1) and the round-2 fixes; evidence from eab8e7e",
+ "go": {
+  "top_level_passes": 126,
+  "pass_events": 273,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestDurablePostgresIssues",
+   "TestMigrateCommand",
+   "TestPostgresContract",
+   "TestPostgresMigrations"
+  ]
+ },
+ "race": {
+  "top_level_passes": 126,
+  "pass_events": 273,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestDurablePostgresIssues",
+   "TestMigrateCommand",
+   "TestPostgresContract",
+   "TestPostgresMigrations"
+  ]
+ },
+ "vet": {
+  "exit_code": 0
+ },
+ "mod_verify": {
+  "exit_code": 0
+ },
+ "app_syntax": {
+  "exit_code": 0
+ },
+ "dom": {
+  "tests": 60,
+  "pass": 60,
+  "fail": 0,
+  "skipped": 0,
+  "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser (unchanged by this slice)"
+ },
+ "postgres_local": {
+  "database": "PostgreSQL 16.14 in a throwaway container on 127.0.0.1:55433 (CI runs the same tests in its postgres job)",
+  "top_level_passes": 17,
+  "migration_subtests": 7,
+  "exit_code": 0,
+  "covers": "round trip of the catalog (committed snapshot with exact types), partial targets and wrong-side targets, tampered ledgers (checksum, newer binary, gap, name, fake legacy, stale profile) refused with their reason and the catalog unchanged, failed-step atomicity, data-loss refusals (issue rows, issued PDFs, counters, profile row) and acceptance, five rounds of six concurrent migrators on a warm pool, half-initialised and legacy (v2, v3) databases, the migrator role's own lifecycle, the application role's privileges (forbidden statements attempted, memberships, attributes isolated, planted table names), the production path's DSN rules, the migrate command's every subcommand"
+ },
+ "pdf_documents": {
+  "checked": 27,
+  "negative_controls_caught": 829,
+  "negative_controls_missed": 0,
+  "verapdf_pass": 34,
+  "note": "unchanged by this slice; rerun for completeness"
+ },
+ "migrate_cli": "migrate_cli.log: status, plan, down (refused and accepted), up on the fixture database",
+ "reviews": "docs/CODE_REVIEW_S04A.md: two independent reviewers, two rounds, both axes; every finding reproduced and closed",
+ "tools": {
+  "go": "go1.26.10",
+  "postgres": "16.14",
+  "pgx": "5.11.0",
+  "node": "v24.22.0",
+  "typst": "0.15.1",
+  "verapdf": "verapdf/cli v1.30.3"
+ },
+ "github_actions": {
+  "pull_request": null,
+  "run": null,
+  "head": null,
+  "jobs": [
+   "Go format, vet, build, test and race",
+   "PostgreSQL contract and durable tests",
+   "Console syntax and DOM tests",
+   "PDF export and document previews with the pinned Typst, fonts and veraPDF"
+  ],
+  "result": "pending"
+ }
+}

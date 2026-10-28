@@ -1,0 +1,28 @@
+$ reporting-migrate status
+embedded: 3 steps (latest 003)
+applied:  001 base                     2026-10-28T10:37:08Z by reporting-migrate:tops (baf28b62b0de)
+applied:  002 payload_digests          2026-10-28T10:37:08Z by reporting-migrate:tops (d67baa0269f3)
+applied:  003 issues                   2026-10-28T10:37:08Z by reporting-migrate:tops (0fecd792e697)
+role:     the connected role is not the application role (21 rules unmet; expected for the migrator, the server must connect as the application role): CREATE on the database; CREATE on the schema; DELETE or TRUNCATE on assets; DELETE or TRUNCATE on issue_numbers; DELETE or TRUNCATE on jobs; DELETE or TRUNCATE on profile; DELETE or TRUNCATE on schema_migrations; INSERT or UPDATE on profile; INSERT or UPDATE on schema_migrations; database creation; owns table assets; owns table issue_numbers; owns table jobs; owns table profile; owns table schema_migrations; owns the database; owns the schema; replication; role creation; row security bypass; superuser
+$ reporting-migrate plan --to 1
+down 003 issues
+down 002 payload_digests
+$ reporting-migrate down --to 1
+at version 001
+exit 0
+$ reporting-migrate down --to 1 --accept-data-loss
+at version 001
+$ reporting-migrate status
+embedded: 3 steps (latest 003)
+applied:  001 base                     2026-10-28T10:37:08Z by reporting-migrate:tops (baf28b62b0de)
+pending:  002 payload_digests
+pending:  003 issues
+role:     the connected role is not the application role (20 rules unmet; expected for the migrator, the server must connect as the application role): CREATE on the database; CREATE on the schema; DELETE or TRUNCATE on assets; DELETE or TRUNCATE on jobs; DELETE or TRUNCATE on profile; DELETE or TRUNCATE on schema_migrations; INSERT or UPDATE on profile; INSERT or UPDATE on schema_migrations; database creation; owns table assets; owns table jobs; owns table profile; owns table schema_migrations; owns the database; owns the schema; replication; role creation; row security bypass; superuser; table issue_numbers is missing
+$ reporting-migrate up
+at version 003
+$ reporting-migrate status
+embedded: 3 steps (latest 003)
+applied:  001 base                     2026-10-28T10:37:08Z by reporting-migrate:tops (baf28b62b0de)
+applied:  002 payload_digests          2026-10-28T10:37:08Z by reporting-migrate:tops (d67baa0269f3)
+applied:  003 issues                   2026-10-28T10:37:08Z by reporting-migrate:tops (0fecd792e697)
+role:     the connected role is not the application role (21 rules unmet; expected for the migrator, the server must connect as the application role): CREATE on the database; CREATE on the schema; DELETE or TRUNCATE on assets; DELETE or TRUNCATE on issue_numbers; DELETE or TRUNCATE on jobs; DELETE or TRUNCATE on profile; DELETE or TRUNCATE on schema_migrations; INSERT or UPDATE on profile; INSERT or UPDATE on schema_migrations; database creation; owns table assets; owns table issue_numbers; owns table jobs; owns table profile; owns table schema_migrations; owns the database; owns the schema; replication; role creation; row security bypass; superuser
