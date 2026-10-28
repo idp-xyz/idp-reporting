@@ -11,6 +11,25 @@
  "document_hard.pdf": {
   "pages": 1
  },
+ "document_issue.pdf": {
+  "first_rows": [
+   0,
+   22,
+   44
+  ],
+  "pages": 3
+ },
+ "document_issue_single.pdf": {
+  "pages": 1
+ },
+ "document_issue_variables.pdf": {
+  "first_rows": [
+   0,
+   22,
+   44
+  ],
+  "pages": 3
+ },
  "document_table.pdf": {
   "first_rows": [
    0,
