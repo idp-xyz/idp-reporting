@@ -13,6 +13,7 @@ const root=resolve(import.meta.dirname,'..');
 const html=await readFile(join(root,'console/assets/index.html'),'utf8');
 const script=await readFile(join(root,'console/assets/app.js'),'utf8');
 const dashboardScript=await readFile(join(root,'console/assets/dashboard.js'),'utf8');
+const canvasScript=await readFile(join(root,'console/assets/canvas.js'),'utf8');
 const documentsScript=await readFile(join(root,'console/assets/documents.js'),'utf8');
 const token=randomBytes(32).toString('hex');
 const artifactDir=process.env.REPORTING_S03A_EVIDENCE_DIR;
@@ -48,7 +49,7 @@ function app(intercept){
   w.URL.revokeObjectURL=id=>blobs.delete(id);
   w.HTMLAnchorElement.prototype.click=function(){if(this.download){const blob=blobs.get(this.href);downloads.push({name:this.download,blob});}};
   w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}return fetch(url+path,options);};
-  w.eval(dashboardScript);w.eval(documentsScript);w.eval(script);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(documentsScript);w.eval(script);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
   const click=id=>$(id).click();
@@ -895,3 +896,568 @@ test('issue records are checked against the product-numbered shapes before any i
     assert.equal(a.errors.length,0);
   }finally{a.close();}
 });
+
+// ---- S03-I: the document canvas -------------------------------------------------------------------------------------------------
+// jsdom has no layout, so pointer events are dispatched at coordinates computed from the canvas's fixed scale and documented origin:
+// 3 px per mm at 100 % zoom (times zoom / 100), the page's top-left corner 24 px from the SVG's. Drags use pointer deltas only.
+const SCALE=3,ORIGIN=24,READY='模板已更新；配置不含业务数据。';
+async function designer(intercept){const a=app(intercept);await a.login();a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');a.w.document.querySelector('[data-page="documents"]').click();assert.equal(a.$('page-documents').hidden,false);return a;}
+const cv={
+ svg:a=>a.$('doc-canvas-host').querySelector('svg'),
+ item:(a,key)=>a.$('doc-canvas-host').querySelector('[data-key="'+key+'"]'),
+ keys:a=>[...a.$('doc-canvas-host').querySelectorAll('[data-key]')].map(e=>e.getAttribute('data-key')),
+ selected:a=>[...a.$('doc-canvas-host').querySelectorAll('[data-key][aria-pressed="true"]')].map(e=>e.getAttribute('data-key')),
+ tpl:a=>{a.click('doc-json-save');return JSON.parse(a.$('doc-json').value);},
+ load:(a,t)=>{a.$('doc-json').value=JSON.stringify(t);a.click('doc-json-open');assert.equal(a.$('doc-status').textContent,READY,'template accepted');},
+ px:(a,mm)=>ORIGIN+mm*SCALE*Number(a.$('doc-zoom').value)/100,
+ status:a=>a.$('doc-canvas-status').textContent,
+ // Boxes: [id, x, y, width, height, source, field-or-text]; the binding is the open query's.
+ doc:(a,list,extra={})=>({schema_version:'1.0',kind:'document',binding:cv.tpl(a).binding,elements:list.map(([id,x,y,width,height,source='literal',what])=>({id,source,field:source==='literal'?'':what,text:source==='literal'?(what??id+' text'):'',x,y,width,height,font_size:12,align:'left'})),...extra}),
+ table:(a,list,columns=[['customer.id',60],['aging.bucket',70],['ar.open_balance',60]],t={})=>cv.doc(a,list,{schema_version:'1.3',print:{mode:'full',offset_x:0,offset_y:0},table:{x:10,y:100,width:columns.reduce((s,c)=>s+c[1],0),height:100,font_size:9,columns:columns.map(([field,width])=>({field,width})),...t}}),
+ four:a=>cv.doc(a,[['n1',10,30,50,10],['n2',80,30,50,10,'row','customer.id'],['n3',150,30,40,10,'total','ar.open_balance'],['n4',10,60,50,10]]),
+ centre:(a,key)=>{const e=cv.tpl(a),t=key==='table'?e.table:e.elements.find(v=>v.id===key);return [t.x+t.width/2,t.y+t.height/2];},
+ pointer:(a,type,target,x,y,o={})=>target.dispatchEvent(new a.w.PointerEvent(type,{bubbles:true,cancelable:true,pointerId:1,button:0,isPrimary:true,clientX:cv.px(a,x),clientY:cv.px(a,y),...o})),
+ // Press on `target` at (x, y) mm; the returned handle moves and releases on the SVG, as pointer capture does in a browser.
+ press:(a,target,x,y,o={})=>{cv.pointer(a,'pointerdown',target,x,y,o);return {move:(mx,my,mo={})=>cv.pointer(a,'pointermove',cv.svg(a),mx,my,{button:0,...mo}),up:(mx,my,mo={})=>cv.pointer(a,'pointerup',cv.svg(a),mx,my,mo),cancel:()=>cv.pointer(a,'pointercancel',cv.svg(a),x,y)};},
+ drag:(a,target,x,y,dx,dy,o={})=>{const g=cv.press(a,target,x,y,o);g.move(x+dx/2,y+dy/2,o);g.move(x+dx,y+dy,o);g.up(x+dx,y+dy,o);},
+ click:(a,key,o={})=>{const [x,y]=cv.centre(a,key);const g=cv.press(a,cv.item(a,key),x,y,o);g.up(x,y,o);},
+ key:(a,target,key,o={})=>target.dispatchEvent(new a.w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...o})),
+ handle:(a,dir)=>a.$('doc-canvas-host').querySelector('.cv-h-'+dir),
+ box:(a,id)=>cv.tpl(a).elements.find(e=>e.id===id),
+ undo:a=>a.$('doc-undo').disabled,
+};
+const palette=a=>a.w.document.querySelector('.cv-palette');
+const options=a=>[...a.w.document.querySelectorAll('.cv-palette [role="option"]')].map(o=>o.textContent);
+const typeInto=(a,value)=>{const i=a.w.document.getElementById('cv-palette-input');i.value=value;i.dispatchEvent(new a.w.Event('input',{bubbles:true}));};
+const press=(a,key,o={})=>{const t=a.w.document.activeElement||a.w.document.body;return t.dispatchEvent(new a.w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...o}));};
+const only=(t,keys)=>JSON.stringify(keys.map(k=>t[k]));
+
+test('the canvas draws the page in millimetres: rulers, safe region, banner strip, items with their source and label, the table and its columns',async()=>{const a=await designer();try{
+ const host=a.$('doc-canvas-host');assert.ok(cv.svg(a));assert.equal(cv.svg(a).getAttribute('role'),'group');assert.ok(cv.svg(a).getAttribute('aria-label').includes('毫米'));
+ assert.ok(host.querySelectorAll('.cv-ruler-text').length>20,'ruler labels');assert.equal(host.querySelectorAll('.cv-strip').length,1);assert.equal(host.querySelectorAll('.cv-safe').length,1);
+ // The page, the safe region (x 10-200, y 25-270) and the reserved strip (10-18 mm from the top) sit where the scale puts them.
+ const paper=host.querySelector('.cv-paper'),safe=host.querySelector('.cv-safe'),strip=host.querySelector('.cv-strip');
+ assert.deepEqual([paper.getAttribute('x'),paper.getAttribute('width'),paper.getAttribute('height')],[String(ORIGIN),'630','891']);
+ assert.deepEqual(['x','y','width','height'].map(k=>Number(safe.getAttribute(k))),[ORIGIN+30,ORIGIN+75,570,735]);assert.deepEqual(['x','y','width','height'].map(k=>Number(strip.getAttribute(k))),[ORIGIN+30,ORIGIN+30,570,24]);
+ assert.equal(strip.closest('[data-key]'),null,'the strip is not an item');
+ cv.load(a,cv.four(a));
+ // Items are in reading order (top to bottom, then left to right) and carry id, source and text or field label.
+ assert.deepEqual(cv.keys(a),['n1','n2','n3','n4']);
+ const r1=cv.item(a,'n1').querySelector('.cv-box');assert.deepEqual(['x','y','width','height'].map(k=>Number(r1.getAttribute(k))),[ORIGIN+30,ORIGIN+90,150,30]);
+ assert.equal(cv.item(a,'n1').querySelector('text').textContent,'n1 text');assert.equal(cv.item(a,'n2').querySelector('text').textContent,'〔客户〕');assert.equal(cv.item(a,'n3').querySelector('text').textContent,'〔合计〕应收余额');
+ assert.ok(Math.abs(Number(cv.item(a,'n1').querySelector('text').getAttribute('font-size'))-12*25.4/72*SCALE)<0.01,'font size at the fixed scale');
+ const tags=[...host.querySelectorAll('.cv-tag')].map(e=>e.textContent);assert.deepEqual(tags,['n1 · 固定文字','n2 · 行字段','n3 · 合计','n4 · 固定文字']);
+ // Zoom 50-200 % rescales everything from the same origin.
+ a.input('doc-zoom','200');assert.equal(a.$('doc-zoom-value').textContent,'200 %');assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('x'),String(ORIGIN+60));assert.equal(host.querySelector('.cv-paper').getAttribute('width'),'1260');
+ a.input('doc-zoom','50');assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('x'),String(ORIGIN+15));a.input('doc-zoom','500');assert.equal(a.$('doc-zoom').value,'200','the control clamps to 50-200');assert.equal(a.$('doc-zoom-value').textContent,'200 %');a.input('doc-zoom','100');
+ // The table: region, header labels, column boundaries.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));
+ const table=cv.item(a,'table');assert.ok(table);assert.deepEqual([...table.querySelectorAll('text')].map(e=>e.textContent),['客户','账龄区间','应收余额']);
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-col]').length,2);assert.equal(table.querySelector('.cv-box').getAttribute('height'),String(300));
+ // The print offset is drawn as the printed place; the variables mode greys the literals out and says so.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10],['n2',80,30,50,10,'row','customer.id']],[['customer.id',50],['aging.bucket',60],['ar.open_balance',50]]));let t=cv.tpl(a);t.print={mode:'variables',offset_x:1.5,offset_y:-2};cv.load(a,t);
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-ghost').length,2,'the row box and the table print, the literal does not');assert.ok(cv.item(a,'n1').getAttribute('class').includes('cv-dim'));assert.ok(!cv.item(a,'n2').getAttribute('class').includes('cv-dim'));
+ assert.match(a.$('doc-canvas-mode').textContent,/变量层.*灰显.*1\.5 \/ -2 毫米/);assert.match(cv.item(a,'n1').getAttribute('aria-label'),/变量层不打印/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('the canvas follows the session: the first template is the designer\'s default, a query change or logout empties the canvas and its history',async()=>{const a=await designer();try{
+ assert.deepEqual(cv.keys(a),['n1']);assert.match(cv.status(a),/画布显示当前模板/);assert.equal(cv.item(a,'n1').querySelector('text').textContent,'Document preview');assert.equal(a.$('doc-undo').disabled,true);
+ cv.load(a,cv.four(a));cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.equal(a.$('doc-undo').disabled,false);assert.deepEqual(cv.selected(a),['n1']);
+ // Another company scope is another query: the result is cleared with the canvas and its history.
+ a.input('query-companies','company_other');assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-key]').length,0);assert.equal(a.$('doc-undo').disabled,true);assert.equal(a.$('doc-del').disabled,true);assert.match(cv.status(a),/先查询当前授权数据/);
+ a.input('query-companies','company_demo');a.w.document.querySelector('[data-page="workspace"]').click();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');a.w.document.querySelector('[data-page="documents"]').click();assert.ok(cv.item(a,'n1'));assert.deepEqual(cv.selected(a),[]);
+ // Logout leaves nothing of the template on the page, and the palette has nothing to run.
+ cv.load(a,cv.four(a));a.click('logout');assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-key]').length,0);assert.equal(a.$('doc-undo').disabled,true);assert.equal(a.$('doc-json').value,'');
+ cv.key(a,a.w.document.body,'k',{ctrlKey:true});assert.equal(palette(a),null);assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('click selects, Shift-click adds and removes, Esc and a click on the page clear, Ctrl/Cmd-A selects every box and the table',async()=>{const a=await designer();try{
+ cv.load(a,cv.table(a,[['n1',10,30,50,10],['n2',80,30,50,10,'row','customer.id'],['n3',150,30,40,10,'total','ar.open_balance']]));
+ assert.deepEqual(cv.selected(a),[]);assert.equal(a.$('doc-canvas-live').textContent,'未选择任何项目。');
+ cv.click(a,'n1');assert.deepEqual(cv.selected(a),['n1']);assert.match(a.$('doc-canvas-live').textContent,/已选择 n1，固定文字/);
+ cv.click(a,'n2');assert.deepEqual(cv.selected(a),['n2'],'a plain click replaces the selection');
+ cv.click(a,'n3',{shiftKey:true});assert.deepEqual(cv.selected(a),['n2','n3']);assert.match(a.$('doc-canvas-live').textContent,/已选择 2 项：n2、n3/);
+ cv.click(a,'n2',{shiftKey:true});assert.deepEqual(cv.selected(a),['n3'],'Shift removes a selected item');
+ cv.click(a,'table',{shiftKey:true});assert.deepEqual(cv.selected(a),['n3','table']);
+ // Esc clears (the key goes to the focused item, or to the canvas).
+ cv.key(a,cv.item(a,'n3'),'Escape');assert.deepEqual(cv.selected(a),[]);assert.equal(a.$('doc-canvas-live').textContent,'已清除选择。');
+ cv.key(a,cv.item(a,'n1'),'a',{ctrlKey:true});assert.deepEqual(cv.selected(a),['n1','n2','n3','table'].sort((x,y)=>cv.keys(a).indexOf(x)-cv.keys(a).indexOf(y)),'every box and the table, in reading order');assert.equal(a.$('doc-canvas-live').textContent,'全选：4 项。');
+ cv.key(a,cv.item(a,'n1'),'Escape');cv.key(a,cv.item(a,'n1'),'a',{metaKey:true});assert.equal(cv.selected(a).length,4,'Cmd-A too');
+ // A click on empty paper clears; a plain click on a selected item of several keeps the group for a drag but, released without moving, selects just that item.
+ const paper=a.$('doc-canvas-host').querySelector('.cv-paper');cv.pointer(a,'pointerdown',paper,5,5);cv.pointer(a,'pointerup',cv.svg(a),5,5);assert.deepEqual(cv.selected(a),[]);
+ cv.key(a,cv.item(a,'n1'),'a',{ctrlKey:true});cv.click(a,'n2');assert.deepEqual(cv.selected(a),['n2']);
+ // Shift on empty paper keeps the selection; the table is selectable and has its own handles.
+ cv.click(a,'table');assert.deepEqual(cv.selected(a),['table']);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-handle').length,8);cv.pointer(a,'pointerdown',paper,5,5,{shiftKey:true});assert.deepEqual(cv.selected(a),['table']);
+ // The banner strip is not selectable.
+ cv.pointer(a,'pointerdown',a.$('doc-canvas-host').querySelector('.cv-strip'),100,14);assert.deepEqual(cv.selected(a),[]);
+ // A removed item leaves the selection; no history step comes from selecting.
+ assert.equal(cv.undo(a),true);assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('a drag moves the selection with snapping: 1 mm, 0.1 mm with Alt, to the edges and centres of the other items within 1 mm with a guide; one drag is one undo step',async()=>{const a=await designer();try{
+ const four=cv.four(a);cv.load(a,four);
+ // 10.4 mm to the right: the position snaps to the 1 mm grid.
+ cv.drag(a,cv.item(a,'n1'),35,35,10.4,0);let t=cv.tpl(a);assert.equal(t.elements[0].x,20);assert.equal(t.elements[0].y,30);assert.equal(t.schema_version,'1.0');assert.match(cv.status(a),/已移动/);
+ assert.equal(a.$('doc-undo').disabled,false);
+ // One step: a single undo restores the drag.
+ a.click('doc-undo');assert.equal(cv.box(a,'n1').x,10);assert.equal(cv.undo(a),true);
+ // With Alt it snaps to 0.1 mm, and a schema 1.0 template off whole millimetres becomes 1.1.
+ cv.drag(a,cv.item(a,'n1'),35,35,10.4,0,{altKey:true});t=cv.tpl(a);assert.equal(t.elements[0].x,20.4);assert.equal(t.schema_version,'1.1');assert.deepEqual(t.print,{mode:'full',offset_x:0,offset_y:0});
+ cv.load(a,four);
+ // Edge snap: the right edge of n1 comes within 0.4 mm of the left edge of n2 (x 80): it snaps there and a guide shows at x 80 until the release.
+ let g=cv.press(a,cv.item(a,'n1'),35,35);g.move(40,35);g.move(54.6,35);
+ const guides=[...a.$('doc-canvas-host').querySelectorAll('.cv-guide')];assert.equal(guides.length,1);assert.equal(guides[0].getAttribute('x1'),String(ORIGIN+80*SCALE));assert.ok(a.$('doc-canvas-host').querySelector('.cv-readout').textContent.includes('x 30'));
+ g.up(54.6,35);assert.equal(cv.box(a,'n1').x,30);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-guide').length,0,'the guide goes with the drag');
+ // 1.1 mm away is outside the tolerance: the grid applies and no guide shows.
+ cv.load(a,four);g=cv.press(a,cv.item(a,'n1'),35,35);g.move(40,35);g.move(53.9,35);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-guide').length,0);g.up(53.9,35);assert.equal(cv.box(a,'n1').x,29);
+ // Centre snap, and snapping on the vertical axis (an edge of n4 at y 60).
+ const pq=cv.doc(a,[['n1',10,30,20,10],['n2',50,60,40,10]]);cv.load(a,pq);g=cv.press(a,cv.item(a,'n1'),20,35);g.move(40,35);g.move(69.8,35);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-guide').length,1);assert.equal(a.$('doc-canvas-host').querySelector('.cv-guide').getAttribute('x1'),String(ORIGIN+70*SCALE));g.up(69.8,35);assert.equal(cv.box(a,'n1').x,60,'its centre is on the centre of n2 (70)');
+ cv.load(a,pq);g=cv.press(a,cv.item(a,'n1'),20,35);g.move(20,40);g.move(20,54.7);assert.equal(a.$('doc-canvas-host').querySelector('.cv-guide').getAttribute('y1'),String(ORIGIN+60*SCALE),'its bottom edge is 0.3 mm from the top edge of n2 (y 60)');g.up(20,54.7);
+ assert.equal(cv.box(a,'n1').y,50,'its bottom edge (y 60) meets the top of n2');
+ // Selecting several moves them together; the group keeps its relative places.
+ cv.load(a,four);cv.click(a,'n1');cv.click(a,'n4',{shiftKey:true});cv.drag(a,cv.item(a,'n4'),35,65,10.3,0);t=cv.tpl(a);assert.deepEqual([t.elements[0].x,t.elements[3].x],[20,20]);
+ // A press that never moves changes nothing and is no step.
+ a.click('doc-undo');a.click('doc-undo');cv.click(a,'n2');assert.equal(cv.undo(a),true);assert.deepEqual(cv.selected(a),['n2']);
+ // A plain click on an item of the selection, released where it was pressed, selects just that item.
+ cv.click(a,'n1',{shiftKey:true});assert.deepEqual(cv.selected(a),['n1','n2']);cv.click(a,'n1');assert.deepEqual(cv.selected(a),['n1']);
+ // Esc during a drag cancels it.
+ g=cv.press(a,cv.item(a,'n1'),35,35);g.move(50,35);g.move(60,35);cv.key(a,cv.svg(a),'Escape');g.up(60,35);assert.equal(cv.box(a,'n1').x,10);assert.equal(cv.undo(a),true);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('corner and edge handles resize one box; edges snap; the minimum size and the safe region are the designer\'s and refuse',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));cv.click(a,'n1');
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-handle').length,8);
+ // The south-east corner: width and height follow, on the 1 mm grid.
+ cv.drag(a,cv.handle(a,'se'),60,40,5.1,4.9);let b=cv.box(a,'n1');assert.deepEqual([b.x,b.y,b.width,b.height],[10,30,55,15]);
+ // The north-west corner moves x, y and the size together; Alt gives 0.1 mm.
+ cv.drag(a,cv.handle(a,'nw'),10,30,-0.4,-1.3,{altKey:true});b=cv.box(a,'n1');assert.deepEqual([b.x,b.y,b.width,b.height],[10,28.7,55,16.3],'x 9.6 snaps to the left edge of n4 (x 10), y 28.7 is on the 0.1 mm grid');assert.equal(cv.tpl(a).schema_version,'1.1');
+ cv.drag(a,cv.handle(a,'n'),35,28.7,0,-1.3,{altKey:true});b=cv.box(a,'n1');assert.deepEqual([b.y,b.height],[27.4,17.6]);
+ // An edge of the box snaps to an edge of another item within 1 mm: the east edge to n2's left edge (x 80).
+ cv.load(a,cv.four(a));cv.click(a,'n1');cv.drag(a,cv.handle(a,'e'),60,35,19.5,0);b=cv.box(a,'n1');assert.equal(b.width,70,'its right edge is on x 80');
+ // Too small, past the opposite edge and out of the safe region: refused, the box snaps back and the reason is named.
+ for(const [dir,x,y,dx,dy,pattern] of [['n',35,30,0,4,/文本框超出A4安全区、重复或尺寸无效/],['e',60,35,-60,0,/文本框超出A4安全区、重复或尺寸无效/],['w',10,35,-3.4,0,/文本框超出A4安全区、重复或尺寸无效/],['s',35,40,0,40,/文本框不能重叠/]]){
+  cv.load(a,cv.four(a));const before=JSON.stringify(cv.tpl(a));cv.click(a,'n1');
+  const g=cv.press(a,cv.handle(a,dir),x,y);g.move(x+dx/2,y+dy/2);g.move(x+dx,y+dy);assert.ok(cv.item(a,'n1').getAttribute('class').includes('cv-bad'),dir+': the item shows that it will be refused');g.up(x+dx,y+dy);
+  assert.equal(JSON.stringify(cv.tpl(a)),before,dir+': unchanged');assert.match(cv.status(a),/^未应用：/);assert.match(cv.status(a),pattern,dir);assert.ok(!cv.item(a,'n1').getAttribute('class').includes('cv-bad'),dir+': snapped back');assert.equal(cv.undo(a),true,dir+': a refusal is no step');
+ }
+ // A multiple selection has a group outline, no handles.
+ cv.load(a,cv.four(a));cv.click(a,'n1');cv.click(a,'n4',{shiftKey:true});assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-handle').length,0);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-bbox').length,1);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('resizing the table scales its columns in proportion, rounded to 0.1 mm with the remainder on the last; column boundaries keep every minimum',async()=>{const a=await designer();try{
+ const widths=()=>cv.tpl(a).table.columns.map(c=>c.width),sum=()=>cv.tpl(a).table.columns.reduce((s,c)=>s+Math.round(c.width*10),0);
+ const base=()=>cv.load(a,cv.table(a,[['n1',10,30,50,10]]));
+ base();cv.click(a,'table');
+ // 19 mm narrower: [60, 70, 60] -> [54, 63, 54].
+ cv.drag(a,cv.handle(a,'e'),200,150,-19,0);assert.equal(cv.tpl(a).table.width,171);assert.deepEqual(widths(),[54,63,54]);
+ // 10 mm narrower from 190: 56.8 and 66.3 round, the remainder (56.9) goes to the last column.
+ base();cv.click(a,'table');cv.drag(a,cv.handle(a,'e'),200,150,-10,0);assert.deepEqual(widths(),[56.8,66.3,56.9]);assert.equal(sum(),1800);
+ // The height changes alone and leaves the columns; the west edge moves x and the width.
+ base();cv.click(a,'table');cv.drag(a,cv.handle(a,'s'),105,200,0,5);assert.equal(cv.tpl(a).table.height,105);assert.deepEqual(widths(),[60,70,60]);
+ base();cv.click(a,'table');cv.drag(a,cv.handle(a,'w'),10,150,10,0);assert.deepEqual([cv.tpl(a).table.x,cv.tpl(a).table.width],[20,180]);assert.equal(sum(),1800);
+ // Too narrow for the first column's label (31.4 mm at 9 pt): refused with the designer's reason.
+ base();cv.click(a,'table');const before=JSON.stringify(cv.tpl(a));cv.drag(a,cv.handle(a,'e'),200,150,-150,0);assert.equal(JSON.stringify(cv.tpl(a)),before);assert.match(cv.status(a),/第一列须容纳承前\/过次标签/);
+ // Column boundaries: the column to the right gives up or takes the width; the sum stays the table's width.
+ base();assert.deepEqual(cv.selected(a),[]);let g=cv.press(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150);assert.deepEqual(cv.selected(a),['table'],'grabbing a boundary selects the table');g.move(75,150);g.move(80,150);g.up(80,150);assert.deepEqual(widths(),[70,60,60]);assert.equal(sum(),1900);
+ base();cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="1"]'),130,150,-5,0);assert.deepEqual(widths(),[60,65,65]);
+ // The first column keeps the label minimum (31.4 mm at 9 pt); the others keep 8 mm; neither is refused, the boundary stops.
+ base();cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150,-50,0);assert.deepEqual(widths(),[31.4,98.6,60]);assert.equal(sum(),1900);
+ base();cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150,200,0);assert.deepEqual(widths(),[122,8,60]);
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]],undefined,{font_size:12}));cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150,-50,0);assert.deepEqual(widths(),[41.2,88.8,60],'12 pt: 41.2 mm');
+ // A boundary snaps to the 1 mm grid, to 0.1 mm with Alt, and to the edge of another item within 1 mm.
+ base();cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150,10.4,0);assert.deepEqual(widths(),[70,60,60]);
+ base();cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150,10.4,0,{altKey:true});assert.deepEqual(widths(),[70.4,59.6,60]);
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));
+ // From the keyboard: a boundary is a slider once the table is selected; arrows move it by 0.1 mm, Shift by 1 mm.
+ base();const col=()=>a.$('doc-canvas-host').querySelector('[data-col="0"]');assert.equal(col().getAttribute('tabindex'),'-1');cv.click(a,'table');assert.equal(col().getAttribute('tabindex'),'0');assert.equal(col().getAttribute('role'),'slider');assert.equal(col().getAttribute('aria-valuenow'),'70');
+ cv.key(a,col(),'ArrowRight');assert.deepEqual(widths(),[60.1,69.9,60]);assert.equal(col().getAttribute('aria-valuenow'),'70.1');cv.key(a,col(),'ArrowLeft',{shiftKey:true});assert.deepEqual(widths(),[59.1,70.9,60]);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('arrow keys nudge by 0.1 mm and Shift-arrows by 1 mm; a nudge the designer refuses leaves the item where it is',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));cv.click(a,'n1');const item=()=>cv.item(a,'n1');
+ cv.key(a,item(),'ArrowRight');assert.equal(cv.box(a,'n1').x,10.1);assert.equal(cv.tpl(a).schema_version,'1.1','off whole millimetres: 1.0 becomes 1.1');
+ cv.key(a,item(),'ArrowRight',{shiftKey:true});assert.equal(cv.box(a,'n1').x,11.1);cv.key(a,item(),'ArrowDown',{shiftKey:true});cv.key(a,item(),'ArrowDown');assert.equal(cv.box(a,'n1').y,31.1);
+ cv.key(a,item(),'ArrowLeft');cv.key(a,item(),'ArrowUp');assert.deepEqual([cv.box(a,'n1').x,cv.box(a,'n1').y],[11,31]);assert.equal(document_activeKey(a),'n1','the focus stays on the item');
+ // Past the safe region (x 10): refused, named, and not a step.
+ for(let i=0;i<2;i++)cv.key(a,item(),'ArrowLeft',{shiftKey:true});cv.key(a,item(),'ArrowLeft',{shiftKey:true});assert.equal(cv.box(a,'n1').x,10);const before=JSON.stringify(cv.tpl(a));cv.key(a,item(),'ArrowLeft');assert.equal(JSON.stringify(cv.tpl(a)),before);assert.match(cv.status(a),/^未应用：文本框超出A4安全区/);
+ // An arrow on an item that is not selected selects it and moves it alone.
+ cv.click(a,'n4');cv.key(a,cv.item(a,'n2'),'ArrowDown',{shiftKey:true});assert.deepEqual(cv.selected(a),['n2']);assert.equal(cv.box(a,'n2').y,31);assert.equal(cv.box(a,'n4').y,60);
+ // The whole selection moves together.
+ cv.click(a,'n1');cv.click(a,'n3',{shiftKey:true});cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.deepEqual([cv.box(a,'n1').y,cv.box(a,'n3').y],[31.1,30.1]);
+ // Nothing is selected, nothing moves.
+ cv.key(a,cv.item(a,'n1'),'Escape');const same=JSON.stringify(cv.tpl(a));cv.key(a,cv.svg(a),'ArrowDown');assert.equal(JSON.stringify(cv.tpl(a)),same);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+const document_activeKey=a=>a.w.document.activeElement?.getAttribute?.('data-key');
+
+test('delete removes the selection, refuses the last box, and removing the table falls back to 1.2 with a background and 1.1 without',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));cv.click(a,'n2');cv.click(a,'n3',{shiftKey:true});cv.key(a,cv.item(a,'n2'),'Delete');assert.deepEqual(cv.tpl(a).elements.map(e=>e.id),['n1','n4']);assert.deepEqual(cv.selected(a),[]);assert.match(cv.status(a),/已删除/);
+ a.click('doc-undo');assert.deepEqual(cv.tpl(a).elements.map(e=>e.id),['n1','n2','n3','n4'],'one step brings both back');
+ cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'Backspace');assert.deepEqual(cv.tpl(a).elements.map(e=>e.id),['n2','n3','n4']);
+ // The last box stays, with the reason.
+ cv.load(a,cv.doc(a,[['n1',10,30,50,10]]));cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'Delete');assert.deepEqual(cv.tpl(a).elements.map(e=>e.id),['n1']);assert.equal(cv.status(a),'未应用：至少保留一个文本框。 项目已恢复原位。');assert.equal(cv.undo(a),true);assert.deepEqual(cv.selected(a),['n1']);
+ // The delete button does the same, and is disabled with nothing selected.
+ cv.key(a,cv.item(a,'n1'),'Escape');assert.equal(a.$('doc-del').disabled,true);cv.click(a,'n1');assert.equal(a.$('doc-del').disabled,false);a.click('doc-del');assert.equal(cv.tpl(a).elements.length,1);
+ // The table goes with a keystroke: 1.3 without a background becomes 1.1; with one, 1.2.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));cv.click(a,'table');cv.key(a,cv.item(a,'table'),'Delete');let t=cv.tpl(a);assert.equal(t.table,undefined);assert.equal(t.schema_version,'1.1');assert.match(a.$('doc-table-status').textContent,/无明细表/);
+ const withBackground=cv.table(a,[['n1',10,30,50,10]]);withBackground.background={id:'0123456789abcdef0123456789abcdef',sha256:'a'.repeat(64)};cv.load(a,withBackground);cv.click(a,'table');a.click('doc-del');t=cv.tpl(a);assert.equal(t.schema_version,'1.2');assert.deepEqual(t.background,withBackground.background);
+ // A box and the table together are one step.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10],['n2',80,30,50,10]]));cv.key(a,cv.item(a,'n1'),'a',{ctrlKey:true});cv.key(a,cv.item(a,'n1'),'Delete');assert.equal(cv.status(a),'未应用：至少保留一个文本框。 项目已恢复原位。');cv.click(a,'n1');cv.click(a,'table',{shiftKey:true});cv.key(a,cv.item(a,'n1'),'Delete');t=cv.tpl(a);assert.deepEqual([t.elements.map(e=>e.id),t.table],[['n2'],undefined]);a.click('doc-undo');assert.equal(cv.tpl(a).elements.length,2);assert.ok(cv.tpl(a).table);
+ // The variables mode needs a row field, a total or a table: deleting the last of them is refused with that reason.
+ const v=cv.doc(a,[['n1',10,30,50,10],['n2',80,30,50,10,'row','customer.id']],{schema_version:'1.1',print:{mode:'variables',offset_x:0,offset_y:0}});cv.load(a,v);cv.click(a,'n2');a.click('doc-del');assert.match(cv.status(a),/变量层至少需要/);assert.equal(cv.tpl(a).elements.length,2);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('duplicate copies a box under the lowest free id at the nearest free place below it; no room and a 25th box are refused',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));cv.click(a,'n2');a.click('doc-del');assert.deepEqual(cv.tpl(a).elements.map(e=>e.id),['n1','n3','n4']);
+ // n1 (10, 30, 50 x 10): the place right under it (y 40) is free, and the lowest free id is n2.
+ cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'d',{ctrlKey:true});let t=cv.tpl(a);assert.deepEqual(t.elements.map(e=>e.id),['n1','n3','n4','n2']);assert.deepEqual(only(t.elements[3],['x','y','width','height','text','source']),only({x:10,y:40,width:50,height:10,text:'n1 text',source:'literal'},['x','y','width','height','text','source']));
+ assert.deepEqual(cv.selected(a),['n2'],'the copy is selected');assert.match(a.$('doc-canvas-live').textContent,/已选择 n2/);
+ // Again, now from the copy: y 50 touches n4 (y 60) but does not overlap it; once more the nearest free place is below n4.
+ cv.key(a,cv.item(a,'n2'),'d',{metaKey:true});t=cv.tpl(a);assert.deepEqual([t.elements[4].id,t.elements[4].y],['n5',50]);cv.key(a,cv.item(a,'n5'),'d',{ctrlKey:true});t=cv.tpl(a);assert.deepEqual([t.elements[5].id,t.elements[5].y],['n6',70],'n4 at y 60 is in the way; the first free place is below it');
+ // A row field copies its field; one step undoes the copy.
+ a.click('doc-undo');assert.equal(cv.tpl(a).elements.length,5);
+ cv.load(a,cv.four(a));cv.click(a,'n2');a.click('doc-dup');t=cv.tpl(a);assert.deepEqual([t.elements[4].id,t.elements[4].source,t.elements[4].field,t.elements[4].x,t.elements[4].y],['n5','row','customer.id',80,40]);
+ // Several boxes: each copy under its own place and the lowest free id.
+ cv.load(a,cv.four(a));cv.click(a,'n1');cv.click(a,'n2',{shiftKey:true});a.click('doc-dup');t=cv.tpl(a);assert.deepEqual(t.elements.slice(4).map(e=>[e.id,e.x,e.y]),[['n5',10,40],['n6',80,40]]);assert.deepEqual(cv.selected(a).sort(),['n5','n6']);
+ // The table is not a box: nothing to copy.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));cv.click(a,'table');assert.equal(a.$('doc-dup').disabled,true);
+ // No free place below: the copy is refused and says so.
+ cv.load(a,cv.doc(a,[['n1',10,255,50,10]]));cv.click(a,'n1');a.click('doc-dup');assert.equal(cv.tpl(a).elements.length,1);assert.match(cv.status(a),/下方没有可放置副本的空位/);
+ // 24 boxes: the 25th is refused.
+ cv.load(a,cv.doc(a,Array.from({length:24},(_,i)=>['n'+(i+1),10,25+i*10,50,10])));assert.equal(cv.tpl(a).elements.length,24);cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'d',{ctrlKey:true});assert.equal(cv.tpl(a).elements.length,24);assert.equal(cv.status(a),'未应用：最多24个文本框。');
+ // With the print offset the copy must still print inside the safe region: the offset decides, and the refusal says why.
+ cv.load(a,cv.doc(a,[['n1',10,250,50,10]],{schema_version:'1.1',print:{mode:'full',offset_x:0,offset_y:5}}));cv.click(a,'n1');a.click('doc-dup');assert.equal(cv.tpl(a).elements.length,1);assert.equal(cv.status(a),'未应用：偏移后的打印文本框超出安全区。');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('align and distribute act on the selection of two or more and three or more, in 0.1 mm units',async()=>{const a=await designer();try{
+ const stagger=()=>cv.doc(a,[['n1',10,30,50,10],['n2',80,40,30,10],['n3',150,50,40,10]]),xs=()=>cv.tpl(a).elements.map(e=>e.x),ys=()=>cv.tpl(a).elements.map(e=>e.y);
+ const all=()=>{cv.click(a,'n1');cv.click(a,'n2',{shiftKey:true});cv.click(a,'n3',{shiftKey:true});};
+ // Disabled until the selection is big enough.
+ cv.load(a,stagger());for(const id of ['doc-align-left','doc-distribute-h'])assert.equal(a.$(id).disabled,true);cv.click(a,'n1');assert.equal(a.$('doc-align-left').disabled,true);cv.click(a,'n2',{shiftKey:true});assert.equal(a.$('doc-align-left').disabled,false);assert.equal(a.$('doc-distribute-h').disabled,true);cv.click(a,'n3',{shiftKey:true});assert.equal(a.$('doc-distribute-h').disabled,false);
+ for(const [button,expect,axis] of [['left',[10,10,10],xs],['right',[140,160,150],xs],['center',[75,85,80],xs],['top',[30,30,30],ys],['bottom',[50,50,50],ys],['middle',[40,40,40],ys]]){
+  cv.load(a,stagger());all();a.click('doc-align-'+button);assert.deepEqual(axis(),expect,button);assert.match(cv.status(a),/已对齐/);
+ }
+ // Align right/left of boxes that then overlap is refused by the designer; the boxes stay.
+ cv.load(a,cv.doc(a,[['n1',10,30,50,10],['n2',80,35,30,10]]));cv.click(a,'n1');cv.click(a,'n2',{shiftKey:true});a.click('doc-align-top');assert.equal(a.$('doc-undo').disabled,false);a.click('doc-undo');cv.load(a,cv.doc(a,[['n1',10,30,50,10],['n2',30,40,30,10]]));cv.click(a,'n1');cv.click(a,'n2',{shiftKey:true});const before=JSON.stringify(cv.tpl(a));a.click('doc-align-top');assert.equal(JSON.stringify(cv.tpl(a)),before);assert.match(cv.status(a),/^未应用：文本框不能重叠/);
+ // Distribute: equal gaps, the first and the last stay; the order is by position, not by id.
+ cv.load(a,cv.doc(a,[['n1',10,30,60,10],['n2',150,30,40,10],['n3',80,30,20,10]]));all();a.click('doc-distribute-h');assert.deepEqual(cv.tpl(a).elements.map(e=>e.x),[10,150,100]);
+ cv.load(a,cv.doc(a,[['n1',10,30,50,10],['n2',10,50,50,10],['n3',10,100,50,10]]));all();a.click('doc-distribute-v');assert.deepEqual(ys(),[30,65,100]);
+ // Free space that does not divide: the gaps differ by at most 0.1 mm and the ends stay.
+ cv.load(a,cv.doc(a,[['n1',10,30,50,10],['n2',10,50,50,10],['n3',10,90.1,50,10]],{schema_version:'1.1',print:{mode:'full',offset_x:0,offset_y:0}}));all();a.click('doc-distribute-v');const y=ys();assert.deepEqual([y[0],y[2]],[30,90.1]);assert.ok(Math.abs((y[1]-40)-(90.1-y[1]-10))<=0.1+1e-9,String(y));assert.ok(Number.isInteger(y[1]*10+1e-9)||Math.abs(y[1]*10-Math.round(y[1]*10))<1e-9);
+ // The table aligns with boxes too.
+ cv.load(a,cv.table(a,[['n1',30,30,50,10]]));cv.click(a,'n1');cv.click(a,'table',{shiftKey:true});a.click('doc-align-left');assert.equal(cv.tpl(a).elements[0].x,10);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('an edit the designer refuses is not applied: the items snap back, the reason is on the status line and no undo step exists',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));const before=JSON.stringify(cv.tpl(a));
+ for(const [label,x,y,dx,dy,pattern] of [['above the safe region',35,35,0,-10,/文本框超出A4安全区、重复或尺寸无效/],['over another box',35,35,45,0,/文本框不能重叠/],['past the right edge',35,35,170,0,/文本框超出A4安全区、重复或尺寸无效/],['past the bottom',35,65,0,235,/文本框超出A4安全区、重复或尺寸无效/]]){
+  const g=cv.press(a,cv.item(a,'n1'),x,y);g.move(x+dx/2,y+dy/2);g.move(x+dx,y+dy);
+  assert.match(a.$('doc-canvas-host').querySelector('.cv-readout').textContent,/将被拒绝/,label);assert.ok(cv.item(a,'n1').getAttribute('class').includes('cv-bad'),label);
+  g.up(x+dx,y+dy);assert.equal(JSON.stringify(cv.tpl(a)),before,label);assert.match(cv.status(a),/^未应用：/,label);assert.match(cv.status(a),pattern,label);
+  assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('x'),String(ORIGIN+30),label+': snapped back');assert.equal(cv.undo(a),true,label);assert.equal(a.$('doc-canvas-status').getAttribute('role'),'status');
+ }
+ // A refusal through the print offset: the printed box must stay inside the safe region too.
+ const shifted=cv.doc(a,[['n1',13,30,50,10]],{schema_version:'1.1',print:{mode:'full',offset_x:-3,offset_y:0}});cv.load(a,shifted);cv.click(a,'n1');
+ cv.key(a,cv.item(a,'n1'),'ArrowLeft',{shiftKey:true});assert.equal(cv.box(a,'n1').x,13);assert.equal(cv.status(a),'未应用：偏移后的打印文本框超出安全区。 项目已恢复原位。');cv.key(a,cv.item(a,'n1'),'ArrowRight',{shiftKey:true});assert.equal(cv.box(a,'n1').x,14);
+ // A table dragged over a box is refused with the table's reason.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));const g=cv.press(a,cv.item(a,'table'),100,150);g.move(100,120);g.move(100,85);g.up(100,85);assert.match(cv.status(a),/明细表不能与文本框重叠/);assert.equal(cv.tpl(a).table.y,100);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('undo and redo cover every applied change: at least 100 steps, a drag is one step, a refused edit and an unchanged value are none, a new edit ends the redo line',async()=>{const a=await designer();try{
+ cv.load(a,cv.doc(a,[['n1',10,30,20,10]]));assert.equal(a.$('doc-undo').disabled,true);assert.equal(a.$('doc-redo').disabled,true);
+ // 120 nudges are 120 steps; Ctrl-Z undoes them one by one, Ctrl-Shift-Z and Ctrl-Y redo them.
+ cv.click(a,'n1');for(let i=0;i<120;i++)cv.key(a,cv.item(a,'n1'),'ArrowRight');assert.equal(cv.box(a,'n1').x,22);
+ for(let i=0;i<120;i++)cv.key(a,cv.item(a,'n1'),'z',{ctrlKey:true});assert.equal(cv.box(a,'n1').x,10);assert.equal(cv.tpl(a).schema_version,'1.0');assert.equal(a.$('doc-undo').disabled,true);assert.equal(a.$('doc-redo').disabled,false);
+ for(let i=0;i<60;i++)cv.key(a,cv.item(a,'n1'),'z',{ctrlKey:true,shiftKey:true});assert.equal(cv.box(a,'n1').x,16);for(let i=0;i<60;i++)cv.key(a,cv.item(a,'n1'),'y',{metaKey:true});assert.equal(cv.box(a,'n1').x,22);assert.equal(a.$('doc-redo').disabled,true);
+ // After an undo the inputs and the canvas show the earlier state.
+ cv.key(a,cv.item(a,'n1'),'z',{ctrlKey:true});assert.equal(a.$('doc-elements').querySelector('[aria-label="n1 x"]').value,'21.9');assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('x'),String(ORIGIN+21.9*SCALE));assert.match(a.$('doc-status').textContent,/已撤销/);assert.match(cv.item(a,'n1').getAttribute('aria-label'),/x 21\.9 毫米/);
+ // Typing a new edit after undoing ends the redo line.
+ cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.equal(a.$('doc-redo').disabled,true);
+ // A drag is one step.
+ cv.load(a,cv.four(a));cv.drag(a,cv.item(a,'n1'),35,35,10.4,0);assert.equal(cv.box(a,'n1').x,20);a.click('doc-undo');assert.equal(cv.box(a,'n1').x,10);assert.equal(a.$('doc-undo').disabled,true,'the drag was the only step');a.click('doc-redo');assert.equal(cv.box(a,'n1').x,20);
+ // A refused edit and a move back to where it was are no steps.
+ cv.load(a,cv.four(a));cv.drag(a,cv.item(a,'n1'),35,35,0,-10);cv.drag(a,cv.item(a,'n1'),35,35,10,0);cv.drag(a,cv.item(a,'n1'),45,35,-10,0);assert.equal(cv.box(a,'n1').x,10);
+ a.$('doc-elements').querySelector('[aria-label="n1 x"]').value='5';a.$('doc-elements').querySelector('[aria-label="n1 x"]').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.match(a.$('doc-status').textContent,/安全区/);
+ a.$('doc-elements').querySelector('[aria-label="n1 x"]').value='10';a.$('doc-elements').querySelector('[aria-label="n1 x"]').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(a.$('doc-undo').disabled,false,'the drag to x 20 and back is two steps: 10 -> 20 -> 10');a.click('doc-undo');a.click('doc-undo');assert.equal(a.$('doc-undo').disabled,true,'neither the refused edit nor the unchanged value is a step');
+ // The history is bounded (200 steps), oldest first.
+ cv.load(a,cv.doc(a,[['n1',10,30,20,10]]));cv.click(a,'n1');for(let i=0;i<205;i++)cv.key(a,cv.item(a,'n1'),'ArrowRight');let undone=0;while(!a.$('doc-undo').disabled){a.click('doc-undo');undone++;}assert.equal(undone,200);assert.equal(cv.box(a,'n1').x,10.5);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('every way of changing the template is one undo step: inputs, add, remove, table, print settings, background reference',async()=>{const a=await designer();try{
+ cv.load(a,cv.doc(a,[['n1',10,30,50,10]]));const start=JSON.stringify(cv.tpl(a)),steps=[];const snap=()=>steps.push(JSON.stringify(cv.tpl(a)));
+ const change=(label,v)=>{const i=a.$('doc-elements').querySelector('[aria-label="'+label+'"]');i.value=v;i.dispatchEvent(new a.w.Event('change',{bubbles:true}));};
+ change('n1 x','12');snap();a.input('doc-text','second');a.click('doc-add-text');snap();a.$('doc-field').value='customer.id';a.click('doc-add-row');snap();a.$('doc-field').value='ar.open_balance';a.click('doc-add-total');snap();
+ a.$('doc-print-mode').value='variables';a.input('doc-offset-y','1');a.click('doc-print-apply');snap();
+ const options=[...a.$('doc-table-columns').options];options[0].selected=true;options[1].selected=true;a.input('doc-table-y','120');a.input('doc-table-height','100');a.click('doc-table-add');snap();change('table height','90');snap();
+ const remove=[...a.$('doc-elements').querySelectorAll('button')].find(b=>b.textContent==='移除');remove.click();snap();a.click('doc-table-remove');snap();
+ const final=JSON.stringify(cv.tpl(a));assert.equal(steps.at(-1),final);assert.deepEqual(steps.map((v,i)=>steps.indexOf(v)!==i?i:-1).filter(i=>i>=0),[],'every change above was applied, each a different state');
+ for(let i=steps.length-2;i>=0;i--){a.click('doc-undo');assert.equal(JSON.stringify(cv.tpl(a)),steps[i],'undo to step '+i);}
+ a.click('doc-undo');assert.equal(JSON.stringify(cv.tpl(a)),start);assert.equal(a.$('doc-undo').disabled,true);
+ for(let i=0;i<steps.length;i++){a.click('doc-redo');assert.equal(JSON.stringify(cv.tpl(a)),steps[i],'redo to step '+i);}assert.equal(a.$('doc-redo').disabled,true);
+ // The background reference: removing it is a step too.
+ const withBackground=cv.doc(a,[['n1',10,30,50,10]],{schema_version:'1.2',print:{mode:'full',offset_x:0,offset_y:0},background:{id:'0123456789abcdef0123456789abcdef',sha256:'a'.repeat(64)}});cv.load(a,withBackground);a.click('doc-background-remove');assert.equal(cv.tpl(a).schema_version,'1.1');a.click('doc-undo');assert.deepEqual(cv.tpl(a).background,withBackground.background);assert.equal(a.$('doc-undo').disabled,true);
+ // The inputs re-render with the canvas after each.
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-key]').length,cv.tpl(a).elements.length+(cv.tpl(a).table?1:0));
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('opening a template, resetting it and a new query clear the history; paging through the same frozen snapshot does not',async()=>{const a=await designer();try{
+ const edit=()=>{cv.load(a,cv.doc(a,[['n1',10,30,50,10]]));cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.equal(a.$('doc-undo').disabled,false);};
+ edit();a.$('doc-json').value=JSON.stringify(cv.tpl(a));a.click('doc-json-open');assert.equal(a.$('doc-undo').disabled,true,'opening JSON');
+ edit();cv.key(a,cv.item(a,'n1'),'z',{ctrlKey:true});assert.equal(a.$('doc-redo').disabled,false);a.click('doc-reset');assert.equal(a.$('doc-undo').disabled,true,'reset');assert.equal(a.$('doc-redo').disabled,true);assert.deepEqual(cv.tpl(a).elements.map(e=>e.id),['n1']);
+ // A server version: save, edit, open the saved version.
+ a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'saved');const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+ edit();a.click('doc-server-list');await until(()=>a.$('doc-server-listing').options.length>0&&!a.$('preview').disabled,'list');a.$('doc-server-listing').value=id;a.$('doc-server-version').value='1';a.click('doc-server-open');await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板')&&!a.$('preview').disabled,'opened');assert.equal(a.$('doc-undo').disabled,true,'opening a server version');
+ // A new query.
+ edit();a.w.document.querySelector('[data-page="workspace"]').click();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query again');a.w.document.querySelector('[data-page="documents"]').click();assert.equal(a.$('doc-undo').disabled,true,'a new query');assert.equal(a.$('doc-redo').disabled,true);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('paging through the pages of one frozen snapshot keeps the history, a new snapshot clears it',async()=>{const a=app();try{
+ await snapshotReady(a);a.$('page-size').value='2';a.$('page-size').dispatchEvent(new a.w.Event('change',{bubbles:true}));await until(()=>a.$('result-table').tBodies[0].rows.length===2&&!a.$('next-page').disabled,'two-row page');
+ a.w.document.querySelector('[data-page="documents"]').click();cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.equal(a.$('doc-undo').disabled,false);
+ a.w.document.querySelector('[data-page="workspace"]').click();a.click('next-page');await until(()=>a.$('page-info').textContent.includes('第 2 页'),'page 2');a.w.document.querySelector('[data-page="documents"]').click();
+ assert.equal(a.$('doc-undo').disabled,false,'the same snapshot, the same history');assert.equal(cv.box(a,'n1').y,25.1);a.click('doc-undo');assert.equal(cv.box(a,'n1').y,25);
+ cv.key(a,cv.item(a,'n1'),'ArrowDown');a.w.document.querySelector('[data-page="workspace"]').click();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled&&a.$('page-info').textContent.includes('第 1 页'),'new snapshot');a.w.document.querySelector('[data-page="documents"]').click();
+ assert.equal(a.$('doc-undo').disabled,true,'a new snapshot is a new query');assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('print settings, a background reference and its removal keep a template with a table at schema 1.3, each as one undo step',async()=>{
+ const ref={id:'0123456789abcdef0123456789abcdef',sha256:'a'.repeat(64)};let binding=null;
+ const a=await designer(async(path,options)=>{if(path.endsWith('/document-backgrounds')&&options?.method==='GET'&&binding)return json([{...ref,binding,width:794,height:1123}]);});
+ try{
+ binding=cv.tpl(a).binding;
+ const withTable=cv.table(a,[['n1',10,30,50,10]]);cv.load(a,withTable);assert.equal(a.$('doc-undo').disabled,true);
+ const state=()=>{const t=cv.tpl(a);return {schema:t.schema_version,table:JSON.stringify(t.table),print:JSON.stringify(t.print),background:t.background?JSON.stringify(t.background):undefined};};
+ const table=JSON.stringify(withTable.table);
+ // Print settings: variables mode with a vertical offset. The table stays and the schema stays 1.3.
+ a.$('doc-print-mode').value='variables';a.input('doc-offset-y','1');a.click('doc-print-apply');assert.equal(a.$('doc-status').textContent,READY);
+ assert.deepEqual(state(),{schema:'1.3',table,print:JSON.stringify({mode:'variables',offset_x:0,offset_y:1}),background:undefined});
+ assert.equal(a.$('doc-undo').disabled,false);a.click('doc-undo');assert.equal(a.$('doc-undo').disabled,true,'one step');assert.deepEqual(state(),{schema:'1.3',table,print:JSON.stringify({mode:'full',offset_x:0,offset_y:0}),background:undefined});
+ // A background reference: 1.3 may carry one, and the table stays.
+ a.click('doc-background-list');await until(()=>a.$('doc-background-listing').options.length===1&&!a.$('preview').disabled,'listing');a.$('doc-background-listing').value=ref.id;
+ a.click('doc-background-apply');assert.equal(a.$('doc-status').textContent,READY);
+ assert.deepEqual(state(),{schema:'1.3',table,print:JSON.stringify({mode:'full',offset_x:0,offset_y:0}),background:JSON.stringify(ref)});assert.match(a.$('doc-background-status').textContent,/当前底稿/);
+ a.click('doc-undo');assert.equal(a.$('doc-undo').disabled,true,'one step');assert.equal(state().background,undefined);assert.equal(state().schema,'1.3');assert.equal(state().table,table);
+ // Removing it again: still 1.3, the table stays, and the removal is its own step.
+ a.click('doc-redo');assert.equal(state().background,JSON.stringify(ref));a.click('doc-background-remove');assert.equal(a.$('doc-status').textContent,READY);
+ assert.deepEqual(state(),{schema:'1.3',table,print:JSON.stringify({mode:'full',offset_x:0,offset_y:0}),background:undefined});
+ a.click('doc-undo');assert.deepEqual(state(),{schema:'1.3',table,print:JSON.stringify({mode:'full',offset_x:0,offset_y:0}),background:JSON.stringify(ref)},'one undo brings the reference back');
+ a.click('doc-undo');assert.equal(state().background,undefined);assert.equal(a.$('doc-undo').disabled,true,'two steps in all: the reference and its removal');
+ // Without a table the choice is what it was: a reference makes 1.2, removing it 1.1, print settings never downgrade 1.2.
+ cv.load(a,cv.doc(a,[['n1',10,30,50,10,'row','customer.id']]));a.click('doc-background-apply');assert.equal(cv.tpl(a).schema_version,'1.2');
+ a.$('doc-print-mode').value='variables';a.click('doc-print-apply');assert.equal(a.$('doc-status').textContent,READY);assert.equal(cv.tpl(a).schema_version,'1.2');assert.equal(cv.tpl(a).print.mode,'variables');
+ a.click('doc-background-remove');assert.equal(cv.tpl(a).schema_version,'1.1');assert.equal(cv.tpl(a).background,undefined);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('undo never restores the opened-published state that issuing needs',async()=>{const bodies=[];const a=app(offeringIssuance({bodies}));try{
+ await snapshotReady(a);const id=await publishedOpen(a);a.w.document.querySelector('[data-page="documents"]').click();
+ assert.equal(a.$('doc-issue').hidden,false);assert.equal(a.$('doc-undo').disabled,true,'opening the published version leaves no history');
+ // After any edit, issuing wants the published version opened again, and undoing back to its exact content does not change that.
+ cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/先保存/);
+ a.click('doc-undo');assert.equal(a.$('doc-undo').disabled,true);const same=JSON.stringify(cv.tpl(a));
+ a.click('doc-issue');assert.match(a.$('doc-status').textContent,/打开已发布模板/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0,'nothing was submitted');
+ a.click('doc-redo');a.click('doc-undo');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/打开已发布模板/);assert.equal(bodies.length,0);
+ // Reopening the published version arms the button again, as before.
+ a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'reopened');assert.equal(JSON.stringify(cv.tpl(a)),same);a.click('doc-issue');await until(()=>bodies.length===1,'submitted');assert.equal(bodies[0].template_id,id);
+ }finally{a.close();}});
+
+
+test('the command palette lists the designer\'s buttons that are present, visible and enabled, filters by typing and runs the highlighted one with Enter',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));cv.click(a,'n1');const item=cv.item(a,'n1');item.focus();assert.equal(a.w.document.activeElement,item);
+ assert.equal(palette(a),null);cv.key(a,item,'k',{ctrlKey:true});
+ const dialog=palette(a);assert.ok(dialog);assert.equal(dialog.getAttribute('role'),'dialog');assert.equal(dialog.getAttribute('aria-modal'),'true');assert.equal(a.w.document.getElementById(dialog.getAttribute('aria-labelledby')).textContent,'命令面板');
+ assert.equal(a.w.document.activeElement.id,'cv-palette-input','focus moves into the dialog');assert.equal(a.w.document.querySelector('.shell').inert,true,'the page behind is inert');assert.equal(dialog.parentElement.hidden,false);
+ const listed=options(a);
+ // Listed: the add buttons, the table button, duplicate, delete and what the one-item selection enables. Not listed: undo (no history), align (two items needed), distribute, check, PDF and issue (hidden without the PDF format), remove table (no table: the button exists and is enabled, so it is listed).
+ for(const label of ['添加固定文字','添加行字段','添加原范围合计','添加或替换明细表','复制所选文本框','删除所选项目','保存模板版本','发布当前保存版本','打开已发布模板'])assert.ok(listed.includes(label),label+' is listed: '+listed);
+ for(const label of ['撤销','重做','左对齐','水平等距分布'])assert.ok(!listed.includes(label),label+' is not: disabled');
+ // The PDF, check and issue buttons are listed exactly when they are shown: the server offers them only with the Typst renderer.
+ for(const [label,id] of [['生成PDF预览','doc-pdf'],['检查样本','doc-check'],['正式出具','doc-issue']])assert.equal(listed.includes(label),!a.$(id).hidden,label);
+ // Filtering by typing: Chinese labels and English words.
+ typeInto(a,'添加');assert.deepEqual(options(a),['添加固定文字','添加行字段','添加原范围合计','添加或替换明细表']);typeInto(a,'ADD total');assert.deepEqual(options(a),['添加原范围合计']);typeInto(a,'zzzz');assert.deepEqual(options(a),[]);assert.match(a.w.document.querySelector('.cv-empty').textContent,/没有匹配/);assert.equal(a.w.document.querySelector('.cv-empty').hidden,false);
+ // Arrow keys move the highlight; Enter runs it exactly as its button would (the page's own click handler) and closes the dialog, restoring focus.
+ typeInto(a,'添加');const input=a.w.document.getElementById('cv-palette-input');assert.equal(input.getAttribute('aria-activedescendant'),'cv-command-0');
+ press(a,'ArrowDown');assert.equal(a.w.document.querySelector('.cv-palette [aria-selected="true"]').textContent,'添加行字段');assert.equal(input.getAttribute('aria-activedescendant'),'cv-command-1');
+ press(a,'ArrowUp');press(a,'ArrowUp');assert.equal(a.w.document.querySelector('.cv-palette [aria-selected="true"]').textContent,'添加或替换明细表','wraps');
+ typeInto(a,'添加行字段');let clicks=0;a.$('doc-add-row').addEventListener('click',()=>clicks++);a.$('doc-field').value='customer.id';press(a,'Enter');
+ assert.equal(clicks,1,'the button was clicked');assert.equal(cv.tpl(a).elements.length,5);assert.equal(palette(a).parentElement.hidden,true);assert.equal(a.w.document.querySelector('.shell').inert,false);assert.equal(a.w.document.activeElement.getAttribute('data-key'),'n1','focus is back where it was');
+ // The align entries appear once the selection has two items, and run the toolbar button.
+ cv.click(a,'n2');cv.click(a,'n4',{shiftKey:true});cv.key(a,cv.item(a,'n2'),'k',{metaKey:true});assert.ok(options(a).includes('右对齐'));typeInto(a,'右对齐');press(a,'Enter');assert.equal(cv.box(a,'n4').x,80);
+ // Undo is listed once there is history and does what its button does.
+ cv.key(a,cv.item(a,'n2'),'k',{ctrlKey:true});assert.ok(options(a).includes('撤销'));typeInto(a,'撤销');press(a,'Enter');assert.equal(cv.tpl(a).elements.length,5);assert.equal(cv.box(a,'n4').x,10);assert.equal(a.$('doc-redo').disabled,false);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('the command palette is a modal dialog: Tab stays inside, Esc closes and restores focus, hidden and disabled actions are not listed',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));const item=cv.item(a,'n3');item.focus();cv.key(a,item,'k',{ctrlKey:true});const close=a.w.document.getElementById('cv-palette-close'),input=a.w.document.getElementById('cv-palette-input');
+ assert.equal(a.w.document.activeElement,input);
+ // The trap: Tab from the last control returns to the first, Shift-Tab from the first goes to the last.
+ press(a,'Tab');assert.equal(a.w.document.activeElement,close);press(a,'Tab');assert.equal(a.w.document.activeElement,input);press(a,'Tab',{shiftKey:true});assert.equal(a.w.document.activeElement,close);press(a,'Tab',{shiftKey:true});assert.equal(a.w.document.activeElement,input);
+ // Esc closes it and restores focus to the control that had it; a second Ctrl-K opens it afresh, empty.
+ typeInto(a,'对');press(a,'Escape');assert.equal(palette(a).parentElement.hidden,true);assert.equal(a.w.document.activeElement,item);assert.equal(a.w.document.querySelector('.shell').inert,false);
+ cv.key(a,item,'k',{ctrlKey:true});assert.equal(a.w.document.getElementById('cv-palette-input').value,'');assert.equal(a.w.document.activeElement.id,'cv-palette-input');
+ // The close button closes it too; so does a click on the backdrop; nothing was run.
+ a.w.document.getElementById('cv-palette-close').click();assert.equal(palette(a).parentElement.hidden,true);assert.equal(a.w.document.activeElement,item);
+ cv.key(a,item,'k',{ctrlKey:true});palette(a).parentElement.dispatchEvent(new a.w.PointerEvent('pointerdown',{bubbles:true}));assert.equal(palette(a).parentElement.hidden,true);
+ // While it is open the canvas does not react to keys (Delete or Ctrl-A must not reach the template).
+ cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});press(a,'Delete');press(a,'a',{ctrlKey:true});press(a,'z',{ctrlKey:true});assert.equal(cv.tpl(a).elements.length,4);assert.deepEqual(cv.selected(a),['n1']);press(a,'Escape');
+ // A hidden button (the issue button without issuance, the PDF buttons without PDF) is not listed; a button that gets hidden or disabled leaves the list at once.
+ cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});assert.equal(options(a).includes('正式出具'),!a.$('doc-issue').hidden);assert.ok(options(a).includes('删除所选项目'));press(a,'Escape');a.$('doc-issue').hidden=true;a.$('doc-pdf').hidden=true;cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});assert.ok(!options(a).includes('正式出具')&&!options(a).includes('生成PDF预览'),'hidden buttons are not listed');press(a,'Escape');
+ a.$('doc-add-total').hidden=true;a.$('doc-add-row').disabled=true;cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});assert.ok(!options(a).includes('添加原范围合计'),'hidden');assert.ok(!options(a).includes('添加行字段'),'disabled');press(a,'Escape');
+ a.$('doc-add-total').hidden=false;a.$('doc-add-row').disabled=false;a.$('doc-table-add').parentElement.hidden=true;cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});assert.ok(!options(a).includes('添加或替换明细表'),'inside a hidden container');press(a,'Escape');a.$('doc-table-add').parentElement.hidden=false;
+ // The toolbar button opens it too, and it is not offered on another page's behalf: with the page hidden Ctrl-K does nothing.
+ a.click('doc-palette-open');assert.equal(palette(a).parentElement.hidden,false);press(a,'Escape');
+ a.w.document.querySelector('[data-page="workspace"]').click();a.w.document.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true,cancelable:true}));assert.equal(palette(a).parentElement.hidden,true);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('the palette lists the check and the PDF actions when the server offers them, and runs the buttons of the issue and release flow',async()=>{const a=await designer(offeringIssuance({bodies:[]}));try{
+ a.click('logout');await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');a.w.document.querySelector('[data-page="documents"]').click();
+ assert.equal(a.$('doc-pdf').hidden,false);assert.equal(a.$('doc-check').hidden,false);assert.equal(a.$('doc-issue').hidden,false);
+ cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});const listed=options(a);for(const label of ['生成PDF预览','检查样本','正式出具'])assert.ok(listed.includes(label),label);
+ for(const [text,id] of [['保存','doc-server-save']]){let clicked=0;a.$(id).addEventListener('click',()=>clicked++);typeInto(a,text);press(a,'Enter');assert.equal(clicked,1,id);}
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('every canvas item has an accessible name and the selection is announced through a polite live region; the canvas is keyboard-operable',async()=>{const a=await designer();try{
+ const t=cv.doc(a,[['n1',10,100,60,10],['n2',80,30,50,10,'row','customer.id'],['n3',150,30,40,10,'total','ar.open_balance'],['n4',10,30,60,10,'literal','应收账款']]);cv.load(a,t);
+ // Tab order is the reading order: top to bottom, left to right (n4 and n2 and n3 on y 30, then n1).
+ assert.deepEqual(cv.keys(a),['n4','n2','n3','n1']);for(const e of a.$('doc-canvas-host').querySelectorAll('[data-key]')){assert.equal(e.getAttribute('tabindex'),'0');assert.equal(e.getAttribute('role'),'button');assert.ok(e.getAttribute('aria-label'));assert.equal(e.getAttribute('aria-pressed'),'false');}
+ // Names carry id, source, text or field label, position and size, and the font size.
+ assert.equal(cv.item(a,'n4').getAttribute('aria-label'),'n4，固定文字 “应收账款”，字号 12 点，x 10 毫米，y 30 毫米，宽 60 毫米，高 10 毫米');
+ assert.equal(cv.item(a,'n2').getAttribute('aria-label'),'n2，行字段 客户，字号 12 点，x 80 毫米，y 30 毫米，宽 50 毫米，高 10 毫米');
+ assert.equal(cv.item(a,'n3').getAttribute('aria-label'),'n3，合计 应收余额，字号 12 点，x 150 毫米，y 30 毫米，宽 40 毫米，高 10 毫米');
+ const live=a.$('doc-canvas-live');assert.equal(live.getAttribute('aria-live'),'polite');assert.equal(live.getAttribute('aria-atomic'),'true');assert.equal(a.$('doc-canvas-status').getAttribute('role'),'status');
+ assert.equal(a.$('doc-canvas-host').querySelector('svg').getAttribute('aria-describedby'),'doc-canvas-help');assert.ok(a.$('doc-canvas-help').textContent.includes('方向键'));
+ // Enter and Space select the focused item; Shift or Ctrl toggles; focus never leaves it.
+ const n2=cv.item(a,'n2');n2.focus();cv.key(a,n2,'Enter');assert.deepEqual(cv.selected(a),['n2']);assert.equal(live.textContent,'已选择 '+n2.getAttribute('aria-label')+'。');assert.equal(cv.item(a,'n2').getAttribute('aria-pressed'),'true');assert.equal(a.w.document.activeElement.getAttribute('data-key'),'n2');
+ cv.key(a,cv.item(a,'n3'),' ');assert.deepEqual(cv.selected(a),['n3']);cv.key(a,cv.item(a,'n2'),'Enter',{shiftKey:true});assert.deepEqual(cv.selected(a),['n2','n3']);assert.match(live.textContent,/已选择 2 项：n2、n3/);cv.key(a,cv.item(a,'n3'),'Enter',{shiftKey:true});assert.deepEqual(cv.selected(a),['n2']);
+ // A move updates the name of the item.
+ cv.key(a,cv.item(a,'n2'),'ArrowDown');assert.match(cv.item(a,'n2').getAttribute('aria-label'),/y 30\.1 毫米/);
+ // An undone item that no longer exists leaves the selection and the announcement says so.
+ cv.click(a,'n1');a.click('doc-del');assert.equal(live.textContent,'未选择任何项目。');
+ // Toolbar controls have names; the groups are labelled.
+ for(const id of ['doc-undo','doc-redo','doc-dup','doc-del','doc-align-left','doc-align-center','doc-align-right','doc-align-top','doc-align-middle','doc-align-bottom','doc-distribute-h','doc-distribute-v','doc-check','doc-palette-open'])assert.ok(a.$(id).textContent.trim().length>0,id);
+ assert.ok([...a.$('doc-canvas-panel').querySelectorAll('[role="group"]')].every(g=>g.getAttribute('aria-label')));assert.equal(a.w.document.querySelector('label[for="doc-zoom"]').textContent,'缩放');
+ // A table: its boundaries are named sliders, tabbable once it is selected.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));const slider=a.$('doc-canvas-host').querySelector('[data-col="1"]');assert.match(slider.getAttribute('aria-label'),/第 2 列与第 3 列的边界/);assert.equal(slider.getAttribute('aria-valuenow'),'140');assert.equal(slider.getAttribute('aria-valuemin'),'10');assert.equal(slider.getAttribute('aria-valuemax'),'200');
+ assert.match(cv.item(a,'table').getAttribute('aria-label'),/^明细表，列 客户、账龄区间、应收余额，字号 9 点，x 10 毫米，y 100 毫米，宽 190 毫米，高 100 毫米$/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('the inputs and the canvas stay in sync both ways, and the canvas goes through the designer\'s own validation',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));const input=(label)=>a.$('doc-elements').querySelector('[aria-label="'+label+'"]');
+ // Input -> canvas.
+ input('n1 x').value='20';input('n1 x').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('x'),String(ORIGIN+60));assert.match(cv.item(a,'n1').getAttribute('aria-label'),/x 20 毫米/);
+ input('n2 width').value='40';input('n2 width').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(cv.item(a,'n2').querySelector('.cv-box').getAttribute('width'),String(40*SCALE));
+ // The designer's refusal of an input leaves the canvas as it was.
+ input('n1 width').value='200';input('n1 width').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.match(a.$('doc-status').textContent,/文本框/);assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('width'),String(50*SCALE));
+ // Canvas -> input: a drag, a nudge and a resize show in the inputs; the remove button takes the item off the canvas.
+ cv.drag(a,cv.item(a,'n1'),45,35,-5,0);assert.equal(input('n1 x').value,'15');cv.key(a,cv.item(a,'n1'),'ArrowRight');assert.equal(input('n1 x').value,'15.1');cv.click(a,'n1');cv.drag(a,cv.handle(a,'s'),45,40,0,5);assert.equal(input('n1 height').value,'15');
+ assert.match(a.$('doc-elements').textContent,/n1 · literal/);[...a.$('doc-elements').querySelectorAll('button')].find(b=>b.textContent==='移除').click();assert.equal(cv.item(a,'n1'),null);assert.deepEqual(cv.keys(a),['n2','n3','n4']);
+ // The table: its inputs and its canvas.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));a.$('doc-elements').querySelector('[aria-label="table height"]').value='120';a.$('doc-elements').querySelector('[aria-label="table height"]').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(cv.item(a,'table').querySelector('.cv-box').getAttribute('height'),String(120*SCALE));
+ cv.click(a,'table');cv.drag(a,cv.handle(a,'s'),105,220,0,-10);assert.equal(a.$('doc-elements').querySelector('[aria-label="table height"]').value,'110');
+ cv.drag(a,a.$('doc-canvas-host').querySelector('[data-col="0"]'),70,150,10,0);assert.match(a.$('doc-elements').textContent,/customer\.id 70mm/);
+ // The element rows are exactly what they were: the canvas adds nothing to the template but what the designer accepts (canonical keys only).
+ const t=cv.tpl(a);assert.deepEqual(Object.keys(t),['schema_version','kind','binding','elements','print','table']);assert.deepEqual(Object.keys(t.elements[0]),['id','source','field','text','x','y','width','height','font_size','align']);assert.deepEqual(Object.keys(t.table),['x','y','width','height','font_size','columns']);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+// Sample check (I5). Without Typst the server does not mount the route, so these run against a server that offers PDF and answers
+// /document-checks from the test; the real route runs in the gated test after them.
+function offeringChecks(answer,{bodies=[],status=200,raw}={}){
+  const pdf=offeringPDF(Buffer.from('%PDF-1.7 fixture'));
+  return async(path,options)=>{
+    if(path.endsWith('/document-checks')){bodies.push(JSON.parse(options.body));return raw?raw():json(typeof answer==='function'?answer(JSON.parse(options.body)):answer,status);}
+    return pdf(path,options);
+  };
+}
+const checkRows=a=>[...a.$('doc-check-body').rows].map(r=>[...r.cells].slice(0,3).map(c=>c.textContent));
+const checkReady=async a=>{await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');a.w.document.querySelector('[data-page="documents"]').click();};
+
+test('check samples sends the template and the frozen snapshot, shows each row with its code and reasons, and loads a row into the preview row number',async()=>{const bodies=[];
+ const answer={rows:[{row_index:0,ok:true,reasons:['first','shortest:n2']},{row_index:2,ok:false,code:'UNSUPPORTED_COMBINATION',reasons:['last','longest:n1','longest:n2']}]};
+ const a=app(offeringChecks(answer,{bodies}));try{
+ await checkReady(a);assert.equal(a.$('doc-check').hidden,false);const sent=cv.tpl(a);
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===2&&!a.$('preview').disabled,'checked');
+ assert.equal(bodies.length,1);assert.deepEqual(Object.keys(bodies[0]).sort(),['config','samples','snapshot_id']);assert.equal(bodies[0].samples,'boundary');assert.deepEqual(bodies[0].config,sent);assert.match(bodies[0].snapshot_id,/^[a-f0-9]{32}$/);assert.equal(JSON.stringify(bodies[0]).includes('9007199254740'),false,'no data goes up');
+ assert.deepEqual(checkRows(a),[['第 1 行','通过','首行、n2 最短'],['第 3 行','不通过 · UNSUPPORTED_COMBINATION（值放不下所在框或列，或含字体不支持的字符）','末行、n1 最长、n2 最长']]);
+ assert.equal(a.$('doc-check-wrap').hidden,false);assert.match(a.$('doc-check-status').textContent,/已检查 2 行：通过 1 行，不通过 1 行。.*不渲染 PDF/);assert.equal(a.$('doc-check-status').getAttribute('role'),'status');
+ // One click loads a row into the preview row number (1-based, as the preview takes it).
+ a.$('doc-check-body').rows[1].cells[3].querySelector('button').click();assert.equal(a.$('doc-row').value,'3');assert.match(a.$('doc-check-status').textContent,/预览行号已设为 3/);
+ // Any change of the template voids the result: it was about another template.
+ cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.equal(a.$('doc-check-body').rows.length,0);assert.equal(a.$('doc-check-wrap').hidden,true);assert.match(a.$('doc-check-status').textContent,/已作废/);
+ // The palette offers it and runs the same button.
+ cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});assert.ok(options(a).includes('检查样本'));typeInto(a,'检查');press(a,'Enter');await until(()=>bodies.length===2&&a.$('doc-check-body').rows.length===2&&!a.$('preview').disabled,'checked from the palette');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('check samples needs a frozen snapshot, shows nothing it cannot verify, and says what a refusal means',async()=>{
+ // A preview is not a snapshot.
+ const a=app(offeringChecks({rows:[]}));try{
+  await a.login();a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');a.w.document.querySelector('[data-page="documents"]').click();
+  a.click('doc-check');assert.match(a.$('doc-status').textContent,/请先生成\/打开冻结快照/);assert.equal(a.trace.filter(v=>v.path.endsWith('/document-checks')).length,0);
+ }finally{a.close();}
+ // Answers that are not the contract are refused whole.
+ const row=(o={})=>({row_index:0,ok:true,...o});
+ for(const [label,answer] of [['not an object',[]],['extra key',{rows:[],extra:1}],['rows not a list',{rows:'x'}],['row with an unknown key',{rows:[row({value:'1'})]}],['rows not ascending',{rows:[row({row_index:3}),row({row_index:3})]}],['descending',{rows:[row({row_index:3}),row({row_index:1})]}],['ok with a code',{rows:[row({code:'UNSUPPORTED_COMBINATION'})]}],['refused without a code',{rows:[row({ok:false})]}],['a lower-case code',{rows:[row({ok:false,code:'nope'})]}],['ok as text',{rows:[row({ok:'yes'})]}],['a negative row',{rows:[row({row_index:-1})]}],['a fractional row',{rows:[row({row_index:1.5})]}],['an unknown reason',{rows:[row({reasons:['random']})]}],['a reason for a box that cannot exist',{rows:[row({reasons:['longest:n25']})]}],['reasons not a list',{rows:[row({reasons:'first'})]}],['51 rows',{rows:Array.from({length:51},(_,i)=>row({row_index:i}))}]]){
+  const b=app(offeringChecks(answer));
+  try{await checkReady(b);b.click('doc-check');await until(()=>/无法验证/.test(b.$('doc-check-status').textContent)&&!b.$('preview').disabled,label);assert.equal(b.$('doc-check-body').rows.length,0,label);assert.equal(b.$('doc-check-wrap').hidden,true,label);}finally{b.close();}
+ }
+ // A snapshot without rows answers an empty list, not an error.
+ const e=app(offeringChecks({rows:[]}));try{await checkReady(e);e.click('doc-check');await until(()=>/没有可检查的行/.test(e.$('doc-check-status').textContent),'empty');assert.equal(e.$('doc-check-wrap').hidden,true);}finally{e.close();}
+ // 50 rows are the most.
+ const f=app(offeringChecks({rows:Array.from({length:50},(_,i)=>row({row_index:i*2,reasons:i===0?['first']:undefined}))}));try{await checkReady(f);f.click('doc-check');await until(()=>f.$('doc-check-body').rows.length===50,'fifty');assert.equal(f.$('doc-check-body').rows[49].cells[0].textContent,'第 99 行');}finally{f.close();}
+ // The server may not have the route (a deployment without the PDF writer's check): a message, and the frozen result stays.
+ const g=app(offeringChecks(null,{raw:()=>new Response('404 page not found\n',{status:404,headers:{'Content-Type':'text/plain'}})}));
+ try{await checkReady(g);g.click('doc-check');await until(()=>g.$('notice').textContent.includes('服务端未启用样本检查')&&!g.$('preview').disabled,'no route');assert.equal(g.$('result-kind').textContent,'冻结快照');assert.equal(g.$('doc-check-body').rows.length,0);}finally{g.close();}
+ // A refusal of the whole request: the template's background is not usable (422); a denied snapshot (403) clears the frozen result, as a preview's denial does.
+ const h=app(offeringChecks({error:'UNSUPPORTED_COMBINATION'},{status:422}));
+ try{await checkReady(h);h.click('doc-check');await until(()=>h.$('notice').textContent.includes('样本检查被拒绝')&&!h.$('preview').disabled,'422');assert.equal(h.$('result-kind').textContent,'冻结快照');}finally{h.close();}
+ const i=app(offeringChecks({error:'AUTH_SCOPE_DENIED'},{status:403}));
+ try{await checkReady(i);i.click('doc-check');await until(()=>i.$('notice').textContent.includes('无权访问')&&!i.$('preview').disabled,'403');assert.equal(i.$('result-table').tBodies[0].rows.length,0,'the denied snapshot is cleared');assert.equal(i.$('doc-check-body').rows.length,0);assert.equal(i.$('doc-check').hidden,true);}finally{i.close();}
+ // Without PDF the button is not there at all.
+ const j=app();try{await j.login();j.configure();j.click('snapshot');await until(()=>j.$('result-kind').textContent==='冻结快照'&&!j.$('export').disabled,'snapshot');j.w.document.querySelector('[data-page="documents"]').click();assert.equal(j.$('doc-check').hidden,!pdfConfigured,'offered with the PDF format only');}finally{j.close();}
+});
+
+test('check samples through the real route agrees with the real preview, row by row, without rendering',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
+ await checkReady(a);
+ // A box for the balance that is 25 mm wide: 100.25 and -0.24 fit, 9007199254740893.00 does not.
+ cv.load(a,cv.doc(a,[['n1',10,30,40,10,'row','customer.id'],['n2',60,30,25,10,'row','ar.open_balance']]));
+ const before=a.trace.filter(v=>v.path.endsWith('/document-previews')).length;
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length>0&&!a.$('preview').disabled,'real check');
+ const rows=checkRows(a);assert.deepEqual(rows.map(r=>r[0]),['第 1 行','第 2 行','第 3 行']);assert.deepEqual(rows.map(r=>r[1].startsWith('通过')),[true,true,false]);assert.match(rows[2][1],/UNSUPPORTED_COMBINATION/);
+ assert.deepEqual(rows.map(r=>r[2]),['首行、n1 最长、n1 最短','n2 最短','末行、n2 最长'],'first and last, the longest and the shortest of each row-field box, ties to the lowest row');
+ assert.equal(a.trace.filter(v=>v.path.endsWith('/document-previews')).length,before,'the check rendered nothing');
+ // The same three rows through the real preview: it refuses exactly the row the check refused.
+ const outcome=[];for(const row of ['1','2','3']){a.input('doc-row',row);const n=a.downloads.length;a.click('doc-pdf');await until(()=>!a.$('preview').disabled&&(a.downloads.length>n||/无法排版/.test(a.$('notice').textContent)),'preview '+row,15000);outcome.push(a.downloads.length>n);a.$('notice').textContent='';}
+ assert.deepEqual(outcome,[true,true,false],'the preview agrees with the check');
+ // The row can be loaded from the result with one click.
+ a.$('doc-check-body').rows[2].cells[3].querySelector('button').click();assert.equal(a.$('doc-row').value,'3');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('the canvas is built from DOM nodes and CSSOM only: no markup parsing, no style attribute, no inline handler, no eval, in the script and in what it draws',async()=>{const a=await designer();try{
+ for(const [name,text] of [['canvas.js',canvasScript],['documents.js',documentsScript]]){
+  for(const [pattern,what] of [[/\binnerHTML\b/,'innerHTML'],[/insertAdjacentHTML/,'insertAdjacentHTML'],[/\bouterHTML\b/,'outerHTML'],[/document\.write/,'document.write'],[/\beval\s*\(/,'eval'],[/new\s+Function/,'new Function'],[/setAttribute\(\s*['"]style['"]/,"setAttribute('style')"],[/\bcssText\b/,'cssText'],[/setAttribute\(\s*['"]on/i,'an inline handler'],[/DOMParser|createContextualFragment/,'markup parsing'],[/\bsrcdoc\b/,'srcdoc']])assert.equal(pattern.test(text),false,name+' must not use '+what);
+ }
+ assert.equal(/\sstyle\s*=/i.test(html),false,'index.html has no style attribute');assert.equal(/\son[a-z]+\s*=/i.test(html),false,'index.html has no inline handler');assert.equal(/<style[\s>]/i.test(html),false,'index.html has no inline <style>');
+ // What it draws: exercise every kind of element, then look for attributes the CSP would refuse.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10],['n2',80,30,50,10,'row','customer.id']]));cv.click(a,'n1');cv.drag(a,cv.item(a,'n1'),35,35,5,0);cv.click(a,'table');cv.key(a,cv.item(a,'n1'),'k',{ctrlKey:true});typeInto(a,'对');
+ const scope=[a.$('doc-canvas-panel'),palette(a)];for(const root of scope){assert.equal(root.querySelectorAll('[style]').length,0,'no style attribute in '+root.className);for(const e of root.querySelectorAll('*'))assert.equal([...e.attributes].some(x=>/^on/i.test(x.name)),false,'no inline handler');}
+ // Hostile text stays text: a literal and a field label that look like markup.
+ const hostile='<img src=x onerror=alert(1)>';cv.load(a,cv.doc(a,[['n1',10,30,100,10,'literal',hostile]]));assert.equal(a.$('doc-canvas-host').querySelectorAll('img,script').length,0);assert.equal(cv.item(a,'n1').querySelector('text').textContent,hostile);assert.ok(cv.item(a,'n1').getAttribute('aria-label').includes(hostile));
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});

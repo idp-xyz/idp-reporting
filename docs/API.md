@@ -57,6 +57,7 @@ demo has the matching directories, and previews when it has the PDF flags:
 | Method and path | Request / response |
 |---|---|
 | POST /document-previews | `{config, snapshot_id, row_index}`; one A4 PDF/A-2b preview of the template bound to that frozen row and the whole-scope totals; `application/pdf`, `no-store`, `X-Content-SHA256` |
+| POST /document-checks | Sample check (S03-I, docs/S03I_SCOPE.md): `{config, snapshot_id, rows}` (1–50 distinct row indices) or `{config, snapshot_id, samples: "boundary"}`, never both; answers `200 {"rows": [{row_index, ok, code?, reasons?}]}` in row order, `no-store`, without rendering. Mounted with the previews when the renderer can check (the PDF writer can) |
 | GET, POST /document-templates | List authorized templates; save `{id, expected_version, config}` as a new immutable version |
 | GET /document-templates/{id}?version=N | One saved version, after current field authorization |
 | GET, POST /document-templates/{id}/release | Release history; `{action: publish|withdraw, version, expected_revision}` |
@@ -121,6 +122,25 @@ a background store; a preview whose wait for one of the renderer's processes and
 render timeout (15 s) is 413 BUDGET_EXCEEDED (previews hold at most all but one of the processes, so they never
 fail an export). Previews are never issued documents and are not stored. A background upload is tried with the
 renderer and refused when its preview would exceed the artifact limit.
+
+The sample check (S03-I) asks, for rows of the frozen snapshot, what the worker asks before it asks a source product
+for a number: the layout check of the PDF writer (`CheckIssue`: the fonts' plain advances, no Typst process, no render
+slot, no PDF). `rows` are the preview's global row indices (0-based, 1–50, distinct, each inside the snapshot); the
+answer lists them in ascending order. `samples: "boundary"` lets the server pick: the first and the last row and, for
+each row-field box, the rows with the longest and the shortest value by display width (an East Asian wide or
+fullwidth character counts two, every other character one; ties go to the lowest index), at most 50 (2 + 2 x 24).
+`reasons` says why a boundary row was picked: `first`, `last`, `longest:<box id>`, `shortest:<box id>`; explicit rows
+have none. A snapshot without rows answers an empty list. A row's `code` is the error code a preview of that row
+would answer: a value that does not fit its box or column, a character the fonts lack, a value the preview cannot
+print and the like are `UNSUPPORTED_COMBINATION`, and a table that cannot be laid out refuses every row alike. Any
+other error (an integrity failure, an unavailable authority, a budget, a context error) is the whole request's and
+answers as the preview would. A request that carries both or neither of `rows` and `samples`, a `samples` other than
+`boundary`, no row, a duplicate, a negative or out-of-range row, more than 50 rows or an invalid template is 400.
+Authorization is the preview's, in the preview's order: the snapshot must be the caller's (404 otherwise), the
+template's binding and every field of its boxes and table must be authorized (403) and a background must resolve for
+the caller (the variables mode drops it); the snapshot and the document are authorized again before the answer.
+Answers carry row indices, codes and reasons, never values. What only the render can find (a glyph Typst would draw
+wider than measured, a Typst failure) is not found: the PDF preview stays authoritative.
 
 A schema 1.3 template adds `table: {x, y, width, height, font_size, columns: [{field, width}]}` (S03-F): the
 preview then lists every row of the frozen snapshot over as many A4 pages as it needs, each page with the same

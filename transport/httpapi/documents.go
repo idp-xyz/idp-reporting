@@ -16,6 +16,7 @@ type DocumentRenderer interface {
 }
 
 // WithDocumentPreviews mounts opt-in ephemeral single-row previews; no issuance or artifact history.
+// When the renderer also implements DocumentChecker it mounts POST /document-checks too.
 func WithDocumentPreviews(fallback http.Handler, s *r.Service, auth Authenticate, renderer DocumentRenderer, assets *doctemplates.Assets) (http.Handler, error) {
 	if fallback == nil || s == nil || auth == nil || renderer == nil {
 		return nil, r.ErrInvalid
@@ -39,6 +40,10 @@ func WithDocumentPreviews(fallback http.Handler, s *r.Service, auth Authenticate
 		}
 		return renderDocumentPreview(w, req, s, p, renderer, input.Config, input.SnapshotID, *input.RowIndex, assets)
 	}))
+	// The layout check (S03-I) is mounted when the renderer can check, as the PDF writer can.
+	if checker, ok := renderer.(DocumentChecker); ok {
+		mountDocumentChecks(mux, s, auth, checker, assets)
+	}
 	return mux, nil
 }
 
