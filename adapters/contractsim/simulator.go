@@ -25,6 +25,9 @@ type Grant struct {
 	Rows           []string
 	Timezone       string
 	CurrencyPolicy *r.Ref
+	// IssueDocuments lets the principal issue formal documents (S03-H). A grant stored without
+	// it, or no grant at all, does not.
+	IssueDocuments bool
 }
 type frozen struct {
 	prepared r.PreparedRead
@@ -41,6 +44,13 @@ type Simulator struct {
 	unavailable bool
 	reads       int
 	revision    int
+	// The product-authority capability (authority.go): the number prefix, the last number given
+	// out and the record of every job per source, the approval switch and the clock.
+	prefix       string
+	numbers      map[source]int64
+	issues       map[issueKey]IssueRecord
+	issueRefused bool
+	clock        func() time.Time
 }
 
 func copyValue[T any](v T) T {
@@ -55,7 +65,7 @@ func copyValue[T any](v T) T {
 	return out
 }
 func New(d r.Dataset, records []Record) *Simulator {
-	return &Simulator{dataset: copyValue(d), records: copyValue(records), grants: map[r.Owner]Grant{}, frozen: map[string]frozen{}, revision: 1}
+	return &Simulator{dataset: copyValue(d), records: copyValue(records), grants: map[r.Owner]Grant{}, frozen: map[string]frozen{}, revision: 1, prefix: DefaultNumberPrefix, numbers: map[source]int64{}, issues: map[issueKey]IssueRecord{}}
 }
 
 // Explicit fixture controls are Go-only. They are never exposed as HTTP admin
@@ -119,26 +129,32 @@ func (s *Simulator) PrepareRead(ctx context.Context, sc r.SourceContext, q r.Que
 	if g.Timezone != q.Timezone || !reflect.DeepEqual(g.CurrencyPolicy, q.CurrencyPolicy) {
 		return r.PreparedRead{}, r.ErrDenied
 	}
+	now := s.now()
 	for id, v := range s.frozen {
-		if !time.Now().Before(v.prepared.ExpiresAt) {
+		if !now.Before(v.prepared.ExpiresAt) {
 			delete(s.frozen, id)
 		}
 	}
 	if len(s.frozen) >= 10000 {
 		return r.PreparedRead{}, r.ErrBudget
 	}
-	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: copyValue(q.CurrencyPolicy), Watermark: "fixture-v" + strconv.Itoa(s.revision), ExpiresAt: time.Now().Add(10 * time.Minute)}
+	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: copyValue(q.CurrencyPolicy), Watermark: "fixture-v" + strconv.Itoa(s.revision), ExpiresAt: now.Add(10 * time.Minute)}
 	// Immutable version pointer; admission does not enumerate or query rows.
 	s.frozen[p.Ref] = frozen{prepared: copyValue(p), query: copyValue(q), grant: copyValue(g), records: s.records}
 	return p, nil
 }
 func (s *Simulator) authorize(sc r.SourceContext, p r.PreparedRead) (frozen, error) {
+	return s.authorizeAt(s.now(), sc, p)
+}
+
+// authorizeAt is authorize at the given time, for a caller that reads the clock once.
+func (s *Simulator) authorizeAt(now time.Time, sc r.SourceContext, p r.PreparedRead) (frozen, error) {
 	g, e := s.catalog(sc)
 	if e != nil {
 		return frozen{}, e
 	}
 	f, ok := s.frozen[p.Ref]
-	if !ok || r.Digest(f.prepared) != r.Digest(p) || sc != p.Context || !time.Now().Before(p.ExpiresAt) {
+	if !ok || r.Digest(f.prepared) != r.Digest(p) || sc != p.Context || !now.Before(p.ExpiresAt) {
 		return frozen{}, r.ErrDenied
 	}
 	if g.Timezone != f.grant.Timezone || !reflect.DeepEqual(g.CurrencyPolicy, f.grant.CurrencyPolicy) {
