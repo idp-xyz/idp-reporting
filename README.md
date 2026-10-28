@@ -19,7 +19,8 @@ scripts/check_pdf_export.py 对 5 份单据预览逐字核对（--font 按字体
 含“内容流中单个字形平移 1 pt”“两个字形互换”“字形越出框边 0.6 pt”“底稿平移/替换”“框外图形”），版式与 export/pdf/testdata/golden.json 一致；
 veraPDF 对 20 份 PDF（含控制台真实下载的 4 份）判定 PDF/A-2b 通过，负对照判失败。
 两路独立审查（正确性与安全；测试有效性与质量），发现与处理见 docs/CODE_REVIEW_S03E.md。
-未验：真实打印机与实纸对位、真实浏览器、GitHub Actions 上本阶段的 pdf 任务（推送后首次运行）、PostgreSQL 存储下的模板与底稿。
+GitHub Actions 四项任务（含 pdf 任务的单据测试与检查器）在 PR #7 上通过（run 40632159958）。
+未验：真实打印机与实纸对位、真实浏览器、PostgreSQL 存储下的模板与底稿。
 不在本阶段：多页单据与表格、承前过次、底稿以外的图片、条码/签章、正式出具记录、画布编辑器、生产资格；真实接入最后。
 当前证据 evidence/s03e；规格 docs/S03E_SCOPE.md；决策 docs/ADR_0002_SINGLE_PDF_ENGINE.md；审查 docs/CODE_REVIEW_S03E.md；接口 docs/API.md。
 
