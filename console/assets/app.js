@@ -56,6 +56,7 @@
     if(error.status===409)return '请求冲突、资源失效或完整性检查未通过，请重新查询。';
     if(error.status===413)return '结果超过当前限额，请缩小范围。';
     if(error.code==='DOCUMENT_LAYOUT')return '模板无法排版：金额、累计金额或承前/过次/合计标签放不下所在列，表头或行高超过表区，或超过 100 页；请加宽列、减小字号或改用更短的值。';
+    if(error.code==='ISSUE_UNSUPPORTED')return '该数据集的来源产品不支持正式出具，或服务端未启用出具；也可能是所选行含有文档无法打印的值，或模板用到的底稿在当前服务端不可用。';
     if(error.status===422)return '当前数据集不支持此查询组合。';
     if(error.status===400)return '请检查数据集、公司范围及数据时点。';
     if(error.code==='INVALID_RESPONSE')return '服务返回了无法验证的响应。';
@@ -240,22 +241,28 @@
   function renderJobs() {
     const values=Array.from(state.jobs.values()).reverse();$('task-count').textContent=String(values.length);$('overview-jobs').textContent=String(values.length);$('tasks-note').textContent=values.length+' 项';
     $('tasks-empty').hidden=!!values.length;$('tasks-table-wrap').hidden=!values.length;const body=$('tasks-body');body.replaceChildren();
-    for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?exportFormats[j.format||'xlsx'].label+' 导出':j.kind==='snapshot'?'报表快照':j.kind==='issue'?'正式出具 No. '+issueNumber(j.issue.number):'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',statuses[j.state]||'待刷新','badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
+    for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?exportFormats[j.format||'xlsx'].label+' 导出':j.kind==='snapshot'?'报表快照':j.kind==='issue'?issueTitle(j):'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',(statuses[j.state]||'待刷新')+(j.state==='failed'&&j.error_code?' · '+j.error_code:''),'badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
       actions.append(button('刷新',()=>refreshTask(j.job_id)));
       if(j.snapshot_id&&j.state==='succeeded')actions.append(button('查看结果',()=>perform(async m=>{await loadSnapshot(j.snapshot_id,j.query||null,m,true);if(current(m))openPage('workspace');},taskContext(j.job_id,'任务查看'))));
       if(j.artifact_id&&j.state==='succeeded')actions.append(button('下载',()=>perform(m=>download(j.artifact_id,m,j.format,j.kind==='issue'?issuedName(j.issue.number):undefined),taskContext(j.job_id,'任务下载'))));
-      if(['queued','running'].includes(j.state))actions.append(button('取消',()=>cancelJob(j.job_id),'danger'));
+      // A running issue job sits between the product's reservation and its confirmation: it finishes, or fails and voids. Only a queued one is cancelled.
+      if(j.state==='queued'||(j.state==='running'&&j.kind!=='issue'))actions.append(button('取消',()=>cancelJob(j.job_id),'danger'));
       row.append(title,id,status,actions);body.append(row);
     }
   }
-  const issueNumber=n=>String(n).padStart(6,'0'),issuedName=n=>'issued-'+issueNumber(n)+'.pdf';
-  function checkIssue(v){return !!v&&typeof v==='object'&&Number.isSafeInteger(v.number)&&v.number>=1&&isID(v.template_id)&&Number.isSafeInteger(v.template_version)&&v.template_version>=1&&typeof v.template_sha256==='string'&&/^[a-f0-9]{64}$/.test(v.template_sha256)&&Number.isSafeInteger(v.row_index)&&v.row_index>=0;}
-  function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export','issue'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind==='snapshot'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format)))||(j.kind==='issue')!==(j.issue!==undefined)||(j.kind==='issue'&&(j.format!=='pdf'||!checkIssue(j.issue))))throw new Failure(0,'INVALID_RESPONSE');}
+  // The number is the source product's: 1..32 of A-Za-z0-9._- starting with a letter or digit. A job view carries it only once the job succeeded.
+  const validNumber=n=>typeof n==='string'&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(n);
+  const issuedName=n=>{if(!validNumber(n))throw new Failure(0,'INVALID_RESPONSE');return 'issued-'+n+'.pdf';};
+  // A task shows its number once it has one; until then it waits for the product, and one that failed or was cancelled was never issued.
+  const issueTitle=j=>validNumber(j.issue.number)?'正式出具 No. '+j.issue.number:j.state==='failed'||j.state==='cancelled'?'正式出具（未出具）':'正式出具（编号待来源产品确认）';
+  const validCode=c=>typeof c==='string'&&/^[A-Z][A-Z0-9_]{0,63}$/.test(c);
+  function checkIssue(v,state){return !!v&&typeof v==='object'&&(state==='succeeded'?validNumber(v.number):v.number===undefined)&&isID(v.template_id)&&Number.isSafeInteger(v.template_version)&&v.template_version>=1&&typeof v.template_sha256==='string'&&/^[a-f0-9]{64}$/.test(v.template_sha256)&&Number.isSafeInteger(v.row_index)&&v.row_index>=0;}
+  function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export','issue'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind==='snapshot'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format)))||(j.kind==='issue')!==(j.issue!==undefined)||(j.kind==='issue'&&(j.format!=='pdf'||!checkIssue(j.issue,j.state)))||(j.error_code!==undefined&&(j.state!=='failed'||!validCode(j.error_code))))throw new Failure(0,'INVALID_RESPONSE');}
   function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
   async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
   async function refreshTask(id,m=mark()) {const context=taskContext(id,'任务刷新');try{await refreshJob(id);return true;}catch(error){fail(error,m,context);return false;}}
-  async function cancelJob(id) {const m=mark(),context=taskContext(id,'任务取消');try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
+  async function cancelJob(id) {const m=mark(),context=taskContext(id,'任务取消');try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':j.kind==='issue'&&j.state==='running'?'出具任务已开始执行，不能取消；它会完成，或失败并通知来源产品作废预留。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
   async function submit(kind,payload,context,verify) {
     const fingerprint=kind+JSON.stringify(payload);
     if(!state.pending||state.pending.fingerprint!==fingerprint)state.pending={fingerprint:fingerprint,key:crypto.randomUUID()};
@@ -297,17 +304,28 @@
   async function createIssue(m,body) {
     const query=copy(state.query);if(!state.snapshot||body.snapshot_id!==state.snapshot)throw new Failure(400,'INVALID_REQUEST');
     // The view must be the job that was asked for, before the key is spent or the task kept.
-    const job=await submit('issue',body,{query:query,integration:query.integration_id},j=>{if(j.kind!=='issue'||j.issue.template_id!==body.template_id||j.issue.template_version!==body.version||j.issue.row_index!==body.row_index)throw new Failure(0,'INVALID_RESPONSE');});if(!current(m))throw new Stale();
-    notify('正式出具任务已提交，编号 No. '+issueNumber(job.issue.number)+'。');const done=await poll(job.job_id,m);if(!done)return;
-    if(done.state==='succeeded'&&done.artifact_id)await download(done.artifact_id,m,'pdf',issuedName(done.issue.number));
-    else notify(done.state==='cancelled'?'出具任务已取消；编号 No. '+issueNumber(done.issue.number)+' 作废，不再使用。':'出具任务失败（'+(done.error_code||'未知原因')+'）；编号 No. '+issueNumber(done.issue.number)+' 作废，不再使用。',done.state==='cancelled'?'':'error');
+    const job=await submit('issue',body,{query:query,integration:query.integration_id},j=>{if(j.kind!=='issue'||j.issue.template_id!==body.template_id||j.issue.template_version!==body.version||j.issue.row_index!==body.row_index)throw new Failure(0,'INVALID_RESPONSE');}).catch(error=>{
+      // The product or the deployment cannot issue (or the row or the template cannot be printed): not the dataset's query shape, which is what a 422 otherwise says.
+      if(error&&error.status===422&&error.code==='UNSUPPORTED_COMBINATION')error.code='ISSUE_UNSUPPORTED';
+      throw error;
+    });if(!current(m))throw new Stale();
+    // The job view carries no number until the source product has confirmed the issue, so there is nothing to name before then.
+    notify('正式出具任务已提交，正在等待来源产品确认编号；任务成功后才有编号和可下载的正式文件。');const done=await poll(job.job_id,m);if(!done)return;
+    if(done.state==='succeeded'){if(!done.artifact_id)throw new Failure(0,'INVALID_RESPONSE');await download(done.artifact_id,m,'pdf',issuedName(done.issue.number),undefined,'来源产品已确认编号 No. '+done.issue.number+'；');}
+    else notify(done.state==='cancelled'?'出具任务已取消，未生成正式文件。':issueFailure(done),done.state==='cancelled'?'':'error');
   }
-  async function download(id,m,format,name,expectedDigest) {
+  // Why an issue job failed, in the source product's terms.
+  function issueFailure(j) {
+    if(j.error_code==='AUTH_SCOPE_DENIED')return '出具失败（AUTH_SCOPE_DENIED）：来源产品拒绝出具——无出具权限、单据未获批准，或来源数据已变化。未生成正式文件。';
+    if(j.error_code==='ISSUE_UNRECONCILED')return '出具失败（ISSUE_UNRECONCILED）：平台未能通知来源产品作废其为本任务预留的编号，来源产品处可能仍保留该预留。请联系管理员，并提供任务 ID '+j.job_id+'。';
+    return '出具任务失败（'+(j.error_code||'未知原因')+'）；未生成正式文件。';
+  }
+  async function download(id,m,format,name,expectedDigest,prefix) {
     const kind=exportFormats[format||'xlsx'];if(!isID(id)||!kind||format==='xlsx')throw new Failure(400,'INVALID_REQUEST');
     const bytes=await request('/artifacts/'+id+'/content',{binary:kind.media});if(!current(m))throw new Stale();
     if(String.fromCharCode(...bytes.subarray(0,kind.magic.length))!==kind.magic)throw new Failure(409,'INTEGRITY_FAILURE');
     if(expectedDigest){const sum=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));if(!current(m))throw new Stale();if(Array.from(sum,b=>b.toString(16).padStart(2,'0')).join('')!==expectedDigest)throw new Failure(409,'INTEGRITY_FAILURE');}
-    const url=URL.createObjectURL(new Blob([bytes],{type:kind.media}));const link=node('a');link.href=url;link.download=name||'report-'+id+'.'+kind.extension;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify(kind.label+' 已通过摘要校验，下载已发起。','success');
+    const url=URL.createObjectURL(new Blob([bytes],{type:kind.media}));const link=node('a');link.href=url;link.download=name||'report-'+id+'.'+kind.extension;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify((prefix||'')+kind.label+' 已通过摘要校验，下载已发起。','success');
   }
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));
