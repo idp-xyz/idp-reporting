@@ -21,6 +21,17 @@ suffixes, the total row or list, the empty-table label) and requires of each PDF
     character, and no ink at all in the side margins (which catches glyphs the engine adds
     but that are not text, such as dotted circles);
   - the header and the total row in bold, other cells not, and metric numbers aligned right.
+Expectations with "kind": "document" describe a document template preview instead: the boxes
+of the template in millimetres, the print offsets and the values. Each value must be drawn on
+one line, exactly and without its trailing white space, with its baseline 1.16 font sizes
+below the top of its box, starting at the box's left edge, ending at its right edge or centred
+in it, and, with --font FILE (the Regular face), each of its characters at the position the
+font's plain advances give it, so that nothing the engine shapes (kerning, spacing,
+punctuation compression, substitution) moved a glyph; the banner "PREVIEW - NOT AN ISSUED
+DOCUMENT" at 10 mm, 10 mm; the background PNG, when expected, fitted into the A4 page and
+centred; nothing else, and without a background no ink at all outside the boxes and the
+banner; with the same font, colour, ink and PDF/A checks as tables.
+
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
@@ -28,13 +39,14 @@ the expectations and the PDFs in several ways and fails unless each corruption i
 a copy without XMP metadata, which must fail.
 
 Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | --write-golden FILE]
-       [--verapdf IMAGE]   (needs PyMuPDF: scripts/requirements-pdfcheck.txt)
+       [--font FILE] [--verapdf IMAGE]   (needs PyMuPDF: scripts/requirements-pdfcheck.txt)
 """
 import argparse
 import copy
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -347,6 +359,281 @@ def check(directory, exp):
     return problems, {"pages": pages, "first_rows": first_rows}
 
 
+MM = 72 / 25.4
+ASCENT = 1.16  # baseline below the top of a box, in font sizes (the document contract)
+BANNER = "PREVIEW - NOT AN ISSUED DOCUMENT"
+
+
+def clusters(text):
+    """Grapheme clusters as the renderer forms them: a character and the marks after it."""
+    out = []
+    for ch in text:
+        if out and unicodedata.category(ch).startswith("M"):
+            out[-1] += ch
+        else:
+            out.append(ch)
+    return out
+
+
+def cluster_positions(font, text, size, left, right, align):
+    """Where each cluster of a value starts, from the font's plain advances alone."""
+    pieces = clusters(text)
+    widths = [font.text_length(c, fontsize=size) for c in pieces]
+    total = sum(widths)
+    x = {"left": left, "right": right - total, "center": (left + right) / 2 - total / 2}[align]
+    out = []
+    for c, w in zip(pieces, widths):
+        out.append((c[0], x))
+        x += w
+    return out
+
+
+def ink_outside(page, rects, tolerance=1.5):
+    """Whether anything is drawn outside the given rectangles, each widened by tolerance pt."""
+    scale = 2
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csGRAY)
+    buf, w, h = bytearray(pix.samples), pix.width, pix.height
+    for rect in rects:
+        x0, x1 = max(0, int((rect.x0 - tolerance) * scale)), min(w, int((rect.x1 + tolerance) * scale) + 1)
+        for y in range(max(0, int((rect.y0 - tolerance) * scale)), min(h, int((rect.y1 + tolerance) * scale) + 1)):
+            buf[y * w + x0:y * w + x1] = b"\xff" * (x1 - x0)
+    return min(buf) < 128
+
+
+def document_rects(exp):
+    """The banner and the boxes of a document, in points, with the print offsets."""
+    ox, oy = exp["offset_x"], exp["offset_y"]
+    return [pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)] + [
+        pymupdf.Rect((e["x"] + ox) * MM, (e["y"] + oy) * MM, (e["x"] + ox + e["width"]) * MM, (e["y"] + oy + e["height"]) * MM) for e in exp["elements"]]
+
+
+def check_document(directory, exp, font=None):
+    """Checks a document template preview; returns problems and the layout summary. With font,
+    the path of the Regular face, every character must sit at its plain-advance position."""
+    problems = []
+    metrics = pymupdf.Font(fontfile=font) if font else None
+    doc = pymupdf.open(os.path.join(directory, exp["file"]))
+    xmp = doc.get_xml_metadata()
+    if not re.search(r"pdfaid:part[^0-9]{0,4}2\b", xmp) or not re.search(r"pdfaid:conformance[^A-Z]{0,4}B\b", xmp):
+        problems.append("no PDF/A-2b identification in the XMP metadata")
+    if doc.page_count != 1:
+        return problems + [f"{doc.page_count} pages, expected one"], {"pages": doc.page_count}
+    page = doc[0]
+    if abs(page.rect.width - 210 * MM) > 0.1 or abs(page.rect.height - 297 * MM) > 0.1:
+        problems.append("the page is not A4 portrait")
+    for f in page.get_fonts(full=True):
+        if f[1] == "n/a" or f[2] == "Type3":
+            problems.append(f"font {f[3]} is {f[2]}, embedded as {f[1]}")
+    chars = characters(page, 0)
+    for c in overlaps(chars):
+        problems.append(f"{c['c']!r} is drawn over another character")
+    for c in inkless(page, chars)[:5]:
+        problems.append(f"{c['c']!r} at {c['x0']:.1f},{c['y0']:.1f} has no ink")
+    for c in chars:
+        if c["light"] and c["c"].strip():
+            problems.append(f"{c['c']!r} is drawn in a light colour")
+        if c["c"] == "\ufffd":
+            problems.append("a replacement character")
+    used = set()
+    wanted = [(BANNER, 10, 10, 190, 10, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
+    for text, x, y, width, size, align in wanted:
+        base, left, right = y * MM + ASCENT * size, x * MM, (x + width) * MM
+        # The characters drawn on this baseline, at this size, within the box.
+        line = [c for c in chars if c["n"] not in used and abs(c["base"] - base) <= 0.1 and abs(c["size"] - size) < 0.05 and left - 1 <= (c["x0"] + c["x1"]) / 2 <= right + 1]
+        if not text.strip():
+            continue  # nothing is drawn for white space alone
+        if "".join(c["c"] for c in line).rstrip() != text.rstrip():
+            problems.append(f"{text!r} is not drawn on one line with its baseline at {base:.2f} pt in its box")
+            continue
+        used.update(c["n"] for c in line)
+        solid = [c for c in line if c["c"].strip()]
+        start, end = line[0]["x"], solid[-1]["x1"]
+        bases = [c for c in line if not c["mark"]]
+        if any(b["x"] < a["x"] for a, b in zip(bases, bases[1:])):
+            problems.append(f"{text!r} is not drawn left to right")
+        # Leading spaces count: the value is centred as a whole, as pdfme centred it.
+        if align == "left" and abs(start - left) > 0.3 or align == "right" and abs(end - right) > 0.3 or align == "center" and abs((start + end) / 2 - (left + right) / 2) > 0.5:
+            problems.append(f"{text!r} is not aligned {align} in its box ({start:.2f}..{end:.2f} pt, box {left:.2f}..{right:.2f})")
+        if end > right + 0.3 or start < left - 0.3:
+            problems.append(f"{text!r} leaves its box")
+        if metrics is not None:
+            # Every cluster where the plain advances put it: the engine shaped nothing across them.
+            expected = cluster_positions(metrics, text.rstrip(), size, left, right, align)
+            if len(bases) != len(expected):
+                problems.append(f"{text!r}: {len(bases)} characters drawn, {len(expected)} expected")
+            for c, (ch, x) in zip(bases, expected):
+                if abs(c["x"] - x) > 0.1:
+                    problems.append(f"{text!r}: {c['c']!r} at {c['x']:.2f} pt is not at its plain-advance position {x:.2f} pt")
+                    break
+    rest = [c for c in chars if c["n"] not in used and c["c"].strip()]
+    if rest:
+        problems.append(f"unexpected text {''.join(c['c'] for c in rest)[:40]!r}")
+    if not exp["background"] and ink_outside(page, document_rects(exp)):
+        problems.append("ink outside the boxes and the banner")
+    images = page.get_images(full=True)
+    if len(images) != int(exp["background"]):
+        problems.append(f"{len(images)} images, expected {int(exp['background'])}")
+    for img in images:
+        w, h = img[2], img[3]
+        scale = min(210 * MM / w, 297 * MM / h)
+        x0, y0 = (210 * MM - w * scale) / 2, (297 * MM - h * scale) / 2
+        for rect in page.get_image_rects(img[0]):
+            if max(abs(rect.x0 - x0), abs(rect.y0 - y0), abs(rect.x1 - x0 - w * scale), abs(rect.y1 - y0 - h * scale)) > 0.5:
+                problems.append(f"the background is drawn at {rect}, not fitted and centred")
+        if exp.get("background_file") and not same_picture(pymupdf.Pixmap(doc, img[0]), pymupdf.Pixmap(os.path.join(directory, exp["background_file"]))):
+            problems.append("the background is not the PNG named")
+    return problems, {"pages": 1}
+
+
+def same_picture(a, b):
+    """Whether two pixmaps show the same picture: equal size and RGB samples."""
+    def rgb(p):
+        if p.alpha:
+            p = pymupdf.Pixmap(p, 0)
+        if p.colorspace is None or p.colorspace.n != 3:
+            p = pymupdf.Pixmap(pymupdf.csRGB, p)
+        return p
+    a, b = rgb(a), rgb(b)
+    return (a.width, a.height) == (b.width, b.height) and a.samples == b.samples
+
+
+def document_corruptions(exp):
+    def changed(name, change):
+        e = copy.deepcopy(exp)
+        change(e)
+        return name, e
+    yield changed("a value changed", lambda e: e["elements"][0].__setitem__("text", e["elements"][0]["text"] + "X"))
+    yield changed("the offset moved by 0.2 mm", lambda e: e.__setitem__("offset_y", e["offset_y"] + 0.2))
+    yield changed("a box moved by 0.2 mm", lambda e: e["elements"][0].__setitem__("x", e["elements"][0]["x"] + 0.2))
+    flip = {"left": "right", "right": "center", "center": "left"}
+    yield changed("an alignment changed", lambda e: e["elements"][0].__setitem__("align", flip[e["elements"][0]["align"]]))
+    yield changed("a value missing", lambda e: e["elements"].pop())
+    yield changed("a value added", lambda e: e["elements"].append({"text": "X", "x": 20, "y": 200, "width": 50, "height": 10, "size": 10, "align": "left"}))
+    yield changed("the background flag flipped", lambda e: e.__setitem__("background", not e["background"]))
+
+
+def document_pdf_corruptions(directory, exp, scratch, font_file=None):
+    font = pymupdf.Font("cjk")
+
+    def copy_with(name, change):
+        doc = pymupdf.open(os.path.join(directory, exp["file"]))
+        change(doc)
+        target = os.path.join(scratch, name)
+        os.makedirs(target, exist_ok=True)
+        doc.save(os.path.join(target, exp["file"]))
+        if exp.get("background_file"):
+            shutil.copy(os.path.join(directory, exp["background_file"]), target)
+        return target
+
+    def text(t, at, color=(0, 0, 0), embedded=True):
+        def change(doc):
+            p = doc[0]
+            if embedded:
+                p.insert_font(fontname="Fx", fontbuffer=font.buffer)
+                p.insert_text(at, t, fontname="Fx", fontsize=10, color=color)
+            else:
+                p.insert_text(at, t, fontname="helv", fontsize=10, color=color)
+        return change
+
+    e = exp["elements"][0]
+    top = (e["y"] + exp["offset_y"]) * MM
+    yield "extra text", "unexpected text", copy_with("extra", text("X", (300, 700)))
+    yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", (300, 700), embedded=False))
+
+    def cover(doc):
+        doc[0].draw_rect(pymupdf.Rect(0, top, 210 * MM, top + ASCENT * e["size"] + 0.3 * e["size"]), color=None, fill=(1, 1, 1), overlay=True)
+    yield "a value covered by a white box", "has no ink", copy_with("cover", cover)
+    yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
+    if not exp["background"]:
+        yield "a shape outside the boxes", "outside the boxes", copy_with("outside", lambda doc: doc[0].draw_circle((105 * MM, 285 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
+    yield "an extra page", "pages, expected one", copy_with("pages", lambda doc: doc.new_page())
+    yield "a smaller page", "not A4", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
+    yield "a value in a light colour", "light colour", copy_with("light", text("X", (300, 700), color=(0.9, 0.9, 0.9)))
+    yield "a replacement character", "replacement character", copy_with("fffd", text("\ufffd", (300, 700)))
+
+    def value_line(page, element):
+        base = (element["y"] + exp["offset_y"]) * MM + ASCENT * element["size"]
+        left, right = (element["x"] + exp["offset_x"]) * MM, (element["x"] + exp["offset_x"] + element["width"]) * MM
+        return sorted([c for c in characters(page, 0) if abs(c["base"] - base) <= 0.1 and left - 1 <= c["x"] <= right + 1 and c["c"].strip() and not c["mark"]], key=lambda c: c["x"])
+
+    def move_glyphs(doc, moves):
+        """Changes the x of the engine's own transformations ("q 1 0 0 -1 x y cm") for the given
+        characters: moves maps (x, y) in PDF coordinates to a new x."""
+        page = doc[0]
+        page.clean_contents()
+        xref = page.get_contents()[0]
+        raw = doc.xref_stream(xref).decode("latin1")
+
+        def move(m):
+            x, y = float(m.group(1)), float(m.group(2))
+            for (wx, wy), nx in moves:
+                if abs(x - wx) < 0.01 and abs(y - wy) < 0.01:
+                    return f"1 0 0 -1 {nx:.6f} {m.group(2)} cm"
+            return m.group(0)
+        moved = re.sub(r"1 0 0 -1 (\S+) (\S+) cm", move, raw)
+        assert moved != raw, "the glyphs' transformations were not found"
+        doc.update_stream(xref, moved.encode("latin1"))
+
+    def pdf_point(c, page):
+        return (c["x"], page.rect.height - c["base"])
+
+    def swap(doc):
+        page = doc[0]
+        line = value_line(page, e)
+        a, b = line[0], line[1]
+        move_glyphs(doc, [(pdf_point(a, page), b["x"]), (pdf_point(b, page), a["x"])])
+    if len(e["text"].rstrip()) >= 2:
+        yield "two glyphs swapped", "left to right", copy_with("swap", swap)
+    right = next((el for el in exp["elements"] if el["align"] == "right" and len(el["text"].rstrip()) >= 1), None)
+
+    def past_edge(doc):
+        page = doc[0]
+        c = value_line(page, right)[-1]
+        move_glyphs(doc, [(pdf_point(c, page), c["x"] + 0.6)])
+    if right is not None:
+        yield "the last glyph of a right-aligned value 0.6 pt past the edge", "leaves its box", copy_with("edge", past_edge)
+    if exp["background"]:
+        def shift_image(doc):
+            page = doc[0]
+            page.clean_contents()
+            xref = page.get_contents()[0]
+            raw = doc.xref_stream(xref).decode("latin1")
+            moved, n = re.subn(r"(\S+) 0 0 (\S+) (\S+) (\S+) cm(\s*/\S+ Do)", lambda m: f"{m.group(1)} 0 0 {m.group(2)} {float(m.group(3)) + 2:.6f} {m.group(4)} cm{m.group(5)}", raw)
+            assert n == 1, f"{n} image placements found"
+            doc.update_stream(xref, moved.encode("latin1"))
+        yield "the background shifted by 2 pt", "not fitted and centred", copy_with("image", shift_image)
+        if exp.get("background_file"):
+            def replace_image(doc):
+                page = doc[0]
+                xref = page.get_images(full=True)[0][0]
+                other = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(os.path.join(directory, exp["background_file"])))
+                other.invert_irect(pymupdf.IRect(0, 0, other.width // 2, other.height // 2))
+                page.replace_image(xref, pixmap=other)
+            yield "the background replaced by another picture", "not the PNG named", copy_with("picture", replace_image)
+
+    def shift(doc):
+        # The second character of the first value moved 1 pt to the right in the content stream,
+        # where the engine placed it with its own transformation ("q 1 0 0 -1 x y cm").
+        page = doc[0]
+        base = top + ASCENT * e["size"]
+        line = sorted([c for c in characters(page, 0) if abs(c["base"] - base) <= 0.1 and c["c"].strip() and not c["mark"]], key=lambda c: c["x"])
+        c = line[1]
+        page.clean_contents()
+        xref = page.get_contents()[0]
+        raw = doc.xref_stream(xref).decode("latin1")
+
+        def move(m):
+            x, y = float(m.group(1)), float(m.group(2))
+            if abs(x - c["x"]) < 0.01 and abs(y - (page.rect.height - c["base"])) < 0.01:
+                return f"1 0 0 -1 {x + 1:.6f} {m.group(2)} cm"
+            return m.group(0)
+        moved = re.sub(r"1 0 0 -1 (\S+) (\S+) cm", move, raw)
+        assert moved != raw, "the glyph's transformation was not found"
+        doc.update_stream(xref, moved.encode("latin1"))
+    if font_file and len(e["text"].rstrip()) >= 2 and not exp["background"]:
+        yield "a glyph moved by 1 pt", "plain-advance position", copy_with("shift", shift)
+
+
 def corruptions(exp):
     """Yields (name, corrupted expectation) for each corruption that applies."""
     rows = exp["rows"]
@@ -511,6 +798,7 @@ def main():
     ap.add_argument("--golden", metavar="FILE")
     ap.add_argument("--write-golden", metavar="FILE")
     ap.add_argument("--verapdf", metavar="IMAGE")
+    ap.add_argument("--font", metavar="FILE", help="the Regular face; checks every character of a document at its plain-advance position")
     args = ap.parse_args()
     names = sorted(f for f in os.listdir(args.directory) if f.endswith(".json"))
     if not names:
@@ -519,12 +807,23 @@ def main():
     for name in names:
         with open(os.path.join(args.directory, name), encoding="utf-8") as f:
             exp = json.load(f)
-        problems, layouts[exp["file"]] = check(args.directory, exp)
+        document = exp.get("kind") == "document"
+        problems, layouts[exp["file"]] = check_document(args.directory, exp, args.font) if document else check(args.directory, exp)
         print(f"{exp['file']}: {'ok' if not problems else 'FAILED'}")
         for p in problems[:20]:
             print("  " + p)
         failed |= bool(problems)
-        if args.negative:
+        if args.negative and document:
+            for what, corrupted in document_corruptions(exp):
+                caught = bool(check_document(args.directory, corrupted, args.font)[0])
+                print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")
+                failed |= not caught
+            with tempfile.TemporaryDirectory() as scratch:
+                for what, expected, directory in document_pdf_corruptions(args.directory, exp, scratch, args.font):
+                    caught = any(expected in p for p in check_document(directory, exp, args.font)[0])
+                    print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
+                    failed |= not caught
+        elif args.negative:
             for what, corrupted in corruptions(exp):
                 caught = bool(check(args.directory, corrupted)[0])
                 print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")

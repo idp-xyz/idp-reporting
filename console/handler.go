@@ -10,7 +10,7 @@ import (
 	r "idp.local/reporting/reporting"
 )
 
-//go:embed assets/index.html assets/app.js assets/dashboard.js assets/styles.css
+//go:embed assets/index.html assets/app.js assets/dashboard.js assets/documents.js assets/styles.css
 var assets embed.FS
 
 func Handler(api http.Handler) (http.Handler, error) {
@@ -29,7 +29,7 @@ func Handler(api http.Handler) (http.Handler, error) {
 	})
 	mux.HandleFunc("GET /console/", func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/console/", "/console/index.html", "/console/app.js", "/console/dashboard.js", "/console/styles.css":
+		case "/console/", "/console/index.html", "/console/app.js", "/console/dashboard.js", "/console/documents.js", "/console/styles.css":
 			w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")

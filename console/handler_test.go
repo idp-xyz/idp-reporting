@@ -23,7 +23,7 @@ func TestConsoleServesOnlyBundledAssetsAndPreservesAPI(t *testing.T) {
 		status  int
 		content string
 	}{
-		{"/", 303, ""}, {"/console/", 200, "IDP Reporting"}, {"/console/app.js", 200, "/api/reporting/v1"}, {"/console/styles.css", 200, "--ink"}, {"/console/dashboard.js", 200, "createReportingDashboard"},
+		{"/", 303, ""}, {"/console/", 200, "IDP Reporting"}, {"/console/app.js", 200, "/api/reporting/v1"}, {"/console/styles.css", 200, "--ink"}, {"/console/dashboard.js", 200, "createReportingDashboard"}, {"/console/documents.js", 200, "createReportingDocuments"},
 		{"/console/private.json", 404, ""}, {"/console/assets/", 404, ""}, {"/api/reporting/v1/session", 401, "private-api"},
 	} {
 		t.Run(tc.path, func(t *testing.T) {

@@ -1,0 +1,162 @@
+{
+ "kind": "document",
+ "file": "document_hard.pdf",
+ "background": false,
+ "offset_x": 0,
+ "offset_y": 0,
+ "elements": [
+  {
+   "text": "张江路123号A座",
+   "x": 15,
+   "y": 30,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "left"
+  },
+  {
+   "text": "客户：华东区「重点」，联系人：张三。",
+   "x": 110,
+   "y": 30,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "right"
+  },
+  {
+   "text": "a—a—a⸺b⸻c",
+   "x": 15,
+   "y": 42,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "center"
+  },
+  {
+   "text": "ab   ",
+   "x": 110,
+   "y": 42,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "left"
+  },
+  {
+   "text": "  ab  ",
+   "x": 15,
+   "y": 54,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "right"
+  },
+  {
+   "text": "café é",
+   "x": 110,
+   "y": 54,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "center"
+  },
+  {
+   "text": "甲\u0026甲\u0026乙、Receivable。",
+   "x": 15,
+   "y": 66,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "left"
+  },
+  {
+   "text": "……——",
+   "x": 110,
+   "y": 66,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "right"
+  },
+  {
+   "text": "ー#ー%Ⅰ文",
+   "x": 15,
+   "y": 78,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "center"
+  },
+  {
+   "text": "「（中）」。。、",
+   "x": 110,
+   "y": 78,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "left"
+  },
+  {
+   "text": "（甲）",
+   "x": 15,
+   "y": 90,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "right"
+  },
+  {
+   "text": "。",
+   "x": 110,
+   "y": 90,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "center"
+  },
+  {
+   "text": "ab　　",
+   "x": 15,
+   "y": 102,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "left"
+  },
+  {
+   "text": "　ab",
+   "x": 110,
+   "y": 102,
+   "width": 85,
+   "height": 10,
+   "size": 12,
+   "align": "right"
+  },
+  {
+   "text": "9007199254740893.00",
+   "x": 15,
+   "y": 114,
+   "width": 85,
+   "height": 10,
+   "size": 8,
+   "align": "center"
+  },
+  {
+   "text": "(j(j(j fV",
+   "x": 110,
+   "y": 140,
+   "width": 85,
+   "height": 16,
+   "size": 28,
+   "align": "left"
+  },
+  {
+   "text": "W",
+   "x": 15,
+   "y": 140,
+   "width": 85,
+   "height": 16,
+   "size": 28,
+   "align": "right"
+  }
+ ]
+}

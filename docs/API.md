@@ -51,6 +51,29 @@ a document over the artifact limit, or one that exceeds the renderer's own time 
 memory (2 GiB) limit, fails with BUDGET_EXCEEDED. Such snapshots remain available as
 workbooks. Other renderer failures, and the 20 s job timeout, are EXECUTION_FAILED.
 
+Document templates (S03-E, docs/S03E_SCOPE.md) are mounted when the demo has the matching directories, and
+previews when it has the PDF flags:
+
+| Method and path | Request / response |
+|---|---|
+| POST /document-previews | `{config, snapshot_id, row_index}`; one A4 PDF/A-2b preview of the template bound to that frozen row and the whole-scope totals; `application/pdf`, `no-store`, `X-Content-SHA256` |
+| GET, POST /document-templates | List authorized templates; save `{id, expected_version, config}` as a new immutable version |
+| GET /document-templates/{id}?version=N | One saved version, after current field authorization |
+| GET, POST /document-templates/{id}/release | Release history; `{action: publish|withdraw, version, expected_revision}` |
+| GET /document-templates/{id}/published | The published version |
+| POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
+| GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
+
+A preview places each value on one line with its baseline 1.16 font sizes below the top of its box, at the box's
+left edge, right edge or centre, every character at the position the fonts' plain advances give it (ADR 0002);
+trailing white space is not drawn. A value the fonts do not cover, a soft hyphen, a Hangul tone mark, a leading
+combining mark, a value that does not fit its box, one with control characters or over 256 characters, or one
+Typst would draw wider than measured is 422 UNSUPPORTED_COMBINATION, as is a template naming a background on a server without
+a background store; a preview whose wait for one of the renderer's processes and render together exceed the
+render timeout (15 s) is 413 BUDGET_EXCEEDED (previews hold at most all but one of the processes, so they never
+fail an export). Previews are never issued documents and are not stored. A background upload is tried with the
+renderer and refused when its preview would exceed the artifact limit.
+
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile
 limits, not production SLOs. A job that loses its lease or is cancelled cannot

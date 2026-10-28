@@ -1,4 +1,19 @@
 {
+ "document_calibrated.pdf": {
+  "pages": 1
+ },
+ "document_fitted.pdf": {
+  "pages": 1
+ },
+ "document_full.pdf": {
+  "pages": 1
+ },
+ "document_hard.pdf": {
+  "pages": 1
+ },
+ "document_variables.pdf": {
+  "pages": 1
+ },
  "edges.pdf": {
   "first_rows": [
    0,

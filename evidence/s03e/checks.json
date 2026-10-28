@@ -1,0 +1,80 @@
+{
+ "phase": "S03-E",
+ "date": "2026-10-27 Asia/Shanghai",
+ "baseline": "1938c3e (main after PR #6, S03-D1); reviewed implementation 67e93aa",
+ "ported_from": "temp/ archive, delivery commit 79aa396 (S03-D1..D4 on pdfme), engine replaced by Typst (ADR 0002)",
+ "go": {
+  "top_level_passes": 110,
+  "pass_events": 257,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestPostgresContract"
+  ]
+ },
+ "race": {
+  "top_level_passes": 110,
+  "pass_events": 257,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestPostgresContract"
+  ]
+ },
+ "vet": {
+  "exit_code": 0
+ },
+ "mod_verify": {
+  "exit_code": 0
+ },
+ "app_syntax": {
+  "exit_code": 0
+ },
+ "dom": {
+  "tests": 54,
+  "pass": 54,
+  "fail": 0,
+  "skipped": 0,
+  "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser"
+ },
+ "pdf_documents": {
+  "checked": 16,
+  "document_previews": 5,
+  "table_exports": 11,
+  "per_character_positions": "every character of a document preview at its plain-advance position (--font NotoSansSC-Regular.otf); the embedded background's pixels equal the PNG drawn",
+  "negative_controls_caught": 379,
+  "negative_controls_missed": 0,
+  "golden": "export/pdf/testdata/golden.json (matched)",
+  "verapdf_pass": 20,
+  "verapdf_negative_control": "FAIL",
+  "negative_controls": "every table and document check has at least one control; documents: 7 expectation and up to 13 PDF corruptions each"
+ },
+ "cross_engine": {
+  "boxes": 24,
+  "worst_pt": 0.009,
+  "worst_mm": 0.0032,
+  "difference": "pdfme substitutes two em dashes in a row by one two-em dash glyph (the one box whose text differs); the reviewers' 253 further boxes stayed within 0.009 pt apart from pdfme's fi ligature and stacked-mark substitutions",
+  "file": "evidence/s03e/cross_engine.json",
+  "compared_boxes": 23
+ },
+ "tools": {
+  "typst": "0.15.1 binary sha256 29273eaa04f6d00edd0c2bec578f565fc9c65be856bfbffc894567c68ed0b237",
+  "fonts": "Noto Sans SC 2.004 Regular and Bold",
+  "verapdf": "verapdf/cli v1.30.3 (local image; CI pins registry manifest sha256:d565095c67a083e693aebf7d1a15784007370571053fc1aa5b502665b9a78f9c)",
+  "pymupdf": "1.27.2.3",
+  "go": "go1.26.10",
+  "node": "v24"
+ },
+ "github_actions": {
+  "pull_request": 7,
+  "run": 40632159958,
+  "head": "2b969a3",
+  "jobs": [
+   "Go format, vet, build, test and race",
+   "PostgreSQL contract and durable tests",
+   "Console syntax and DOM tests",
+   "PDF export and document previews with the pinned Typst, fonts and veraPDF"
+  ],
+  "result": "all pass"
+ }
+}

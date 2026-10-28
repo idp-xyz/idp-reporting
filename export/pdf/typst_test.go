@@ -10,20 +10,27 @@ package pdf
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -482,5 +489,231 @@ func TestTypstWithAHardCoreLimitOfZero(t *testing.T) {
 	refused := strings.Contains(string(out), "NEW_RESULT=pdf: the hard core limit is 0")
 	if piped != refused || (!piped && !strings.Contains(string(out), "NEW_RESULT=<nil>")) {
 		t.Fatalf("core_pattern %q: %s", pattern, out)
+	}
+}
+
+// documentExpectation is what scripts/check_pdf_export.py checks a document preview against:
+// the template's own boxes in millimetres and the values, from which it derives positions.
+type documentExpectation struct {
+	Kind           string            `json:"kind"`
+	File           string            `json:"file"`
+	Background     bool              `json:"background"`
+	BackgroundFile string            `json:"background_file,omitempty"` // the PNG drawn, next to the PDF
+	OffsetX        float64           `json:"offset_x"`
+	OffsetY        float64           `json:"offset_y"`
+	Elements       []documentElement `json:"elements"`
+}
+
+type documentElement struct {
+	Text   string  `json:"text"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Size   int     `json:"size"`
+	Align  string  `json:"align"`
+}
+
+func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background []byte) {
+	t.Helper()
+	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
+	if dir == "" {
+		return
+	}
+	e := documentExpectation{Kind: "document", File: name + ".pdf", Background: background != nil, OffsetX: d.Print.OffsetX, OffsetY: d.Print.OffsetY, Elements: []documentElement{}}
+	if background != nil {
+		e.BackgroundFile = name + ".background.png"
+		if err := os.WriteFile(filepath.Join(dir, e.BackgroundFile), background, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, el := range d.Elements {
+		if d.Print.Mode == "variables" && el.Source == "literal" {
+			continue
+		}
+		e.Elements = append(e.Elements, documentElement{Text: values[el.ID], X: el.X, Y: el.Y, Width: el.Width, Height: el.Height, Size: el.FontSize, Align: el.Align})
+	}
+	b, _ := json.MarshalIndent(e, "", " ")
+	for file, content := range map[string][]byte{name + ".pdf": pdf, name + ".json": b} {
+		if err := os.WriteFile(filepath.Join(dir, file), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTypstRendersDocuments(t *testing.T) {
+	w := typstWriter(t, nil)
+	png, err := os.ReadFile("../../doctemplates/testdata/a4-background.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(png)
+	elements := []doctemplates.Element{
+		{ID: "n1", Source: "literal", Text: "套打底稿预览 Form", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"},
+		{ID: "n2", Source: "row", Field: "ar.open_balance", X: 20, Y: 50, Width: 80, Height: 8, FontSize: 10, Align: "right"},
+		{ID: "n3", Source: "total", Field: "ar.open_balance", X: 110.5, Y: 50, Width: 80, Height: 8, FontSize: 10, Align: "center"},
+		{ID: "n4", Source: "row", Field: "customer", X: 20, Y: 249.7, Width: 170, Height: 16, FontSize: 28, Align: "left"},
+	}
+	values := map[string]string{"n1": "套打底稿预览 Form", "n2": "9007199254740893.00", "n3": "9007199254740993.01", "n4": "  客户 a  b"}
+	doc := func(mode string, ox, oy float64) doctemplates.Document {
+		return doctemplates.Document{Schema: "1.2", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}}, Elements: elements,
+			Print: &doctemplates.PrintProfile{Mode: mode, OffsetX: ox, OffsetY: oy}, Background: &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: hex.EncodeToString(sum[:])}}
+	}
+	// Values that Typst would otherwise shape differently from plain advances: Chinese next to
+	// Latin and digits, Chinese punctuation at the start, in a row and alone, dashes, kerned
+	// pairs, combining marks, leading and trailing spaces of both kinds, at every alignment.
+	hard := []string{"张江路123号A座", "客户：华东区「重点」，联系人：张三。", "a—a—a⸺b⸻c", "ab   ", "  ab  ", "café e\u0301", "甲&甲&乙、Receivable。", "……——",
+		"ー#ー%Ⅰ文", "「（中）」。。、", "（甲）", "。", "ab\u3000\u3000", "\u3000ab", "9007199254740893.00", "(j(j(j fV", "W"}
+	hardDoc := doctemplates.Document{Schema: "1.1", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}}, Print: &doctemplates.PrintProfile{Mode: "full"}}
+	hardValues := map[string]string{}
+	aligns := []string{"left", "right", "center"}
+	for i, v := range hard {
+		id := "n" + strconv.Itoa(i+1)
+		e := doctemplates.Element{ID: id, Source: "literal", Text: v, X: 15 + float64(i%2)*95, Y: 30 + float64(i/2)*12, Width: 85, Height: 10, FontSize: 12, Align: aligns[i%3]}
+		if i >= 15 {
+			e.Y, e.Height, e.FontSize = 140, 16, 28
+		} else if i == 14 {
+			e.FontSize = 8
+		}
+		hardDoc.Elements = append(hardDoc.Elements, e)
+		hardValues[id] = v
+	}
+	// A background that is not A4-shaped (the asset store refuses one, the renderer fits it).
+	narrow := grayPNG(700, 891)
+	narrowSum := sha256.Sum256(narrow)
+	fitted := doc("full", 0, 0)
+	fitted.Background = &doctemplates.BackgroundRef{ID: strings.Repeat("b", 32), SHA256: hex.EncodeToString(narrowSum[:])}
+	for _, c := range []struct {
+		name   string
+		d      doctemplates.Document
+		values map[string]string
+		png    []byte
+	}{
+		{"document_full", doc("full", 0, 0), values, png},
+		{"document_calibrated", doc("full", 1.2, -0.5), values, png},
+		{"document_variables", doc("variables", -2.3, 4), values, nil},
+		{"document_hard", hardDoc, hardValues, nil},
+		{"document_fitted", fitted, values, narrow},
+	} {
+		out, err := w.Render(t.Context(), c.d, c.values, c.png)
+		if err != nil {
+			var re *RenderError
+			if errors.As(err, &re) {
+				t.Fatalf("%s: %v\n%s", c.name, err, re.output())
+			}
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		again, err := w.Render(t.Context(), c.d, c.values, c.png)
+		if err != nil || !bytes.Equal(out, again) {
+			t.Fatalf("%s: two renders with the same clock differ (%v)", c.name, err)
+		}
+		documentEvidence(t, c.name, out, c.d, c.values, c.png)
+	}
+	// Refused before Typst runs: a value too wide for its box, one the fonts lack, a Hangul
+	// tone mark (Typst would add a dotted circle), a tab and a leading combining mark.
+	for value, want := range map[string]error{strings.Repeat("宽", 40): r.ErrUnsupported, "😀": r.ErrUnsupported, "a\u302eb": r.ErrUnsupported, "a\tb": r.ErrUnsupported, "\u0301abc": r.ErrUnsupported} {
+		v := map[string]string{"n1": "x", "n2": value, "n3": "1", "n4": "1"}
+		if _, err := w.Render(t.Context(), doc("variables", 0, 0), v, nil); !errors.Is(err, want) {
+			t.Errorf("%q: %v; want %v", value, err, want)
+		}
+	}
+	// The upload check renders on the background: a PNG the templates accept passes.
+	if err := w.BackgroundFits(t.Context(), png); err != nil {
+		t.Errorf("background fit: %v", err)
+	}
+	// The template's own assertion: a glyph declared narrower than Typst draws it fails the
+	// render, and that is an unsupported value.
+	p, err := layOut(doc("variables", 0, 0), map[string]string{"n2": "W", "n3": "1", "n4": "1"}, nil, newPlainMeasurer(w.fonts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Glyphs[0].Width = 0
+	if _, err := w.renderDocument(t.Context(), p, nil); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("a glyph wider than declared: %v; want unsupported", err)
+	}
+	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.
+	results := make([][]byte, 6)
+	errs := make([]error, 6)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = w.Render(t.Context(), hardDoc, hardValues, nil)
+		}()
+	}
+	wg.Wait()
+	for i := range results {
+		if errs[i] != nil || !bytes.Equal(results[i], results[0]) {
+			t.Errorf("concurrent render %d: %v", i, errs[i])
+		}
+	}
+}
+
+// grayPNG is a white PNG of the given size with a grey frame.
+func grayPNG(w, h int) []byte {
+	im := image.NewGray(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			v := uint8(255)
+			if x < 8 || y < 8 || x >= w-8 || y >= h-8 {
+				v = 120
+			}
+			im.SetGray(x, y, color.Gray{Y: v})
+		}
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, im); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
+
+func TestTypstSlotsBoundPreviewsAndExports(t *testing.T) {
+	w := typstWriter(t, func(c *Config) { c.Concurrency, c.Timeout = 1, 1500*time.Millisecond })
+	d, values, _ := documentProbe()
+	d.Schema, d.Background = "1.1", nil
+	// The only slot is held: a preview, an export and the upload check all wait for the timeout
+	// and are budget errors; once it is free, they render.
+	w.slots <- struct{}{}
+	if _, err := w.Render(t.Context(), d, values, nil); !errors.Is(err, r.ErrBudget) {
+		t.Errorf("preview with no slot: %v; want budget", err)
+	}
+	if _, err := w.Write(t.Context(), probe); !errors.Is(err, r.ErrBudget) {
+		t.Errorf("export with no slot: %v; want budget", err)
+	}
+	if err := w.BackgroundFits(t.Context(), probeBackground()); !errors.Is(err, r.ErrBudget) {
+		t.Errorf("upload check with no slot: %v; want budget", err)
+	}
+	release(w.slots)
+	if _, err := w.Render(t.Context(), d, values, nil); err != nil {
+		t.Errorf("preview with the slot free: %v", err)
+	}
+	// Previews hold at most all but one of the slots (here: the one preview slot), which keeps
+	// the export worker from waiting behind them: with the preview slot held, a preview waits
+	// in vain while an export still runs.
+	w.previews <- struct{}{}
+	if _, err := w.Render(t.Context(), d, values, nil); !errors.Is(err, r.ErrBudget) {
+		t.Errorf("preview with no preview slot: %v; want budget", err)
+	}
+	if _, err := w.Write(t.Context(), probe); err != nil {
+		t.Errorf("export while previews are saturated: %v", err)
+	}
+	release(w.previews)
+}
+
+func TestNewRefusesBadLimits(t *testing.T) {
+	for name, change := range map[string]func(*Config){
+		"concurrency below one": func(c *Config) { c.Concurrency = -1 },
+		"concurrency above 64":  func(c *Config) { c.Concurrency = 65 },
+		"jobs above 64":         func(c *Config) { c.Jobs = 65 },
+		"timeout over the work": func(c *Config) { c.Timeout = r.WorkTimeout },
+		"memory under 256 MiB":  func(c *Config) { c.MemoryBytes = 1 << 20 },
+	} {
+		c := Config{Typst: "/nonexistent", TypstSHA256: strings.Repeat("0", 64), FontDir: t.TempDir()}
+		change(&c)
+		if _, err := New(c); err == nil || !strings.Contains(err.Error(), "limits") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

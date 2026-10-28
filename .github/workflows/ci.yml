@@ -56,11 +56,11 @@ jobs:
       # and run in the postgres and pdf jobs.
       - name: Test
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
         run: python3 -I scripts/go_test_strict.py -count=1
       - name: Race
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
         run: python3 -I scripts/go_test_strict.py -race -count=1
 
   postgres:
@@ -84,7 +84,7 @@ jobs:
       # A missing DSN fails instead of skipping, and only the Typst tests, which run in the pdf job,
       # may skip in this job.
       REPORTING_S01_REQUIRE_PG: "1"
-      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero
+      EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,11 +134,12 @@ jobs:
         run: |
           node --check console/assets/app.js
           node --check console/assets/dashboard.js
+          node --check console/assets/documents.js
           node --check scripts/browser_visual_s03c4.mjs
       - run: node --test console/dom.test.mjs
 
   pdf:
-    name: PDF export with the pinned Typst, fonts and veraPDF
+    name: PDF export and document previews with the pinned Typst, fonts and veraPDF
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -177,16 +178,17 @@ jobs:
       - name: Console with the Typst renderer
         env:
           REPORTING_S03A_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
+          REPORTING_DOCUMENT_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test console/dom.test.mjs
-          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$RUNNER_TEMP/pdf-evidence/"
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
       - name: Check the documents, the negative controls and PDF/A-2b
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"
           "$RUNNER_TEMP/pdfcheck/bin/pip" install --require-hashes --only-binary :all: --no-deps -r scripts/requirements-pdfcheck.txt
           "$RUNNER_TEMP/pdfcheck/bin/python" -I scripts/check_pdf_export.py "$RUNNER_TEMP/pdf-evidence" --negative \
-            --golden export/pdf/testdata/golden.json \
+            --golden export/pdf/testdata/golden.json --font "$REPORTING_PDF_FONTS/NotoSansSC-Regular.otf" \
             --verapdf verapdf/cli@sha256:d565095c67a083e693aebf7d1a15784007370571053fc1aa5b502665b9a78f9c
       - name: Keep the documents of a failed run
         if: failure()

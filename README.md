@@ -1,3 +1,31 @@
+# IDP Reporting Platform · S03-E
+
+2026-10-27。新增文档模板设计器（S03-E1..E4，docs/S03E_SCOPE.md）：A4 单页文本模板（固定文字、行字段、原范围合计），私有版本与发布，
+预印纸偏移与变量层，私有 PNG 底稿，按冻结快照的一行生成带 PREVIEW 标记的 PDF/A-2b 预览；不是正式出具。
+来源是另一条用 pdfme/Node 实现的交付（temp/ 存档，提交 79aa396）；按 docs/ADR_0002_SINGLE_PDF_ENGINE.md 全平台只保留一个 PDF 引擎：
+业务部分原样迁移，渲染改为 export/pdf 的 Typst（同一沙箱、字库核对与限制），去掉 Node 渲染、pdfme、7.4 MB 设计器包和放宽的 CSP。
+对位规则与 pdfme 一致：基线在框顶下 1.16 倍字号，按对齐贴左、贴右或居中，字符按字体原始步进排列，不画末尾空白。
+Typst 无法对整串关闭中文标点挤压、中西文间距和中文破折号加宽，因此 Go 逐字簇算位置、逐簇放置（前置一个空行内盒以免句首标点被裁），
+模板断言 Typst 量得的宽度不超过 Go 的度量；24 个难例框（中西混排、句首/连续/单独标点、破折号、字距对、组合附加符号、首尾空格、
+三种对齐、偏移、8–28 pt）与 pdfme 的字符位置最大相差 0.009 pt（evidence/s03e/cross_engine.json）；唯一差异是 pdfme 把连续两个破折号
+替换成一个两倍长破折号字形（其后字符随之左移 0.11 em）、把 fi 画成连字字形、叠加附加符号只画第一个，Typst 均按原字符绘制。
+拒绝（UNSUPPORTED_COMBINATION）：缺字、软连字符、韩文声调符号、以组合附加符号开头、单行放不下、Typst 会画得更宽的字簇、值含控制字符/DEL/超过 256 字；
+模板固定文字含控制字符为 INVALID_REQUEST。预览与导出共用最多 2 个 Typst 进程，预览最多占其中 1 个（不会饿死导出任务），
+等待加渲染合计超过 15 秒为 BUDGET_EXCEEDED；底稿上传时先用渲染器试渲染（锁外、带请求上下文、先查配额），渲染失败即拒绝。
+演示服务：-template-directory、-background-directory；预览需同时给出 S03-D1 的三个 -pdf-* 参数，否则控制台不显示两个预览按钮。
+Go 普通/race 各 110 项顶层测试通过（257 个通过事件），仅 2 项数据库入口跳过；DOM 54/54（含 9 项真实 Typst 渲染）；vet、go mod verify、JS 语法通过。
+scripts/check_pdf_export.py 对 5 份单据预览逐字核对（--font 按字体原始步进独立推算每个字符的坐标）、基线、对齐、无底稿时框外无墨迹、
+底稿像素与所引 PNG 一致且适配居中、PREVIEW 标记，连同 11 份表格文档共 379 项负对照全部被抓到（单据侧每项检查各有一个，
+含“内容流中单个字形平移 1 pt”“两个字形互换”“字形越出框边 0.6 pt”“底稿平移/替换”“框外图形”），版式与 export/pdf/testdata/golden.json 一致；
+veraPDF 对 20 份 PDF（含控制台真实下载的 4 份）判定 PDF/A-2b 通过，负对照判失败。
+两路独立审查（正确性与安全；测试有效性与质量），发现与处理见 docs/CODE_REVIEW_S03E.md。
+GitHub Actions 四项任务（含 pdf 任务的单据测试与检查器）在 PR #7 上通过（run 40632159958）。
+未验：真实打印机与实纸对位、真实浏览器、PostgreSQL 存储下的模板与底稿。
+不在本阶段：多页单据与表格、承前过次、底稿以外的图片、条码/签章、正式出具记录、画布编辑器、生产资格；真实接入最后。
+当前证据 evidence/s03e；规格 docs/S03E_SCOPE.md；决策 docs/ADR_0002_SINGLE_PDF_ENGINE.md；审查 docs/CODE_REVIEW_S03E.md；接口 docs/API.md。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S03-D1
 
 2026-10-27。新增 PDF 导出：冻结快照可另存为 PDF/A-2b 表格，与 Excel 同属异步导出任务（POST /exports 加 `"format":"pdf"`）。
