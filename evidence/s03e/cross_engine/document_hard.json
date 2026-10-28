@@ -1,0 +1,143 @@
+{
+ "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_hard.json",
+ "boxes": [
+  {
+   "text": "张江路123号A座",
+   "align": "left",
+   "size": 12,
+   "typst": "张江路123号A座",
+   "pdfme": "张江路123号A座",
+   "max_dx_pt": 0.001
+  },
+  {
+   "text": "客户：华东区「重点」，联系人：张三。",
+   "align": "right",
+   "size": 12,
+   "typst": "客户：华东区「重点」，联系人：张三。",
+   "pdfme": "客户：华东区「重点」，联系人：张三。",
+   "max_dx_pt": 0.009
+  },
+  {
+   "text": "a—a—a⸺b⸻c",
+   "align": "center",
+   "size": 12,
+   "typst": "a—a—a⸺b⸻c",
+   "pdfme": "a—a—a⸺b⸻c",
+   "max_dx_pt": 0.003
+  },
+  {
+   "text": "ab   ",
+   "align": "left",
+   "size": 12,
+   "typst": "ab",
+   "pdfme": "ab",
+   "max_dx_pt": 0.005
+  },
+  {
+   "text": "  ab  ",
+   "align": "right",
+   "size": 12,
+   "typst": "ab",
+   "pdfme": "ab",
+   "max_dx_pt": 0.005
+  },
+  {
+   "text": "café é",
+   "align": "center",
+   "size": 12,
+   "typst": "caféé",
+   "pdfme": "caféé",
+   "max_dx_pt": 0.007
+  },
+  {
+   "text": "甲&甲&乙、Receivable。",
+   "align": "left",
+   "size": 12,
+   "typst": "甲&甲&乙、Receivable。",
+   "pdfme": "甲&甲&乙、Receivable。",
+   "max_dx_pt": 0.001
+  },
+  {
+   "text": "……——",
+   "align": "right",
+   "size": 12,
+   "typst": "……——",
+   "pdfme": "……⸺",
+   "max_dx_pt": null
+  },
+  {
+   "text": "ー#ー%Ⅰ文",
+   "align": "center",
+   "size": 12,
+   "typst": "ー#ー%Ⅰ文",
+   "pdfme": "ー#ー%Ⅰ文",
+   "max_dx_pt": 0.003
+  },
+  {
+   "text": "「（中）」。。、",
+   "align": "left",
+   "size": 12,
+   "typst": "「（中）」。。、",
+   "pdfme": "「（中）」。。、",
+   "max_dx_pt": 0.005
+  },
+  {
+   "text": "（甲）",
+   "align": "right",
+   "size": 12,
+   "typst": "（甲）",
+   "pdfme": "（甲）",
+   "max_dx_pt": 0.005
+  },
+  {
+   "text": "。",
+   "align": "center",
+   "size": 12,
+   "typst": "。",
+   "pdfme": "。",
+   "max_dx_pt": 0.007
+  },
+  {
+   "text": "ab　　",
+   "align": "left",
+   "size": 12,
+   "typst": "ab",
+   "pdfme": "ab",
+   "max_dx_pt": 0.001
+  },
+  {
+   "text": "　ab",
+   "align": "right",
+   "size": 12,
+   "typst": "ab",
+   "pdfme": "ab",
+   "max_dx_pt": 0.009
+  },
+  {
+   "text": "9007199254740893.00",
+   "align": "center",
+   "size": 12,
+   "typst": "9007199254740893.00",
+   "pdfme": "9007199254740893.00",
+   "max_dx_pt": 0.003
+  },
+  {
+   "text": "(j(j(j fV",
+   "align": "left",
+   "size": 28,
+   "typst": "(j(j(jfV",
+   "pdfme": "(j(j(jfV",
+   "max_dx_pt": 0.005
+  },
+  {
+   "text": "W",
+   "align": "right",
+   "size": 28,
+   "typst": "W",
+   "pdfme": "W",
+   "max_dx_pt": 0.005
+  }
+ ],
+ "worst_pt": 0.009,
+ "worst_mm": 0.0032
+}

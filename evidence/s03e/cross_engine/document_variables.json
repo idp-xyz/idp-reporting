@@ -1,0 +1,31 @@
+{
+ "expectation": "/tmp/claude-1000/-home-tops-workspace-idp-reporting/4190e842-719f-4a4d-8c47-225447bf7c1e/scratchpad/ev1/document_variables.json",
+ "boxes": [
+  {
+   "text": "9007199254740893.00",
+   "align": "right",
+   "size": 10,
+   "typst": "9007199254740893.00",
+   "pdfme": "9007199254740893.00",
+   "max_dx_pt": 0.004
+  },
+  {
+   "text": "9007199254740993.01",
+   "align": "center",
+   "size": 10,
+   "typst": "9007199254740993.01",
+   "pdfme": "9007199254740993.01",
+   "max_dx_pt": 0.007
+  },
+  {
+   "text": "  客户 a  b",
+   "align": "left",
+   "size": 28,
+   "typst": "客户ab",
+   "pdfme": "客户ab",
+   "max_dx_pt": 0.001
+  }
+ ],
+ "worst_pt": 0.007,
+ "worst_mm": 0.0025
+}

@@ -1,0 +1,45 @@
+{
+ "kind": "document",
+ "file": "document_full.pdf",
+ "background": true,
+ "offset_x": 0,
+ "offset_y": 0,
+ "elements": [
+  {
+   "text": "套打底稿预览 Form",
+   "x": 20,
+   "y": 30,
+   "width": 120,
+   "height": 12,
+   "size": 14,
+   "align": "left"
+  },
+  {
+   "text": "9007199254740893.00",
+   "x": 20,
+   "y": 50,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "right"
+  },
+  {
+   "text": "9007199254740993.01",
+   "x": 110.5,
+   "y": 50,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "center"
+  },
+  {
+   "text": "  客户 a  b",
+   "x": 20,
+   "y": 249.7,
+   "width": 170,
+   "height": 16,
+   "size": 28,
+   "align": "left"
+  }
+ ]
+}
