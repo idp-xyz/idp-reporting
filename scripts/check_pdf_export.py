@@ -43,6 +43,7 @@ Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | -
 """
 import argparse
 import copy
+import decimal
 import json
 import os
 import re
@@ -401,30 +402,69 @@ def ink_outside(page, rects, tolerance=1.5):
 
 
 def document_rects(exp):
-    """The banner and the boxes of a document, in points, with the print offsets."""
+    """The banner, the boxes and the table region of a document, in points, with the offsets."""
     ox, oy = exp["offset_x"], exp["offset_y"]
     return [pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)] + [
-        pymupdf.Rect((e["x"] + ox) * MM, (e["y"] + oy) * MM, (e["x"] + ox + e["width"]) * MM, (e["y"] + oy + e["height"]) * MM) for e in exp["elements"]]
+        pymupdf.Rect((e["x"] + ox) * MM, (e["y"] + oy) * MM, (e["x"] + ox + e["width"]) * MM, (e["y"] + oy + e["height"]) * MM) for e in exp["elements"]] + (
+        [table_region(exp)] if exp.get("table") else [])
 
 
 def check_document(directory, exp, font=None):
     """Checks a document template preview; returns problems and the layout summary. With font,
-    the path of the Regular face, every character must sit at its plain-advance position."""
+    the path of the Regular face, every character must sit at its plain-advance position. A
+    document with a table has as many pages as its rows need; every page carries the banner,
+    the text boxes and the background, and the table is checked across the pages."""
     problems = []
-    metrics = pymupdf.Font(fontfile=font) if font else None
+    metrics = faces(font)
     doc = pymupdf.open(os.path.join(directory, exp["file"]))
     xmp = doc.get_xml_metadata()
     if not re.search(r"pdfaid:part[^0-9]{0,4}2\b", xmp) or not re.search(r"pdfaid:conformance[^A-Z]{0,4}B\b", xmp):
         problems.append("no PDF/A-2b identification in the XMP metadata")
-    if doc.page_count != 1:
+    table = exp.get("table")
+    if table is None and doc.page_count != 1:
         return problems + [f"{doc.page_count} pages, expected one"], {"pages": doc.page_count}
-    page = doc[0]
+    region = table_region(exp) if table else None
+    pages = []
+    for i, page in enumerate(doc):
+        page_problems, chars, used = check_page(directory, page, i, exp, metrics, region)
+        problems += [f"page {i + 1}: {p}" for p in page_problems]
+        pages.append((page, chars, used))
+    layout = {"pages": doc.page_count}
+    if table:
+        problems += check_table(exp, pages, metrics, layout)
+    for i, (page, chars, used) in enumerate(pages):
+        rest = [c for c in chars if c["n"] not in used and c["c"].strip()]
+        if rest:
+            problems.append(f"page {i + 1}: unexpected text {''.join(c['c'] for c in rest)[:40]!r}")
+        if not exp["background"] and ink_outside(page, document_rects(exp)):
+            problems.append(f"page {i + 1}: ink outside the boxes and the banner")
+    return problems, layout
+
+
+def faces(font):
+    """The Regular face given with --font and the Bold face next to it, by weight; None without."""
+    if not font:
+        return None
+    bold = font.replace("Regular", "Bold")
+    return {False: pymupdf.Font(fontfile=font), True: pymupdf.Font(fontfile=bold) if bold != font and os.path.exists(bold) else None}
+
+
+def table_region(exp):
+    t = exp["table"]
+    return pymupdf.Rect((t["x"] + exp["offset_x"]) * MM, (t["y"] + exp["offset_y"]) * MM, (t["x"] + exp["offset_x"] + t["width"]) * MM, (t["y"] + exp["offset_y"] + t["height"]) * MM)
+
+
+def check_page(directory, page, number, exp, metrics, region):
+    """Checks one page: A4, fonts, ink and colour, the banner and every text box at its place,
+    the background; returns problems, the characters and the characters accounted for. Text
+    inside the table region is left to check_table."""
+    problems = []
     if abs(page.rect.width - 210 * MM) > 0.1 or abs(page.rect.height - 297 * MM) > 0.1:
         problems.append("the page is not A4 portrait")
     for f in page.get_fonts(full=True):
         if f[1] == "n/a" or f[2] == "Type3":
             problems.append(f"font {f[3]} is {f[2]}, embedded as {f[1]}")
-    chars = characters(page, 0)
+    chars = characters(page, number)
     for c in overlaps(chars):
         problems.append(f"{c['c']!r} is drawn over another character")
     for c in inkless(page, chars)[:5]:
@@ -446,30 +486,11 @@ def check_document(directory, exp, font=None):
             problems.append(f"{text!r} is not drawn on one line with its baseline at {base:.2f} pt in its box")
             continue
         used.update(c["n"] for c in line)
-        solid = [c for c in line if c["c"].strip()]
-        start, end = line[0]["x"], solid[-1]["x1"]
-        bases = [c for c in line if not c["mark"]]
-        if any(b["x"] < a["x"] for a, b in zip(bases, bases[1:])):
-            problems.append(f"{text!r} is not drawn left to right")
-        # Leading spaces count: the value is centred as a whole, as pdfme centred it.
-        if align == "left" and abs(start - left) > 0.3 or align == "right" and abs(end - right) > 0.3 or align == "center" and abs((start + end) / 2 - (left + right) / 2) > 0.5:
-            problems.append(f"{text!r} is not aligned {align} in its box ({start:.2f}..{end:.2f} pt, box {left:.2f}..{right:.2f})")
-        if end > right + 0.3 or start < left - 0.3:
-            problems.append(f"{text!r} leaves its box")
-        if metrics is not None:
-            # Every cluster where the plain advances put it: the engine shaped nothing across them.
-            expected = cluster_positions(metrics, text.rstrip(), size, left, right, align)
-            if len(bases) != len(expected):
-                problems.append(f"{text!r}: {len(bases)} characters drawn, {len(expected)} expected")
-            for c, (ch, x) in zip(bases, expected):
-                if abs(c["x"] - x) > 0.1:
-                    problems.append(f"{text!r}: {c['c']!r} at {c['x']:.2f} pt is not at its plain-advance position {x:.2f} pt")
-                    break
-    rest = [c for c in chars if c["n"] not in used and c["c"].strip()]
-    if rest:
-        problems.append(f"unexpected text {''.join(c['c'] for c in rest)[:40]!r}")
-    if not exp["background"] and ink_outside(page, document_rects(exp)):
-        problems.append("ink outside the boxes and the banner")
+        problems += check_line(line, text.rstrip(), size, left, right, align, metrics)
+    if region is not None:
+        for c in chars:
+            if region.x0 - 1 <= (c["x0"] + c["x1"]) / 2 <= region.x1 + 1 and region.y0 - 1 <= c["base"] <= region.y1 + 1:
+                used.add(c["n"])
     images = page.get_images(full=True)
     if len(images) != int(exp["background"]):
         problems.append(f"{len(images)} images, expected {int(exp['background'])}")
@@ -480,9 +501,190 @@ def check_document(directory, exp, font=None):
         for rect in page.get_image_rects(img[0]):
             if max(abs(rect.x0 - x0), abs(rect.y0 - y0), abs(rect.x1 - x0 - w * scale), abs(rect.y1 - y0 - h * scale)) > 0.5:
                 problems.append(f"the background is drawn at {rect}, not fitted and centred")
-        if exp.get("background_file") and not same_picture(pymupdf.Pixmap(doc, img[0]), pymupdf.Pixmap(os.path.join(directory, exp["background_file"]))):
+        if exp.get("background_file") and not same_picture(pymupdf.Pixmap(page.parent, img[0]), pymupdf.Pixmap(os.path.join(directory, exp["background_file"]))):
             problems.append("the background is not the PNG named")
-    return problems, {"pages": 1}
+    return problems, chars, used
+
+
+def check_line(line, text, size, left, right, align, metrics, bold=False):
+    """Checks one drawn line of text against its box edges and, with metrics, the position
+    the plain advances of the face of its weight give every character."""
+    problems = []
+    metrics = metrics.get(bold) if metrics else None
+    solid = [c for c in line if c["c"].strip()]
+    start, end = line[0]["x"], solid[-1]["x1"]
+    bases = [c for c in line if not c["mark"]]
+    if any(b["x"] < a["x"] for a, b in zip(bases, bases[1:])):
+        problems.append(f"{text!r} is not drawn left to right")
+    # Leading spaces count: the value is centred as a whole, as pdfme centred it.
+    if align == "left" and abs(start - left) > 0.3 or align == "right" and abs(end - right) > 0.3 or align == "center" and abs((start + end) / 2 - (left + right) / 2) > 0.5:
+        problems.append(f"{text!r} is not aligned {align} in its box ({start:.2f}..{end:.2f} pt, box {left:.2f}..{right:.2f})")
+    if end > right + 0.3 or start < left - 0.3:
+        problems.append(f"{text!r} leaves its box")
+    if metrics is not None:
+        # Every cluster where the plain advances put it: the engine shaped nothing across them.
+        expected = cluster_positions(metrics, text, size, left, right, align)
+        if len(bases) != len(expected):
+            problems.append(f"{text!r}: {len(bases)} characters drawn, {len(expected)} expected")
+        for c, (ch, x) in zip(bases, expected):
+            if abs(c["x"] - x) > 0.1:
+                problems.append(f"{text!r}: {c['c']!r} at {c['x']:.2f} pt is not at its plain-advance position {x:.2f} pt")
+                break
+    return problems
+
+
+TABLE_INSET = 3.0
+FORWARD, CARRY, TOTAL = "承前（第 ", "过次（转第 ", "合计"
+
+
+def group_digits(v):
+    """Thousands separators in the integer part of an exact decimal string, as the export prints."""
+    sign, rest = ("-", v[1:]) if v.startswith("-") else ("", v)
+    whole, dot, frac = rest.partition(".")
+    out = ""
+    for i, ch in enumerate(whole):
+        if i and (len(whole) - i) % 3 == 0:
+            out += ","
+        out += ch
+    return sign + out + dot + frac
+
+
+def exact_sum(values, scale):
+    """The exact sum of decimal strings, with the longest fraction seen or the column's scale."""
+    frac = max([scale] + [len(v.partition(".")[2]) for v in values])
+    total = sum(decimal.Decimal(v) for v in values) if values else decimal.Decimal(0)
+    return format(total.quantize(decimal.Decimal(1).scaleb(-frac)) if frac else total, "f")
+
+
+def check_table(exp, pages, metrics, layout):
+    """Checks the table over the pages: the header on every page (full mode), every row's
+    cells complete, in order, on one page, each line inside its column at its plain-advance
+    position, the brought-forward, carry-forward and total rows with exactly recomputed sums,
+    and the snapshot's totals equal to the sums. Records the first row of each page."""
+    problems = []
+    t = exp["table"]
+    region = table_region(exp)
+    size = t["size"]
+    edges, x = [], region.x0
+    for col in t["columns"]:
+        edges.append((x, x + col["width"] * MM))
+        x += col["width"] * MM
+    full = exp.get("mode", "full") == "full"
+    metric = [c["metric"] for c in t["columns"]]
+    rows = t["rows"]
+    expected = [[squash(group_digits(v) if metric[j] else v) for j, v in enumerate(row)] for row in rows]
+    sums = lambda upto: [group_digits(exact_sum([r[j] for r in rows[:upto]], t["columns"][j]["scale"])) if metric[j] and j > 0 else "" for j in range(len(edges))]
+    k, acc = -1, None  # the current row and its accumulated cell texts
+    first_rows, row_page = [], {}
+    total_seen = False
+    for number, (page, chars, _) in enumerate(pages, 1):
+        inside = [c for c in chars if region.x0 - 1 <= (c["x0"] + c["x1"]) / 2 <= region.x1 + 1 and region.y0 - 1 <= c["base"] <= region.y1 + 1]
+        for c in inside:
+            if c["x0"] < region.x0 - 0.3 or c["x1"] > region.x1 + 0.3 or c["y0"] < region.y0 - 0.3 or c["y1"] > region.y1 + 0.3:
+                problems.append(f"page {number}: {c['c']!r} leaves the table region")
+                break
+        # Baseline groups, top to bottom; each with its text per column.
+        groups = {}
+        for c in inside:
+            if abs(c["size"] - size) > 0.05:
+                problems.append(f"page {number}: {c['c']!r} at {c['size']} pt in the table")
+                break
+            groups.setdefault(round(c["base"], 1), []).append(c)
+        lines = []
+        for base in sorted(groups):
+            cells = {}
+            for c in sorted(groups[base], key=lambda c: c["x"]):
+                j = next((j for j, (a, b) in enumerate(edges) if a - 0.5 <= (c["x0"] + c["x1"]) / 2 < b + 0.5), None)
+                if j is None:
+                    problems.append(f"page {number}: {c['c']!r} at {c['x']:.1f} is in no column")
+                    continue
+                cells.setdefault(j, []).append(c)
+            bold = all(c["bold"] for cs in cells.values() for c in cs)
+            if not bold and any(c["bold"] for cs in cells.values() for c in cs):
+                problems.append(f"page {number}: a line mixes bold and regular text")
+            lines.append((base, bold, cells))
+        for base, bold, cells in lines:
+            for j, cs in cells.items():
+                text = "".join(c["c"] for c in cs)
+                if text.strip():
+                    left, right = edges[j][0] + TABLE_INSET, edges[j][1] - TABLE_INSET
+                    problems += [f"page {number}: {p}" for p in check_line(cs, text.rstrip(), size, left, right, "right" if metric[j] else "left", metrics, bold)]
+        text_of = lambda cells, j: "".join(c["c"] for c in cells.get(j, []))
+        # Leading bold lines: the header (full mode) and, from page 2 on, the brought-forward row.
+        leading = []
+        while lines and lines[0][1]:
+            leading.append(lines.pop(0))
+        forward = leading.pop() if leading and text_of(leading[-1][2], 0).startswith(FORWARD) else None
+        header = ["".join(text_of(cells, j) for _, _, cells in leading) for j in range(len(edges))]
+        if full:
+            for j, col in enumerate(t["columns"]):
+                if squash(header[j]) != squash(col["label"]):
+                    problems.append(f"page {number}: column {j + 1} header {header[j]!r}, expected {col['label']!r}")
+        elif leading:
+            problems.append(f"page {number}: a header in the variable layer")
+        if number > 1:
+            want = sums(k + 1)
+            if forward is None:
+                problems.append(f"page {number}: no brought-forward row")
+            else:
+                if text_of(forward[2], 0) != FORWARD + str(number) + " 页）":
+                    problems.append(f"page {number}: brought-forward label {text_of(forward[2], 0)!r}")
+                for j in range(1, len(edges)):
+                    if text_of(forward[2], j).strip() != want[j]:
+                        problems.append(f"page {number}: brought forward {text_of(forward[2], j)!r} in column {j + 1}, expected {want[j]!r}")
+        elif forward is not None:
+            problems.append("page 1: a brought-forward row")
+        # The trailing bold line: carry-forward, or the total on the last page.
+        trailing = lines.pop() if lines and lines[-1][1] else None
+        if any(bold for _, bold, _ in lines):
+            problems.append(f"page {number}: bold text among the rows")
+        # The rows: each line continues the current row's cells or starts the next row.
+        page_first = None
+        for base, _, cells in lines:
+            if acc is None or all(acc[j] == expected[k][j] for j in range(len(edges))):
+                k += 1
+                if k >= len(rows):
+                    problems.append(f"page {number}: text after the last row: {[text_of(cells, j) for j in cells][:3]!r}")
+                    break
+                acc = [""] * len(edges)
+                row_page[k] = number
+                if page_first is None:
+                    page_first = k
+            elif row_page.get(k) != number:
+                problems.append(f"row {k + 1} is split over pages {row_page.get(k)} and {number}")
+                row_page[k] = number
+            for j, cs in cells.items():
+                piece = squash("".join(c["c"] for c in cs))
+                if not (expected[k][j].startswith(acc[j] + piece)):
+                    problems.append(f"row {k + 1}, column {j + 1}: {''.join(c['c'] for c in cs)!r} does not continue {rows[k][j]!r}")
+                else:
+                    acc[j] += piece
+        first_rows.append(page_first)
+        last = number == len(pages)
+        if trailing is None:
+            problems.append(f"page {number}: no {'total' if last else 'carry-forward'} row")
+            continue
+        label = text_of(trailing[2], 0)
+        want = sums(k + 1)
+        if last:
+            if label != TOTAL:
+                problems.append(f"page {number}: total label {label!r}")
+            total_seen = True
+        elif label != CARRY + str(number + 1) + " 页）":
+            problems.append(f"page {number}: carry-forward label {label!r}")
+        for j in range(1, len(edges)):
+            if text_of(trailing[2], j).strip() != want[j]:
+                problems.append(f"page {number}: {'total' if last else 'carried'} {text_of(trailing[2], j)!r} in column {j + 1}, expected {want[j]!r}")
+    if k + 1 != len(rows) or (acc is not None and any(acc[j] != expected[k][j] for j in range(len(edges)))):
+        problems.append(f"{k + 1} rows drawn complete, {len(rows)} expected")
+    if not total_seen:
+        problems.append("no total row")
+    for j, col in enumerate(t["columns"]):
+        if metric[j] and j > 0 and col["field"] in t["totals"]:
+            if decimal.Decimal(t["totals"][col["field"]]) != decimal.Decimal(exact_sum([r[j] for r in rows], col["scale"])):
+                problems.append(f"column {j + 1}: the snapshot total {t['totals'][col['field']]} is not the sum of the rows")
+    layout["first_rows"] = first_rows
+    return problems
 
 
 def same_picture(a, b):
@@ -510,6 +712,17 @@ def document_corruptions(exp):
     yield changed("a value missing", lambda e: e["elements"].pop())
     yield changed("a value added", lambda e: e["elements"].append({"text": "X", "x": 20, "y": 200, "width": 50, "height": 10, "size": 10, "align": "left"}))
     yield changed("the background flag flipped", lambda e: e.__setitem__("background", not e["background"]))
+    if exp.get("table"):
+        yield changed("a table cell changed", lambda e: e["table"]["rows"][0].__setitem__(0, e["table"]["rows"][0][0] + "X"))
+        yield changed("a table row removed", lambda e: e["table"]["rows"].pop())
+        yield changed("two table rows swapped", lambda e: e["table"]["rows"].__setitem__(slice(0, 2), [e["table"]["rows"][1], e["table"]["rows"][0]]))
+        yield changed("a table row added", lambda e: e["table"]["rows"].append(list(e["table"]["rows"][0])))
+        yield changed("a table total changed", lambda e: e["table"]["totals"].__setitem__(next(iter(e["table"]["totals"])), "1.00"))
+        yield changed("a table amount changed", lambda e: e["table"]["rows"][1].__setitem__(2, "0.01"))
+        if exp.get("mode", "full") == "full":
+            yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", e["table"]["columns"][0]["label"] + "X"))
+        yield changed("the table moved by 0.5 mm", lambda e: e["table"].__setitem__("x", e["table"]["x"] + 0.5))
+        yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", e["table"]["columns"][0]["width"] + 5), e["table"]["columns"][1].__setitem__("width", e["table"]["columns"][1]["width"] - 5)))
 
 
 def document_pdf_corruptions(directory, exp, scratch, font_file=None):
@@ -537,8 +750,10 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
 
     e = exp["elements"][0]
     top = (e["y"] + exp["offset_y"]) * MM
-    yield "extra text", "unexpected text", copy_with("extra", text("X", (300, 700)))
-    yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", (300, 700), embedded=False))
+    # Below the safe region, outside every box and the table.
+    free = (105 * MM, 285 * MM)
+    yield "extra text", "unexpected text", copy_with("extra", text("X", free))
+    yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", free, embedded=False))
 
     def cover(doc):
         doc[0].draw_rect(pymupdf.Rect(0, top, 210 * MM, top + ASCENT * e["size"] + 0.3 * e["size"]), color=None, fill=(1, 1, 1), overlay=True)
@@ -546,10 +761,10 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
     yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
     if not exp["background"]:
         yield "a shape outside the boxes", "outside the boxes", copy_with("outside", lambda doc: doc[0].draw_circle((105 * MM, 285 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
-    yield "an extra page", "pages, expected one", copy_with("pages", lambda doc: doc.new_page())
+    yield "an extra page", "no total row" if exp.get("table") else "pages, expected one", copy_with("pages", lambda doc: doc.new_page())
     yield "a smaller page", "not A4", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
-    yield "a value in a light colour", "light colour", copy_with("light", text("X", (300, 700), color=(0.9, 0.9, 0.9)))
-    yield "a replacement character", "replacement character", copy_with("fffd", text("\ufffd", (300, 700)))
+    yield "a value in a light colour", "light colour", copy_with("light", text("X", free, color=(0.9, 0.9, 0.9)))
+    yield "a replacement character", "replacement character", copy_with("fffd", text("\ufffd", free))
 
     def value_line(page, element):
         base = (element["y"] + exp["offset_y"]) * MM + ASCENT * element["size"]
@@ -632,6 +847,42 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
         doc.update_stream(xref, moved.encode("latin1"))
     if font_file and len(e["text"].rstrip()) >= 2 and not exp["background"]:
         yield "a glyph moved by 1 pt", "plain-advance position", copy_with("shift", shift)
+    if exp.get("table"):
+        yield "the last page removed", "rows drawn complete", copy_with("lastpage", lambda doc: doc.delete_page(doc.page_count - 1))
+        region = table_region(exp)
+        size = exp["table"]["size"]
+
+        def cover_carry(doc):
+            # The carry-forward amounts of page 1: the last bold line of the region, right column.
+            page = doc[0]
+            bold = [c for c in characters(page, 0) if c["bold"] and region.y0 <= c["base"] <= region.y1 and c["c"].strip()]
+            base = max(c["base"] for c in bold)
+            page.draw_rect(pymupdf.Rect(region.x0 + region.width / 2, base - ASCENT * size - 1, region.x1 - 0.6, base + descent_of(size)), color=None, fill=(1, 1, 1), overlay=True)
+        yield "the carried amount covered", "no ink", copy_with("carry", cover_carry)
+
+        def first_body_line(page):
+            body = [c for c in characters(page, 0) if not c["bold"] and region.y0 <= c["base"] <= region.y1 and c["c"].strip() and abs(c["size"] - size) < 0.05]
+            top = min(c["base"] for c in body)
+            return sorted([c for c in body if abs(c["base"] - top) <= 0.1], key=lambda c: c["x"])
+
+        def shift_cell(doc):
+            page = doc[0]
+            line = first_body_line(page)
+            move_glyphs(doc, [((line[0]["x"], page.rect.height - line[0]["base"]), line[0]["x"] + exp["table"]["columns"][0]["width"] * MM)])
+        yield "a cell line moved into the next column", "does not continue", copy_with("cellshift", shift_cell)
+        if doc_pages(directory, exp) > 1 and exp.get("mode", "full") == "full":
+            def cover_header(doc):
+                page = doc[1]
+                page.draw_rect(pymupdf.Rect(region.x0 - 0.6, region.y0 - 0.6, region.x1 + 0.6, region.y0 + 2 + ASCENT * size + descent_of(size)), color=None, fill=(1, 1, 1), overlay=True)
+            yield "the header of page 2 covered", "no ink", copy_with("header2", cover_header)
+
+
+def descent_of(size):
+    return 0.3 * size + 2
+
+
+def doc_pages(directory, exp):
+    return pymupdf.open(os.path.join(directory, exp["file"])).page_count
 
 
 def corruptions(exp):

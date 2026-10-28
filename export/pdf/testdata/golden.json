@@ -11,6 +11,22 @@
  "document_hard.pdf": {
   "pages": 1
  },
+ "document_table.pdf": {
+  "first_rows": [
+   0,
+   22,
+   44
+  ],
+  "pages": 3
+ },
+ "document_table_variables.pdf": {
+  "first_rows": [
+   0,
+   22,
+   44
+  ],
+  "pages": 3
+ },
  "document_variables.pdf": {
   "pages": 1
  },

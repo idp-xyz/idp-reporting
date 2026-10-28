@@ -51,8 +51,8 @@ a document over the artifact limit, or one that exceeds the renderer's own time 
 memory (2 GiB) limit, fails with BUDGET_EXCEEDED. Such snapshots remain available as
 workbooks. Other renderer failures, and the 20 s job timeout, are EXECUTION_FAILED.
 
-Document templates (S03-E, docs/S03E_SCOPE.md) are mounted when the demo has the matching directories, and
-previews when it has the PDF flags:
+Document templates (S03-E, docs/S03E_SCOPE.md; multi-page tables S03-F, docs/S03F_SCOPE.md) are mounted when the
+demo has the matching directories, and previews when it has the PDF flags:
 
 | Method and path | Request / response |
 |---|---|
@@ -73,6 +73,13 @@ a background store; a preview whose wait for one of the renderer's processes and
 render timeout (15 s) is 413 BUDGET_EXCEEDED (previews hold at most all but one of the processes, so they never
 fail an export). Previews are never issued documents and are not stored. A background upload is tried with the
 renderer and refused when its preview would exceed the artifact limit.
+
+A schema 1.3 template adds `table: {x, y, width, height, font_size, columns: [{field, width}]}` (S03-F): the
+preview then lists every row of the frozen snapshot over as many A4 pages as it needs, each page with the same
+background, boxes and banner, the header row, a 承前 row from page 2 on, a 过次 row on every page but the last
+and the 合计 row on the last, with the metric columns' sums computed exactly on the server. A table column the
+dataset does not have is 403; a row taller than the table's pages can hold, or a document of more than 100
+pages, is 422; a snapshot whose whole-scope total differs from the sum of its rows is 409 INTEGRITY_FAILURE.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile

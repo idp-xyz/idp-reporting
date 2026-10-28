@@ -66,5 +66,8 @@ refused. The preview banner stays at 10 mm, 10 mm on a white backing.
   whose preview exceeds the artifact limit (Typst keeps the PNG's compression), so the check is a guard.
 - There is no canvas in the console; geometry is edited with the existing millimetre controls. A canvas, if users
   need one, is a later, separately loaded feature written without a framework.
+- Multi-page documents (S03-F) keep the same division of labour: Go wraps every table cell with the export's
+  line-break model, sizes rows, fills pages and computes the carried sums exactly; Typst draws the rules, fills
+  and text lines Go computed, each line placed like a box value and asserted not to be wider than measured.
 - Revisit only with evidence: if Typst fails a hard requirement of a document feature, measure the alternatives
   again under ADR 0001's conditions.
