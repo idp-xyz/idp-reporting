@@ -104,7 +104,7 @@ delivered fails the job with ISSUE_UNRECONCILED instead of its own code, and the
 by the job id. A first attempt that fails before it reached the product (at the source, snapshot or row check
 or at the issuer's check) calls nothing there. A worker that loses its lease never voids: the worker that holds
 the job reuses the reservation (the product answers the same job id again), renders the same bytes and has them
-confirmed again, which the product does idempotently. A running issue job cannot be cancelled (it finishes, or
+confirmed again, which the product does idempotently. A lease is lost only when the store says so: an answer of lost lease while the store still has the claim running with its lease intact (or from the product's adapter, which cannot speak it) is INTEGRITY_FAILURE and voids, and a publication refused only because the snapshot's source read expired is denied (AUTH_SCOPE_DENIED) and voids. A running issue job cannot be cancelled (it finishes, or
 fails and voids; its cancel returns it unchanged); a queued one can. `POST /issues` is mounted with the template routes (`template_routes` in the capabilities) and
 answers 422 UNSUPPORTED_COMBINATION when the deployment cannot issue (`issuance: false`: no issuer or no PDF
 format) or the integration's adapter does not implement the product's document authority; a stored job whose

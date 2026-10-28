@@ -3,6 +3,7 @@ package integration_test
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
@@ -96,6 +97,21 @@ func (w *shortLease) Publish(ctx context.Context, c r.Claim, p r.Publication) er
 	w.mu.Unlock()
 	if slow {
 		time.Sleep(2200 * time.Millisecond)
+	}
+	return w.Repository.Publish(ctx, c, p)
+}
+
+// expireBeforePublish lets the snapshot's source read run out, by the store's own clock, between the
+// worker's last source check and the publication: it sets the job's source expiry one second into the
+// past through the test's admin connection and then publishes for real. The claim keeps its lease.
+type expireBeforePublish struct {
+	r.Repository
+	admin *pgxpool.Pool
+}
+
+func (w *expireBeforePublish) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
+	if _, e := w.admin.Exec(ctx, `UPDATE reporting_s01.jobs SET source_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`, c.Job.ID); e != nil {
+		return e
 	}
 	return w.Repository.Publish(ctx, c, p)
 }
@@ -500,6 +516,67 @@ func TestDurablePostgresIssues(t *testing.T) {
 		}
 		if got, e := s.Job(ctx, v.p, next.ID); e != nil || got.Issue.Number != "AR-000002" {
 			t.Fatalf("%+v %v", got, e)
+		}
+	})
+	// The snapshot's source read runs out by the store's clock after the worker's last check and before
+	// the publication, while the lease is good: the claim has lost nothing, so the publication is
+	// denied (as in the memory store) and not answered "lease lost". The worker then voids what the
+	// product confirmed and fails the job AUTH_SCOPE_DENIED, with no record on the platform.
+	t.Run("an_expired_source_at_publication_is_denied_and_voided_not_a_lost_lease", func(t *testing.T) {
+		v := newDurable(t)
+		admin, e := pgxpool.New(ctx, os.Getenv("REPORTING_S01_TEST_DSN"))
+		if e != nil {
+			t.Fatal("platform fixture admin unavailable")
+		}
+		defer admin.Close()
+		snap := durableFreeze(t, v, contractsim.FinancialQuery(), "snap") // frozen through the plain service
+		s := issueDurableServiceOn(t, v, &expireBeforePublish{Repository: v.repo, admin: admin}, &stampIssuer{})
+		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 1), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if ran, e := s.RunOne(ctx); !ran || !errors.Is(e, r.ErrDenied) || errors.Is(e, r.ErrLease) {
+			t.Fatal(ran, e)
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "failed" || st.ErrorCode != "AUTH_SCOPE_DENIED" || st.Generation != 1 || st.ArtifactID != "" {
+			t.Fatalf("the job: %+v %v; want failed with AUTH_SCOPE_DENIED", st, e)
+		}
+		if _, e := v.repo.Issue(ctx, v.p.Identity, j.ID); !errors.Is(e, r.ErrNotFound) {
+			t.Fatal("a record exists for a job that failed", e)
+		}
+		var assets int
+		if e := admin.QueryRow(ctx, `SELECT count(*) FROM reporting_s01.assets WHERE kind IN ('artifact','issue')`).Scan(&assets); e != nil || assets != 0 {
+			t.Fatalf("the failed publication left %d assets behind: %v", assets, e)
+		}
+		if rec, held := productRecord(t, v, j.ID); !held || rec.State != contractsim.IssueVoid || rec.Reason != "AUTH_SCOPE_DENIED" || rec.Number != "AR-000001" || rec.SHA256 == "" {
+			t.Fatalf("the product's record of the job: %+v %v; want the confirmed file voided", rec, held)
+		}
+	})
+	// When the lease is lost for real and the source read has expired too, the lease is what was lost:
+	// another worker may hold the job, so nothing is voided and the job is not failed.
+	t.Run("a_lost_lease_wins_over_an_expired_source", func(t *testing.T) {
+		v := newDurable(t)
+		admin, e := pgxpool.New(ctx, os.Getenv("REPORTING_S01_TEST_DSN"))
+		if e != nil {
+			t.Fatal("platform fixture admin unavailable")
+		}
+		defer admin.Close()
+		snap := durableFreeze(t, v, contractsim.FinancialQuery(), "snap") // frozen through the plain service
+		slow := &shortLease{Repository: v.repo}
+		s := issueDurableServiceOn(t, v, &expireBeforePublish{Repository: slow, admin: admin}, &stampIssuer{})
+		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 1), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		slow.slow = 1 // only the issue's publication outlasts its lease
+		if ran, e := s.RunOne(ctx); !ran || !errors.Is(e, r.ErrLease) || errors.Is(e, r.ErrDenied) {
+			t.Fatal(ran, e)
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "running" || st.Generation != 1 {
+			t.Fatalf("a lost lease finished or failed the job: %+v %v", st, e)
+		}
+		if rec, held := productRecord(t, v, j.ID); !held || rec.State != contractsim.IssueConfirmed {
+			t.Fatalf("a lost lease voided at the product: %+v %v", rec, held)
 		}
 	})
 	// An issue job is cancelled only while queued; a running one is returned unchanged, with its

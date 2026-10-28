@@ -562,6 +562,21 @@ func errorCode(e error) string {
 // returned (an answer can be lost on its way back).
 type issueAttempt struct{ prepared bool }
 
+// leaseCheckTimeout bounds the read with which RunOne confirms a lost lease; with it a worker is
+// still done within its lease (WorkTimeout + leaseCheckTimeout + VoidTimeout + 2 s < LeaseDuration).
+const leaseCheckTimeout = time.Second
+
+// fromProduct: the platform's lease error is its own, and a source product cannot speak it. An
+// adapter that answers with it (a product that mistook it for a retry hint, or a wrapper that
+// passes a repository's error on) has given an answer the platform cannot trust: INTEGRITY_FAILURE,
+// so that the worker does not take the answer for the loss of its lease and keeps the void.
+func fromProduct(e error) error {
+	if errors.Is(e, ErrLease) {
+		return fmt.Errorf("%w: the source product answered with the platform's lease error: %v", ErrIntegrity, e)
+	}
+	return e
+}
+
 // RunOne claims one job and executes it. A job that fails is failed with the code of its error.
 // An issue job (S03-H) that fails other than by losing its lease is first voided at the source
 // product when this attempt called PrepareDocument, or when the claim is of a later generation
@@ -570,7 +585,10 @@ type issueAttempt struct{ prepared bool }
 // fails the job with ISSUE_UNRECONCILED instead of its own code, and the product can find the
 // reservation by the job id. A first attempt that fails before it reached the product calls
 // nothing there. Losing the lease never voids: the worker that holds the job reuses the same
-// reservation, which the product answers again by the job id.
+// reservation, which the product answers again by the job id. An answer of ErrLease counts as the
+// loss of the lease only when the store confirms it (holdsJob says otherwise, or cannot say): while
+// the store still has the claim running with a lease that has not run out, the answer is
+// INTEGRITY_FAILURE and the job is voided and failed like any other.
 func (s *Service) RunOne(ctx context.Context) (bool, error) {
 	claim, e := s.repo.Claim(ctx, LeaseDuration)
 	if e != nil || claim == nil {
@@ -581,8 +599,16 @@ func (s *Service) RunOne(ctx context.Context) (bool, error) {
 	var attempt issueAttempt
 	e = s.execute(ctx, *claim, &attempt)
 	if e != nil {
+		// ErrLease is believed only when the store confirms it: an answer of lost lease while the
+		// store still has this claim running with a lease that has not run out is not a lost lease,
+		// and the job fails (and voids) like any other.
+		lost := errors.Is(e, ErrLease)
+		if lost && s.holdsJob(ctx, claim.Job) {
+			lost = false
+			e = fmt.Errorf("%w: answered %w although the store still holds the job for this claim", ErrIntegrity, e)
+		}
 		code := errorCode(e)
-		if j := claim.Job; j.Kind == "issue" && !errors.Is(e, ErrLease) && (attempt.prepared || j.Generation > 1) {
+		if j := claim.Job; j.Kind == "issue" && !lost && (attempt.prepared || j.Generation > 1) {
 			holds, voidErr := s.voidIssue(ctx, j, code)
 			if !holds {
 				return true, e
@@ -597,6 +623,17 @@ func (s *Service) RunOne(ctx context.Context) (bool, error) {
 		_ = s.repo.Fail(cleanup, *claim, code)
 	}
 	return true, e
+}
+
+// holdsJob: the store says that this claim still holds the job, running at the claim's generation
+// with a lease that has not run out by the service's clock. It reads in a context of its own
+// bounded by leaseCheckTimeout (the job's may have run out); a store that cannot be read, or
+// that does not say so, does not confirm it.
+func (s *Service) holdsJob(ctx context.Context, j Job) bool {
+	ctx, stop := context.WithTimeout(context.WithoutCancel(ctx), leaseCheckTimeout)
+	defer stop()
+	now, e := s.repo.Job(ctx, j.Owner.Identity, j.ID)
+	return e == nil && now.State == "running" && now.Generation == j.Generation && now.LeaseUntil.After(s.now())
 }
 
 // voidIssue voids at the source product whatever it holds for a failed issue job, in a context of
@@ -697,7 +734,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		attempt.prepared = true
 		res, e := authority.PrepareDocument(ctx, sc, IssueIntent{JobID: j.ID, Prepared: snap.Prepared, RowIndex: j.RowIndex, RowSHA256: Digest(snap.Result.Rows[j.RowIndex]), TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256})
 		if e != nil {
-			return e
+			return fromProduct(e)
 		}
 		// The times are judged by value; what the product returns may carry any location (a time
 		// read back from its database), while the renderer takes only time.UTC.
@@ -720,7 +757,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		sum := bytesDigest(b)
 		receipt, e := authority.ConfirmIssue(ctx, sc, IssueConfirmation{JobID: j.ID, ReservationRef: res.Ref, SHA256: sum, Pages: result.Pages})
 		if e != nil {
-			return e
+			return fromProduct(e)
 		}
 		if !validReceipt(res, receipt) {
 			return ErrIntegrity

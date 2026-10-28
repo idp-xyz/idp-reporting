@@ -167,19 +167,34 @@ type hidden struct{ r.Adapter }
 // loseLease wraps the repository of a test. Its first publications lose the lease while the job
 // stays running: the clock passes the lease as the store would see it, and the publication is
 // answered with ErrLease. A lying publication commits and still reports an error, as a commit
-// whose acknowledgement was lost does. A refusing one commits nothing and reports its error.
+// whose acknowledgement was lost does. A refusing one commits nothing and reports its error. A
+// spurious one answers ErrLease while the lease has not run out (a store that mistook another
+// refusal for a lost lease); jobErr makes the job unreadable through the wrapper.
 type loseLease struct {
 	r.Repository
-	clock  *testClock
-	lose   int
-	lie    int
-	refuse error
+	clock    *testClock
+	lose     int
+	lie      int
+	spurious int
+	refuse   error
+	jobErr   error
+}
+
+func (l *loseLease) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
+	if l.jobErr != nil {
+		return r.Job{}, l.jobErr
+	}
+	return l.Repository.Job(ctx, i, id)
 }
 
 func (l *loseLease) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if l.lose > 0 {
 		l.lose--
 		l.clock.Advance(r.LeaseDuration + time.Second)
+		return r.ErrLease
+	}
+	if l.spurious > 0 {
+		l.spurious--
 		return r.ErrLease
 	}
 	if l.refuse != nil {
@@ -1099,6 +1114,123 @@ func TestIssueFailureDoesNotVoidWhatAnotherOutcomeOwns(t *testing.T) {
 	}
 	if rec, ok := held(w, k.ID); !ok || rec.State != contractsim.IssueReserved {
 		t.Fatalf("%+v %v", rec, ok)
+	}
+}
+
+// The store, not the answer, says whether the lease is lost. A publication that answers ErrLease while
+// the store still has the job running under this claim with a lease that has not run out has lost
+// nothing (the PostgreSQL store once answered so when only the source read had expired): the product
+// holds a confirmed number for a file that was never published, so the job is voided and failed
+// INTEGRITY_FAILURE, and not left failed LEASE_LOST with nothing voided.
+func TestIssueLeaseErrorWithTheLeaseStillHeldIsNotALostLease(t *testing.T) {
+	v := newIssueEnv(t, envOpts{})
+	v.store.spurious = 1
+	j := v.submit(1, "one")
+	ran, e := v.run()
+	if !ran || !errors.Is(e, r.ErrIntegrity) {
+		t.Fatal(ran, e)
+	}
+	if st := v.stored(j.ID); st.State != "failed" || st.ErrorCode != "INTEGRITY_FAILURE" || st.Generation != 1 {
+		t.Fatalf("the job: %+v; want failed with INTEGRITY_FAILURE", st)
+	}
+	if _, e := v.repo.Issue(context.Background(), v.p.Identity, j.ID); !errors.Is(e, r.ErrNotFound) {
+		t.Fatal("a record exists for a failed job", e)
+	}
+	if len(v.finance.voids) != 1 || v.finance.voids[0] != (voidCall{j.ID, "INTEGRITY_FAILURE"}) {
+		t.Fatalf("voids: %+v", v.finance.voids)
+	}
+	if rec := assertVoided(t, v, j.ID, "INTEGRITY_FAILURE"); rec.SHA256 == "" || rec.Number != "AR-000001" {
+		t.Fatalf("the product had confirmed the file, and its record says so: %+v", rec)
+	}
+	next := v.submit(2, "two")
+	if _, e := v.run(); e != nil {
+		t.Fatal(e)
+	}
+	if got := v.job(next.ID); got.State != "succeeded" || got.Issue.Number != "AR-000002" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// The store's word holds the other way too: when it does not confirm that this claim still holds the
+// job (another worker took it, the lease ran out) or cannot be read, ErrLease is a lost lease and
+// nothing is voided.
+func TestIssueLeaseErrorIsBelievedOnlyWhenTheStoreConfirmsIt(t *testing.T) {
+	ctx := context.Background()
+	// Another worker claims the job while this one renders: the lease of the new claim is good,
+	// but it is not this claim's.
+	v := newIssueEnv(t, envOpts{})
+	j := v.submit(0, "one")
+	v.issuer.hook = func() {
+		v.clock.Advance(r.LeaseDuration + time.Second)
+		taken, e := v.repo.Claim(ctx, r.LeaseDuration)
+		if e != nil || taken == nil || taken.Job.Generation != 2 {
+			t.Error("the job was not claimed again", taken, e)
+		}
+	}
+	if ran, e := v.run(); !ran || !errors.Is(e, r.ErrLease) || errors.Is(e, r.ErrIntegrity) {
+		t.Fatal(ran, e)
+	}
+	if st := v.stored(j.ID); st.State != "running" || st.Generation != 2 || st.ErrorCode != "" {
+		t.Fatalf("the stale worker failed a job it no longer holds: %+v", st)
+	}
+	if len(v.finance.voids) != 0 {
+		t.Fatalf("a lost lease voided the job: %+v", v.finance.voids)
+	}
+	if rec, ok := held(v, j.ID); !ok || rec.State != contractsim.IssueConfirmed {
+		t.Fatalf("%+v %v", rec, ok)
+	}
+	// The store cannot be read: nothing confirms that the claim still holds the job, so nothing is
+	// voided (the worker that may hold it reuses the reservation).
+	w := newIssueEnv(t, envOpts{})
+	k := w.submit(0, "two")
+	w.store.spurious = 1
+	w.store.jobErr = errors.New("the database is down")
+	if ran, e := w.run(); !ran || !errors.Is(e, r.ErrLease) || errors.Is(e, r.ErrIntegrity) {
+		t.Fatal(ran, e)
+	}
+	if len(w.finance.voids) != 0 {
+		t.Fatalf("a lease error that the store could not confirm voided the job: %+v", w.finance.voids)
+	}
+	if rec, ok := held(w, k.ID); !ok || rec.State != contractsim.IssueConfirmed {
+		t.Fatalf("%+v %v", rec, ok)
+	}
+}
+
+// A source product cannot speak the platform's lease error. An adapter that answers PrepareDocument or
+// ConfirmIssue with it has not made the worker lose its lease: the job fails INTEGRITY_FAILURE and the
+// product's reservation is voided, whatever the store says.
+func TestIssueAdapterAnsweringWithTheLeaseErrorIsAnIntegrityFailure(t *testing.T) {
+	for name, sc := range map[string]struct {
+		setup     func(v *issueEnv)
+		confirmed int
+	}{
+		"PrepareDocument": {setup: func(v *issueEnv) { v.finance.prepareE = r.ErrLease }},
+		"ConfirmIssue":    {setup: func(v *issueEnv) { v.finance.confirmE = r.ErrLease }, confirmed: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := newIssueEnv(t, envOpts{})
+			sc.setup(v)
+			j := v.submit(1, "one")
+			ran, e := v.run()
+			if !ran || !errors.Is(e, r.ErrIntegrity) {
+				t.Fatal(ran, e)
+			}
+			if st := v.stored(j.ID); st.State != "failed" || st.ErrorCode != "INTEGRITY_FAILURE" {
+				t.Fatalf("the job: %+v; want failed with INTEGRITY_FAILURE", st)
+			}
+			if _, e := v.repo.Issue(context.Background(), v.p.Identity, j.ID); !errors.Is(e, r.ErrNotFound) {
+				t.Fatal("a record exists for a failed job", e)
+			}
+			if len(v.finance.voids) != 1 || v.finance.voids[0] != (voidCall{j.ID, "INTEGRITY_FAILURE"}) {
+				t.Fatalf("voids: %+v", v.finance.voids)
+			}
+			if rec := assertVoided(t, v, j.ID, "INTEGRITY_FAILURE"); rec.Number != "AR-000001" {
+				t.Fatalf("%+v", rec)
+			}
+			if len(v.finance.confirmed) != sc.confirmed {
+				t.Fatalf("confirmations asked: %d", len(v.finance.confirmed))
+			}
+		})
 	}
 }
 
