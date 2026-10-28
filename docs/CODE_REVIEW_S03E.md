@@ -36,4 +36,35 @@ media type, digest and signature of previews, and guards stale downloads.
 
 ## Round 2 (the fixes, 1938c3e..c03cbc9)
 
+### Correctness and security
+
+Baseline on c03cbc9: vet clean, Go tests normal and race (12 packages), DOM 53/53, the checker with --font and
+--negative over 15 PDFs, all passing. The reviewer measured the placement model exhaustively: every one of the
+30,887 runes the plain measurer accepts, measured in Typst exactly as document.typ does, is drawn no wider than
+Go's advance (20 closing CJK punctuation marks measure narrower at a line end, which moves no glyph); all 13
+covered combining marks after nine kinds of base never widen; all covered runes rendered through Writer.Render in
+24 documents gave 61,183 glyphs with none missing, moved (0.05 pt) or added, and a negative control of 50 shifted
+positions was caught; pdfme parity on further space, mark and stacked-mark cases stayed within 0.009 pt; the
+template's assertion fails a render end to end and maps to 422 even with 6,144 failing glyphs; the fit boundary
+with the real font holds for W, 。, j, f, the em dash and （ at 8 to 28 pt; a worst-case document renders in
+about 120 ms. No major finding.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Minor: previews and exports shared the same slots and an export that waited the render timeout got a terminal BUDGET_EXCEEDED, so sustained previews could deny PDF export to everyone | Fixed. Previews hold at most all but one slot (at least one), so an export waits for at most one preview render; the export's wait is bounded by the same timeout as before. Unit test of the slot arithmetic; API.md and ADR 0002 say so |
+| 2 | Minor: the background upload check ran inside the store's mutex with a background context and before the quota, so uploads of all owners queued behind renders, a disconnecting client could not cancel, and a ninth background still cost a render | Fixed. Put checks the binding, the PNG and the quota first, calls Fits outside the lock with the request's context, then locks, re-checks the quota and saves. Tests: the context reaches the check; a ninth background is refused without a render |
+| 3 | Nit: a preview could wait 15 s for a slot and then render 15 s, past the demo server's 25 s write timeout, while API.md spoke of the render timeout alone | Fixed. One deadline, the render timeout, now covers wait and render for previews and exports (Writer.bounded); exceeding it is BUDGET_EXCEEDED unless the caller's context ended first |
+| 4 | Nit: a schema 1.2 template on a server without -background-directory was 503 AUTHORITY_UNAVAILABLE, which API.md defines as a source outage (pre-existing in the delivery) | Fixed. 422 UNSUPPORTED_COMBINATION, with an HTTP test and a sentence in API.md and the scope |
+| 5 | Nit: ADR 0002 said Typst draws a dotted circle before a stray combining mark; only the Hangul tone marks do that with the pinned fonts, the other 13 covered marks draw as given | Fixed in the ADR |
+
+Verified correct by the reviewer: values reach Typst only as string arguments of text(); the preview sandbox is
+the export sandbox unchanged; temporary files 0600 in 0700 directories; backgrounds reach Render only from the
+store or the probe and are re-checked in layOut; the semaphore is paired by defer on every path; the preview
+route's order of checks and its status codes (403, 422, 413, 409, 500, 400); the stored-version preview renders
+only the stored configuration; the rebase changed nothing in the table export (layout.go and template.typ
+identical, fonts.go only gains the plain measurer); the console gating and the strict CSP; the documentation's
+claims apart from findings 4 and 5.
+
+### Test effectiveness, checker and documentation
+
 Pending.
