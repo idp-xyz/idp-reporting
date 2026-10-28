@@ -18,6 +18,7 @@ import (
 type changingLayoutCatalog struct {
 	r.Adapter
 	allowed string
+	extra   string // a column the catalog lists but no snapshot has
 }
 
 func (a *changingLayoutCatalog) DescribeCatalog(ctx context.Context, source r.SourceContext) ([]r.Dataset, error) {
@@ -34,6 +35,11 @@ func (a *changingLayoutCatalog) DescribeCatalog(ctx context.Context, source r.So
 				}
 			}
 			list[i].Columns = columns
+		}
+	}
+	if a.extra != "" {
+		for i := range list {
+			list[i].Columns = append(list[i].Columns, r.Column{ID: a.extra, Label: a.extra, Type: "string"})
 		}
 	}
 	return list, nil

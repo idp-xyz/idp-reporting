@@ -1,0 +1,746 @@
+document_calibrated.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
+document_fitted.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
+document_full.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
+document_hard.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+document_table.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a table total changed: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with the background shifted by 2 pt: caught
+  negative control, PDF with the background replaced by another picture: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a brought-forward row on page 1: caught
+  negative control, PDF with a fill on a body cell: caught
+  negative control, PDF with the carry-forward row removed: caught
+  negative control, PDF with the cell rules thinned: caught
+  negative control, PDF with the cell rules turned white: caught
+  negative control, PDF with the header fill turned white: caught
+  negative control, PDF with the header of page 2 covered: caught
+document_table_blank.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a brought-forward row on page 1: caught
+  negative control, PDF with a fill on a body cell: caught
+  negative control, PDF with the carry-forward row removed: caught
+  negative control, PDF with the cell rules thinned: caught
+  negative control, PDF with the cell rules turned white: caught
+  negative control, PDF with the header fill turned white: caught
+  negative control, PDF with the header of page 2 covered: caught
+document_table_empty.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table total changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a brought-forward row on page 1: caught
+  negative control, PDF with the cell rules thinned: caught
+  negative control, PDF with the cell rules turned white: caught
+  negative control, PDF with the total rule turned white: caught
+  negative control, PDF with the header fill turned white: caught
+document_table_hard.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a table total changed: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a brought-forward row on page 1: caught
+  negative control, PDF with a fill on a body cell: caught
+  negative control, PDF with the carry-forward row removed: caught
+  negative control, PDF with the cell rules thinned: caught
+  negative control, PDF with the cell rules turned white: caught
+  negative control, PDF with the header fill turned white: caught
+  negative control, PDF with the header of page 2 covered: caught
+document_table_mixed.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a table total changed: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a brought-forward row on page 1: caught
+  negative control, PDF with a fill on a body cell: caught
+  negative control, PDF with the cell rules thinned: caught
+  negative control, PDF with the cell rules turned white: caught
+  negative control, PDF with the total rule turned white: caught
+  negative control, PDF with the header fill turned white: caught
+document_table_narrow.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a table total changed: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a brought-forward row on page 1: caught
+  negative control, PDF with a fill on a body cell: caught
+  negative control, PDF with the carry-forward row removed: caught
+  negative control, PDF with the cell rules thinned: caught
+  negative control, PDF with the cell rules turned white: caught
+  negative control, PDF with the header fill turned white: caught
+  negative control, PDF with the header of page 2 covered: caught
+document_table_variables.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a table total changed: caught
+  negative control, a table amount changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a header in the variable layer: caught
+  negative control, PDF with the carry-forward row removed: caught
+document_table_wrapheader_variables.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, two table rows swapped: caught
+  negative control, a table total changed: caught
+  negative control, a table amount changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with the carried amount covered: caught
+  negative control, PDF with a cell line moved into the next column: caught
+  negative control, PDF with a cell line moved 1 pt down: caught
+  negative control, PDF with a line pushed over the table's edge: caught
+  negative control, PDF with the total row moved 3 pt down: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with bold text among the rows: caught
+  negative control, PDF with a header in the variable layer: caught
+document_variables.pdf: ok
+  negative control, a value changed: caught
+  negative control, the offset moved by 0.2 mm: caught
+  negative control, a box moved by 0.2 mm: caught
+  negative control, an alignment changed: caught
+  negative control, a value missing: caught
+  negative control, a value added: caught
+  negative control, the background flag flipped: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with a value covered by a white box: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape outside the boxes: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with the last glyph of a right-aligned value 0.6 pt past the edge: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+edges.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+empty.pdf: ok
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+emptynodims.pdf: ok
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+financial.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with table text beside the table: caught
+  negative control, PDF with text after the last cell: caught
+hostile.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a space dropped: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+kerned.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a space dropped: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+mixed.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a space dropped: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+nodims.pdf: ok
+  negative control, a row duplicated: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+punctuation.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a space dropped: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+rows1000.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with a character placed before its line: caught
+  negative control, PDF with text in the cell padding: caught
+  negative control, PDF with a character covered by a white box: caught
+  negative control, PDF with table text beside the table: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+wide.pdf: ok
+  negative control, a cell lost a character: caught
+  negative control, a line break the PDF lacks: caught
+  negative control, a space the PDF lacks: caught
+  negative control, a character moved to the next row: caught
+  negative control, two rows swapped: caught
+  negative control, a row duplicated: caught
+  negative control, cells moved between columns: caught
+  negative control, a header changed: caught
+  negative control, a footer fact changed: caught
+  negative control, a meta fact changed: caught
+  negative control, the title changed: caught
+  negative control, pages missing: caught
+  negative control, the orientation flipped: caught
+  negative control, the columns moved: caught
+  negative control, a total changed: caught
+  negative control, PDF with text outside the margins: caught
+  negative control, PDF with table text in the footer area: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with text in white: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with text of another size: caught
+  negative control, PDF with a character drawn over another: caught
+  negative control, PDF with meta text above the title: caught
+  negative control, PDF with footer text inside the table: caught
+  negative control, PDF with table text above its column: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with a shape in the margin: caught
+  negative control, PDF with the title on another page: caught
+  negative control, PDF with text after the last cell: caught
+console_document_preview.pdf: veraPDF PDF/A-2b PASS
+console_finance.pdf: veraPDF PDF/A-2b PASS
+console_saved_template_preview.pdf: veraPDF PDF/A-2b PASS
+console_table_preview.pdf: veraPDF PDF/A-2b PASS
+document_calibrated.pdf: veraPDF PDF/A-2b PASS
+document_fitted.pdf: veraPDF PDF/A-2b PASS
+document_full.pdf: veraPDF PDF/A-2b PASS
+document_hard.pdf: veraPDF PDF/A-2b PASS
+document_table.pdf: veraPDF PDF/A-2b PASS
+document_table_blank.pdf: veraPDF PDF/A-2b PASS
+document_table_empty.pdf: veraPDF PDF/A-2b PASS
+document_table_hard.pdf: veraPDF PDF/A-2b PASS
+document_table_mixed.pdf: veraPDF PDF/A-2b PASS
+document_table_narrow.pdf: veraPDF PDF/A-2b PASS
+document_table_variables.pdf: veraPDF PDF/A-2b PASS
+document_table_wrapheader_variables.pdf: veraPDF PDF/A-2b PASS
+document_variables.pdf: veraPDF PDF/A-2b PASS
+edges.pdf: veraPDF PDF/A-2b PASS
+empty.pdf: veraPDF PDF/A-2b PASS
+emptynodims.pdf: veraPDF PDF/A-2b PASS
+financial.pdf: veraPDF PDF/A-2b PASS
+hostile.pdf: veraPDF PDF/A-2b PASS
+kerned.pdf: veraPDF PDF/A-2b PASS
+mixed.pdf: veraPDF PDF/A-2b PASS
+nodims.pdf: veraPDF PDF/A-2b PASS
+punctuation.pdf: veraPDF PDF/A-2b PASS
+rows1000.pdf: veraPDF PDF/A-2b PASS
+ui_saved_variable_layer.pdf: veraPDF PDF/A-2b PASS
+wide.pdf: veraPDF PDF/A-2b PASS
+negative control, console_document_preview.pdf without XMP metadata: veraPDF FAIL

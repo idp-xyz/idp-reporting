@@ -39,6 +39,7 @@ type Document struct {
 	Elements   []Element      `json:"elements"`
 	Print      *PrintProfile  `json:"print,omitempty"`
 	Background *BackgroundRef `json:"background,omitempty"`
+	Table      *Table         `json:"table,omitempty"` // schema 1.3: the detail table (S03-F)
 }
 
 func Validate(d Document) error {
@@ -46,7 +47,7 @@ func Validate(d Document) error {
 	if e != nil || len(b) > 65536 {
 		return r.ErrBudget
 	}
-	if (d.Schema != "1.0" && d.Schema != "1.1" && d.Schema != "1.2") || d.Kind != "document" || d.Binding.Integration == "" || len(d.Binding.Integration) > 128 || d.Binding.Dataset.ID == "" || len(d.Binding.Dataset.ID) > 128 || d.Binding.Dataset.Version == "" || len(d.Binding.Dataset.Version) > 128 || len(d.Elements) < 1 || len(d.Elements) > 24 {
+	if (d.Schema != "1.0" && d.Schema != "1.1" && d.Schema != "1.2" && d.Schema != "1.3") || d.Kind != "document" || d.Binding.Integration == "" || len(d.Binding.Integration) > 128 || d.Binding.Dataset.ID == "" || len(d.Binding.Dataset.ID) > 128 || d.Binding.Dataset.Version == "" || len(d.Binding.Dataset.Version) > 128 || len(d.Elements) < 1 || len(d.Elements) > 24 {
 		return r.ErrInvalid
 	}
 	if d.Schema == "1.0" && d.Print != nil {
@@ -55,8 +56,17 @@ func Validate(d Document) error {
 	if d.Schema != "1.0" && (d.Print == nil || (d.Print.Mode != "full" && d.Print.Mode != "variables") || !grid(d.Print.OffsetX) || !grid(d.Print.OffsetY) || math.Abs(d.Print.OffsetX) > 10 || math.Abs(d.Print.OffsetY) > 10) {
 		return r.ErrInvalid
 	}
-	if (d.Schema == "1.2" && (d.Background == nil || !validBackgroundRef(*d.Background))) || (d.Schema != "1.2" && d.Background != nil) {
+	// Schema 1.2 names a background; 1.3 may; the others may not. Only 1.3 has a table.
+	if (d.Schema == "1.2" && d.Background == nil) || (d.Schema != "1.2" && d.Schema != "1.3" && d.Background != nil) || (d.Background != nil && !validBackgroundRef(*d.Background)) {
 		return r.ErrInvalid
+	}
+	if (d.Schema == "1.3") != (d.Table != nil) {
+		return r.ErrInvalid
+	}
+	if d.Table != nil {
+		if e := validateTable(*d.Table, d.Print, d.Elements); e != nil {
+			return e
+		}
 	}
 	bound := false
 	ids := map[string]bool{}
@@ -97,7 +107,7 @@ func Validate(d Document) error {
 			}
 		}
 	}
-	if d.Print != nil && d.Print.Mode == "variables" && !bound {
+	if d.Print != nil && d.Print.Mode == "variables" && !bound && d.Table == nil {
 		return r.ErrInvalid
 	}
 	return nil
@@ -173,7 +183,7 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 	if e := json.Unmarshal(data, &fields); e != nil {
 		return e
 	}
-	if (value.Schema == "1.0" && fields["print"] != nil) || (value.Schema != "1.2" && fields["background"] != nil) {
+	if (value.Schema == "1.0" && fields["print"] != nil) || (value.Schema != "1.2" && value.Schema != "1.3" && fields["background"] != nil) || (value.Schema != "1.3" && fields["table"] != nil) {
 		return r.ErrInvalid
 	}
 	*d = Document(value)

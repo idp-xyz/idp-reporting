@@ -140,7 +140,7 @@ func New(c Config) (*Writer, error) {
 		return nil, fmt.Errorf("pdf: probe document: %w", err)
 	}
 	docProbe, docValues, docBackground := documentProbe()
-	if _, err := w.Render(context.Background(), docProbe, docValues, docBackground); err != nil {
+	if _, err := w.Render(context.Background(), docProbe, docValues, docBackground, nil); err != nil {
 		return nil, fmt.Errorf("pdf: probe document template: %w", err)
 	}
 	ok = true

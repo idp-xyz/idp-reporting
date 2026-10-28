@@ -1,0 +1,72 @@
+{
+ "phase": "S03-F",
+ "date": "2026-10-28 Asia/Shanghai",
+ "baseline": "668ee86 (main after PR #7, S03-E); reviewed implementation 4c999e3, fixes 35e1169, 7fdb959, 34b3cae and the round-2 test fixes",
+ "go": {
+  "top_level_passes": 117,
+  "pass_events": 264,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestPostgresContract"
+  ]
+ },
+ "race": {
+  "top_level_passes": 117,
+  "pass_events": 264,
+  "failures": 0,
+  "skips": [
+   "TestDurablePostgresContract",
+   "TestPostgresContract"
+  ]
+ },
+ "vet": {
+  "exit_code": 0
+ },
+ "mod_verify": {
+  "exit_code": 0
+ },
+ "app_syntax": {
+  "exit_code": 0
+ },
+ "dom": {
+  "tests": 57,
+  "pass": 57,
+  "fail": 0,
+  "skipped": 0,
+  "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser"
+ },
+ "pdf_documents": {
+  "checked": 24,
+  "table_exports": 11,
+  "document_previews": 5,
+  "multi_page_tables": 8,
+  "pages_per_table_document": "3, 3, 3, 1, 2, 2, 1, 1",
+  "checks": "per page: A4, banner, boxes, background; header per page; every row complete, in order, on one page, each cell starting on its row's first line; each line at its plain-advance position (Bold face for bold lines; lines split at consecutive shaped punctuation) and at the baseline its row and line give it; carried and total sums recomputed exactly at the column's longest fraction; snapshot totals equal the sums; in full mode one stroked cell per column of every row (0.5 pt, luma 150), header fills (luma 232), exactly one 1 pt total rule (luma 60) on the last page, no drawing in the variable layer; ink outside boxes/table/banner",
+  "negative_controls_caught": 692,
+  "negative_controls_missed": 0,
+  "golden": "export/pdf/testdata/golden.json (matched; table documents record pages and first rows)",
+  "verapdf_pass": 29,
+  "verapdf_negative_control": "FAIL"
+ },
+ "tools": {
+  "typst": "0.15.1 binary sha256 29273eaa04f6d00edd0c2bec578f565fc9c65be856bfbffc894567c68ed0b237",
+  "fonts": "Noto Sans SC 2.004 Regular and Bold",
+  "verapdf": "verapdf/cli v1.30.3 (local image; CI pins registry manifest sha256:d565095c67a083e693aebf7d1a15784007370571053fc1aa5b502665b9a78f9c)",
+  "pymupdf": "1.27.2.3",
+  "go": "go1.26.10",
+  "node": "v24.22.0"
+ },
+ "github_actions": {
+  "pull_request": 8,
+  "run": 40647824620,
+  "head": "574de81",
+  "jobs": [
+   "Go format, vet, build, test and race",
+   "PostgreSQL contract and durable tests",
+   "Console syntax and DOM tests",
+   "PDF export and document previews with the pinned Typst, fonts and veraPDF"
+  ],
+  "result": "all pass"
+ }
+}

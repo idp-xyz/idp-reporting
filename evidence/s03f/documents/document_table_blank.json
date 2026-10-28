@@ -1,0 +1,75 @@
+{
+ "kind": "document",
+ "file": "document_table_blank.pdf",
+ "background": false,
+ "mode": "full",
+ "offset_x": 0,
+ "offset_y": 0,
+ "elements": [
+  {
+   "text": "对账单 Statement",
+   "x": 20,
+   "y": 30,
+   "width": 120,
+   "height": 12,
+   "size": 14,
+   "align": "left"
+  },
+  {
+   "text": "华东区客户",
+   "x": 20,
+   "y": 46,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "left"
+  },
+  {
+   "text": "9007199254740993.01",
+   "x": 110.5,
+   "y": 46,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "right"
+  }
+ ],
+ "table": {
+  "x": 15,
+  "y": 60,
+  "width": 180,
+  "height": 40,
+  "size": 10,
+  "columns": [
+   {
+    "field": "note",
+    "label": "备注",
+    "width": 180,
+    "metric": false,
+    "scale": 0
+   }
+  ],
+  "rows": [
+   [
+    "first"
+   ],
+   [
+    ""
+   ],
+   [
+    "   "
+   ],
+   [
+    "after two blank rows"
+   ],
+   [
+    "\n"
+   ],
+   [
+    "last"
+   ]
+  ],
+  "totals": {},
+  "header_lines": 1
+ }
+}

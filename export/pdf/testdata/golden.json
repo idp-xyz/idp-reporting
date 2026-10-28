@@ -11,6 +11,62 @@
  "document_hard.pdf": {
   "pages": 1
  },
+ "document_table.pdf": {
+  "first_rows": [
+   0,
+   22,
+   44
+  ],
+  "pages": 3
+ },
+ "document_table_blank.pdf": {
+  "first_rows": [
+   0,
+   4
+  ],
+  "pages": 2
+ },
+ "document_table_empty.pdf": {
+  "first_rows": [
+   null
+  ],
+  "pages": 1
+ },
+ "document_table_hard.pdf": {
+  "first_rows": [
+   0,
+   12
+  ],
+  "pages": 2
+ },
+ "document_table_mixed.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "document_table_narrow.pdf": {
+  "first_rows": [
+   0,
+   19,
+   37
+  ],
+  "pages": 3
+ },
+ "document_table_variables.pdf": {
+  "first_rows": [
+   0,
+   22,
+   44
+  ],
+  "pages": 3
+ },
+ "document_table_wrapheader_variables.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
  "document_variables.pdf": {
   "pages": 1
  },

@@ -182,7 +182,7 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test console/dom.test.mjs
-          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
       - name: Check the documents, the negative controls and PDF/A-2b
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"

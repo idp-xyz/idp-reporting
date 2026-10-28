@@ -40,25 +40,25 @@ func near(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 
 func TestLayOutPlacesValuesByTheDocumentRule(t *testing.T) {
 	d := form("full", 1.2, -0.5, box("n1", "literal", "标题", 20, 30, 80, 12, "left"), box("n2", "row", "", 20, 50, 60, 10, "right"), box("n3", "row", "", 20, 70, 60, 10, "center"))
-	p, err := layOut(d, map[string]string{"n1": "标题", "n2": "1234.50", "n3": "ab"}, nil, plainFake())
+	p, err := layOut(d, map[string]string{"n1": "标题", "n2": "1234.50", "n3": "ab"}, nil, nil, plainFake())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Glyphs) != 2+7+2 || p.Background {
+	if len(p.Pages[0].Texts) != 2+7+2 || p.Background {
 		t.Fatalf("%+v", p)
 	}
 	// 1 mm is 72/25.4 pt; the baseline is 1.16 font sizes below the top of the box; each
 	// cluster follows the one before it by its advance; a right-aligned value ends at the
 	// right edge and a centred one is centred.
-	title := p.Glyphs[:2]
+	title := p.Pages[0].Texts[:2]
 	if !near(title[0].X, 21.2*mm) || !near(title[1].X, 21.2*mm+12) || !near(title[0].Baseline, 29.5*mm+1.16*12) || !near(title[0].Width, 12) || title[0].Text != "标" || title[1].Text != "题" || title[0].Size != 12 {
 		t.Errorf("title %+v", title)
 	}
-	amount := p.Glyphs[2:9]
+	amount := p.Pages[0].Texts[2:9]
 	if !near(amount[0].X, 81.2*mm-7*5) || !near(amount[6].X, 81.2*mm-5) || !near(amount[0].Baseline, 49.5*mm+11.6) || amount[0].Text != "1" || amount[6].Text != "0" {
 		t.Errorf("amount %+v", amount)
 	}
-	centred := p.Glyphs[9:]
+	centred := p.Pages[0].Texts[9:]
 	if !near(centred[0].X, 51.2*mm-5) || !near(centred[1].X, 51.2*mm) {
 		t.Errorf("centred %+v", centred)
 	}
@@ -66,7 +66,7 @@ func TestLayOutPlacesValuesByTheDocumentRule(t *testing.T) {
 		t.Errorf("banner %+v", b)
 	}
 	// The variable layer leaves out literal text.
-	if p, err = layOut(form("variables", 0, 0, d.Elements...), map[string]string{"n1": "标题", "n2": "1", "n3": "2"}, nil, plainFake()); err != nil || len(p.Glyphs) != 2 || p.Glyphs[0].Text != "1" {
+	if p, err = layOut(form("variables", 0, 0, d.Elements...), map[string]string{"n1": "标题", "n2": "1", "n3": "2"}, nil, nil, plainFake()); err != nil || len(p.Pages[0].Texts) != 2 || p.Pages[0].Texts[0].Text != "1" {
 		t.Errorf("variables mode: %+v %v", p, err)
 	}
 }
@@ -81,19 +81,19 @@ func TestLayOutKeepsClustersTogetherAndDropsTrailingSpace(t *testing.T) {
 		"  ab":  {" ", " ", "a", "b"},
 		"   ":   {},
 	} {
-		p, err := layOut(d, map[string]string{"n1": value}, nil, plainFake())
+		p, err := layOut(d, map[string]string{"n1": value}, nil, nil, plainFake())
 		if err != nil {
 			t.Fatalf("%q: %v", value, err)
 		}
 		got := []string{}
-		for _, g := range p.Glyphs {
+		for _, g := range p.Pages[0].Texts {
 			got = append(got, g.Text)
 		}
 		if strings.Join(got, "|") != strings.Join(want, "|") {
 			t.Errorf("%q: clusters %q, want %q", value, got, want)
 		}
-		if value == "éx" && (!near(p.Glyphs[0].Width, 10) || !near(p.Glyphs[1].X, p.Glyphs[0].X+10) || !near(p.Glyphs[1].X+5, 100*mm)) {
-			t.Errorf("%q: %+v", value, p.Glyphs)
+		if value == "éx" && (!near(p.Pages[0].Texts[0].Width, 10) || !near(p.Pages[0].Texts[1].X, p.Pages[0].Texts[0].X+10) || !near(p.Pages[0].Texts[1].X+5, 100*mm)) {
+			t.Errorf("%q: %+v", value, p.Pages[0].Texts)
 		}
 	}
 }
@@ -111,12 +111,12 @@ func TestLayOutRefusesWhatItCannotPrintExactly(t *testing.T) {
 		"a leading combining mark":   "\u0301abc",
 		"combining marks only":       "\u0301\u0301",
 	} {
-		if _, err := layOut(d, map[string]string{"n1": value}, nil, plainFake('☃')); !errors.Is(err, r.ErrUnsupported) {
+		if _, err := layOut(d, map[string]string{"n1": value}, nil, nil, plainFake('☃')); !errors.Is(err, r.ErrUnsupported) {
 			t.Errorf("%s: %v; want unsupported", name, err)
 		}
 	}
 	for name, values := range map[string]map[string]string{"a missing value": {}, "invalid UTF-8": {"n1": "a\xffb"}} {
-		if _, err := layOut(d, values, nil, plainFake()); !errors.Is(err, r.ErrInvalid) {
+		if _, err := layOut(d, values, nil, nil, plainFake()); !errors.Is(err, r.ErrInvalid) {
 			t.Errorf("%s: %v; want invalid", name, err)
 		}
 	}
@@ -126,10 +126,10 @@ func TestLayOutRefusesWhatItCannotPrintExactly(t *testing.T) {
 	for size, longest := range map[int]int{10: 10, 8: 13} {
 		d.Elements[0].FontSize = size
 		fits := strings.Repeat("a", longest)
-		if _, err := layOut(d, map[string]string{"n1": fits + "  "}, nil, plainFake()); err != nil {
+		if _, err := layOut(d, map[string]string{"n1": fits + "  "}, nil, nil, plainFake()); err != nil {
 			t.Errorf("%d characters at %d pt: %v", longest, size, err)
 		}
-		if _, err := layOut(d, map[string]string{"n1": fits + "a"}, nil, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+		if _, err := layOut(d, map[string]string{"n1": fits + "a"}, nil, nil, plainFake()); !errors.Is(err, r.ErrUnsupported) {
 			t.Errorf("%d characters at %d pt: %v", longest+1, size, err)
 		}
 	}
@@ -144,7 +144,7 @@ func TestLayOutDrawsOnlyTheNamedBackgroundInFullMode(t *testing.T) {
 	variables := full
 	variables.Print = &doctemplates.PrintProfile{Mode: "variables"}
 	values := map[string]string{"n1": "1"}
-	if p, err := layOut(full, values, png, plainFake()); err != nil || !p.Background {
+	if p, err := layOut(full, values, png, nil, plainFake()); err != nil || !p.Background {
 		t.Errorf("full mode with its background: %+v %v", p, err)
 	}
 	other := append([]byte{}, png...)
@@ -160,17 +160,17 @@ func TestLayOutDrawsOnlyTheNamedBackgroundInFullMode(t *testing.T) {
 		"a background the template lacks":  {form("full", 0, 0, full.Elements...), png, r.ErrInvalid},
 		"a background over the size limit": {full, make([]byte, doctemplates.MaxBackgroundBytes+1), r.ErrBudget},
 	} {
-		if _, err := layOut(c.d, values, c.png, plainFake()); !errors.Is(err, c.want) {
+		if _, err := layOut(c.d, values, c.png, nil, plainFake()); !errors.Is(err, c.want) {
 			t.Errorf("%s: %v; want %v", name, err, c.want)
 		}
 	}
 	notPNG := []byte("GIF89a not a png")
 	sum = sha256.Sum256(notPNG)
 	full.Background = &doctemplates.BackgroundRef{ID: ref.ID, SHA256: hex.EncodeToString(sum[:])}
-	if _, err := layOut(full, values, notPNG, plainFake()); !errors.Is(err, r.ErrIntegrity) {
+	if _, err := layOut(full, values, notPNG, nil, plainFake()); !errors.Is(err, r.ErrIntegrity) {
 		t.Errorf("a background that is not a PNG: %v", err)
 	}
-	if p, err := layOut(variables, values, nil, plainFake()); err != nil || p.Background {
+	if p, err := layOut(variables, values, nil, nil, plainFake()); err != nil || p.Background {
 		t.Errorf("variables mode: %+v %v", p, err)
 	}
 }
