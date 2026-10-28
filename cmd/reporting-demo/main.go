@@ -162,6 +162,9 @@ func run() error {
 			return err
 		}
 		defer assets.Close()
+		if renderer != nil {
+			assets.Fits = renderer.BackgroundFits
+		}
 		if handler, err = httpapi.WithDocumentAssets(handler, s, auth, assets); err != nil {
 			return err
 		}

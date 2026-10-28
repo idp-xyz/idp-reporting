@@ -139,8 +139,9 @@ func Bind(d Document, s r.Snapshot, index int) (map[string]string, error) {
 				}
 			}
 		}
+		// A value the preview cannot print on one line as it is.
 		if !utf8.ValidString(text) || len([]rune(text)) > 256 || hasControls(text) {
-			return nil, r.ErrBudget
+			return nil, r.ErrUnsupported
 		}
 		out[v.ID] = text
 	}
@@ -149,7 +150,7 @@ func Bind(d Document, s r.Snapshot, index int) (map[string]string, error) {
 
 func hasControls(s string) bool {
 	for _, c := range s {
-		if c < 32 {
+		if c < 32 || c == 0x7F {
 			return true
 		}
 	}

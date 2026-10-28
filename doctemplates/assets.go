@@ -35,6 +35,10 @@ type backgroundAsset struct {
 type Assets struct {
 	mu    sync.Mutex
 	store *privatedocs.Store[backgroundAsset]
+	// Fits, when set, checks a normalized background with the renderer before it is stored,
+	// so that one the previews could not use (for instance, one whose PDF would exceed the
+	// artifact limit) is refused at upload with the renderer's error.
+	Fits func(png []byte) error
 }
 
 func validBinding(b Binding) bool {
@@ -101,6 +105,11 @@ func (a *Assets) Put(owner r.Identity, binding Binding, data []byte) (Background
 	normalized, w, h, e := normalizePNG(data)
 	if e != nil {
 		return BackgroundRef{}, e
+	}
+	if a.Fits != nil {
+		if e = a.Fits(normalized); e != nil {
+			return BackgroundRef{}, e
+		}
 	}
 	all, e := a.store.List(owner)
 	if e != nil {

@@ -116,3 +116,31 @@ func TestBackgroundPNGNormalizationAndBudgets(t *testing.T) {
 		t.Fatal("normalization", e)
 	}
 }
+
+func TestBackgroundUploadRunsTheFitCheck(t *testing.T) {
+	a, e := doctemplates.OpenAssets(filepath.Join(t.TempDir(), "assets"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
+	binding := doctemplates.Binding{Integration: "finance", Dataset: r.Ref{ID: "d", Version: "v1"}}
+	checked := 0
+	a.Fits = func(png []byte) error {
+		checked++
+		if !bytes.HasPrefix(png, []byte("\x89PNG")) {
+			t.Error("the check did not get the normalized PNG")
+		}
+		return r.ErrBudget
+	}
+	// A background the renderer cannot use is refused with the renderer's error and not stored.
+	if _, e = a.Put(owner, binding, samplePNG(t, 210, 297)); !errors.Is(e, r.ErrBudget) || checked != 1 {
+		t.Fatalf("%v after %d checks", e, checked)
+	}
+	if all, e := a.List(owner); e != nil || len(all) != 0 {
+		t.Fatalf("stored anyway: %v %v", all, e)
+	}
+	a.Fits = func([]byte) error { checked++; return nil }
+	if _, e = a.Put(owner, binding, samplePNG(t, 210, 297)); e != nil || checked != 2 {
+		t.Fatalf("%v after %d checks", e, checked)
+	}
+}

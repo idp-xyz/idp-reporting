@@ -6,6 +6,7 @@ import (
 	"idp.local/reporting/doctemplates"
 	r "idp.local/reporting/reporting"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -159,5 +160,20 @@ func TestPrintJSONRequiresBothExplicitOffsets(t *testing.T) {
 		if e = json.Unmarshal(data, &decoded); e == nil && doctemplates.Validate(decoded) == nil {
 			t.Fatal("missing print offset accepted", profile)
 		}
+	}
+}
+
+func TestBindRefusesValuesThePreviewCannotPrint(t *testing.T) {
+	d := document()
+	for name, value := range map[string]string{"a tab": "a\tb", "a line break": "a\nb", "DEL": "a\x7fb", "too long": strings.Repeat("a", 257)} {
+		s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: [][]string{{value}}, Totals: map[string]string{"amount": value}}}
+		if _, e := doctemplates.Bind(d, s, 0); !errors.Is(e, r.ErrUnsupported) {
+			t.Errorf("%s: %v; want unsupported", name, e)
+		}
+	}
+	// A literal with DEL is an invalid template, like one with other controls.
+	d.Elements[0].Source, d.Elements[0].Field, d.Elements[0].Text = "literal", "", "a\x7fb"
+	if e := doctemplates.Validate(d); !errors.Is(e, r.ErrInvalid) {
+		t.Errorf("DEL in a literal: %v", e)
 	}
 }
