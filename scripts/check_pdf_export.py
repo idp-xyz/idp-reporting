@@ -577,7 +577,9 @@ def check_table(exp, pages, metrics, layout):
     expected = [[squash(group_digits(v) if metric[j] else v) for j, v in enumerate(row)] for row in rows]
     blank = [all(cell == "" for cell in row) for row in expected]
     paragraphs = lambda k: max([1] + [v.replace("\r\n", "\n").replace("\r", "\n").count("\n") + 1 for v in rows[k]])
-    sums = lambda upto: [group_digits(exact_sum([r[j] for r in rows[:upto]], t["columns"][j]["scale"])) if metric[j] and j > 0 else "" for j in range(len(edges))]
+    # Every carried sum prints with the column's longest fraction over all its rows.
+    fracs = [max([c["scale"]] + [len(r[j].partition(".")[2]) for r in rows]) if metric[j] else 0 for j, c in enumerate(t["columns"])]
+    sums = lambda upto: [group_digits(exact_sum([r[j] for r in rows[:upto]], fracs[j])) if metric[j] and j > 0 else "" for j in range(len(edges))]
     line_h = lambda n: 2 * TABLE_INSET_Y + (ASCENT + DESCENT) * size + (n - 1) * LINE_STEP * size
     k, acc = -1, None  # the current row and its accumulated cell texts
     first_rows, row_page = [], {}
@@ -636,14 +638,20 @@ def check_table(exp, pages, metrics, layout):
         drawn_rows = []  # (name, baselines) in page order, for the vertical check
 
         def expect_rows(items):
+            # A row's lines sit 1.5 font sizes apart from its first baseline; a line with
+            # nothing to draw (an empty paragraph) leaves a gap, so each drawn baseline is
+            # matched to the line index its offset gives it.
             nonlocal top
             for name, bases, least in items:
-                n = max(least, len(bases))
-                for i, base in enumerate(sorted(bases)):
-                    want = top + TABLE_INSET_Y + ASCENT * size + i * LINE_STEP * size
-                    if abs(base - want) > 0.1:
-                        problems.append(f"page {number}: {name}: line {i + 1} baseline {base:.2f}, expected {want:.2f}")
+                first = top + TABLE_INSET_Y + ASCENT * size
+                n = least
+                for base in sorted(bases):
+                    i = round((base - first) / (LINE_STEP * size))
+                    want = first + i * LINE_STEP * size
+                    if i < 0 or abs(base - want) > 0.1:
+                        problems.append(f"page {number}: {name}: baseline {base:.2f} is not on a line of the row (first line {first:.2f})")
                         break
+                    n = max(n, i + 1)
                 top += line_h(n)
         header_bases = [b for b, _, _ in leading]
         if full or header_bases:
@@ -651,7 +659,7 @@ def check_table(exp, pages, metrics, layout):
             # label's line count, which the expectation does not record: one line per label row.
             expect_rows([("header", header_bases, 1)] if full else [])
         if not full:
-            top += line_h(1) * 0 + header_height(exp, metrics)
+            top += line_h(t.get("header_lines", 1))
         if number > 1:
             want = sums(k + 1)
             if forward is None:
@@ -713,6 +721,7 @@ def check_table(exp, pages, metrics, layout):
         tail_top = trailing[0] - TABLE_INSET_Y - ASCENT * size
         while k + 1 < len(rows) and blank[k + 1] and (acc is None or all(acc[j] == expected[k][j] for j in range(len(edges)))) and tail_top - top > line_h(paragraphs(k + 1)) - 0.1:
             k += 1
+            acc = None
             row_page[k] = number
             top += line_h(paragraphs(k))
             drawn_rows.append((f"row {k + 1}", [], paragraphs(k)))
@@ -747,29 +756,6 @@ def check_table(exp, pages, metrics, layout):
                 problems.append(f"column {j + 1}: the snapshot total {t['totals'][col['field']]} is not the sum of the rows")
     layout["first_rows"] = first_rows
     return problems
-
-
-def header_height(exp, metrics):
-    """The header's height in the variable layer, where its text is not drawn: the labels
-    wrapped into their columns with the Bold face, as the renderer wraps them."""
-    t = exp["table"]
-    size = t["size"]
-    face = metrics.get(True) if metrics else None
-    lines = 1
-    for col in t["columns"]:
-        width = col["width"] * MM - 2 * TABLE_INSET
-        if face is None:
-            continue
-        # A conservative count: characters packed greedily by their advances.
-        n, w = 1, 0.0
-        for ch in col["label"]:
-            a = face.text_length(ch, fontsize=size)
-            if w + a > width and w > 0:
-                n, w = n + 1, a
-            else:
-                w += a
-        lines = max(lines, n)
-    return 2 * TABLE_INSET_Y + (ASCENT + DESCENT) * size + (lines - 1) * LINE_STEP * size
 
 
 def check_table_drawings(page, region, edges, size, leading, forward, drawn_rows, trailing, tail_top, last):
@@ -809,6 +795,9 @@ def check_table_drawings(page, region, edges, size, leading, forward, drawn_rows
         for width in strokes:
             if abs(width - 0.5) > 0.05:
                 problems.append(f"{kind}: rule width {width}")
+        for color in [drawings[i]["color"] for i in hits if drawings[i]["width"] is not None]:
+            if color is None or max(abs(v - 0.588) for v in color[:3]) > 0.02:
+                problems.append(f"{kind}: rule colour {None if color is None else tuple(round(v, 2) for v in color[:3])}")
         for i in sorted(hits, reverse=True):
             drawings.pop(i)
     for name, h, header in rows:
@@ -818,8 +807,12 @@ def check_table_drawings(page, region, edges, size, leading, forward, drawn_rows
     if drawings:
         problems.append(f"{len(drawings)} other drawings in the table")
     if last:
-        if not any(abs(d["rect"].y0 - tail_top) <= 0.3 and abs(d["rect"].x0 - region.x0) <= 0.3 and abs(d["rect"].x1 - region.x1) <= 0.3 and d["width"] is not None and abs(d["width"] - 1.0) <= 0.05 for d in rules):
+        total_rules = [d for d in rules if abs(d["rect"].y0 - tail_top) <= 0.3 and abs(d["rect"].x0 - region.x0) <= 0.3 and abs(d["rect"].x1 - region.x1) <= 0.3 and d["width"] is not None and abs(d["width"] - 1.0) <= 0.05]
+        if not total_rules:
             problems.append("no 1 pt rule above the total row")
+        for d in total_rules:
+            if d["color"] is None or max(abs(v - 0.235) for v in d["color"][:3]) > 0.02:
+                problems.append(f"total rule colour {d['color']}")
     elif rules:
         problems.append("a rule on a page without the total row")
     return problems
@@ -1085,6 +1078,9 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
                         doc.update_stream(xref, raw.replace(old, new).encode("latin1"))
                 assert hit, f"{old!r} not in the content stream"
             yield "the cell rules thinned", "rule width", copy_with("thinrules", lambda doc: rewrite(doc, "0.5 w", "0.1 w"))
+            yield "the cell rules turned white", "rule colour", copy_with("whiterules", lambda doc: rewrite(doc, "0.5882353 SCN", "1 SCN"))
+            if doc_pages(directory, exp) == 1:
+                yield "the total rule turned white", "total rule colour", copy_with("whitetotal", lambda doc: rewrite(doc, "0.23529412 SCN", "1 SCN"))
             yield "the header fill turned white", "fill", copy_with("whitefill", lambda doc: rewrite(doc, "0.9098039 scn", "1 scn"))
             if doc_pages(directory, exp) > 1:
                 def cover_header(doc):

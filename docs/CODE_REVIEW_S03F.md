@@ -57,3 +57,32 @@ Solid per the reviewer: every sum, scale, sign and off-by-one mutation falls to 
 independently recomputes the carried sums and catches digit reordering, a wrong page's value, duplicated or
 removed pages and reordered rows; header, boxes, bold labels, page numbers and the total row's placement are
 each caught by a unit test and the checker; the evidence reproduces byte for byte.
+
+## Round 2 (the fixes, 4c999e3..b072dea)
+
+### Correctness and security
+
+Baseline on b072dea reproduced: vet, Go tests with Typst (21 PDFs), race on the table packages, the checker with
+565 controls caught and the golden matched, the five table PDFs byte-identical to the evidence (the round-1
+fixtures unchanged by the fixes), DOM 57/57; limits with the new checks: 1000 × 12 metric columns lay out in
+12 ms and render in 0.37 s, 1000 rows of 41-digit amounts lay out in 6 ms. Every round-1 finding of both axes is
+closed, with the remarks below. No major finding.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Minor: "widths ≥ 8 mm" was not honest: an 8 mm decimal column is refused at every size (the bold zero sum needs 8.1 mm at 8 pt), a bold 999,999.99 sum needs 17 to 25 mm, and the first column must hold the bold label for page 100 (about 28 to 41 mm) | Fixed in wording and in the console: the scope, the API, the panel text and the README state the measured minimums; the console sizes the first column for the label at the chosen type size before splitting the rest and refuses a narrower first column; 8 mm stays the geometric floor for short text and small integers |
+| 2 | Minor: the console accepted tables Go refuses only at preview, and reported the 422 as a dataset problem | Fixed. A document-preview 422 reads as a layout problem of the template (what to widen or shrink); DOM test with a 12 mm amount column |
+| 3 | Minor: Go refused a document over a running sum that is never printed (amounts changing sign) | Fixed. Only the sums the carried rows print are required to fit; unit test with a short total after a wide intermediate sum |
+| 4 | Minor: checker false positives: blank rows at a page end (the row after them taken as a continuation), an empty paragraph among drawn lines, a wrapped header in the variable layer (greedy character packing differed from the renderer's wrapping), carried sums at the column's longest fraction over the rows so far instead of over all rows | Fixed. The next page starts a new row after blank rows; each drawn baseline is matched to the line its offset gives it; the expectation records the header's line count for the variable layer; sums use the column's longest fraction over all rows |
+| 5 | Minor: the stroke colour of the rules was not checked, so white rules passed | Fixed. Cell rules must be luma 150 and the total rule luma 60; controls turn each white |
+| 6 | Nit: "measured for page 100" was documented only in the scope | Fixed in the API, README and console text |
+
+Verified correct by the reviewer: the linear sums with rescaling, negatives and the common-scale equality; the
+page-cap simplification; labels measured bold and amounts regular against the content width with no off-by-one;
+no new path to Typst and no value in an error; one and twelve columns at 8 and 12 pt, a row with text only in
+the last column, a metric first column with offsets, a wrapped header in full mode and a background all pass the
+checker.
+
+### Test effectiveness, checker and documentation
+
+Pending.

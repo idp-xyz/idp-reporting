@@ -97,6 +97,7 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 	if lay.header, err = lay.wrapRow(headerTexts(lay), true); err != nil {
 		return err
 	}
+	p.HeaderLines = lay.headerLines()
 	sums := make([]*column, len(lay.columns))
 	for j, c := range lay.columns {
 		if c.metric && j > 0 {
@@ -104,20 +105,9 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 		}
 	}
 	// The carried rows are one line each: their labels (the widest page number is maxPages) and
-	// every running sum must fit their columns, as must every amount, which is never cut.
-	content := func(j int) float64 { return lay.columns[j].right - lay.columns[j].left - 2*tableInsetX }
-	fits := func(text string, j int, what string) error {
-		w, err := lay.m.width(text, size, true)
-		if err != nil {
-			return err
-		}
-		if w > content(j) {
-			return fmt.Errorf("pdf: %s does not fit its column: %w", what, r.ErrUnsupported)
-		}
-		return nil
-	}
+	// the sums they show must fit their columns, as must every amount, which is never cut.
 	for _, label := range []string{tableLabels["forward_before"] + strconv.Itoa(maxPages) + tableLabels["forward_after"], tableLabels["carry_before"] + strconv.Itoa(maxPages) + tableLabels["carry_after"], tableLabels["total"]} {
-		if err := fits(label, 0, "a carried row's label"); err != nil {
+		if err := lay.fits(label, 0, "a carried row's label"); err != nil {
 			return err
 		}
 	}
@@ -133,7 +123,7 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 				texts[j] = groupDigits(v)
 				if w, err := lay.m.width(texts[j], size, false); err != nil {
 					return err
-				} else if w > content(j) {
+				} else if w > lay.content(j) {
 					return fmt.Errorf("pdf: an amount does not fit its column: %w", r.ErrUnsupported)
 				}
 				if sums[j] != nil {
@@ -177,21 +167,41 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 				return err
 			}
 			running[i][j] = groupDigits(s.String())
-			if err := fits(running[i][j], j, "a carried sum"); err != nil {
-				return err
-			}
 		}
 	}
 	zero := make([]string, len(lay.columns))
 	for j, s := range sums {
 		if s != nil {
 			zero[j] = groupDigits((&column{scale: s.scale, frac: s.frac}).String())
-			if err := fits(zero[j], j, "a carried sum"); err != nil {
-				return err
-			}
 		}
 	}
 	return lay.paginate(p, running, zero)
+}
+
+// content is a column's content width: between its rules, less the insets.
+func (lay *tableLayout) content(j int) float64 {
+	return lay.columns[j].right - lay.columns[j].left - 2*tableInsetX
+}
+
+// fits refuses bold text wider than a column's content width.
+func (lay *tableLayout) fits(text string, j int, what string) error {
+	w, err := lay.m.width(text, lay.size, true)
+	if err != nil {
+		return err
+	}
+	if w > lay.content(j) {
+		return fmt.Errorf("pdf: %s does not fit its column: %w", what, r.ErrUnsupported)
+	}
+	return nil
+}
+
+// headerLines is the height of the header in lines: the tallest wrapped label.
+func (lay *tableLayout) headerLines() int {
+	n := 1
+	for _, c := range lay.header {
+		n = max(n, len(c.lines))
+	}
+	return n
 }
 
 // headerTexts are the column labels.
@@ -244,7 +254,11 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 		y := lay.top
 		y = lay.drawRow(&pg, y, lay.header, true, true)
 		if number > 1 {
-			y = lay.drawRow(&pg, y, lay.carryRow(tableLabels["forward_before"]+strconv.Itoa(number)+tableLabels["forward_after"], running[i-1]), true, false)
+			row, err := lay.carryRow(tableLabels["forward_before"]+strconv.Itoa(number)+tableLabels["forward_after"], running[i-1])
+			if err != nil {
+				return err
+			}
+			y = lay.drawRow(&pg, y, row, true, false)
 		}
 		for _, row := range lay.rows[i : i+k] {
 			y = lay.drawRow(&pg, y, row, false, false)
@@ -254,12 +268,20 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 			if n > 0 {
 				sums = running[n-1]
 			}
+			row, err := lay.carryRow(tableLabels["total"], sums)
+			if err != nil {
+				return err
+			}
 			if lay.full {
 				pg.Rules = append(pg.Rules, rule{X0: lay.left, Y0: y, X1: lay.right, Y1: y, Stroke: totalStroke})
 			}
-			lay.drawRow(&pg, y, lay.carryRow(tableLabels["total"], sums), true, false)
+			lay.drawRow(&pg, y, row, true, false)
 		} else {
-			lay.drawRow(&pg, y, lay.carryRow(tableLabels["carry_before"]+strconv.Itoa(number+1)+tableLabels["carry_after"], running[i+k-1]), true, false)
+			row, err := lay.carryRow(tableLabels["carry_before"]+strconv.Itoa(number+1)+tableLabels["carry_after"], running[i+k-1])
+			if err != nil {
+				return err
+			}
+			lay.drawRow(&pg, y, row, true, false)
 		}
 		pages = append(pages, pg)
 		i += k
@@ -273,7 +295,8 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 }
 
 // carryRow is a carried row: the label in the first column, the sums in the metric columns.
-func (lay *tableLayout) carryRow(label string, sums []string) []cell {
+// Only the sums that are printed are required to fit.
+func (lay *tableLayout) carryRow(label string, sums []string) ([]cell, error) {
 	row := make([]cell, len(lay.columns))
 	for j := range lay.columns {
 		text := ""
@@ -281,11 +304,17 @@ func (lay *tableLayout) carryRow(label string, sums []string) []cell {
 			text = label
 		} else if sums[j] != "" {
 			text = sums[j]
+			if err := lay.fits(text, j, "a carried sum"); err != nil {
+				return nil, err
+			}
 		}
-		w, _ := lay.m.width(text, lay.size, true) // the labels and digits were checked above
+		w, err := lay.m.width(text, lay.size, true)
+		if err != nil {
+			return nil, err
+		}
 		row[j] = cell{lines: []string{text}, widths: []float64{w}}
 	}
-	return row
+	return row, nil
 }
 
 // rowHeight is the height of a row from its tallest cell.

@@ -6,8 +6,12 @@ every page. Same engine, same sandbox, same placement contract; behaviour is S03
 
 F1 · Table element. Schema 1.3 adds a `table` to the document (required on 1.3, absent on the other schemas): `{x, y, width, height, font_size,
 columns: [{field, width}]}`, a region inside the safe region (10..200 × 25..270 mm, 0.1 mm grid, at least 30 mm
-high) that overlaps no text box, 1..12 columns of the bound dataset's fields whose widths (≥ 8 mm) add up to the
-table's width, 8..12 pt. The table lists every row of the frozen snapshot in snapshot order (the snapshot holds
+high) that overlaps no text box, 1..12 columns of the bound dataset's fields whose widths (≥ 8 mm, the geometric
+floor) add up to the table's width, 8..12 pt. What a column must really hold is measured at preview (F3): the
+first column the bold label "过次（转第 100 页）" (about 28, 32, 35, 38 and 41 mm at 8 to 12 pt with the pinned Noto
+Sans SC), a metric column its widest amount and carried sum (a bold 999,999.99 needs about 17 mm at 8 pt and
+25 mm at 12 pt); 8 mm fits only short text and small integers. The console applies the first column's minimum
+and sizes it first when it splits the width. The table lists every row of the frozen snapshot in snapshot order (the snapshot holds
 at most 1,000 rows, and a durable snapshot is complete by the repository contract). Cells are formatted as the
 table export formats them: metric numbers with thousands separators and aligned right, other values as given and
 aligned left; line breaks and tabs in a value print as the export prints them. Text boxes keep S03-E's exact
@@ -26,9 +30,10 @@ print the cell values and the carried rows only: no rules, no header text, no ba
 F3 · Exact carried totals. For every numeric column (decimal or integer) but the first, Go adds the printed rows
 exactly (integers scaled to the column's longest fraction, no floating point): 过次 on page p and 承前 on page p+1
 show the sum of the rows up to page p, 合计 the sum of all rows. The first column holds the labels, with the page
-numbers: "承前（第 p 页）", "过次（转第 p+1 页）", "合计". Amounts, carried sums and the labels (measured for the
-widest page number) are never cut or wrapped: one wider than its column's content width is 422
-UNSUPPORTED_COMBINATION, as is a header and total row taller than the region. When the snapshot's whole-scope
+numbers: "承前（第 p 页）", "过次（转第 p+1 页）", "合计". Amounts, the carried sums that are printed and the labels
+(measured for page 100, so that a template cannot start failing as its data grow) are never cut or wrapped: one
+wider than its column's content width is 422 UNSUPPORTED_COMBINATION, as is a header and total row taller than
+the region. The console reports that 422 as a layout problem of the template. When the snapshot's whole-scope
 total of a metric column differs from the sum of its rows, the preview is refused as INTEGRITY_FAILURE: a durable
 snapshot is complete, so the two must agree.
 

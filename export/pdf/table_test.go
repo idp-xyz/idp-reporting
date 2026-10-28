@@ -298,6 +298,18 @@ func TestLayOutTableRefusesWhatItCannotLayOut(t *testing.T) {
 	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("an amount wider than its column: %v", err)
 	}
+	// Only the sums that are printed must fit: amounts that change sign may pass through a
+	// wider running sum on the way to a short total. A 20 mm column holds 50.7 pt: the bold
+	// "-19,999.98" (60 pt) never prints; the amounts (40 pt) and the total "0.00" do.
+	swing := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 100}, doctemplates.TableColumn{Field: "amount", Width: 20})
+	data = amounts(4)
+	for i, v := range []string{"-9999.99", "-9999.99", "9999.99", "9999.99"} {
+		data.Rows[i][1] = v
+	}
+	data.Totals["amount"] = "0.00"
+	if _, err := layOut(swing, map[string]string{"n1": "x"}, nil, data, plainFake()); err != nil {
+		t.Errorf("an unprinted running sum wider than the column: %v", err)
+	}
 	label := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 12}, doctemplates.TableColumn{Field: "amount", Width: 108})
 	if _, err := layOut(label, map[string]string{"n1": "x"}, nil, amounts(3), plainFake()); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a carried label wider than the first column: %v", err)

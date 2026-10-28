@@ -96,11 +96,12 @@ type banner struct {
 }
 
 type page struct {
-	Title      string     `json:"title"`
-	Fonts      []string   `json:"fonts"`
-	Background bool       `json:"background"` // drawn on every page
-	Pages      []pageData `json:"pages"`
-	Banner     banner     `json:"banner"` // on every page
+	Title       string     `json:"title"`
+	Fonts       []string   `json:"fonts"`
+	Background  bool       `json:"background"` // drawn on every page
+	Pages       []pageData `json:"pages"`
+	Banner      banner     `json:"banner"`                 // on every page
+	HeaderLines int        `json:"header_lines,omitempty"` // the table header's height in lines, for the checker
 }
 
 // Render draws one document template preview: an A4 page with the template's background in

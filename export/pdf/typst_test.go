@@ -518,6 +518,8 @@ type tableExpectation struct {
 	Columns []tableColumnExpect `json:"columns"`
 	Rows    [][]string          `json:"rows"`
 	Totals  map[string]string   `json:"totals"`
+	// HeaderLines is the header's height in lines, which the variable layer does not draw.
+	HeaderLines int `json:"header_lines"`
 }
 
 type tableColumnExpect struct {
@@ -538,7 +540,7 @@ type documentElement struct {
 	Align  string  `json:"align"`
 }
 
-func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData) {
+func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, fonts *fontSet) {
 	t.Helper()
 	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
 	if dir == "" {
@@ -547,6 +549,9 @@ func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docu
 	e := documentExpectation{Kind: "document", File: name + ".pdf", Background: background != nil, Mode: d.Print.Mode, OffsetX: d.Print.OffsetX, OffsetY: d.Print.OffsetY, Elements: []documentElement{}}
 	if d.Table != nil {
 		te := &tableExpectation{X: d.Table.X, Y: d.Table.Y, Width: d.Table.Width, Height: d.Table.Height, Size: d.Table.FontSize, Rows: table.Rows, Totals: table.Totals}
+		if p, err := layOut(d, values, background, table, newPlainMeasurer(fonts)); err == nil {
+			te.HeaderLines = p.HeaderLines
+		}
 		for i, c := range d.Table.Columns {
 			col := table.Columns[i]
 			label := col.Label
@@ -706,7 +711,7 @@ func TestTypstRendersDocuments(t *testing.T) {
 		if err != nil || !bytes.Equal(out, again) {
 			t.Fatalf("%s: two renders with the same clock differ (%v)", c.name, err)
 		}
-		documentEvidence(t, c.name, out, c.d, c.values, c.png, c.table)
+		documentEvidence(t, c.name, out, c.d, c.values, c.png, c.table, w.fonts)
 	}
 	// Refused before Typst runs: a value too wide for its box, one the fonts lack, a Hangul
 	// tone mark (Typst would add a dotted circle), a tab and a leading combining mark.

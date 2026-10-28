@@ -78,9 +78,9 @@ A schema 1.3 template adds `table: {x, y, width, height, font_size, columns: [{f
 preview then lists every row of the frozen snapshot over as many A4 pages as it needs, each page with the same
 background, boxes and banner, the header row, a 承前 row from page 2 on, a 过次 row on every page but the last
 and the 合计 row on the last, with the metric columns' sums computed exactly on the server. A table column the
-dataset does not have is 403; a row taller than the table's pages can hold, an amount, a carried sum or a carried
-row's label wider than its column, a header and total row taller than the region, or a document of more than 100
-pages, is 422; a snapshot whose whole-scope total differs from the sum of its rows is 409 INTEGRITY_FAILURE.
+dataset does not have is 403; a row taller than the table's pages can hold, an amount, a printed carried sum or a
+carried row's label (measured for page 100) wider than its column, a header and total row taller than the region,
+or a document of more than 100 pages, is 422; a snapshot whose whole-scope total differs from the sum of its rows is 409 INTEGRITY_FAILURE.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile
