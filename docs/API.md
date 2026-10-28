@@ -66,9 +66,9 @@ previews when it has the PDF flags:
 
 A preview places each value on one line with its baseline 1.16 font sizes below the top of its box, at the box's
 left edge, right edge or centre, every character at the position the fonts' plain advances give it (ADR 0002);
-trailing white space is not drawn. A value the fonts do not cover, a soft hyphen, a Hangul tone mark, a value
-that does not fit its box, a snapshot value with control characters or over 256 characters, or one Typst would
-draw wider than measured is 422 UNSUPPORTED_COMBINATION, as is a template naming a background on a server without
+trailing white space is not drawn. A value the fonts do not cover, a soft hyphen, a Hangul tone mark, a leading
+combining mark, a value that does not fit its box, one with control characters or over 256 characters, or one
+Typst would draw wider than measured is 422 UNSUPPORTED_COMBINATION, as is a template naming a background on a server without
 a background store; a preview whose wait for one of the renderer's processes and render together exceed the
 render timeout (15 s) is 413 BUDGET_EXCEEDED (previews hold at most all but one of the processes, so they never
 fail an export). Previews are never issued documents and are not stored. A background upload is tried with the

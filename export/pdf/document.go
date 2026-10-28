@@ -87,6 +87,11 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	if err != nil {
 		return nil, err
 	}
+	return w.renderDocument(ctx, p, background)
+}
+
+// renderDocument runs Typst on a laid-out page.
+func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte) ([]byte, error) {
 	data, err := json.Marshal(p)
 	if err != nil {
 		return nil, err
@@ -190,11 +195,20 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 			continue
 		}
 		v, ok := values[e.ID]
-		if !ok || !utf8.ValidString(v) || utf8.RuneCountInString(v) > 256 || hasControl(v) {
+		if !ok || !utf8.ValidString(v) {
 			return nil, r.ErrInvalid
+		}
+		// What the single-line preview cannot print: controls, over 256 characters (as Bind
+		// refuses them) and a value starting with a combining mark, which Typst and pdfme
+		// would draw over the next character.
+		if utf8.RuneCountInString(v) > 256 || hasControl(v) {
+			return nil, fmt.Errorf("pdf: a value the preview cannot print: %w", r.ErrUnsupported)
 		}
 		size := float64(e.FontSize)
 		pieces := clusters(strings.TrimRightFunc(v, unicode.IsSpace))
+		if len(pieces) > 0 && unicode.Is(unicode.M, []rune(pieces[0])[0]) {
+			return nil, fmt.Errorf("pdf: a value starts with a combining mark: %w", r.ErrUnsupported)
+		}
 		widths := make([]float64, len(pieces))
 		total := 0.0
 		for i, c := range pieces {

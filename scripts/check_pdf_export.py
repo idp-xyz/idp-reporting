@@ -46,6 +46,7 @@ import copy
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -447,15 +448,16 @@ def check_document(directory, exp, font=None):
         used.update(c["n"] for c in line)
         solid = [c for c in line if c["c"].strip()]
         start, end = line[0]["x"], solid[-1]["x1"]
-        if any(b["x"] < a["x"] for a, b in zip(line, line[1:])):
+        bases = [c for c in line if not c["mark"]]
+        if any(b["x"] < a["x"] for a, b in zip(bases, bases[1:])):
             problems.append(f"{text!r} is not drawn left to right")
-        if align == "left" and abs(start - left) > 0.3 or align == "right" and abs(end - right) > 0.3 or align == "center" and abs((solid[0]["x"] + end) / 2 - (left + right) / 2) > 0.5:
+        # Leading spaces count: the value is centred as a whole, as pdfme centred it.
+        if align == "left" and abs(start - left) > 0.3 or align == "right" and abs(end - right) > 0.3 or align == "center" and abs((start + end) / 2 - (left + right) / 2) > 0.5:
             problems.append(f"{text!r} is not aligned {align} in its box ({start:.2f}..{end:.2f} pt, box {left:.2f}..{right:.2f})")
         if end > right + 0.3 or start < left - 0.3:
             problems.append(f"{text!r} leaves its box")
         if metrics is not None:
             # Every cluster where the plain advances put it: the engine shaped nothing across them.
-            bases = [c for c in line if not c["mark"]]
             expected = cluster_positions(metrics, text.rstrip(), size, left, right, align)
             if len(bases) != len(expected):
                 problems.append(f"{text!r}: {len(bases)} characters drawn, {len(expected)} expected")
@@ -474,13 +476,25 @@ def check_document(directory, exp, font=None):
     for img in images:
         w, h = img[2], img[3]
         scale = min(210 * MM / w, 297 * MM / h)
-        want = pymupdf.Rect(0, 0, w * scale, h * scale)
-        want.x0 = want.x1 = 0
         x0, y0 = (210 * MM - w * scale) / 2, (297 * MM - h * scale) / 2
         for rect in page.get_image_rects(img[0]):
             if max(abs(rect.x0 - x0), abs(rect.y0 - y0), abs(rect.x1 - x0 - w * scale), abs(rect.y1 - y0 - h * scale)) > 0.5:
                 problems.append(f"the background is drawn at {rect}, not fitted and centred")
+        if exp.get("background_file") and not same_picture(pymupdf.Pixmap(doc, img[0]), pymupdf.Pixmap(os.path.join(directory, exp["background_file"]))):
+            problems.append("the background is not the PNG named")
     return problems, {"pages": 1}
+
+
+def same_picture(a, b):
+    """Whether two pixmaps show the same picture: equal size and RGB samples."""
+    def rgb(p):
+        if p.alpha:
+            p = pymupdf.Pixmap(p, 0)
+        if p.colorspace is None or p.colorspace.n != 3:
+            p = pymupdf.Pixmap(pymupdf.csRGB, p)
+        return p
+    a, b = rgb(a), rgb(b)
+    return (a.width, a.height) == (b.width, b.height) and a.samples == b.samples
 
 
 def document_corruptions(exp):
@@ -507,6 +521,8 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
         target = os.path.join(scratch, name)
         os.makedirs(target, exist_ok=True)
         doc.save(os.path.join(target, exp["file"]))
+        if exp.get("background_file"):
+            shutil.copy(os.path.join(directory, exp["background_file"]), target)
         return target
 
     def text(t, at, color=(0, 0, 0), embedded=True):
@@ -530,6 +546,70 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
     yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
     if not exp["background"]:
         yield "a shape outside the boxes", "outside the boxes", copy_with("outside", lambda doc: doc[0].draw_circle((105 * MM, 285 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
+    yield "an extra page", "pages, expected one", copy_with("pages", lambda doc: doc.new_page())
+    yield "a smaller page", "not A4", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
+    yield "a value in a light colour", "light colour", copy_with("light", text("X", (300, 700), color=(0.9, 0.9, 0.9)))
+    yield "a replacement character", "replacement character", copy_with("fffd", text("\ufffd", (300, 700)))
+
+    def value_line(page, element):
+        base = (element["y"] + exp["offset_y"]) * MM + ASCENT * element["size"]
+        left, right = (element["x"] + exp["offset_x"]) * MM, (element["x"] + exp["offset_x"] + element["width"]) * MM
+        return sorted([c for c in characters(page, 0) if abs(c["base"] - base) <= 0.1 and left - 1 <= c["x"] <= right + 1 and c["c"].strip() and not c["mark"]], key=lambda c: c["x"])
+
+    def move_glyphs(doc, moves):
+        """Changes the x of the engine's own transformations ("q 1 0 0 -1 x y cm") for the given
+        characters: moves maps (x, y) in PDF coordinates to a new x."""
+        page = doc[0]
+        page.clean_contents()
+        xref = page.get_contents()[0]
+        raw = doc.xref_stream(xref).decode("latin1")
+
+        def move(m):
+            x, y = float(m.group(1)), float(m.group(2))
+            for (wx, wy), nx in moves:
+                if abs(x - wx) < 0.01 and abs(y - wy) < 0.01:
+                    return f"1 0 0 -1 {nx:.6f} {m.group(2)} cm"
+            return m.group(0)
+        moved = re.sub(r"1 0 0 -1 (\S+) (\S+) cm", move, raw)
+        assert moved != raw, "the glyphs' transformations were not found"
+        doc.update_stream(xref, moved.encode("latin1"))
+
+    def pdf_point(c, page):
+        return (c["x"], page.rect.height - c["base"])
+
+    def swap(doc):
+        page = doc[0]
+        line = value_line(page, e)
+        a, b = line[0], line[1]
+        move_glyphs(doc, [(pdf_point(a, page), b["x"]), (pdf_point(b, page), a["x"])])
+    if len(e["text"].rstrip()) >= 2:
+        yield "two glyphs swapped", "left to right", copy_with("swap", swap)
+    right = next((el for el in exp["elements"] if el["align"] == "right" and len(el["text"].rstrip()) >= 1), None)
+
+    def past_edge(doc):
+        page = doc[0]
+        c = value_line(page, right)[-1]
+        move_glyphs(doc, [(pdf_point(c, page), c["x"] + 0.6)])
+    if right is not None:
+        yield "the last glyph of a right-aligned value 0.6 pt past the edge", "leaves its box", copy_with("edge", past_edge)
+    if exp["background"]:
+        def shift_image(doc):
+            page = doc[0]
+            page.clean_contents()
+            xref = page.get_contents()[0]
+            raw = doc.xref_stream(xref).decode("latin1")
+            moved, n = re.subn(r"(\S+) 0 0 (\S+) (\S+) (\S+) cm(\s*/\S+ Do)", lambda m: f"{m.group(1)} 0 0 {m.group(2)} {float(m.group(3)) + 2:.6f} {m.group(4)} cm{m.group(5)}", raw)
+            assert n == 1, f"{n} image placements found"
+            doc.update_stream(xref, moved.encode("latin1"))
+        yield "the background shifted by 2 pt", "not fitted and centred", copy_with("image", shift_image)
+        if exp.get("background_file"):
+            def replace_image(doc):
+                page = doc[0]
+                xref = page.get_images(full=True)[0][0]
+                other = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(os.path.join(directory, exp["background_file"])))
+                other.invert_irect(pymupdf.IRect(0, 0, other.width // 2, other.height // 2))
+                page.replace_image(xref, pixmap=other)
+            yield "the background replaced by another picture", "not the PNG named", copy_with("picture", replace_image)
 
     def shift(doc):
         # The second character of the first value moved 1 pt to the right in the content stream,

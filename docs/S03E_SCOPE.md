@@ -31,15 +31,17 @@ Changed in the port:
   box top, starting at the left edge, ending at the right edge or centred by alignment; Typst asserts that it
   draws no cluster wider; trailing white space is not drawn.
 - Refused with 422 UNSUPPORTED_COMBINATION: characters the fonts lack, soft hyphens, Hangul tone marks (Typst
-  adds a dotted circle), values that do not fit their box on one line with 2 pt to spare, a cluster Typst would
-  draw wider than measured, and snapshot values the single-line preview cannot print (control characters, DEL,
-  more than 256 characters). A literal with such characters is an invalid template (400).
+  adds a dotted circle), a value starting with a combining mark (drawn over the next character), values that do
+  not fit their box on one line with 2 pt to spare, a cluster Typst would draw wider than measured, and values the
+  single-line preview cannot print (control characters, DEL, more than 256 characters), in Bind and in the
+  renderer alike. A literal with such characters is an invalid template (400).
 - At most Config.Concurrency (default 2) Typst processes run at once, previews and exports together; previews
   hold at most all but one of them, so an export waits for at most one preview render. A preview whose wait and
   render together exceed the render timeout (15 s) is 413 BUDGET_EXCEEDED.
 - A background is tried with the renderer at upload (Assets.Fits, outside the store's lock, with the request's
-  context, after the quota) and refused with the renderer's error when its preview would exceed the artifact
-  limit. A template that names a background on a deployment without -background-directory is 422.
+  context, after the quota) and refused with the renderer's error (a preview over the artifact limit would be
+  one; none was found for an accepted PNG). A template that names a background on a deployment without
+  -background-directory is 422.
 - The pdfme canvas, its 7.4 MB bundle, the console font route and the relaxed style CSP are removed. The console
   edits geometry with its millimetre controls and offers the two preview buttons only when the server lists the
   pdf format.
@@ -48,11 +50,14 @@ Changed in the port:
 - Tests: the delivery's Go model, store, asset and HTTP tests and its console DOM tests run unchanged apart from
   the canvas test, which is dropped; DOM tests that render run with the real Typst (required in CI). New: layout
   unit tests (clusters, trailing space, alignment, refusals, the concurrency slots, the assertion mapping),
-  real-Typst document tests with a fourth fixture of hard values, six concurrent renders and the upload fit check,
-  and scripts/check_pdf_export.py, which with --font derives every character's position from the font's plain
-  advances, fails on ink outside the boxes and the banner, and has negative controls for both (a glyph moved by
-  1 pt in the content stream, a shape outside the boxes); and a comparison of 24 boxes against pdfme's output
-  (evidence/s03e/cross_engine).
+  real-Typst document tests with a fourth fixture of hard values and a fifth with a background that is not
+  A4-shaped, six concurrent renders, the upload fit check, the template's assertion failing a render, the slots
+  refusing a preview, an export and an upload check while held, and the limits New refuses; and
+  scripts/check_pdf_export.py, which with --font derives every character's position from the font's plain
+  advances, compares the embedded background's pixels with the PNG, fails on ink outside the boxes and the banner,
+  and has a negative control for every document check (among them a glyph moved by 1 pt in the content stream,
+  two glyphs swapped, a glyph 0.6 pt past its box, the background shifted or replaced, a shape outside the
+  boxes); and a comparison of 24 boxes against pdfme's output (evidence/s03e/cross_engine).
 
 Not in this slice: multi-page documents and tables, carried totals, images other than the background, barcodes,
 signatures, official issue records, a canvas editor, physical printer calibration, production qualification.

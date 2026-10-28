@@ -1,7 +1,9 @@
 """Compares where the two engines drew every character of a document expectation's values:
 python -I compare.py EXPECTATION.json TYPST.pdf PDFME.pdf. Prints a JSON report: for each
-box, the characters both drew and the largest difference of their origins, in points."""
+box, the characters both drew and the largest horizontal difference of their origins, in
+points (a box whose text differs between the engines is listed without a number)."""
 import json
+import os
 import sys
 
 import pymupdf
@@ -24,7 +26,7 @@ def chars(path):
 
 exp = json.load(open(sys.argv[1], encoding="utf-8"))
 typst, pdfme = chars(sys.argv[2]), chars(sys.argv[3])
-report = {"expectation": sys.argv[1], "boxes": [], "worst_pt": 0}
+report = {"expectation": os.path.basename(sys.argv[1]), "boxes": [], "worst_pt": 0}
 for e in exp["elements"]:
     base, left = (e["y"] + exp["offset_y"]) * MM + ASCENT * e["size"], (e["x"] + exp["offset_x"]) * MM
     right = left + e["width"] * MM

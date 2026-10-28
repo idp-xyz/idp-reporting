@@ -108,28 +108,30 @@ func TestLayOutRefusesWhatItCannotPrintExactly(t *testing.T) {
 		"a tab":                      "a\tb",
 		"a control character":        "a\x7fb",
 		"too long":                   strings.Repeat("a", 257),
+		"a leading combining mark":   "\u0301abc",
+		"combining marks only":       "\u0301\u0301",
 	} {
-		_, err := layOut(d, map[string]string{"n1": value}, nil, plainFake('☃'))
-		want := r.ErrUnsupported
-		if name == "a line break" || name == "a tab" || name == "a control character" || name == "too long" {
-			want = r.ErrInvalid
-		}
-		if !errors.Is(err, want) {
-			t.Errorf("%s: %v; want %v", name, err, want)
+		if _, err := layOut(d, map[string]string{"n1": value}, nil, plainFake('☃')); !errors.Is(err, r.ErrUnsupported) {
+			t.Errorf("%s: %v; want unsupported", name, err)
 		}
 	}
-	if _, err := layOut(d, map[string]string{}, nil, plainFake()); !errors.Is(err, r.ErrInvalid) {
-		t.Errorf("a missing value: %v", err)
+	for name, values := range map[string]map[string]string{"a missing value": {}, "invalid UTF-8": {"n1": "a\xffb"}} {
+		if _, err := layOut(d, values, nil, plainFake()); !errors.Is(err, r.ErrInvalid) {
+			t.Errorf("%s: %v; want invalid", name, err)
+		}
 	}
-	// A value just inside the box fits; one character more does not. Trailing spaces do not
-	// count, as they are not drawn.
-	room := (20*mm - fitMargin) / (0.5 * 10) // 10.9 half-em characters
-	fits := strings.Repeat("a", int(room))
-	if _, err := layOut(d, map[string]string{"n1": fits + "  "}, nil, plainFake()); err != nil {
-		t.Errorf("%d characters: %v", len(fits), err)
-	}
-	if _, err := layOut(d, map[string]string{"n1": fits + "a"}, nil, plainFake()); !errors.Is(err, r.ErrUnsupported) {
-		t.Errorf("%d characters: %v", len(fits)+1, err)
+	// The box is 20 mm = 56.69 pt, and a value must leave 2 pt free: with the fake font's 5 pt
+	// characters at 10 pt, ten (50 pt) fit and eleven (55 pt) do not; at 8 pt thirteen
+	// (52 pt) fit and fourteen (56 pt) do not. Trailing spaces do not count: they are not drawn.
+	for size, longest := range map[int]int{10: 10, 8: 13} {
+		d.Elements[0].FontSize = size
+		fits := strings.Repeat("a", longest)
+		if _, err := layOut(d, map[string]string{"n1": fits + "  "}, nil, plainFake()); err != nil {
+			t.Errorf("%d characters at %d pt: %v", longest, size, err)
+		}
+		if _, err := layOut(d, map[string]string{"n1": fits + "a"}, nil, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+			t.Errorf("%d characters at %d pt: %v", longest+1, size, err)
+		}
 	}
 }
 

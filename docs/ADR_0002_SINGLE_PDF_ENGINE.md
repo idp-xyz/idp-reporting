@@ -36,15 +36,20 @@ Chinese punctuation at a line's ends and between marks, widens dashes in Chinese
 before a stray Hangul tone mark. So export/pdf does not hand Typst the value. It places every grapheme cluster
 itself, at the x the fonts' plain advances give it, after an empty inline box (which keeps Typst from trimming
 punctuation at the start of the cluster's own line), with the English language setting and no CJK-Latin spacing;
-and the template asserts that Typst measures no cluster wider than Go did, so a glyph Typst would add fails the
-render as an unsupported value. Measured on 24 boxes of hard values (Chinese next to digits and Latin,
-punctuation at the start, in runs and alone, dashes, kerned pairs, combining marks, leading and trailing spaces
-of both kinds, every alignment, print offsets, 8 to 28 pt), every character lies within 0.009 pt (0.003 mm) of
-where pdfme drew it (evidence/s03e/cross_engine.json). The one difference found: pdfme's shaper replaced two em
-dashes in a row by one two-em dash glyph, where Typst draws the two characters as given. Values are never
-shrunk, clipped or wrapped: a value that does not fit on one line with 2 pt to spare, or holds a character the
-fonts lack, a soft hyphen or a Hangul tone mark, is refused. The preview banner stays at 10 mm, 10 mm on a white
-backing.
+and the template asserts that Typst measures no cluster wider than Go did. With the pinned fonts no accepted
+cluster trips that assertion (every covered character and every covered mark after nine kinds of base were
+measured); it is the guard against a later Typst or font that shapes a cluster wider, and a real-Typst test
+proves it fails a render and maps to an unsupported value. Measured on 24 boxes of hard values (Chinese next to
+digits and Latin, punctuation at the start, in runs and alone, dashes, kerned pairs, combining marks, leading and
+trailing spaces of both kinds, every alignment, print offsets, 8 to 28 pt), every character both engines drew
+lies horizontally within 0.009 pt (0.003 mm) of where pdfme drew it (evidence/s03e/cross_engine.json; the
+reviewers' 253 further boxes stayed within the same bound). The differences found are pdfme's own glyph
+substitutions, which Typst does not apply because it shapes one cluster at a time: two em dashes in a row became
+one two-em dash glyph (1.676 em instead of 1.788, so what followed moved 0.11 em per pair), "fi" became the ﬁ
+glyph (same advance), and of stacked marks it drew the first. Values are never shrunk, clipped or wrapped: a
+value that does not fit on one line with 2 pt to spare, or holds a character the fonts lack, a soft hyphen, a
+Hangul tone mark or a leading combining mark (which both engines would draw over the next character), is
+refused. The preview banner stays at 10 mm, 10 mm on a white backing.
 
 ## Consequences
 
@@ -57,7 +62,8 @@ backing.
   default 2), and previews may hold all but one of them, so a burst of previews delays an export by at most one
   render and never fails it. One deadline, the render timeout, covers a render's wait and its run; a preview
   that exceeds it is a budget error. A background is tried with the renderer when it is uploaded, outside the
-  store's lock and with the request's context.
+  store's lock and with the request's context, and refused with the renderer's error; no accepted PNG was found
+  whose preview exceeds the artifact limit (Typst keeps the PNG's compression), so the check is a guard.
 - There is no canvas in the console; geometry is edited with the existing millimetre controls. A canvas, if users
   need one, is a later, separately loaded feature written without a framework.
 - Revisit only with evidence: if Typst fails a hard requirement of a document feature, measure the alternatives
