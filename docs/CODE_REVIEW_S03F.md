@@ -85,4 +85,30 @@ checker.
 
 ### Test effectiveness, checker and documentation
 
-Pending.
+Baseline reproduced on b072dea and 34b3cae: vet, Go 116/263, the five table PDFs byte-identical to the evidence,
+the checker 565 then 570 controls caught, DOM 57/57, veraPDF on the table PDFs. The reviewer re-ran every
+surviving round-1 mutant (all seven Go and Typst survivors now fall, the page cap and messages are pinned), ran
+new mutants against the fixes, 60 PDF corruptions and their own fixtures (hard strings as cells with offsets,
+mixed fractions, wrapped headers in both modes, metric-only columns).
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Major: the amount and carried-sum refusals masked each other in the tests (each case was refused by the other check), so disabling either survived | Fixed. Twenty amounts of 999.99 whose printed sum does not fit (message "a carried sum"), and two amounts of 123,456,789.00 whose total 0.00 fits (message "an amount") |
+| 2 | Major: the rescaling of the exact sum when a longer fraction arrives had no test and no fixture; removing it survived | Fixed. "1", "2.5", "0.125", "-1" sum to 2.625 in the unit test, and the document_table_mixed fixture carries a column whose fractions grow row by row, which the checker recomputes |
+| 3 | Major: a table line was one text object, so Typst compressed consecutive Chinese punctuation and joined dashes inside it; the checker failed a correct render of the project's own hard strings in cells, and no fixture tried them; trailing ideographic spaces were drawn but stripped by the checker | Fixed. A line is drawn as one text object per piece, split between two consecutive characters Typst would shape together (CJK punctuation, dashes, ellipses, the middle dot), each piece placed at its plain-advance position; trailing white space of every kind is dropped as for box values; the document_table_hard fixture renders the hard strings as cells at 12 pt with print offsets and passes every per-character check |
+| 4 | Major: the HTTP test of the table's catalog authorization also revoked the box's field, so the table loop's removal survived; no HTTP case reached BindTable's own denial | Fixed. Only the table's column is revoked (the box keeps its field); a column the catalog lists but the frozen snapshot lacks passes authorization and is refused by the binding, with no render |
+| 5 | Minor: the console rule test did not isolate the rules (11 of 29 deletions survived) and the first-column minimum and sizing were untested | Fixed. Every case breaks exactly one rule of a base the designer accepts; the first column is asserted at the label minimum when the even split is narrower; 31.4 mm passes at 9 pt and fails at 10 pt |
+| 6 | Minor: three Go model cases were rejected by neighbouring rules | Fixed: x under 10, y under 25 and an off-grid column width each break only their rule |
+| 7 | Minor: extra lines inside the table on the last page passed (a strike-through, a second rule) | Fixed. The last page must hold exactly the one total rule; other pages none |
+| 8 | Minor: a line drawn in the variable layer passed (PyMuPDF's intersects ignores a zero-height rectangle) | Fixed with a coordinate test |
+| 9 | Minor: a cell's text moved from the first to the second line of its own row passed | Fixed. A cell's first piece must sit on its row's first line unless the value starts with a line break |
+| 10 | Minor: the evidence had not been refreshed for 34b3cae; the header line count had no fixture | Fixed. Evidence regenerated; document_table_wrapheader_variables has a three-line header in the variable layer |
+| 11 | Minor: the refusal boundaries were far from the tests (label for page 100, header-and-total height) | Fixed. A first column that holds the page-1 label but not the page-100 one is refused; a header and total row one point taller than the region is refused and one that just fits is accepted |
+| 12 | Minor: the page-1 brought-forward control assumed a one-line header; "a fill on a body cell" and "in no column" had no control | Fixed for the first two: the control is inserted below a header of any height, and a fill on a body cell is a control; "in no column" cannot be produced, as the columns cover the region |
+| 13 | Nit: the console's first-column minimums exceeded the measured need by up to 0.85 mm | Fixed. 28.2, 31.4, 34.7, 38.0 and 41.2 mm, the measured widths rounded up to 0.1 mm, in the console, the panel text and the scope |
+| 14 | Nits: near-equivalent mutants of the fit comparison and the row loop; bold versus regular face indistinguishable with the fake font | Accepted |
+
+Solid per the reviewer: the vertical check catches 0.2 pt on one cell, a line or all text and a wrong line step
+independently of the unit test; the drawings check catches a missing, thinner, recoloured or misplaced rule, a
+body fill, a darker header fill and a total rule on the wrong page; every sum, scale and sign mutation falls;
+the evidence reproduces byte for byte.

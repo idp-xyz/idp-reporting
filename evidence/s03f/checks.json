@@ -1,10 +1,10 @@
 {
  "phase": "S03-F",
  "date": "2026-10-28 Asia/Shanghai",
- "baseline": "668ee86 (main after PR #7, S03-E); reviewed implementation 4c999e3, fixes 35e1169 and 7fdb959",
+ "baseline": "668ee86 (main after PR #7, S03-E); reviewed implementation 4c999e3, fixes 35e1169, 7fdb959, 34b3cae and the round-2 test fixes",
  "go": {
-  "top_level_passes": 116,
-  "pass_events": 263,
+  "top_level_passes": 117,
+  "pass_events": 264,
   "failures": 0,
   "skips": [
    "TestDurablePostgresContract",
@@ -12,8 +12,8 @@
   ]
  },
  "race": {
-  "top_level_passes": 116,
-  "pass_events": 263,
+  "top_level_passes": 117,
+  "pass_events": 264,
   "failures": 0,
   "skips": [
    "TestDurablePostgresContract",
@@ -37,16 +37,16 @@
   "runner": "jsdom + real Go loopback HTTP + pinned Typst; not a browser"
  },
  "pdf_documents": {
-  "checked": 21,
+  "checked": 24,
   "table_exports": 11,
   "document_previews": 5,
-  "multi_page_tables": 5,
-  "pages_per_table_document": "3, 3, 3, 1, 2",
-  "checks": "per page: A4, banner, boxes, background; header per page; every row complete, in order, on one page; each line at its plain-advance position (Bold face for bold lines) and at the baseline its row and line give it; carried and total sums recomputed exactly; snapshot totals equal the sums; in full mode one stroked cell per column of every row, header fills and the 1 pt total rule on the last page only, no drawing in the variable layer; ink outside boxes/table/banner",
-  "negative_controls_caught": 565,
+  "multi_page_tables": 8,
+  "pages_per_table_document": "3, 3, 3, 1, 2, 2, 1, 1",
+  "checks": "per page: A4, banner, boxes, background; header per page; every row complete, in order, on one page, each cell starting on its row's first line; each line at its plain-advance position (Bold face for bold lines; lines split at consecutive shaped punctuation) and at the baseline its row and line give it; carried and total sums recomputed exactly at the column's longest fraction; snapshot totals equal the sums; in full mode one stroked cell per column of every row (0.5 pt, luma 150), header fills (luma 232), exactly one 1 pt total rule (luma 60) on the last page, no drawing in the variable layer; ink outside boxes/table/banner",
+  "negative_controls_caught": 692,
   "negative_controls_missed": 0,
   "golden": "export/pdf/testdata/golden.json (matched; table documents record pages and first rows)",
-  "verapdf_pass": 26,
+  "verapdf_pass": 29,
   "verapdf_negative_control": "FAIL"
  },
  "tools": {

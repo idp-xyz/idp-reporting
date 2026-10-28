@@ -1,0 +1,75 @@
+{
+ "kind": "document",
+ "file": "document_table_wrapheader_variables.pdf",
+ "background": false,
+ "mode": "variables",
+ "offset_x": 0,
+ "offset_y": 0,
+ "elements": [
+  {
+   "text": "华东区客户",
+   "x": 20,
+   "y": 46,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "left"
+  },
+  {
+   "text": "9007199254740993.01",
+   "x": 110.5,
+   "y": 46,
+   "width": 80,
+   "height": 8,
+   "size": 10,
+   "align": "right"
+  }
+ ],
+ "table": {
+  "x": 15,
+  "y": 60,
+  "width": 180,
+  "height": 80,
+  "size": 10,
+  "columns": [
+   {
+    "field": "customer",
+    "label": "客户名称（合同主体，含分支机构及关联方）",
+    "width": 100,
+    "metric": false,
+    "scale": 0
+   },
+   {
+    "field": "amount",
+    "label": "应收账款未结余额合计（CNY）",
+    "width": 40,
+    "metric": true,
+    "scale": 2
+   },
+   {
+    "field": "count",
+    "label": "Open invoices outstanding at the cut-off date",
+    "width": 40,
+    "metric": true,
+    "scale": 0
+   }
+  ],
+  "rows": [
+   [
+    "甲",
+    "1.00",
+    "1"
+   ],
+   [
+    "乙",
+    "2.00",
+    "2"
+   ]
+  ],
+  "totals": {
+   "amount": "3.00",
+   "count": "3"
+  },
+  "header_lines": 3
+ }
+}
