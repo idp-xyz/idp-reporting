@@ -8,14 +8,15 @@ S03-F's unless stated here.
 
 G1 · Issue job. `POST /issues` with an Idempotency-Key and `{template_id, version, snapshot_id, row_index}`
 admits a job of kind "issue". At admission the version must be the template's published version (a draft,
-a withdrawn or a later version is 409 TEMPLATE_NOT_PUBLISHED), the caller must be authorized for the
+a withdrawn or a superseded version is 409 TEMPLATE_NOT_PUBLISHED; a version that does not exist is 404), the caller must be authorized for the
 template's fields and background exactly as for a preview, the snapshot must be the caller's, current and
 unexpired, and the row must exist. The job freezes the template configuration (its canonical JSON and its
 SHA-256), the template id and version, the snapshot id and the row index; the request hash covers all of
 them, so a replayed key with other input is 409 IDEMPOTENCY_CONFLICT. The repository assigns the issue
-number when it admits the job: consecutive per tenant and integration, starting at 1, never reused. A job
-that fails or is cancelled keeps its number, so a gap in the records is always explained by a job with that
-number. Jobs of kind "issue" are listed, read and cancelled like the other jobs; their view carries the
+number when it admits the job: consecutive per tenant and integration, starting at 1, never reused; every
+subject of a tenant and integration draws from the same sequence while each sees only its own records. A job
+that fails or is cancelled keeps its number (a layout refusal at render time included), so a gap in the
+records is always explained by a job with that number. Jobs of kind "issue" are listed, read and cancelled like the other jobs; their view carries the
 number, the template id, version and digest and the row index.
 
 G2 · Execution. The worker re-authorizes the source as for an export, reads the frozen snapshot (digest

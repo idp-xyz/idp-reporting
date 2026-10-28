@@ -47,9 +47,14 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			w.Header().Set("X-Template-Version", strconv.Itoa(entry.Version))
 			return renderDocumentPreview(w, req, service, p, renderer, entry.Layout, input.SnapshotID, *input.RowIndex, assets)
 		}))
-		// Official issue (S03-G): the published version, frozen into a durable job; the row is
-		// bound here once so that a wrong row or an unprintable value is refused at once, and
-		// again by the worker from the stored snapshot.
+	}
+	// Official issue (S03-G): the published version, frozen into a durable job; the row is
+	// bound here once so that a wrong row, a field the snapshot lacks or a value the previews
+	// could not print is refused at once (layout refusals are the worker's and consume a
+	// number), and again by the worker from the stored snapshot. Mounted with the templates
+	// whether or not the service can issue, so that a deployment without the renderer answers
+	// 422, not 404.
+	{
 		mux.HandleFunc("POST /api/reporting/v1/issues", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			var input struct {
 				TemplateID string `json:"template_id"`

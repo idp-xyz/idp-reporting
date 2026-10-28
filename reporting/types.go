@@ -276,7 +276,8 @@ type IssueResult struct {
 // Repository owns only platform assets. Publish must atomically insert one immutable asset
 // (two for an issue job: the artifact and the record) and finish a current, unexpired,
 // uncancelled job generation. Admit assigns the number of an issue job: consecutive per tenant
-// and integration, never reused. Issues lists an identity's issue jobs, newest first.
+// and integration, never reused. Issues lists an identity's issue jobs under the given
+// integrations, newest first, at most limit of them.
 type Repository interface {
 	Admit(context.Context, Job) (Job, error)
 	Job(context.Context, Identity, string) (Job, error)
@@ -287,7 +288,7 @@ type Repository interface {
 	Snapshot(context.Context, Identity, string) (Snapshot, error)
 	Artifact(context.Context, Identity, string) (Artifact, error)
 	Issue(context.Context, Identity, string) (Issue, error)
-	Issues(context.Context, Identity, int) ([]Job, error)
+	Issues(context.Context, Identity, []string, int) ([]Job, error)
 }
 
 // WorkbookWriter renders a snapshot in one export format. The name predates formats other than

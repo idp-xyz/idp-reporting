@@ -596,8 +596,10 @@ test('official issue of the open published template downloads the stamped PDF an
  a.input('doc-row','3');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/打开已发布模板/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0);
  a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&!a.$('preview').disabled,'release');a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'publish');
  a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'published open');
- // Any change to the open template takes the issue button away until it is reopened.
+ // Any change to the open template takes the issue button away until it is reopened; so does
+ // saving it as a new (unpublished) version of the same configuration.
  a.input('doc-text','Changed');a.click('doc-add-text');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/先保存/);a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'reopened');
+ a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'saved v2');a.click('doc-issue');assert.match(a.$('doc-status').textContent,/打开已发布模板/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0);a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'reopened again');
  a.click('doc-issue');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'issued PDF',20000);
  assert.equal(a.downloads[0].name,'issued-000001.pdf');const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
  const submitted=a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST');assert.equal(submitted.length,1);assert.ok(submitted[0].key);
@@ -628,6 +630,9 @@ function offeringIssuance(options={}){
 test('the issue button follows the issuance capability and the server refusal is explained',async()=>{
   const a=app(offeringIssuance({issuance:false}));
   try{await snapshotReady(a);assert.equal(a.$('doc-pdf').hidden,false);assert.equal(a.$('doc-issue').hidden,true);}finally{a.close();}
+  // The flag alone is not enough: without the pdf format there is no renderer to issue with.
+  const noPDF=app(async(path,opts)=>{if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,opts)).json();caps.formats=caps.formats.filter(f=>f!=='pdf');caps.issuance=true;return json(caps);}});
+  try{await snapshotReady(noPDF);assert.equal(noPDF.$('doc-pdf').hidden,true);assert.equal(noPDF.$('doc-issue').hidden,true);}finally{noPDF.close();}
   const bodies=[];const b=app(offeringIssuance({bodies}));
   try{
     await snapshotReady(b);assert.equal(b.$('doc-issue').hidden,false);
@@ -635,6 +640,8 @@ test('the issue button follows the issuance capability and the server refusal is
     b.click('doc-published-open');await until(()=>b.$('doc-server-status').textContent.includes('已打开发布模板')&&!b.$('preview').disabled,'open');
     const id=b.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
     b.input('doc-row','2');b.click('doc-issue');await until(()=>b.$('notice').textContent.includes('已发布的模板版本')&&!b.$('preview').disabled,'refused');
+    // The refusal concerns the template, not the snapshot: the frozen result stays on screen.
+    assert.equal(b.$('result-kind').textContent,'冻结快照');assert.equal(b.$('result-table').tBodies[0].rows.length,3);assert.equal(b.$('doc-issue').hidden,false);
     assert.equal(bodies.length,1);assert.deepEqual(bodies[0],{template_id:id,version:1,snapshot_id:bodies[0].snapshot_id,row_index:1});assert.ok(/^[a-f0-9]{32}$/.test(bodies[0].snapshot_id));
     assert.equal(b.downloads.length,0);assert.equal([...b.$('tasks-body').rows].filter(r=>r.cells[0].textContent.startsWith('正式出具')).length,0);
   }finally{b.close();}
@@ -645,9 +652,9 @@ test('an issue job whose view lacks its number, a record whose stamp disagrees a
   const a=app(offeringIssuance({submit:()=>json({job_id:pdfJob,kind:'issue',state:'queued',format:'pdf',snapshot_id:'c'.repeat(32)},202)}));
   try{
     await snapshotReady(a);a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'save');a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&!a.$('preview').disabled,'release');a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'publish');a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'open');
-    // The server answered 202 but the view cannot be verified: the job may exist, so the console
-    // reports an unconfirmed submission (the key is kept for a retry) and remembers no task.
-    a.click('doc-issue');await until(()=>a.$('notice').textContent.includes('未确认')&&!a.$('preview').disabled,'invalid job');assert.equal(a.downloads.length,0);assert.equal([...a.$('tasks-body').rows].filter(r=>r.cells[0].textContent.startsWith('正式出具')).length,0);
+    // The server answered 202 but the view cannot be verified: an invalid response, reported
+    // as such (not as an unconfirmed submission); no task is remembered, nothing downloads.
+    a.click('doc-issue');await until(()=>a.$('notice').textContent.includes('无法验证的响应')&&!a.$('preview').disabled,'invalid job');assert.equal(a.downloads.length,0);assert.equal([...a.$('tasks-body').rows].filter(r=>r.cells[0].textContent.startsWith('正式出具')).length,0);assert.equal(a.errors.length,0);
   }finally{a.close();}
   // A well-formed issue job downloads under its number, from the task list too.
   const submit=()=>json({job_id:pdfJob,kind:'issue',state:'queued',format:'pdf',snapshot_id:'c'.repeat(32),issue:{number:12,template_id:'d'.repeat(32),template_version:1,template_sha256:'e'.repeat(64),row_index:0}},202);
@@ -656,7 +663,7 @@ test('an issue job whose view lacks its number, a record whose stamp disagrees a
     await snapshotReady(b);b.click('doc-server-save');await until(()=>b.$('doc-server-status').textContent.includes('版本 1')&&!b.$('preview').disabled,'save');b.click('doc-release-read');await until(()=>b.$('doc-release-status').textContent.includes('修订 0')&&!b.$('preview').disabled,'release');b.click('doc-release-publish');await until(()=>b.$('doc-release-status').textContent.includes('已发布版本 1')&&!b.$('preview').disabled,'publish');b.click('doc-published-open');await until(()=>b.$('doc-server-status').textContent.includes('已打开发布模板')&&!b.$('preview').disabled,'open');
     // A well-formed job view naming another template or row is a server job under our key: it
     // is listed as a task, but never followed or downloaded.
-    b.click('doc-issue');await until(()=>b.$('notice').textContent.includes('未确认')&&!b.$('preview').disabled,'mismatch');assert.equal(b.downloads.length,0);assert.equal([...b.$('tasks-body').rows].filter(r=>r.cells[0].textContent==='正式出具 No. 000012').length,1);assert.equal(b.trace.filter(v=>v.path.endsWith('/jobs/'+pdfJob)).length,0);
+    b.click('doc-issue');await until(()=>b.$('notice').textContent.includes('无法验证的响应')&&!b.$('preview').disabled,'mismatch');assert.equal(b.downloads.length,0);assert.equal([...b.$('tasks-body').rows].filter(r=>r.cells[0].textContent==='正式出具 No. 000012').length,1);assert.equal(b.trace.filter(v=>v.path.endsWith('/jobs/'+pdfJob)).length,0);
   }finally{b.close();}
   // The job view must name the template, version and row that were submitted.
   const c=app(offeringIssuance({submit:()=>json({job_id:pdfJob,kind:'issue',state:'queued',format:'pdf',snapshot_id:'c'.repeat(32),issue:{number:12,template_id:'d'.repeat(32),template_version:1,template_sha256:'e'.repeat(64),row_index:0}},202)}));
@@ -672,12 +679,14 @@ test('an issue job whose view lacks its number, a record whose stamp disagrees a
   }finally{c.close();}
   // Records: a stamp that disagrees with the number, time and id is refused; a consistent one lists.
   const stamp=(n,at,id)=>'ISSUED No. '+String(n).padStart(6,'0')+' - '+at+' - '+id;
-  const rec=(over={})=>({issue_id:'f'.repeat(32),state:'succeeded',number:3,template_id:'d'.repeat(32),template_version:2,template_sha256:'e'.repeat(64),snapshot_id:'c'.repeat(32),snapshot_sha256:'a'.repeat(64),row_index:4,artifact_id:pdfArtifact,sha256:'b'.repeat(64),pages:2,issued_at:'2026-10-28T06:12:03Z',stamp:stamp(3,'2026-10-28T06:12:03Z','f'.repeat(32)),...over});
-  for(const [label,records,expected] of [['bad stamp',[rec({stamp:stamp(4,'2026-10-28T06:12:03Z','f'.repeat(32))})],/印章不一致/],['queued with artifact',[rec({state:'queued',sha256:undefined,stamp:undefined})],/不应带有产物/],['bad number',[rec({number:0})],/无法验证出具记录/],['good',[rec(),rec({state:'failed',number:2,error_code:'TEMPLATE_NOT_PUBLISHED',artifact_id:undefined,sha256:undefined,snapshot_sha256:undefined,pages:undefined,issued_at:undefined,stamp:undefined})],null]]){
+  const fixtureDigest=createHash('sha256').update('%PDF-1.7 fixture').digest('hex');
+  const rec=(over={})=>({issue_id:'f'.repeat(32),state:'succeeded',number:3,template_id:'d'.repeat(32),template_version:2,template_sha256:'e'.repeat(64),snapshot_id:'c'.repeat(32),snapshot_sha256:'a'.repeat(64),row_index:4,artifact_id:pdfArtifact,sha256:fixtureDigest,pages:2,issued_at:'2026-10-28T06:12:03Z',stamp:stamp(3,'2026-10-28T06:12:03Z','f'.repeat(32)),...over});
+  for(const [label,records,expected] of [['bad stamp',[rec({stamp:stamp(4,'2026-10-28T06:12:03Z','f'.repeat(32))})],/印章不一致/],['queued with artifact',[rec({state:'queued',sha256:undefined,stamp:undefined})],/不应带有产物/],['bad number',[rec({number:0})],/无法验证出具记录/],['too many',Array.from({length:101},(_,i)=>rec({number:i+1})),/无法验证出具记录列表/],['wrong digest',[rec({sha256:'b'.repeat(64)})],null],['good',[rec(),rec({state:'failed',number:2,error_code:'TEMPLATE_NOT_PUBLISHED',artifact_id:undefined,sha256:undefined,snapshot_sha256:undefined,pages:undefined,issued_at:undefined,stamp:undefined})],null]]){
     const e=app(offeringIssuance({records:records.map(v=>JSON.parse(JSON.stringify(v)))}));
     try{
       await snapshotReady(e);e.click('doc-issues-refresh');await until(()=>!e.$('preview').disabled&&(e.$('doc-issue-status').textContent!=='正式出具需要已发布模板、冻结快照与行号。'),label);
       if(expected){assert.match(e.$('doc-issue-status').textContent,expected,label);assert.equal(e.$('doc-issues-wrap').hidden,true,label);}
+      else if(label==='wrong digest'){e.$('doc-issues-body').rows[0].cells[6].querySelector('button').click();await until(()=>e.$('notice').textContent.includes('完整性')&&!e.$('preview').disabled,'digest refused');assert.equal(e.downloads.length,0);}
       else{assert.equal(e.$('doc-issues-body').rows.length,2);assert.equal(e.$('doc-issues-body').rows[0].cells[0].textContent,'No. 000003');assert.equal(e.$('doc-issues-body').rows[1].cells[1].textContent,'失败（编号作废） · TEMPLATE_NOT_PUBLISHED');assert.equal(e.$('doc-issues-body').rows[1].cells[6].querySelector('button'),null);e.$('doc-issues-body').rows[0].cells[6].querySelector('button').click();await until(()=>e.downloads.length===1,'record download');assert.equal(e.downloads[0].name,'issued-000003.pdf');}
     }finally{e.close();}
   }

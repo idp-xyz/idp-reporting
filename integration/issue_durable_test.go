@@ -138,6 +138,26 @@ func TestDurablePostgresIssues(t *testing.T) {
 		if _, e = v.repo.Issue(ctx, stranger.Identity, first.ID); !errors.Is(e, r.ErrNotFound) {
 			t.Fatal("record visible to another subject", e)
 		}
+		// The listing is filtered by the principal's integrations before the limit: a shipment
+		// issue does not push a finance issue off a page of one.
+		// Its sequence is the shipment integration's own: it starts at 1 while finance is at 3.
+		issuer.err = nil
+		shipment := durableFreeze(t, durableEnv{s: s, repo: v.repo, source: v.source, p: v.p}, contractsim.ShipmentQuery(), "ship")
+		shipped, e := s.SubmitIssue(ctx, v.p, issueInput(shipment.SnapshotID, 0), "ship-issue")
+		if e != nil || shipped.Issue.Number != 1 {
+			t.Fatal(shipped, e)
+		}
+		if _, e = s.RunOne(ctx); e != nil {
+			t.Fatal(e)
+		}
+		finance := v.p
+		finance.Integrations = []string{contractsim.FinanceIntegration}
+		if list, e = s.Issues(ctx, finance, 1); e != nil || len(list) != 1 || list[0].Number != 3 {
+			t.Fatalf("%+v %v", list, e)
+		}
+		if list, e = s.Issues(ctx, v.p, 1); e != nil || len(list) != 1 || list[0].ID != shipped.ID || list[0].State != "succeeded" || list[0].Number != 1 {
+			t.Fatalf("%+v %v", list, e)
+		}
 		// An export artifact is not an issue and never gets a number.
 		ex := durableExport(t, durableEnv{s: s, repo: v.repo, source: v.source, p: v.p}, snap.SnapshotID, "export")
 		if ex.Issue != nil {
@@ -246,6 +266,15 @@ UPDATE reporting_s01.profile SET version=2 WHERE singleton;`); e != nil {
 		}
 		_, e = s.Issue(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
+		// The record restored but naming another row: consistent with its own stamp, yet not
+		// with the job, which the service cross-checks.
+		for _, sql := range []string{`UPDATE reporting_s01.assets SET data=jsonb_set(jsonb_set(data,'{Number}','1'),'{RowIndex}','5') WHERE id=$1 AND kind='issue'`, `UPDATE reporting_s01.assets SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex') WHERE id=$1 AND kind='issue'`} {
+			if _, e = p.Exec(ctx, sql, j.ID); e != nil {
+				t.Fatal(e)
+			}
+		}
+		_, e = s.Issue(ctx, v.p, j.ID)
+		mustError(t, e, r.ErrIntegrity)
 		// The job's frozen template changed without its digest: the stored job is corrupt.
 		if _, e = p.Exec(ctx, `UPDATE reporting_s01.jobs SET data=jsonb_set(data,'{RowIndex}','2') WHERE id=$1`, j.ID); e != nil {
 			t.Fatal(e)
@@ -253,6 +282,35 @@ UPDATE reporting_s01.profile SET version=2 WHERE singleton;`); e != nil {
 		_, e = s.Job(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
 		_, e = s.Issues(ctx, v.p, 10)
+		mustError(t, e, r.ErrIntegrity)
+	})
+	t.Run("download_requires_the_record_to_name_the_artifact", func(t *testing.T) {
+		v := newDurable(t)
+		s := issueDurableService(t, v, &stampIssuer{})
+		env := durableEnv{s: s, repo: v.repo, source: v.source, p: v.p}
+		snap := durableFreeze(t, env, contractsim.FinancialQuery(), "snap")
+		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 0), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.RunOne(ctx); e != nil {
+			t.Fatal(e)
+		}
+		done, e := s.Job(ctx, v.p, j.ID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		// The artifact rewritten consistently (content, digest and row digest): it is no longer
+		// the PDF the record names, so it is not served as issued.
+		p := fixtureAdmin(t)
+		for _, sql := range []string{`UPDATE reporting_s01.assets SET data=jsonb_set(jsonb_set(data,'{Content}',to_jsonb(encode('%PDF-1.7 other','base64'))),'{SHA256}',to_jsonb(encode(sha256('%PDF-1.7 other'::bytea),'hex'))) WHERE id=$1 AND kind='artifact'`, `UPDATE reporting_s01.assets SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex') WHERE id=$1 AND kind='artifact'`} {
+			if _, e = p.Exec(ctx, sql, done.ArtifactID); e != nil {
+				t.Fatal(e)
+			}
+		}
+		_, e = s.Download(ctx, v.p, done.ArtifactID)
+		mustError(t, e, r.ErrIntegrity)
+		_, e = s.Job(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
 	})
 }

@@ -885,8 +885,10 @@ func statementRows(n int) *doctemplates.TableData {
 }
 
 // TestTypstIssuesDocuments renders official documents (S03-G): the preview's pages with the
-// issue stamp in the banner strip, in the text colour; the page count is returned; the stamp
-// is refused when it is not one the contract makes, and when it would not fit the strip.
+// issue stamp in the banner strip, in the text colour (checked on the laid-out page; the
+// checker verifies the drawn PDF); the page count is returned; an empty stamp, one with a
+// control character or one naming the banner is invalid, one that would not fit the strip or
+// that the fonts lack is unsupported.
 func TestTypstIssuesDocuments(t *testing.T) {
 	w := typstWriter(t, nil)
 	png, err := os.ReadFile("../../doctemplates/testdata/a4-background.png")
@@ -948,6 +950,26 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		}
 		documentEvidence(t, c.name, out, c.d, c.values, c.png, c.table, w.fonts)
 		issueEvidence(t, c.name, out, preview, c.number, at, id, pages)
+		// What Typst is told to draw: the stamp in the strip in the text colour on every page
+		// (the strip is one banner for all pages), the preview's title gone, and no glyph of
+		// the banner text anywhere; the preview keeps its banner.
+		p, err := w.issuePage(c.d, c.values, c.png, c.table, stamp)
+		if err != nil || p.Banner.Text != stamp || p.Banner.Fill != stampFill || p.Title != "Issued document" || len(p.Pages) != c.pages {
+			t.Fatalf("%s: issue page %+v %v", c.name, p.Banner, err)
+		}
+		for _, pg := range p.Pages {
+			texts := ""
+			for _, g := range pg.Texts {
+				texts += g.Text
+			}
+			if strings.Contains(texts, "PREVIEW") {
+				t.Errorf("%s: a page of the issue draws the banner text", c.name)
+			}
+		}
+		pv, err := layOut(c.d, c.values, c.png, c.table, newPlainMeasurer(w.fonts))
+		if err != nil || pv.Banner.Text != bannerText || pv.Banner.Fill != bannerFill {
+			t.Fatalf("%s: preview banner %+v %v", c.name, pv.Banner, err)
+		}
 	}
 	// Refused before Typst runs: an empty stamp, one with a control character, one naming
 	// the preview banner, one longer than the strip.
@@ -955,6 +977,15 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x"}, nil, nil, stamp); !errors.Is(err, want) {
 			t.Errorf("stamp %q: %v; want %v", stamp, err, want)
 		}
+	}
+	// The banner text as a value or a cell is refused: an issued document never says PREVIEW.
+	if _, _, err := w.Issue(t.Context(), single, map[string]string{"n1": "x " + bannerText}, nil, nil, r.IssueStamp(1, at, id)); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("banner text as a value: %v; want unsupported", err)
+	}
+	cells := statementRows(2)
+	cells.Rows[1][1] = bannerText
+	if _, _, err := w.Issue(t.Context(), tableDoc("full", false), values, nil, cells, r.IssueStamp(1, at, id)); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("banner text as a cell: %v; want unsupported", err)
 	}
 	// An issue takes an export slot, not a preview slot: with the previews saturated it still
 	// renders; with no slot at all it is a budget error.

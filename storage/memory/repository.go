@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	r "idp.local/reporting/reporting"
+	"slices"
 	"sync"
 	"time"
 )
@@ -230,11 +231,11 @@ func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, er
 	}
 	return clone(v), nil
 }
-func (s *Store) Issues(ctx context.Context, i r.Identity, limit int) ([]r.Job, error) {
+func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() {
+	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() || len(integrations) == 0 {
 		return nil, r.ErrInvalid
 	}
 	s.mu.Lock()
@@ -242,7 +243,7 @@ func (s *Store) Issues(ctx context.Context, i r.Identity, limit int) ([]r.Job, e
 	out := []r.Job{}
 	for n := len(s.order) - 1; n >= 0 && len(out) < limit; n-- {
 		j := s.jobs[s.order[n]]
-		if j.Kind == "issue" && j.Owner.Identity == i {
+		if j.Kind == "issue" && j.Owner.Identity == i && slices.Contains(integrations, j.Owner.Integration) {
 			out = append(out, clone(j))
 		}
 	}

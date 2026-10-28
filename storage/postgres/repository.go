@@ -289,11 +289,11 @@ func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, er
 	e := s.asset(ctx, i, id, "issue", &v)
 	return v, e
 }
-func (s *Store) Issues(ctx context.Context, i r.Identity, limit int) ([]r.Job, error) {
-	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() {
+func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
+	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() || len(integrations) == 0 {
 		return nil, r.ErrInvalid
 	}
-	rows, e := s.pool.Query(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 ORDER BY created_at DESC, id DESC LIMIT $4", i.Tenant, i.Issuer, i.Subject, limit)
+	rows, e := s.pool.Query(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5", i.Tenant, i.Issuer, i.Subject, integrations, limit)
 	if e != nil {
 		return nil, e
 	}

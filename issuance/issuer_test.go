@@ -7,10 +7,10 @@ import (
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/issuance"
 	r "idp.local/reporting/reporting"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 type fakeRenderer struct {
@@ -153,5 +153,57 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 	if _, e = issuer.Issue(ctx, req); !errors.Is(e, r.ErrUnsupported) {
 		t.Fatal("renderer refusal not passed on", e)
 	}
-	_ = time.Now
+}
+
+// TestIssuerResolvesTheBackgroundAsThePreviewDoes: a published template naming a background
+// issues with that PNG in full mode and without it in variables mode; on a deployment without
+// a background store it is unsupported.
+func TestIssuerResolvesTheBackgroundAsThePreviewDoes(t *testing.T) {
+	ctx := context.Background()
+	owner := snapshot().Owner
+	png, e := os.ReadFile("../doctemplates/testdata/a4-background.png")
+	if e != nil {
+		t.Fatal(e)
+	}
+	assets, e := doctemplates.OpenAssets(filepath.Join(t.TempDir(), "backgrounds"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer assets.Close()
+	ref, e := assets.Put(ctx, owner.Identity, document().Binding, png)
+	if e != nil {
+		t.Fatal(e)
+	}
+	store, e := doctemplates.Open(filepath.Join(t.TempDir(), "templates"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	for _, mode := range []string{"full", "variables"} {
+		d := document()
+		d.Print.Mode = mode
+		d.Background = &ref
+		v, e := store.Save(owner.Identity, "", 0, d)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = store.Publish(owner.Identity, v.ID, "publish", 1, 0); e != nil {
+			t.Fatal(e)
+		}
+		frozen, _ := doctemplates.Canonical(v.Layout)
+		job := r.Job{ID: strings.Repeat("8", 32), Owner: owner, Kind: "issue", TemplateID: v.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 0, Number: 1}
+		req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: "ISSUED No. 000001 - 2026-10-28T00:00:00Z - " + job.ID}
+		renderer := &fakeRenderer{out: []byte("%PDF-1.7 issued"), pages: 1}
+		without, _ := issuance.New(store, nil, renderer)
+		if _, e := without.Issue(ctx, req); !errors.Is(e, r.ErrUnsupported) || renderer.calls != 0 {
+			t.Fatalf("%s without a background store: %v", mode, e)
+		}
+		with, _ := issuance.New(store, assets, renderer)
+		if _, e := with.Issue(ctx, req); e != nil || renderer.calls != 1 || renderer.mode != mode {
+			t.Fatalf("%s: %v %+v", mode, e, renderer)
+		}
+		if (mode == "full") != (renderer.bg > 0) {
+			t.Errorf("%s: background of %d bytes passed to the renderer", mode, renderer.bg)
+		}
+	}
 }

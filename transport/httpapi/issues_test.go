@@ -100,7 +100,7 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 	// Capabilities announce issuance; a draft (unpublished) version is refused as such; a
 	// missing version is not found; the caller cannot pass a configuration.
 	caps := request(h, "GET", "/api/reporting/v1/capabilities", nil, true)
-	if caps.Code != 200 || !strings.Contains(caps.Body.String(), `"issuance":true`) || !strings.Contains(caps.Body.String(), `"POST /issues"`) {
+	if caps.Code != 200 || !strings.Contains(caps.Body.String(), `"issuance":true`) || !strings.Contains(caps.Body.String(), `"GET /issues/{id}"`) || !strings.Contains(caps.Body.String(), `"template_routes":["POST /issues"`) {
 		t.Fatal(caps.Body.String())
 	}
 	if code, out := post(input, ""); code != 409 || out["error"] != "TEMPLATE_NOT_PUBLISHED" {
@@ -210,12 +210,15 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 	}
 	plain, _ := r.NewService(r.Config{Repository: memory.New(time.Now), Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: adapter}}, CursorKey: []byte(secret), Writer: xlsx.Writer{}})
 	fallback2, _ := httpapi.Handler(plain, auth)
-	h2, _ := httpapi.WithDocumentTemplates(fallback2, plain, auth, store, renderer, nil)
-	if w := request(h2, "POST", "/api/reporting/v1/issues", b, true); w.Code != 422 {
-		t.Fatal("issued without an issuer", w.Code, w.Body.String())
-	}
-	if w := request(h2, "GET", "/api/reporting/v1/capabilities", nil, true); !strings.Contains(w.Body.String(), `"issuance":false`) {
-		t.Fatal(w.Body.String())
+	// The route is mounted with the templates whether or not a renderer is: 422, never 404.
+	for _, rendererOrNil := range []httpapi.DocumentRenderer{renderer, nil} {
+		h2, _ := httpapi.WithDocumentTemplates(fallback2, plain, auth, store, rendererOrNil, nil)
+		if w := request(h2, "POST", "/api/reporting/v1/issues", b, true); w.Code != 422 {
+			t.Fatal("issued without an issuer", w.Code, w.Body.String())
+		}
+		if w := request(h2, "GET", "/api/reporting/v1/capabilities", nil, true); !strings.Contains(w.Body.String(), `"issuance":false`) || strings.Contains(w.Body.String(), `"routes":[`+`"GET /catalog"`) == false {
+			t.Fatal(w.Body.String())
+		}
 	}
 }
 

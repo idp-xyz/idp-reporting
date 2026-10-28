@@ -506,7 +506,7 @@ def check_page(directory, page, number, exp, metrics, region):
     wanted = [(strip, 10, 10, 190, 10, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
     if issue:
         text = "".join(c["c"] for c in sorted(chars, key=lambda c: (round(c["base"]), c["x0"])))
-        if "PREVIEW" in text or "NOT AN ISSUED" in text:
+        if BANNER in text:
             problems.append("preview text on an issued document")
         stamp = [c for c in chars if abs(c["base"] - (10 * MM + ASCENT * 10)) <= 0.1 and c["c"].strip()]
         if any(c["color"] != STAMP_COLOUR for c in stamp):
@@ -954,8 +954,23 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
             shutil.copy(os.path.join(directory, exp["issue"]["preview_file"]), os.path.join(target, exp["file"]))
         previewed = copy_with("preview", lambda doc: None)
         preview_instead(previewed)
-        yield "the preview in place of the issue", "digest", previewed
-        yield "the word PREVIEW added", "preview text", copy_with("previewword", text("PREVIEW", free))
+        yield "the preview in place of the issue", "is not drawn on one line", previewed
+        yield "the banner text added", "preview text", copy_with("previewword", text(BANNER, (20 * MM, 285 * MM)))
+        strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
+        stamp_colour = (0x13 / 255, 0x22 / 255, 0x38 / 255)
+
+        def restamp(doc):
+            # The strip whited out and a stamp with the next number drawn in the stamp's colour.
+            p = doc[0]
+            p.draw_rect(strip, color=None, fill=(1, 1, 1), overlay=True)
+            other = re.sub(r"No\. (\d{6})", lambda m: f"No. {int(m.group(1)) + 1:06d}", exp["issue"]["stamp"])
+            p.insert_font(fontname="Fx", fontbuffer=font.buffer)
+            p.insert_text((10 * MM, 10 * MM + ASCENT * 10), other, fontname="Fx", fontsize=10, color=stamp_colour)
+        yield "the stamp redrawn with the next number", "is not drawn on one line", copy_with("restamp", restamp)
+
+        def unstamp_last(doc):
+            doc[doc.page_count - 1].draw_rect(strip, color=None, fill=(1, 1, 1), overlay=True)
+        yield "the stamp covered on the last page", "has no ink", copy_with("unstamp", unstamp_last)
 
         def recolour(doc):
             page = doc[0]
@@ -1369,7 +1384,14 @@ def main():
                 failed |= not caught
             with tempfile.TemporaryDirectory() as scratch:
                 for what, expected, directory in document_pdf_corruptions(args.directory, exp, scratch, args.font):
-                    caught = any(expected in p for p in check_document(directory, exp, args.font)[0])
+                    against = exp
+                    if exp.get("issue"):
+                        # The record names the corrupted file by digest, so that every other
+                        # check is exercised; the digest check has its own control above.
+                        against = copy.deepcopy(exp)
+                        with open(os.path.join(directory, exp["file"]), "rb") as f:
+                            against["issue"]["sha256"] = hashlib.sha256(f.read()).hexdigest()
+                    caught = any(expected in p for p in check_document(directory, against, args.font)[0])
                     print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
                     failed |= not caught
         elif args.negative:

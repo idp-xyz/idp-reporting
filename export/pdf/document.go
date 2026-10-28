@@ -139,28 +139,53 @@ func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[
 	if err := ctx.Err(); err != nil {
 		return nil, 0, err
 	}
-	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
-		return nil, 0, r.ErrInvalid
-	}
-	m := newPlainMeasurer(w.fonts)
-	p, err := layOut(d, values, background, table, m)
+	p, err := w.issuePage(d, values, background, table, stamp)
 	if err != nil {
 		return nil, 0, err
 	}
-	width, err := m.width(stamp, bannerSize, false)
-	if err != nil {
-		return nil, 0, err
-	}
-	if width > bannerW*mm+0.05 {
-		return nil, 0, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
-	}
-	p.Title = "Issued document"
-	p.Banner.Text, p.Banner.Fill = stamp, stampFill
 	out, err := w.renderDocument(ctx, p, background, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 	return out, len(p.Pages), nil
+}
+
+// issuePage lays out an issued document: the preview's pages with the stamp in the strip. A
+// stamp is any one line the fonts cover that fits the strip and is not the banner.
+func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string) (*page, error) {
+	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
+		return nil, r.ErrInvalid
+	}
+	// The preview's banner text is never printed on an issued document, not even as data.
+	for _, v := range values {
+		if strings.Contains(v, bannerText) {
+			return nil, fmt.Errorf("pdf: a value of an issued document holds the preview banner text: %w", r.ErrUnsupported)
+		}
+	}
+	if table != nil {
+		for _, row := range table.Rows {
+			for _, cell := range row {
+				if strings.Contains(cell, bannerText) {
+					return nil, fmt.Errorf("pdf: a cell of an issued document holds the preview banner text: %w", r.ErrUnsupported)
+				}
+			}
+		}
+	}
+	m := newPlainMeasurer(w.fonts)
+	p, err := layOut(d, values, background, table, m)
+	if err != nil {
+		return nil, err
+	}
+	width, err := m.width(stamp, bannerSize, false)
+	if err != nil {
+		return nil, err
+	}
+	if width > bannerW*mm+0.05 {
+		return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
+	}
+	p.Title = "Issued document"
+	p.Banner.Text, p.Banner.Fill = stamp, stampFill
+	return p, nil
 }
 
 // renderDocument runs Typst on a laid-out page; with previews, it holds a preview slot first.

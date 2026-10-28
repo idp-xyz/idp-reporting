@@ -17,7 +17,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
 | POST /exports | `{ "snapshot_id": "…", "format": "pdf" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports |
-| GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256 |
+| GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256; an issued PDF is named `issued-<issue id>.pdf` (the console saves it as `issued-<number>.pdf`) |
 
 The standalone HTML/CSS/JS console is served at /console/. Static assets contain
 no credentials or private rows; they do not bypass protected API routes.
@@ -65,7 +65,7 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
 | POST /issues | Official issue (S03-G, docs/S03G_SCOPE.md): `{template_id, version, snapshot_id, row_index}` with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403); the job view carries `issue: {number, template_id, template_version, template_sha256, row_index}` |
 | GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25), each with its record once it succeeded: `issue_id, state, error_code, number, template_*, snapshot_id, row_index, artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` |
-| GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's |
+| GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` checks the download like an export's, so it is 409 once the snapshot expired, while `GET /issues/{id}` still answers |
 
 An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
 row; the repository assigns the number at admission, consecutive per tenant and integration and never reused (a
@@ -74,7 +74,10 @@ frozen configuration is still the published version (else the job fails with TEM
 the preview's pages with the issue stamp `ISSUED No. 000012 - 2026-10-28T06:12:03Z - <issue id>` in the banner
 strip (in the text colour, in variables mode too) and publishes the PDF artifact (format "pdf", carrying the
 issue id; downloaded as `issued-<id>.pdf` through GET /artifacts/{id}/content, with the snapshot's expiry and
-authorization rules) together with the permanent record in one transaction. Records are never changed or deleted.
+authorization rules, and only when the record names that artifact and its digest) together with the permanent
+record in one transaction. Records are never changed or deleted. `POST /issues` is mounted with the template
+routes (`template_routes` in the capabilities) and answers 422 UNSUPPORTED_COMBINATION when the deployment cannot
+issue (`issuance: false`); the preview's banner text is refused as a value or a cell of an issued document.
 
 A preview places each value on one line with its baseline 1.16 font sizes below the top of its box, at the box's
 left edge, right edge or centre, every character at the position the fonts' plain advances give it (ADR 0002);

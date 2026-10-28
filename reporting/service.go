@@ -366,8 +366,9 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 	return view(j), nil
 }
 
-// Issues lists the caller's issue jobs, newest first, with the record of each that succeeded.
-// The records are read as the job views are: the integration must still be the caller's.
+// Issues lists the caller's issue jobs under the integrations the caller holds, newest first,
+// with the record of each that succeeded. The listing fails closed: one record that cannot
+// be read as published (tampered, missing) is an error for the whole page.
 func (s *Service) Issues(ctx context.Context, p Principal, limit int) ([]IssueView, error) {
 	if !p.Identity.Valid() {
 		return nil, ErrNotFound
@@ -375,14 +376,23 @@ func (s *Service) Issues(ctx context.Context, p Principal, limit int) ([]IssueVi
 	if limit < 1 || limit > MaxIssueListing {
 		return nil, ErrInvalid
 	}
-	jobs, e := s.repo.Issues(ctx, p.Identity, limit)
+	integrations := []string{}
+	for _, id := range p.Integrations {
+		if _, _, e := s.source(p, id); e == nil {
+			integrations = append(integrations, id)
+		}
+	}
+	out := []IssueView{}
+	if len(integrations) == 0 {
+		return out, nil
+	}
+	jobs, e := s.repo.Issues(ctx, p.Identity, integrations, limit)
 	if e != nil {
 		return nil, e
 	}
-	out := []IssueView{}
 	for _, j := range jobs {
 		if _, _, e := s.source(p, j.Owner.Integration); e != nil {
-			continue
+			return nil, ErrIntegrity
 		}
 		v, e := s.issueView(ctx, p, j)
 		if e != nil {
@@ -489,6 +499,16 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (Artifac
 	}
 	if snap.Owner != a.Owner || !s.now().Before(a.ExpiresAt) || a.ExpiresAt.After(snap.ExpiresAt) || len(a.Content) == 0 || len(a.Content) > MaxArtifactBytes || a.SHA256 != bytesDigest(a.Content) {
 		return Artifact{}, ErrIntegrity
+	}
+	if a.Issue != "" {
+		// An issued PDF is served only as the record it was issued under describes it.
+		rec, e := s.repo.Issue(ctx, p.Identity, a.Issue)
+		if e != nil {
+			return Artifact{}, e
+		}
+		if rec.Owner != a.Owner || rec.ArtifactID != a.ID || rec.SHA256 != a.SHA256 || rec.SnapshotID != a.SnapshotID {
+			return Artifact{}, ErrIntegrity
+		}
 	}
 	return a, nil
 }

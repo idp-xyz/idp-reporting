@@ -46,10 +46,15 @@ const template = `{"schema_version":"1.0","kind":"document","binding":{"integrat
 func issueService(t *testing.T, issuer r.Issuer, now func() time.Time) (*r.Service, r.Principal, string, *memory.Store) {
 	t.Helper()
 	p := contractsim.DemoPrincipal()
+	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
 	a := contractsim.Financial()
 	a.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
+	b := contractsim.Shipment()
+	shipmentGrant := contractsim.DefaultGrant()
+	shipmentGrant.CurrencyPolicy = nil
+	b.Grant(contractsim.DemoOwner(p, contractsim.ShipmentIntegration), shipmentGrant)
 	repo := memory.New(now)
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: a}}, CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDF{}}, Issuer: issuer, Now: now})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: a}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: b}}, CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDF{}}, Issuer: issuer, Now: now})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -150,10 +155,46 @@ func TestIssueJobsNumberRenderStampAndRecord(t *testing.T) {
 	if _, e = s.Issues(ctx, p, r.MaxIssueListing+1); !errors.Is(e, r.ErrInvalid) {
 		t.Fatal("limit above the maximum accepted")
 	}
-	// A third admission continues the sequence; an export job is not an issue.
+	// The listing is filtered by the integrations the principal holds, in the repository, so a
+	// page is never cut short by jobs the caller may not see; a principal without integrations
+	// gets an empty page, not an error.
+	if list, e := repo.Issues(ctx, p.Identity, []string{"other"}, 10); e != nil || len(list) != 0 {
+		t.Fatal(list, e)
+	}
+	if _, e := repo.Issues(ctx, p.Identity, nil, 10); !errors.Is(e, r.ErrInvalid) {
+		t.Fatal("a listing without integrations", e)
+	}
+	none := p
+	none.Integrations = nil
+	if list, e := s.Issues(ctx, none, 10); e != nil || len(list) != 0 {
+		t.Fatal(list, e)
+	}
+	// A third admission continues the sequence; another integration of the same tenant has
+	// its own sequence, starting at 1; an export job is not an issue.
 	third, e := s.SubmitIssue(ctx, p, in, "third")
 	if e != nil || third.Issue.Number != 3 {
 		t.Fatal(third, e)
+	}
+	ship, e := s.SubmitSnapshot(ctx, p, contractsim.ShipmentQuery(), "ship")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for ran := true; ran; { // the queued issue jobs and the shipment snapshot
+		if ran, e = s.RunOne(ctx); e != nil && !errors.Is(e, r.ErrUnpublished) {
+			t.Fatal(e)
+		}
+	}
+	if ship, e = s.Job(ctx, p, ship.ID); e != nil || ship.SnapshotID == "" {
+		t.Fatal(ship, e)
+	}
+	shipped, e := s.SubmitIssue(ctx, p, r.IssueInput{TemplateID: tpl, TemplateVersion: 1, Template: []byte(template), SnapshotID: ship.SnapshotID}, "ship-issue")
+	if e != nil || shipped.Issue.Number != 1 {
+		t.Fatal(shipped, e)
+	}
+	finance := p
+	finance.Integrations = []string{contractsim.FinanceIntegration}
+	if list, e := s.Issues(ctx, finance, 1); e != nil || len(list) != 1 || list[0].ID != third.ID {
+		t.Fatalf("a page of one for finance: %+v %v", list, e)
 	}
 	ex, e := s.SubmitExportFormat(ctx, p, snapshot, "pdf", "export")
 	if e != nil || ex.Issue != nil {
@@ -177,20 +218,22 @@ func TestIssueAdmissionFailsClosed(t *testing.T) {
 	ctx := context.Background()
 	s, p, snapshot, _ := issueService(t, &fakeIssuer{}, nil)
 	good := r.IssueInput{TemplateID: strings.Repeat("a", 32), TemplateVersion: 1, Template: []byte(template), SnapshotID: snapshot, RowIndex: 0}
+	// One idempotency key per case, so that a refusal that reached the store would surface as
+	// a conflict and not as the expected error.
 	for name, c := range map[string]struct {
 		change func(*r.IssueInput)
 		key    string
 		want   error
 	}{
-		"row beyond the snapshot":  {func(in *r.IssueInput) { in.RowIndex = 3 }, "k", r.ErrInvalid},
-		"negative row":             {func(in *r.IssueInput) { in.RowIndex = -1 }, "k", r.ErrInvalid},
-		"template id":              {func(in *r.IssueInput) { in.TemplateID = "x" }, "k", r.ErrInvalid},
-		"version 0":                {func(in *r.IssueInput) { in.TemplateVersion = 0 }, "k", r.ErrInvalid},
-		"template not JSON":        {func(in *r.IssueInput) { in.Template = []byte("{") }, "k", r.ErrInvalid},
-		"template too large":       {func(in *r.IssueInput) { in.Template = []byte(`"` + strings.Repeat("x", r.MaxTemplateBytes) + `"`) }, "k", r.ErrInvalid},
-		"unknown snapshot":         {func(in *r.IssueInput) { in.SnapshotID = strings.Repeat("b", 32) }, "k", r.ErrNotFound},
+		"row beyond the snapshot":  {func(in *r.IssueInput) { in.RowIndex = 3 }, "k1", r.ErrInvalid},
+		"negative row":             {func(in *r.IssueInput) { in.RowIndex = -1 }, "k2", r.ErrInvalid},
+		"template id":              {func(in *r.IssueInput) { in.TemplateID = "x" }, "k3", r.ErrInvalid},
+		"version 0":                {func(in *r.IssueInput) { in.TemplateVersion = 0 }, "k4", r.ErrInvalid},
+		"template not JSON":        {func(in *r.IssueInput) { in.Template = []byte("{") }, "k5", r.ErrInvalid},
+		"template too large":       {func(in *r.IssueInput) { in.Template = []byte(`"` + strings.Repeat("x", r.MaxTemplateBytes) + `"`) }, "k6", r.ErrInvalid},
+		"unknown snapshot":         {func(in *r.IssueInput) { in.SnapshotID = strings.Repeat("b", 32) }, "k7", r.ErrNotFound},
 		"bad key":                  {func(*r.IssueInput) {}, "", r.ErrInvalid},
-		"unexpected nothing wrong": {func(*r.IssueInput) {}, "k", nil},
+		"unexpected nothing wrong": {func(*r.IssueInput) {}, "k9", nil},
 	} {
 		in := good
 		c.change(&in)
