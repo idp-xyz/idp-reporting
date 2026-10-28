@@ -19,7 +19,7 @@ DOM 60/60（含真实 Typst 出具：下载 issued-000001.pdf、记录摘要等�
 检查器核对 27 份 PDF（含 3 份出具件：三页含底稿、三页变量层、单页），829 项负对照全部被抓到，版式与 export/pdf/testdata/golden.json 一致；
 veraPDF 对 34 份 PDF（含控制台真实出具的 1 份）判定 PDF/A-2b 通过，负对照判失败。
 两路独立审查（正确性与安全；测试有效性与质量），发现与处理见 docs/CODE_REVIEW_S03G.md。
-GitHub Actions 四项任务在 PR #{PR} 上通过（run {RUN}）。
+GitHub Actions 四项任务在 PR #9 上通过（run 40661393568）。
 未验：真实打印机与实纸对位、真实浏览器、出具 PDF 的保留策略（随快照授权到期即不可下载，记录永久保留）。
 不在本阶段：整快照批量出具、租户与接入以外的编号方案、出具件保留/对象存储、撤销或更正记录、签章与权威时间戳、画布编辑器、生产资格；真实接入最后。
 当前证据 evidence/s03g；规格 docs/S03G_SCOPE.md；决策 docs/ADR_0002_SINGLE_PDF_ENGINE.md；审查 docs/CODE_REVIEW_S03G.md；接口 docs/API.md。

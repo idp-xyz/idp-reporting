@@ -69,15 +69,15 @@
   "postgres": "16.14"
  },
  "github_actions": {
-  "pull_request": null,
-  "run": null,
-  "head": null,
+  "pull_request": 9,
+  "run": 40661393568,
+  "head": "02a6ae3",
   "jobs": [
    "Go format, vet, build, test and race",
    "PostgreSQL contract and durable tests",
    "Console syntax and DOM tests",
    "PDF export and document previews with the pinned Typst, fonts and veraPDF"
   ],
-  "result": "pending"
+  "result": "all pass"
  }
 }
