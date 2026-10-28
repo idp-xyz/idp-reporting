@@ -12,6 +12,7 @@ import (
 	"idp.local/reporting/storage/memory"
 	"idp.local/reporting/transport/httpapi"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,6 +89,15 @@ func TestDocumentPreviewPrivateFrozenAndReauthorizedAfterRender(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "application/pdf" || w.Header().Get("X-Content-SHA256") != hex.EncodeToString(hash[:]) || w.Body.String() != string(pdf) {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	// A template naming a background on a server without a background store is unsupported.
+	withBackground := config
+	withBackground.Schema, withBackground.Print = "1.2", &doctemplates.PrintProfile{Mode: "full"}
+	withBackground.Background = &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: strings.Repeat("b", 64)}
+	input["config"] = withBackground
+	if post() != 422 {
+		t.Fatal("background without a store")
+	}
+	input["config"] = config
 	other = true
 	if post() != 404 {
 		t.Fatal("owner leak")
