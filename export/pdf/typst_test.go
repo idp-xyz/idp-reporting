@@ -499,6 +499,7 @@ type documentExpectation struct {
 	File           string            `json:"file"`
 	Background     bool              `json:"background"`
 	BackgroundFile string            `json:"background_file,omitempty"` // the PNG drawn, next to the PDF
+	Mode           string            `json:"mode"`                      // full or variables
 	OffsetX        float64           `json:"offset_x"`
 	OffsetY        float64           `json:"offset_y"`
 	Elements       []documentElement `json:"elements"`
@@ -543,7 +544,7 @@ func documentEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docu
 	if dir == "" {
 		return
 	}
-	e := documentExpectation{Kind: "document", File: name + ".pdf", Background: background != nil, OffsetX: d.Print.OffsetX, OffsetY: d.Print.OffsetY, Elements: []documentElement{}}
+	e := documentExpectation{Kind: "document", File: name + ".pdf", Background: background != nil, Mode: d.Print.Mode, OffsetX: d.Print.OffsetX, OffsetY: d.Print.OffsetY, Elements: []documentElement{}}
 	if d.Table != nil {
 		te := &tableExpectation{X: d.Table.X, Y: d.Table.Y, Width: d.Table.Width, Height: d.Table.Height, Size: d.Table.FontSize, Rows: table.Rows, Totals: table.Totals}
 		for i, c := range d.Table.Columns {
