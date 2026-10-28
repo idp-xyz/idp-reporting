@@ -45,6 +45,14 @@ func TestColumnSumsExactly(t *testing.T) {
 	if !c.equals("9007199254740996.260") || c.equals("9007199254740996.27") || c.equals("x") {
 		t.Error("equals")
 	}
+	// A fraction longer than the ones before it rescales the sum already accumulated.
+	c = &column{}
+	for _, v := range []string{"1", "2.5", "0.125", "-1"} {
+		_ = c.add(v)
+	}
+	if got := c.String(); got != "2.625" {
+		t.Errorf("sum %s", got)
+	}
 	// A declared scale longer than any fraction seen: the sum prints and compares at that scale.
 	c = &column{scale: 2}
 	for _, v := range []string{"1", "2"} {
@@ -288,37 +296,61 @@ func TestLayOutTableRefusesWhatItCannotLayOut(t *testing.T) {
 	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); err != nil {
 		t.Errorf("three small amounts in a narrow column: %v", err)
 	}
+	// Twenty amounts of 999.99 (36 pt) fit; their printed sum 19,999.80 (54 pt bold) does not.
 	data = amounts(20)
-	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+	for _, row := range data.Rows {
+		row[1] = "999.99"
+	}
+	data.Totals["amount"] = "19999.80"
+	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) || !strings.Contains(err.Error(), "a carried sum") {
 		t.Errorf("a carried sum wider than its column: %v", err)
 	}
-	data = amounts(1)
-	data.Rows[0][1] = "123456789.00"
-	data.Totals["amount"] = "123456789.00"
-	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+	// Two amounts of 123,456,789.00 (70 pt) do not fit although their total 0.00 does.
+	data = amounts(2)
+	data.Rows[0][1], data.Rows[1][1] = "123456789.00", "-123456789.00"
+	data.Totals["amount"] = "0.00"
+	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) || !strings.Contains(err.Error(), "an amount") {
 		t.Errorf("an amount wider than its column: %v", err)
 	}
-	// Only the sums that are printed must fit: amounts that change sign may pass through a
-	// wider running sum on the way to a short total. A 20 mm column holds 50.7 pt: the bold
-	// "-19,999.98" (60 pt) never prints; the amounts (40 pt) and the total "0.00" do.
-	swing := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 100}, doctemplates.TableColumn{Field: "amount", Width: 20})
-	data = amounts(4)
-	for i, v := range []string{"-9999.99", "-9999.99", "9999.99", "9999.99"} {
-		data.Rows[i][1] = v
-	}
-	data.Totals["amount"] = "0.00"
-	if _, err := layOut(swing, map[string]string{"n1": "x"}, nil, data, plainFake()); err != nil {
-		t.Errorf("an unprinted running sum wider than the column: %v", err)
+	// The labels are measured for page 100: a first column of 34 mm (90.4 pt of content)
+	// holds the bold "承前（第 1 页）" (78 pt) but not "过次（转第 100 页）" (100 pt).
+	page100 := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 34}, doctemplates.TableColumn{Field: "amount", Width: 86})
+	if _, err := layOut(page100, map[string]string{"n1": "x"}, nil, amounts(3), plainFake()); !errors.Is(err, r.ErrUnsupported) || !strings.Contains(err.Error(), "label") {
+		t.Errorf("a label that fits page 1 only: %v", err)
 	}
 	label := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 12}, doctemplates.TableColumn{Field: "amount", Width: 108})
 	if _, err := layOut(label, map[string]string{"n1": "x"}, nil, amounts(3), plainFake()); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a carried label wider than the first column: %v", err)
 	}
-	// An empty table whose header and total row are taller than the region.
-	tall := tabled("full", 20, 40, 120, 30, 10, columns...)
+	// An empty table whose header and total row are taller than the region: a seven-line
+	// header (112 ideographs in a 60 mm column, 16 per line) is 108.6 pt, the total row 18.6 pt;
+	// a region of 44.9 mm (127.3 pt) holds both, 44.8 mm (127.0 pt) does not.
 	data = amounts(0)
-	data.Columns[0].Label = strings.Repeat("甲", 200)
-	if _, err := layOut(tall, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
-		t.Errorf("a header taller than the region: %v", err)
+	data.Columns[0].Label = strings.Repeat("甲", 112)
+	if _, err := layOut(tabled("full", 20, 40, 120, 44.8, 10, columns...), map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) || !strings.Contains(err.Error(), "taller") {
+		t.Errorf("a header and total row one point taller than the region: %v", err)
+	}
+	if _, err := layOut(tabled("full", 20, 40, 120, 44.9, 10, columns...), map[string]string{"n1": "x"}, nil, data, plainFake()); err != nil {
+		t.Errorf("a header and total row that just fit: %v", err)
+	}
+}
+
+func TestSplitShapedPunctuation(t *testing.T) {
+	for line, want := range map[string]string{
+		"客户：华东区「重点」，联系人：张三。": "客户：华东区「重点」|，联系人：张三。",
+		"「（中）」。。、":           "「|（中）|」|。|。|、",
+		"……——":               "…|…|—|—",
+		"a, b. c":            "a, b. c",
+		"":                   "",
+	} {
+		if got := strings.Join(splitShaped(line), "|"); got != want {
+			t.Errorf("%q: %q, want %q", line, got, want)
+		}
+	}
+	// Trailing white space of every kind is not drawn.
+	lay := &tableLayout{m: plainFake(), size: 10}
+	c, err := lay.wrap("ab\u3000\u00a0 ", 60, false)
+	if err != nil || strings.Join(c.lines, "|") != "ab" {
+		t.Errorf("%q %v", c.lines, err)
 	}
 }

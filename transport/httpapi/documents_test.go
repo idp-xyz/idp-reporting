@@ -120,16 +120,27 @@ func TestDocumentPreviewPrivateFrozenAndReauthorizedAfterRender(t *testing.T) {
 		t.Fatalf("table with an unknown field: %d", w.Code)
 	}
 	// A table field the snapshot has but the catalog no longer authorizes is a denial too, and
-	// no render happens.
-	withTable.Table.Columns[1].Field = "customer.id"
+	// no render happens: only the table's column is revoked, the box's field stays.
+	withTable.Table.Columns = []doctemplates.TableColumn{{Field: "customer.id", Width: 190}}
 	input["config"] = withTable
 	body, _ = json.Marshal(input)
-	adapter.allowed = "customer.id"
+	adapter.allowed = "ar.open_balance"
 	bound = nil
 	if w := request(h2, "POST", "/api/reporting/v1/document-previews", body, true); w.Code != 403 || bound != nil {
 		t.Fatalf("table field no longer in the catalog: %d %v", w.Code, bound)
 	}
 	adapter.allowed = ""
+	// A field the catalog lists but the frozen snapshot lacks passes authorization and is
+	// refused by the binding, with no render.
+	adapter.extra = "later.column"
+	withTable.Table.Columns = []doctemplates.TableColumn{{Field: "later.column", Width: 190}}
+	input["config"] = withTable
+	body, _ = json.Marshal(input)
+	bound = nil
+	if w := request(h2, "POST", "/api/reporting/v1/document-previews", body, true); w.Code != 403 || bound != nil {
+		t.Fatalf("table field the snapshot lacks: %d %v", w.Code, bound)
+	}
+	adapter.extra = ""
 	input["config"] = config
 	// A template naming a background on a server without a background store is unsupported.
 	withBackground := config

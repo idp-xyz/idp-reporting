@@ -46,10 +46,10 @@ func TestTableValidation(t *testing.T) {
 		"overlapping a text box":      func(d *doctemplates.Document) { d.Table.Y = 30 },
 		"pushed out by the offsets":   func(d *doctemplates.Document) { d.Print.OffsetY = 10; d.Table.Y = 165 },
 		"an empty field":              func(d *doctemplates.Document) { d.Table.Columns[0].Field = "" },
-		"x under 10":                  func(d *doctemplates.Document) { d.Table.X = 9.9; d.Table.Y = 180 },
-		"y under 25":                  func(d *doctemplates.Document) { d.Table.Y = 24.9; d.Elements = nil },
+		"x under 10":                  func(d *doctemplates.Document) { d.Table.X = 9.9 },
+		"y under 25":                  func(d *doctemplates.Document) { d.Table.Y = 24.9; d.Elements[0].Y = 200 },
 		"a field over 128 bytes":      func(d *doctemplates.Document) { d.Table.Columns[0].Field = strings.Repeat("f", 129) },
-		"a column width off the grid": func(d *doctemplates.Document) { d.Table.Columns[0].Width = 90.05; d.Table.Columns[1].Width = 99.95 },
+		"a column width off the grid": func(d *doctemplates.Document) { d.Table.Columns[0].Width = 90.04; d.Table.Columns[1].Width = 99.96 },
 		"an invalid background ref":   func(d *doctemplates.Document) { d.Background = &doctemplates.BackgroundRef{ID: "x", SHA256: "y"} },
 	} {
 		d := tableDocument()

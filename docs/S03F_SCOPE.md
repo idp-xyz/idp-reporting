@@ -8,8 +8,8 @@ F1 · Table element. Schema 1.3 adds a `table` to the document (required on 1.3,
 columns: [{field, width}]}`, a region inside the safe region (10..200 × 25..270 mm, 0.1 mm grid, at least 30 mm
 high) that overlaps no text box, 1..12 columns of the bound dataset's fields whose widths (≥ 8 mm, the geometric
 floor) add up to the table's width, 8..12 pt. What a column must really hold is measured at preview (F3): the
-first column the bold label "过次（转第 100 页）" (about 28, 32, 35, 38 and 41 mm at 8 to 12 pt with the pinned Noto
-Sans SC), a metric column its widest amount and carried sum (a bold 999,999.99 needs about 17 mm at 8 pt and
+first column the bold label "过次（转第 100 页）" (28.2, 31.4, 34.7, 38.0 and 41.2 mm at 8 to 12 pt with the pinned
+Noto Sans SC, measured and rounded up to 0.1 mm; the console enforces these), a metric column its widest amount and carried sum (a bold 999,999.99 needs about 17 mm at 8 pt and
 25 mm at 12 pt); 8 mm fits only short text and small integers. The console applies the first column's minimum
 and sizes it first when it splits the width. The table lists every row of the frozen snapshot in snapshot order (the snapshot holds
 at most 1,000 rows, and a durable snapshot is complete by the repository contract). Cells are formatted as the

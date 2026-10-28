@@ -709,6 +709,8 @@ def check_table(exp, pages, metrics, layout):
                 if not (expected[k][j].startswith(acc[j] + piece)):
                     problems.append(f"row {k + 1}, column {j + 1}: {''.join(c['c'] for c in cs)!r} does not continue {rows[k][j]!r}")
                 else:
+                    if acc[j] == "" and piece and abs(base - row_bases[k][0]) > 0.1 and not rows[k][j].lstrip(" \t").startswith(("\n", "\r")):
+                        problems.append(f"row {k + 1}, column {j + 1}: the cell starts below the row's first line")
                     acc[j] += piece
         expect_rows([(name, sorted(set(bases)), least) for name, bases, least in drawn_rows])
         first_rows.append(page_first)
@@ -744,7 +746,7 @@ def check_table(exp, pages, metrics, layout):
         if full:
             problems += [f"page {number}: {p}" for p in check_table_drawings(page, region, edges, size, leading, forward, drawn_rows, trailing, tail_top, last)]
         else:
-            if any(region.intersects(d["rect"]) for d in page.get_drawings()):
+            if drawings_inside(page, region):
                 problems.append(f"page {number}: a drawing in the table of the variable layer")
     if k + 1 != len(rows) or (acc is not None and any(acc[j] != expected[k][j] for j in range(len(edges)))):
         problems.append(f"{k + 1} rows drawn complete, {len(rows)} expected")
@@ -813,9 +815,16 @@ def check_table_drawings(page, region, edges, size, leading, forward, drawn_rows
         for d in total_rules:
             if d["color"] is None or max(abs(v - 0.235) for v in d["color"][:3]) > 0.02:
                 problems.append(f"total rule colour {d['color']}")
+        if len(rules) != len(total_rules) or len(total_rules) > 1:
+            problems.append(f"{len(rules) - min(1, len(total_rules))} other lines in the table")
     elif rules:
         problems.append("a rule on a page without the total row")
     return problems
+
+
+def drawings_inside(page, region):
+    """Drawings touching the region, lines of no height or width included."""
+    return [d for d in page.get_drawings() if d["rect"].x1 >= region.x0 - 1 and d["rect"].x0 <= region.x1 + 1 and d["rect"].y1 >= region.y0 - 1 and d["rect"].y0 <= region.y1 + 1]
 
 
 def same_picture(a, b):
@@ -864,7 +873,10 @@ def document_corruptions(exp):
             yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", e["table"]["columns"][0]["label"] + "X"))
         yield changed("the table moved by 0.5 mm", lambda e: e["table"].__setitem__("x", e["table"]["x"] + 0.5))
         if len(columns) > 1:
-            yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", e["table"]["columns"][0]["width"] + 5), e["table"]["columns"][1].__setitem__("width", e["table"]["columns"][1]["width"] - 5)))
+            # The first column 5 mm narrower and the last 5 mm wider: every column between moves,
+            # and so does the left edge of the last (a boundary between a left-aligned and a
+            # right-aligned column alone would move no text in the variable layer).
+            yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", e["table"]["columns"][0]["width"] - 5), e["table"]["columns"][-1].__setitem__("width", e["table"]["columns"][-1]["width"] + 5)))
 
 
 def document_pdf_corruptions(directory, exp, scratch, font_file=None):
@@ -1055,11 +1067,25 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
                 yield "a header in the variable layer", "header in the variable layer", copy_with("varheader", header_in_variables)
             else:
                 def forward_on_page_one(doc):
+                    # Below the header, whatever its height: between its last line and the first
+                    # line after it.
                     page = doc[0]
-                    header_bottom = region.y0 + 2 * TABLE_INSET_Y + (ASCENT + DESCENT) * size
+                    chars = [c for c in characters(page, 0) if region.y0 <= c["base"] <= region.y1 and c["c"].strip()]
+                    regular = [c["base"] for c in chars if not c["bold"]]
+                    first_regular = min(regular) if regular else max(c["base"] for c in chars)
+                    header_last = max([c["base"] for c in chars if c["bold"] and c["base"] < first_regular - 0.1] or [region.y0])
                     page.insert_font(fontname="Fb", fontfile=bold_face)
-                    page.insert_text((region.x0 + TABLE_INSET, header_bottom + 6), "承前（第 1 页）", fontname="Fb", fontsize=size, color=(0.07, 0.13, 0.22))
+                    page.insert_text((region.x0 + TABLE_INSET, (header_last + first_regular) / 2), "承前（第 1 页）", fontname="Fb", fontsize=size, color=(0.07, 0.13, 0.22))
                 yield "a brought-forward row on page 1", "brought-forward row", copy_with("forward1", forward_on_page_one)
+
+                def fill_body(doc):
+                    # The first body row's first cell, taken from its own rule rectangle.
+                    page = doc[0]
+                    c = first_body_line(page)[0]
+                    cell = next(d["rect"] for d in page.get_drawings() if d["width"] is not None and d["rect"].x0 - 0.5 <= c["x"] <= d["rect"].x1 and d["rect"].y0 <= c["base"] <= d["rect"].y1 and d["rect"].height > 1)
+                    page.draw_rect(cell, color=None, fill=(0.91, 0.91, 0.91), overlay=False)
+                if has_body:
+                    yield "a fill on a body cell", "fill on a body cell", copy_with("bodyfill", fill_body)
         if doc_pages(directory, exp) > 1:
             def remove_carry(doc):
                 page = doc[0]

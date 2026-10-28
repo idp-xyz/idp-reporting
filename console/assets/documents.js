@@ -21,7 +21,7 @@ window.createReportingDocuments=function(ports){
   }
   if(d.print?.mode==='variables'&&!d.elements.some(e=>e.source!=='literal')&&!d.table)throw Error('变量层至少需要一个行字段、合计字段或明细表。');
  }
- const labelMinimum={8:29,9:32,10:35,11:38.5,12:42};
+ const labelMinimum={8:28.2,9:31.4,10:34.7,11:38,12:41.2};
  function validateTable(d){
   const t=d.table,grid=n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n*10-Math.round(n*10))<1e-7,units=n=>Math.round(n*10);
   if(!keys(t,['x','y','width','height','font_size','columns'])||!['x','y','width','height'].every(k=>grid(t[k]))||t.x<10||t.y<25||t.width<8||t.height<30||units(t.x)+units(t.width)>2000||units(t.y)+units(t.height)>2700||!Number.isSafeInteger(t.font_size)||t.font_size<8||t.font_size>12||!Array.isArray(t.columns)||t.columns.length<1||t.columns.length>12)throw Error('明细表区域、字号或列数无效（区域在安全区内、至少30毫米高、8–12点、1–12列）。');

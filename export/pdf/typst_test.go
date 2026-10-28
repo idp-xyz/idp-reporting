@@ -647,6 +647,30 @@ func TestTypstRendersDocuments(t *testing.T) {
 	}
 	tableData := statementRows(60)
 	tableValues := map[string]string{"n1": "对账单 Statement", "n2": "华东区客户", "n3": "9007199254740993.01"}
+	// The hard values of the box fixture as table cells, with print offsets: Chinese next to
+	// Latin, punctuation in runs, dashes, kerned pairs, marks and spaces, each on its own line
+	// or wrapped, so that every character's position is checked in a table too.
+	hardTableDoc := tableDoc("full", false)
+	hardTableDoc.Print = &doctemplates.PrintProfile{Mode: "full", OffsetX: -2.5, OffsetY: 3.1}
+	hardTableDoc.Table = &doctemplates.Table{X: 20, Y: 60, Width: 100, Height: 120, FontSize: 12, Columns: []doctemplates.TableColumn{{Field: "note", Width: 60}, {Field: "amount", Width: 40}}}
+	hardTableData := &doctemplates.TableData{Columns: []r.Column{{ID: "note", Label: "备注", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2}}, Metric: []bool{false, true}, Totals: map[string]string{}}
+	hardCents := int64(0)
+	for i, v := range hard {
+		hardTableData.Rows = append(hardTableData.Rows, []string{v, fmt.Sprintf("%d.%02d", i*10, i)})
+		hardCents += int64(i*1000 + i)
+	}
+	hardTableData.Totals["amount"] = fmt.Sprintf("%d.%02d", hardCents/100, hardCents%100)
+	// A column whose fractions grow row by row, next to an integer column.
+	mixedDoc := tableDoc("full", false)
+	mixedDoc.Table = &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 60, FontSize: 10, Columns: []doctemplates.TableColumn{{Field: "customer", Width: 100}, {Field: "mixed", Width: 40}, {Field: "count", Width: 40}}}
+	mixedData := &doctemplates.TableData{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "mixed", Label: "混合", Type: "decimal"}, {ID: "count", Label: "件数", Type: "integer"}}, Metric: []bool{false, true, true},
+		Rows: [][]string{{"a", "1", "3"}, {"b", "2.5", "-1"}, {"c", "0.125", "0"}, {"d", "-1", "10"}}, Totals: map[string]string{"mixed": "2.625", "count": "12"}}
+	// The variable layer with labels that wrap to three lines: the header's height is reserved
+	// although nothing of it is drawn.
+	wrapHeaderDoc := tableDoc("variables", false)
+	wrapHeaderDoc.Table = &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 80, FontSize: 10, Columns: []doctemplates.TableColumn{{Field: "customer", Width: 100}, {Field: "amount", Width: 40}, {Field: "count", Width: 40}}}
+	wrapHeaderData := &doctemplates.TableData{Columns: []r.Column{{ID: "customer", Label: "客户名称（合同主体，含分支机构及关联方）", Type: "string"}, {ID: "amount", Label: "应收账款未结余额合计", Type: "decimal", Scale: 2, Currency: "CNY"}, {ID: "count", Label: "Open invoices outstanding at the cut-off date", Type: "integer"}}, Metric: []bool{false, true, true},
+		Rows: [][]string{{"甲", "1.00", "1"}, {"乙", "2.00", "2"}}, Totals: map[string]string{"amount": "3.00", "count": "3"}}
 	// One text column with blank rows among the values, and no metric at all.
 	blankDoc := tableDoc("full", false)
 	blankDoc.Table = &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 40, FontSize: 10, Columns: []doctemplates.TableColumn{{Field: "note", Width: 180}}}
@@ -698,6 +722,9 @@ func TestTypstRendersDocuments(t *testing.T) {
 		{"document_table_narrow", narrowDoc, tableValues, nil, narrowData},
 		{"document_table_empty", tableDoc("full", false), tableValues, nil, &doctemplates.TableData{Columns: tableData.Columns, Metric: tableData.Metric, Rows: [][]string{}, Totals: map[string]string{"amount": "0.00"}}},
 		{"document_table_blank", blankDoc, tableValues, nil, blankData},
+		{"document_table_hard", hardTableDoc, tableValues, nil, hardTableData},
+		{"document_table_mixed", mixedDoc, tableValues, nil, mixedData},
+		{"document_table_wrapheader_variables", wrapHeaderDoc, tableValues, nil, wrapHeaderData},
 	} {
 		out, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
 		if err != nil {

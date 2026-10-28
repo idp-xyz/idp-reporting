@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"idp.local/reporting/doctemplates"
 	r "idp.local/reporting/reporting"
@@ -348,10 +349,43 @@ func (lay *tableLayout) drawRow(pg *pageData, y float64, row []cell, bold, heade
 			if col.metric {
 				x = col.right - tableInsetX - c.widths[k]
 			}
-			pg.Texts = append(pg.Texts, glyph{X: x, Baseline: y + tableInsetY + ascent*lay.size + float64(k)*lineStep*lay.size, Size: lay.size, Width: c.widths[k], Text: line, Bold: bold})
+			baseline := y + tableInsetY + ascent*lay.size + float64(k)*lineStep*lay.size
+			// A line is drawn as one text object per piece, so that Typst shapes nothing
+			// across consecutive punctuation and every character stays at its plain-advance
+			// position (the widths were measured when the line was wrapped).
+			for _, piece := range splitShaped(line) {
+				w, _ := lay.m.width(piece, lay.size, bold)
+				pg.Texts = append(pg.Texts, glyph{X: x, Baseline: baseline, Size: lay.size, Width: w, Text: piece, Bold: bold})
+				x += w
+			}
 		}
 	}
 	return y + h
+}
+
+// splitShaped splits a line between two consecutive characters that Typst would shape together
+// within one text object: CJK punctuation, which it compresses when it follows another mark,
+// and dashes and ellipses, which the font may join. Each piece is placed by the server, so
+// Typst never sees two of them in one run; an opening mark at the start of a piece keeps its
+// position thanks to the template's empty inline box.
+func splitShaped(line string) []string {
+	var out []string
+	start := 0
+	var prev rune
+	for i, ch := range line {
+		if i > 0 && shaped(prev) && shaped(ch) {
+			out = append(out, line[start:i])
+			start = i
+		}
+		prev = ch
+	}
+	return append(out, line[start:])
+}
+
+// shaped reports a character Typst shapes differently next to another such character.
+func shaped(ch rune) bool {
+	return (ch >= 0x3000 && ch <= 0x303F) || (ch >= 0xFF00 && ch <= 0xFF0F) || (ch >= 0xFF1A && ch <= 0xFF20) || (ch >= 0xFF3B && ch <= 0xFF40) || (ch >= 0xFF5B && ch <= 0xFF65) ||
+		ch == 0x2013 || ch == 0x2014 || ch == 0x2026 || ch == 0x2E3A || ch == 0x2E3B || ch == 0x00B7 || ch == 0x2010 || ch == 0x2015
 }
 
 // wrapRow wraps every cell of a row into its column.
@@ -377,7 +411,7 @@ func (lay *tableLayout) wrap(text string, width float64, bold bool) (cell, error
 		line, lw := "", 0.0
 		var flushErr error
 		flush := func() {
-			line = strings.TrimRight(line, " ")
+			line = strings.TrimRightFunc(line, unicode.IsSpace)
 			if w, err := lay.m.width(line, lay.size, bold); err == nil {
 				lw = w
 			} else {
