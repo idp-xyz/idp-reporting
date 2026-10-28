@@ -34,10 +34,12 @@ Changed in the port:
   adds a dotted circle), values that do not fit their box on one line with 2 pt to spare, a cluster Typst would
   draw wider than measured, and snapshot values the single-line preview cannot print (control characters, DEL,
   more than 256 characters). A literal with such characters is an invalid template (400).
-- At most Config.Concurrency (default 2) Typst processes run at once, previews and exports together; a preview
-  that waits longer than the render timeout (15 s) for one is 413 BUDGET_EXCEEDED.
-- A background is tried with the renderer at upload (Assets.Fits) and refused with the renderer's error when its
-  preview would exceed the artifact limit.
+- At most Config.Concurrency (default 2) Typst processes run at once, previews and exports together; previews
+  hold at most all but one of them, so an export waits for at most one preview render. A preview whose wait and
+  render together exceed the render timeout (15 s) is 413 BUDGET_EXCEEDED.
+- A background is tried with the renderer at upload (Assets.Fits, outside the store's lock, with the request's
+  context, after the quota) and refused with the renderer's error when its preview would exceed the artifact
+  limit. A template that names a background on a deployment without -background-directory is 422.
 - The pdfme canvas, its 7.4 MB bundle, the console font route and the relaxed style CSP are removed. The console
   edits geometry with its millimetre controls and offers the two preview buttons only when the server lists the
   pdf format.

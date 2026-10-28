@@ -2,6 +2,7 @@ package doctemplates_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"idp.local/reporting/doctemplates"
 	r "idp.local/reporting/reporting"
@@ -30,7 +31,7 @@ func TestPrivateBackgroundAssets(t *testing.T) {
 	}
 	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
 	binding := doctemplates.Binding{Integration: "finance", Dataset: r.Ref{ID: "d", Version: "v1"}}
-	ref, e := a.Put(owner, binding, samplePNG(t, 210, 297))
+	ref, e := a.Put(t.Context(), owner, binding, samplePNG(t, 210, 297))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -76,11 +77,11 @@ func TestPrivateBackgroundAssets(t *testing.T) {
 		t.Fatal("reopen", e)
 	}
 	for i := 1; i < 8; i++ {
-		if _, e = a.Put(owner, binding, samplePNG(t, 210, 297)); e != nil {
+		if _, e = a.Put(t.Context(), owner, binding, samplePNG(t, 210, 297)); e != nil {
 			t.Fatal(e)
 		}
 	}
-	if _, e = a.Put(owner, binding, data); !errors.Is(e, r.ErrBudget) {
+	if _, e = a.Put(t.Context(), owner, binding, data); !errors.Is(e, r.ErrBudget) {
 		t.Fatal("quota", e)
 	}
 	list, e := a.List(owner)
@@ -97,13 +98,13 @@ func TestBackgroundPNGNormalizationAndBudgets(t *testing.T) {
 	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
 	binding := doctemplates.Binding{Integration: "finance", Dataset: r.Ref{ID: "d", Version: "v1"}}
 	for _, data := range [][]byte{[]byte("%PDF-1.7"), samplePNG(t, 209, 297), samplePNG(t, 210, 2980), samplePNG(t, 300, 300), make([]byte, doctemplates.MaxBackgroundBytes+1), samplePNG(t, 210, 297)[:40]} {
-		if _, e := assets.Put(owner, binding, data); e == nil {
+		if _, e := assets.Put(t.Context(), owner, binding, data); e == nil {
 			t.Fatal("accepted invalid image")
 		}
 	}
 	raw := samplePNG(t, 210, 297)
 	raw = append(raw, []byte("discard trailing metadata")...)
-	ref, e := assets.Put(owner, binding, raw)
+	ref, e := assets.Put(t.Context(), owner, binding, raw)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -125,22 +126,34 @@ func TestBackgroundUploadRunsTheFitCheck(t *testing.T) {
 	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
 	binding := doctemplates.Binding{Integration: "finance", Dataset: r.Ref{ID: "d", Version: "v1"}}
 	checked := 0
-	a.Fits = func(png []byte) error {
+	a.Fits = func(ctx context.Context, png []byte) error {
 		checked++
+		if ctx.Err() != nil {
+			t.Error("the check got an ended context")
+		}
 		if !bytes.HasPrefix(png, []byte("\x89PNG")) {
 			t.Error("the check did not get the normalized PNG")
 		}
 		return r.ErrBudget
 	}
 	// A background the renderer cannot use is refused with the renderer's error and not stored.
-	if _, e = a.Put(owner, binding, samplePNG(t, 210, 297)); !errors.Is(e, r.ErrBudget) || checked != 1 {
+	if _, e = a.Put(t.Context(), owner, binding, samplePNG(t, 210, 297)); !errors.Is(e, r.ErrBudget) || checked != 1 {
 		t.Fatalf("%v after %d checks", e, checked)
 	}
 	if all, e := a.List(owner); e != nil || len(all) != 0 {
 		t.Fatalf("stored anyway: %v %v", all, e)
 	}
-	a.Fits = func([]byte) error { checked++; return nil }
-	if _, e = a.Put(owner, binding, samplePNG(t, 210, 297)); e != nil || checked != 2 {
+	a.Fits = func(context.Context, []byte) error { checked++; return nil }
+	if _, e = a.Put(t.Context(), owner, binding, samplePNG(t, 210, 297)); e != nil || checked != 2 {
 		t.Fatalf("%v after %d checks", e, checked)
+	}
+	// An owner at the quota is refused before the renderer is asked.
+	for range 7 {
+		if _, e = a.Put(t.Context(), owner, binding, samplePNG(t, 210, 297)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e = a.Put(t.Context(), owner, binding, samplePNG(t, 210, 297)); !errors.Is(e, r.ErrBudget) || checked != 9 {
+		t.Fatalf("ninth background: %v after %d checks", e, checked)
 	}
 }

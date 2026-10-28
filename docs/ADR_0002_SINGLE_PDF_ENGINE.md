@@ -33,7 +33,7 @@ between characters, its baseline 1.16 font sizes below the top of its box (Noto 
 the box's left edge, ending at its right edge or centred, and it did not draw trailing white space. Typst lays
 out a line as a whole and cannot be told not to: it puts a quarter em between Chinese and Latin text, halves
 Chinese punctuation at a line's ends and between marks, widens dashes in Chinese text and draws a dotted circle
-before a stray combining mark. So export/pdf does not hand Typst the value. It places every grapheme cluster
+before a stray Hangul tone mark. So export/pdf does not hand Typst the value. It places every grapheme cluster
 itself, at the x the fonts' plain advances give it, after an empty inline box (which keeps Typst from trimming
 punctuation at the start of the cluster's own line), with the English language setting and no CJK-Latin spacing;
 and the template asserts that Typst measures no cluster wider than Go did, so a glyph Typst would add fails the
@@ -54,8 +54,10 @@ backing.
 - Previews are now PDF/A-2b and byte-identical for the same input and clock; they keep leading and repeated
   spaces as given and, like pdfme's, do not draw trailing white space.
 - Previews and table exports share the renderer's bounded number of Typst processes (Config.Concurrency,
-  default 2); a preview that waits longer than the render timeout for one is a budget error, so previews cannot
-  start processes without limit. A background is tried with the renderer when it is uploaded.
+  default 2), and previews may hold all but one of them, so a burst of previews delays an export by at most one
+  render and never fails it. One deadline, the render timeout, covers a render's wait and its run; a preview
+  that exceeds it is a budget error. A background is tried with the renderer when it is uploaded, outside the
+  store's lock and with the request's context.
 - There is no canvas in the console; geometry is edited with the existing millimetre controls. A canvas, if users
   need one, is a later, separately loaded feature written without a framework.
 - Revisit only with evidence: if Typst fails a hard requirement of a document feature, measure the alternatives

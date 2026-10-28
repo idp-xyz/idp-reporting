@@ -2,6 +2,7 @@ package doctemplates
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"idp.local/reporting/privatedocs"
@@ -37,8 +38,9 @@ type Assets struct {
 	store *privatedocs.Store[backgroundAsset]
 	// Fits, when set, checks a normalized background with the renderer before it is stored,
 	// so that one the previews could not use (for instance, one whose PDF would exceed the
-	// artifact limit) is refused at upload with the renderer's error.
-	Fits func(png []byte) error
+	// artifact limit) is refused at upload with the renderer's error. It runs outside the
+	// store's lock, with the request's context.
+	Fits func(ctx context.Context, png []byte) error
 }
 
 func validBinding(b Binding) bool {
@@ -93,9 +95,7 @@ func OpenAssets(dir string) (*Assets, error) {
 	return &Assets{store: store}, nil
 }
 func (a *Assets) Close() error { a.mu.Lock(); defer a.mu.Unlock(); return a.store.Close() }
-func (a *Assets) Put(owner r.Identity, binding Binding, data []byte) (BackgroundRef, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (a *Assets) Put(ctx context.Context, owner r.Identity, binding Binding, data []byte) (BackgroundRef, error) {
 	if !owner.Valid() {
 		return BackgroundRef{}, r.ErrDenied
 	}
@@ -106,17 +106,19 @@ func (a *Assets) Put(owner r.Identity, binding Binding, data []byte) (Background
 	if e != nil {
 		return BackgroundRef{}, e
 	}
+	// The quota is checked before the renderer is asked, and again before saving.
+	if e = a.quota(owner); e != nil {
+		return BackgroundRef{}, e
+	}
 	if a.Fits != nil {
-		if e = a.Fits(normalized); e != nil {
+		if e = a.Fits(ctx, normalized); e != nil {
 			return BackgroundRef{}, e
 		}
 	}
-	all, e := a.store.List(owner)
-	if e != nil {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if e = a.quota(owner); e != nil {
 		return BackgroundRef{}, e
-	}
-	if len(all) >= 8 {
-		return BackgroundRef{}, r.ErrBudget
 	}
 	hash := sha256.Sum256(normalized)
 	digest := hex.EncodeToString(hash[:])
@@ -126,6 +128,19 @@ func (a *Assets) Put(owner r.Identity, binding Binding, data []byte) (Background
 	}
 	return BackgroundRef{ID: entry.ID, SHA256: digest}, nil
 }
+
+// quota refuses a ninth background of an owner.
+func (a *Assets) quota(owner r.Identity) error {
+	all, e := a.store.List(owner)
+	if e != nil {
+		return e
+	}
+	if len(all) >= 8 {
+		return r.ErrBudget
+	}
+	return nil
+}
+
 func (a *Assets) List(owner r.Identity) ([]BackgroundSummary, error) {
 	all, e := a.store.List(owner)
 	if e != nil {

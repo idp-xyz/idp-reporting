@@ -34,7 +34,7 @@ func WithDocumentAssets(fallback http.Handler, s *r.Service, auth Authenticate, 
 		if e != nil {
 			return r.ErrInvalid
 		}
-		ref, e := assets.Put(p.Identity, input.Binding, data)
+		ref, e := assets.Put(req.Context(), p.Identity, input.Binding, data)
 		if e != nil {
 			return e
 		}
@@ -65,7 +65,8 @@ func resolveDocumentBackground(p r.Principal, d doctemplates.Document, assets *d
 		return nil, nil
 	}
 	if assets == nil {
-		return nil, r.ErrUnavailable
+		// A template naming a background on a deployment without a background store.
+		return nil, r.ErrUnsupported
 	}
 	return assets.Resolve(p.Identity, d.Binding, *d.Background)
 }

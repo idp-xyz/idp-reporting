@@ -40,18 +40,19 @@ type Config struct {
 	Timeout     time.Duration    // per document; default 15 s, less than reporting.WorkTimeout
 	MemoryBytes uint64           // address-space limit of Typst; default 2 GiB
 	Jobs        int              // Typst worker threads; default 2
-	Concurrency int              // Typst processes at once, exports and previews together; default 2
+	Concurrency int              // Typst processes at once, exports and previews together; default 2. Previews take at most all but one of them, so the export worker always finds one
 	Now         func() time.Time // creation time recorded in documents; default time.Now
 }
 
 // Writer is safe for concurrent use.
 type Writer struct {
-	cfg   Config
-	exe   *os.File // the Typst binary, opened and checked once; every run executes this file
-	exeID fileID
-	fonts *fontSet
-	ids   map[string]fileID // the font directory and font files
-	slots chan struct{}     // one entry per running Typst
+	cfg      Config
+	exe      *os.File // the Typst binary, opened and checked once; every run executes this file
+	exeID    fileID
+	fonts    *fontSet
+	ids      map[string]fileID // the font directory and font files
+	slots    chan struct{}     // one entry per running Typst
+	previews chan struct{}     // the part of slots previews may hold: all but one, at least one
 }
 
 const (
@@ -107,7 +108,7 @@ func New(c Config) (*Writer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pdf: Typst binary: %w", err)
 	}
-	w := &Writer{cfg: c, exe: exe, slots: make(chan struct{}, c.Concurrency)}
+	w := &Writer{cfg: c, exe: exe, slots: make(chan struct{}, c.Concurrency), previews: make(chan struct{}, max(1, c.Concurrency-1))}
 	ok := false
 	defer func() {
 		if !ok {
@@ -149,22 +150,32 @@ func New(c Config) (*Writer, error) {
 // Close releases the Typst binary. The Writer cannot render afterwards.
 func (w *Writer) Close() error { return w.exe.Close() }
 
-// acquire waits for one of the Concurrency slots, at most for the render timeout: more
-// renders than that would start more Typst processes than the host was sized for.
-func (w *Writer) acquire(ctx context.Context) error {
-	wait := time.NewTimer(w.cfg.Timeout)
-	defer wait.Stop()
+// bounded limits one render, waiting for a slot included, to the render timeout, so that a
+// render never holds a request longer than that; the returned function turns the deadline
+// into a budget error, unless the caller's own context ended first.
+func (w *Writer) bounded(ctx context.Context) (context.Context, context.CancelFunc, func(error) error) {
+	bounded, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+	budget := func(err error) error {
+		if err != nil && ctx.Err() == nil && bounded.Err() != nil {
+			return fmt.Errorf("pdf: waiting for a Typst process and rendering took longer than %s: %w", w.cfg.Timeout, r.ErrBudget)
+		}
+		return err
+	}
+	return bounded, cancel, budget
+}
+
+// acquire takes one entry of slots or gives up when ctx ends: more renders than the slots
+// would start more Typst processes than the host was sized for.
+func acquire(ctx context.Context, slots chan struct{}) error {
 	select {
-	case w.slots <- struct{}{}:
+	case slots <- struct{}{}:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-wait.C:
-		return fmt.Errorf("pdf: %d renders are already running: %w", cap(w.slots), r.ErrBudget)
 	}
 }
 
-func (w *Writer) release() { <-w.slots }
+func release(slots chan struct{}) { <-slots }
 
 // sameFaces lists the fonts as Typst sees them and requires exactly the faces loadFonts found:
 // the same family names, files, styles and weights. A family name Typst does not know would
@@ -264,10 +275,12 @@ func (w *Writer) Write(ctx context.Context, s r.Snapshot) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := w.acquire(ctx); err != nil {
-		return nil, err
+	bounded, cancel, budget := w.bounded(ctx)
+	defer cancel()
+	if err := acquire(bounded, w.slots); err != nil {
+		return nil, budget(err)
 	}
-	defer w.release()
+	defer release(w.slots)
 	if err := w.unchanged(); err != nil {
 		return nil, err
 	}
@@ -284,9 +297,9 @@ func (w *Writer) Write(ctx context.Context, s r.Snapshot) ([]byte, error) {
 	if err := os.Mkdir(filepath.Join(dir, "packages"), 0o700); err != nil {
 		return nil, err
 	}
-	out, err := w.render(ctx, dir, created)
+	out, err := w.render(bounded, dir, created)
 	if err != nil {
-		return nil, err
+		return nil, budget(err)
 	}
 	if !bytes.HasPrefix(out, []byte("%PDF-")) {
 		return nil, errors.New("pdf: Typst wrote no PDF")

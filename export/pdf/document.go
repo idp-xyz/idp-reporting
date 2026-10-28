@@ -75,9 +75,10 @@ type page struct {
 // Render draws one document template preview: an A4 page with the template's background in
 // full mode, each element's value on one line in its box, and a permanent preview banner. It
 // implements httpapi.DocumentRenderer. A value is never shrunk, clipped or wrapped: one that
-// does not fit its box, or holds a character the fonts lack, is unsupported. At most
-// Config.Concurrency renders run at once, exports included; one that waits longer than the
-// render timeout for its turn is a budget error.
+// does not fit its box, or holds a character the fonts lack, is unsupported. Previews hold at
+// most all but one of the Config.Concurrency Typst processes, so that they never keep the
+// export worker waiting for more than one render; a preview whose wait and render together
+// take longer than the render timeout is a budget error.
 func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -90,10 +91,16 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	if err != nil {
 		return nil, err
 	}
-	if err := w.acquire(ctx); err != nil {
-		return nil, err
+	bounded, cancel, budget := w.bounded(ctx)
+	defer cancel()
+	if err := acquire(bounded, w.previews); err != nil {
+		return nil, budget(err)
 	}
-	defer w.release()
+	defer release(w.previews)
+	if err := acquire(bounded, w.slots); err != nil {
+		return nil, budget(err)
+	}
+	defer release(w.slots)
 	if err := w.unchanged(); err != nil {
 		return nil, err
 	}
@@ -114,9 +121,9 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 	if err := os.Mkdir(filepath.Join(dir, "packages"), 0o700); err != nil {
 		return nil, err
 	}
-	out, err := w.render(ctx, dir, w.cfg.Now())
+	out, err := w.render(bounded, dir, w.cfg.Now())
 	if err != nil {
-		return nil, widerThanMeasuredError(err)
+		return nil, budget(widerThanMeasuredError(err))
 	}
 	if !bytes.HasPrefix(out, []byte("%PDF-")) {
 		return nil, errors.New("pdf: Typst wrote no PDF")
@@ -138,11 +145,11 @@ func widerThanMeasuredError(err error) error {
 // BackgroundFits renders a probe document on the given PNG background and reports whether the
 // result stays within the artifact limit, so that a background is refused at upload rather
 // than failing every later preview. Its errors are those of Render.
-func (w *Writer) BackgroundFits(background []byte) error {
+func (w *Writer) BackgroundFits(ctx context.Context, background []byte) error {
 	sum := sha256.Sum256(background)
 	d, values, _ := documentProbe()
 	d.Schema, d.Background = "1.2", &doctemplates.BackgroundRef{ID: strings.Repeat("0", 32), SHA256: hex.EncodeToString(sum[:])}
-	_, err := w.Render(context.Background(), d, values, background)
+	_, err := w.Render(ctx, d, values, background)
 	return err
 }
 

@@ -175,22 +175,41 @@ func TestLayOutDrawsOnlyTheNamedBackgroundInFullMode(t *testing.T) {
 
 func TestAcquireLimitsConcurrentRenders(t *testing.T) {
 	w := &Writer{cfg: Config{Timeout: 50 * time.Millisecond}, slots: make(chan struct{}, 1)}
-	if err := w.acquire(context.Background()); err != nil {
+	take := func(ctx context.Context) error {
+		bounded, cancel, budget := w.bounded(ctx)
+		defer cancel()
+		return budget(acquire(bounded, w.slots))
+	}
+	if err := take(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	// The slot is taken: a second render waits for the timeout and is a budget error; one
 	// whose context ends first gets that error. After a release the slot is free again.
-	if err := w.acquire(context.Background()); !errors.Is(err, r.ErrBudget) {
+	if err := take(context.Background()); !errors.Is(err, r.ErrBudget) {
 		t.Errorf("second render: %v; want budget", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := w.acquire(ctx); !errors.Is(err, context.Canceled) {
+	if err := take(ctx); !errors.Is(err, context.Canceled) || errors.Is(err, r.ErrBudget) {
 		t.Errorf("cancelled render: %v", err)
 	}
-	w.release()
-	if err := w.acquire(context.Background()); err != nil {
+	release(w.slots)
+	if err := take(context.Background()); err != nil {
 		t.Errorf("after release: %v", err)
+	}
+	// The render itself counts against the same deadline: a context that bounded already ended
+	// is a budget error too.
+	bounded, cancel, budget := w.bounded(context.Background())
+	defer cancel()
+	<-bounded.Done()
+	if err := budget(bounded.Err()); !errors.Is(err, r.ErrBudget) {
+		t.Errorf("after the deadline: %v", err)
+	}
+	// Previews hold all but one slot, at least one: with two slots, one; with one, one.
+	for concurrency, previews := range map[int]int{1: 1, 2: 1, 4: 3} {
+		if got := max(1, concurrency-1); got != previews {
+			t.Errorf("concurrency %d: %d preview slots", concurrency, got)
+		}
 	}
 }
 

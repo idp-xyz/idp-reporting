@@ -600,7 +600,7 @@ func TestTypstRendersDocuments(t *testing.T) {
 		}
 	}
 	// The upload check renders on the background: a PNG the templates accept passes.
-	if err := w.BackgroundFits(png); err != nil {
+	if err := w.BackgroundFits(t.Context(), png); err != nil {
 		t.Errorf("background fit: %v", err)
 	}
 	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.

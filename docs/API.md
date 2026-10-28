@@ -68,9 +68,11 @@ A preview places each value on one line with its baseline 1.16 font sizes below 
 left edge, right edge or centre, every character at the position the fonts' plain advances give it (ADR 0002);
 trailing white space is not drawn. A value the fonts do not cover, a soft hyphen, a Hangul tone mark, a value
 that does not fit its box, a snapshot value with control characters or over 256 characters, or one Typst would
-draw wider than measured is 422 UNSUPPORTED_COMBINATION; a preview that waits longer than the render timeout for
-one of the renderer's processes is 413 BUDGET_EXCEEDED. Previews are never issued documents and are not stored. A
-background upload is tried with the renderer and refused when its preview would exceed the artifact limit.
+draw wider than measured is 422 UNSUPPORTED_COMBINATION, as is a template naming a background on a server without
+a background store; a preview whose wait for one of the renderer's processes and render together exceed the
+render timeout (15 s) is 413 BUDGET_EXCEEDED (previews hold at most all but one of the processes, so they never
+fail an export). Previews are never issued documents and are not stored. A background upload is tried with the
+renderer and refused when its preview would exceed the artifact limit.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile
