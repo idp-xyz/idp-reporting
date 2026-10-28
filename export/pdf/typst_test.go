@@ -642,6 +642,35 @@ func TestTypstRendersDocuments(t *testing.T) {
 	}
 	tableData := statementRows(60)
 	tableValues := map[string]string{"n1": "对账单 Statement", "n2": "华东区客户", "n3": "9007199254740993.01"}
+	// Twelve columns at 8 pt, eleven of them 12 mm wide: every column a metric with amounts
+	// under one yuan whose carried sums still fit, the first column a metric too (its sum is
+	// not shown; it holds the labels, so it is 48 mm wide).
+	narrowDoc := tableDoc("full", false)
+	narrowDoc.Table = &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 120, FontSize: 8}
+	narrowData := &doctemplates.TableData{Totals: map[string]string{}}
+	cents := func(i, j int) int64 { return int64((i*7+j*13)%90 + 1) }
+	for j := range 12 {
+		id := "m" + strconv.Itoa(j)
+		width := 12.0
+		if j == 0 {
+			width = 48
+		}
+		narrowDoc.Table.Columns = append(narrowDoc.Table.Columns, doctemplates.TableColumn{Field: id, Width: width})
+		narrowData.Columns = append(narrowData.Columns, r.Column{ID: id, Label: "指标" + strconv.Itoa(j), Type: "decimal", Scale: 2})
+		narrowData.Metric = append(narrowData.Metric, true)
+		total := int64(0)
+		for i := range 40 {
+			total += cents(i, j)
+		}
+		narrowData.Totals[id] = fmt.Sprintf("%d.%02d", total/100, total%100)
+	}
+	for i := range 40 {
+		row := make([]string, 12)
+		for j := range 12 {
+			row[j] = fmt.Sprintf("%d.%02d", cents(i, j)/100, cents(i, j)%100)
+		}
+		narrowData.Rows = append(narrowData.Rows, row)
+	}
 	for _, c := range []struct {
 		name   string
 		d      doctemplates.Document
@@ -656,6 +685,7 @@ func TestTypstRendersDocuments(t *testing.T) {
 		{"document_fitted", fitted, values, narrow, nil},
 		{"document_table", tableDoc("full", true), tableValues, png, tableData},
 		{"document_table_variables", tableDoc("variables", false), tableValues, nil, tableData},
+		{"document_table_narrow", narrowDoc, tableValues, nil, narrowData},
 	} {
 		out, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
 		if err != nil {

@@ -45,6 +45,14 @@ func TestColumnSumsExactly(t *testing.T) {
 	if !c.equals("9007199254740996.260") || c.equals("9007199254740996.27") || c.equals("x") {
 		t.Error("equals")
 	}
+	// A declared scale longer than any fraction seen: the sum prints and compares at that scale.
+	c = &column{scale: 2}
+	for _, v := range []string{"1", "2"} {
+		_ = c.add(v)
+	}
+	if got := c.String(); got != "3.00" || !c.equals("3") || !c.equals("3.0") || c.equals("3.01") {
+		t.Errorf("sum %s", got)
+	}
 	// A negative sum, and a column with no fraction at all.
 	c = &column{}
 	for _, v := range []string{"-5", "2"} {
@@ -213,5 +221,35 @@ func TestLayOutTableRefusesWhatItCannotLayOut(t *testing.T) {
 	data.Rows[0][0] = "☃"
 	if _, err := layOut(d, map[string]string{"n1": "x"}, nil, data, plainFake('☃')); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("an uncovered character: %v", err)
+	}
+	// Amounts and carried sums are never cut: one wider than its column is unsupported, as is a
+	// carried row's label wider than the first column. With the fake font at 10 pt a 16 mm
+	// column holds 39.4 pt of content: six bold characters (6 pt each); the grouped sum of 20
+	// rows is nine characters.
+	narrow := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 104}, doctemplates.TableColumn{Field: "amount", Width: 16})
+	data = amounts(3)
+	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); err != nil {
+		t.Errorf("three small amounts in a narrow column: %v", err)
+	}
+	data = amounts(20)
+	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("a carried sum wider than its column: %v", err)
+	}
+	data = amounts(1)
+	data.Rows[0][1] = "123456789.00"
+	data.Totals["amount"] = "123456789.00"
+	if _, err := layOut(narrow, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("an amount wider than its column: %v", err)
+	}
+	label := tabled("full", 20, 40, 120, 60, 10, doctemplates.TableColumn{Field: "customer", Width: 12}, doctemplates.TableColumn{Field: "amount", Width: 108})
+	if _, err := layOut(label, map[string]string{"n1": "x"}, nil, amounts(3), plainFake()); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("a carried label wider than the first column: %v", err)
+	}
+	// An empty table whose header and total row are taller than the region.
+	tall := tabled("full", 20, 40, 120, 30, 10, columns...)
+	data = amounts(0)
+	data.Columns[0].Label = strings.Repeat("甲", 200)
+	if _, err := layOut(tall, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("a header taller than the region: %v", err)
 	}
 }

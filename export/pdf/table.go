@@ -2,7 +2,6 @@ package pdf
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -57,7 +56,6 @@ type tableLayout struct {
 	header  []cell
 	rows    [][]cell
 	heights []float64 // row heights
-	sums    []string  // the running sums per column, grouped, after each row (metric columns)
 }
 
 // layOutTable adds the table's pages to p: the header on every page, rows never split, a
@@ -105,6 +103,24 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 			sums[j] = &column{scale: data.Columns[j].Scale}
 		}
 	}
+	// The carried rows are one line each: their labels (the widest page number is maxPages) and
+	// every running sum must fit their columns, as must every amount, which is never cut.
+	content := func(j int) float64 { return lay.columns[j].right - lay.columns[j].left - 2*tableInsetX }
+	fits := func(text string, j int, what string) error {
+		w, err := lay.m.width(text, size, true)
+		if err != nil {
+			return err
+		}
+		if w > content(j) {
+			return fmt.Errorf("pdf: %s does not fit its column: %w", what, r.ErrUnsupported)
+		}
+		return nil
+	}
+	for _, label := range []string{tableLabels["forward_before"] + strconv.Itoa(maxPages) + tableLabels["forward_after"], tableLabels["carry_before"] + strconv.Itoa(maxPages) + tableLabels["carry_after"], tableLabels["total"]} {
+		if err := fits(label, 0, "a carried row's label"); err != nil {
+			return err
+		}
+	}
 	lay.rows = make([][]cell, len(data.Rows))
 	lay.heights = make([]float64, len(data.Rows))
 	for i, row := range data.Rows {
@@ -115,6 +131,11 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 					return r.ErrIntegrity
 				}
 				texts[j] = groupDigits(v)
+				if w, err := lay.m.width(texts[j], size, false); err != nil {
+					return err
+				} else if w > content(j) {
+					return fmt.Errorf("pdf: an amount does not fit its column: %w", r.ErrUnsupported)
+				}
 				if sums[j] != nil {
 					if err := sums[j].add(v); err != nil {
 						return err
@@ -128,7 +149,6 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 			return err
 		}
 		lay.heights[i] = lay.rowHeight(lay.rows[i])
-		lay.sums = append(lay.sums, "")
 	}
 	// The sum of the rows must be the snapshot's own total: a durable snapshot is complete.
 	for j, s := range sums {
@@ -157,12 +177,18 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 				return err
 			}
 			running[i][j] = groupDigits(s.String())
+			if err := fits(running[i][j], j, "a carried sum"); err != nil {
+				return err
+			}
 		}
 	}
 	zero := make([]string, len(lay.columns))
 	for j, s := range sums {
 		if s != nil {
 			zero[j] = groupDigits((&column{scale: s.scale, frac: s.frac}).String())
+			if err := fits(zero[j], j, "a carried sum"); err != nil {
+				return err
+			}
 		}
 	}
 	return lay.paginate(p, running, zero)
@@ -185,6 +211,9 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 	// The carried rows are single lines of bold text.
 	carryH := 2*tableInsetY + (ascent+descent)*lay.size
 	usable := lay.bottom - lay.top - headerH
+	if headerH+carryH > lay.bottom-lay.top {
+		return fmt.Errorf("pdf: the table's header and total row are taller than its region: %w", r.ErrUnsupported)
+	}
 	base := *p
 	pages := []pageData{}
 	i, number := 0, 1
@@ -204,7 +233,7 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 			k--
 			used -= lay.heights[i+k]
 		}
-		if k == 0 && (i < n || number == 1 && n > 0) {
+		if k == 0 && i < n {
 			return fmt.Errorf("pdf: a table row is taller than the table's pages can hold: %w", r.ErrUnsupported)
 		}
 		if number > maxPages {
@@ -355,10 +384,6 @@ func (lay *tableLayout) wrap(text string, width float64, bold bool) (cell, error
 			}
 			if line != "" && lw+w > width {
 				flush()
-				run = strings.TrimLeft(run, " ")
-				if w, err = lay.m.width(run, lay.size, bold); err != nil {
-					return err
-				}
 			}
 			line += run
 			lw += w
@@ -379,9 +404,8 @@ func (lay *tableLayout) wrap(text string, width float64, bold bool) (cell, error
 // the column's declared scale), so no digit is ever rounded.
 type column struct {
 	scale int // the column's declared scale, if any
-	frac  int // the longest fraction seen
+	frac  int // the longest fraction seen; sum is scaled by 10^frac
 	sum   big.Int
-	seen  []string
 }
 
 func (c *column) add(v string) error {
@@ -390,15 +414,14 @@ func (c *column) add(v string) error {
 	}
 	_, f, _ := strings.Cut(v, ".")
 	if len(f) > c.frac {
+		c.sum.Mul(&c.sum, pow10(len(f)-c.frac))
 		c.frac = len(f)
 	}
-	c.seen = append(c.seen, v)
-	c.sum.SetInt64(0)
-	for _, s := range c.seen {
-		c.sum.Add(&c.sum, scaled(s, c.frac))
-	}
+	c.sum.Add(&c.sum, scaled(v, c.frac))
 	return nil
 }
+
+func pow10(n int) *big.Int { return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(n)), nil) }
 
 // scaled is v as an integer with frac fraction digits.
 func scaled(v string, frac int) *big.Int {
@@ -413,7 +436,7 @@ func (c *column) String() string {
 	frac := max(c.frac, c.scale)
 	digits := new(big.Int).Abs(&c.sum)
 	if frac > c.frac {
-		digits.Mul(digits, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(frac-c.frac)), nil))
+		digits.Mul(digits, pow10(frac-c.frac))
 	}
 	s := digits.String()
 	if frac > 0 {
@@ -434,8 +457,6 @@ func (c *column) equals(v string) bool {
 		return false
 	}
 	_, f, _ := strings.Cut(v, ".")
-	frac := max(c.frac, len(f))
-	a := scaled(c.String(), frac)
-	b := scaled(v, frac)
-	return a.Cmp(b) == 0 && !math.IsNaN(0)
+	frac := max(c.frac, c.scale, len(f))
+	return scaled(c.String(), frac).Cmp(scaled(v, frac)) == 0
 }

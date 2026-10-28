@@ -717,7 +717,9 @@ def document_corruptions(exp):
         yield changed("a table row removed", lambda e: e["table"]["rows"].pop())
         yield changed("two table rows swapped", lambda e: e["table"]["rows"].__setitem__(slice(0, 2), [e["table"]["rows"][1], e["table"]["rows"][0]]))
         yield changed("a table row added", lambda e: e["table"]["rows"].append(list(e["table"]["rows"][0])))
-        yield changed("a table total changed", lambda e: e["table"]["totals"].__setitem__(next(iter(e["table"]["totals"])), "1.00"))
+        summed = next((c["field"] for j, c in enumerate(exp["table"]["columns"]) if j > 0 and c["metric"] and c["field"] in exp["table"]["totals"]), None)
+        if summed is not None:
+            yield changed("a table total changed", lambda e: e["table"]["totals"].__setitem__(summed, "1.00"))
         yield changed("a table amount changed", lambda e: e["table"]["rows"][1].__setitem__(2, "0.01"))
         if exp.get("mode", "full") == "full":
             yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", e["table"]["columns"][0]["label"] + "X"))

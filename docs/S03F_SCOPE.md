@@ -26,9 +26,11 @@ print the cell values and the carried rows only: no rules, no header text, no ba
 F3 · Exact carried totals. For every numeric column (decimal or integer) but the first, Go adds the printed rows
 exactly (integers scaled to the column's longest fraction, no floating point): 过次 on page p and 承前 on page p+1
 show the sum of the rows up to page p, 合计 the sum of all rows. The first column holds the labels, with the page
-numbers: "承前（第 p 页）", "过次（转第 p+1 页）", "合计". When the snapshot's whole-scope total of a metric column
-differs from the sum of its rows, the preview is refused as INTEGRITY_FAILURE: a durable snapshot is complete, so
-the two must agree.
+numbers: "承前（第 p 页）", "过次（转第 p+1 页）", "合计". Amounts, carried sums and the labels (measured for the
+widest page number) are never cut or wrapped: one wider than its column's content width is 422
+UNSUPPORTED_COMBINATION, as is a header and total row taller than the region. When the snapshot's whole-scope
+total of a metric column differs from the sum of its rows, the preview is refused as INTEGRITY_FAILURE: a durable
+snapshot is complete, so the two must agree.
 
 F4 · Designer and checks. The console designer adds a table panel (region, font size, columns from the current
 authorized result with widths that must add up), validates it like the boxes, and previews through the same
