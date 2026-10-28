@@ -642,6 +642,11 @@ func TestTypstRendersDocuments(t *testing.T) {
 	}
 	tableData := statementRows(60)
 	tableValues := map[string]string{"n1": "对账单 Statement", "n2": "华东区客户", "n3": "9007199254740993.01"}
+	// One text column with blank rows among the values, and no metric at all.
+	blankDoc := tableDoc("full", false)
+	blankDoc.Table = &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 40, FontSize: 10, Columns: []doctemplates.TableColumn{{Field: "note", Width: 180}}}
+	blankData := &doctemplates.TableData{Columns: []r.Column{{ID: "note", Label: "备注", Type: "string"}}, Metric: []bool{false}, Totals: map[string]string{},
+		Rows: [][]string{{"first"}, {""}, {"   "}, {"after two blank rows"}, {"\n"}, {"last"}}}
 	// Twelve columns at 8 pt, eleven of them 12 mm wide: every column a metric with amounts
 	// under one yuan whose carried sums still fit, the first column a metric too (its sum is
 	// not shown; it holds the labels, so it is 48 mm wide).
@@ -686,6 +691,8 @@ func TestTypstRendersDocuments(t *testing.T) {
 		{"document_table", tableDoc("full", true), tableValues, png, tableData},
 		{"document_table_variables", tableDoc("variables", false), tableValues, nil, tableData},
 		{"document_table_narrow", narrowDoc, tableValues, nil, narrowData},
+		{"document_table_empty", tableDoc("full", false), tableValues, nil, &doctemplates.TableData{Columns: tableData.Columns, Metric: tableData.Metric, Rows: [][]string{}, Totals: map[string]string{"amount": "0.00"}}},
+		{"document_table_blank", blankDoc, tableValues, nil, blankData},
 	} {
 		out, err := w.Render(t.Context(), c.d, c.values, c.png, c.table)
 		if err != nil {

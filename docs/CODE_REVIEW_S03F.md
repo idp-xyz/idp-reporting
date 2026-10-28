@@ -34,4 +34,26 @@ in 0.16 s.
 
 ### Test effectiveness, checker and documentation
 
-Pending.
+Baseline on 4c999e3 reproduced: vet, Go 116/263 with the two PostgreSQL skips, the checker over 18 PDFs with 441
+controls caught and the golden matched, the two table PDFs byte-identical to the evidence, DOM 56/56, the
+evidence logs consistent. The reviewer ran 44 Go and Typst mutations, 32 model and route mutations, 30 console
+mutations, 13 PDF corruptions and their own fixtures (one and twelve columns, metric first column, variables
+mode with offsets, backgrounds, empty tables, blank rows).
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Major: the carried rows were never wrapped, cut or fit-checked (the same defect as finding 1 of the correctness review) | Fixed there: amounts, carried sums and labels are one line each and 422 when wider than their column; narrow-column fixture and unit tests |
+| 2 | Major: the vertical placement of table text was verified nowhere: the baseline inset dropped or the line step changed survived every suite, and a cell moved 1 or 3 pt down was invisible to the checker | Fixed. The unit test asserts the header, first-row, brought-forward, second-page and second-line baselines from the row heights; the checker derives every row's top from the rows before it and requires each line's baseline within 0.1 pt of the position its row and line give it, the cells of a row on the same baselines and the tail row at the computed top; controls: a cell line moved 1 pt down, the total row moved 3 pt down |
+| 3 | Minor: the fills, cell rules and the rule above the total row were not checked, and the only full-mode fixture carried a background, so the ink check never ran on a table | Fixed. The checker matches one stroked cell (0.5 pt) per column of every drawn row, a fill (luma 232) per column of the header rows, the 1 pt rule above the total row on the last page and nowhere else, and no other drawing in the region (none at all in the variable layer); a merged fill-and-stroke rectangle of a one-column table is accepted. Fixtures without background: the twelve-column, the empty and the blank-row tables; controls: rules thinned, header fill turned white |
+| 4 | Minor: the checker crashed on an empty table (rows null; header and total both leading bold lines), miscounted rows with nothing to draw, and its control generators assumed the fixture's shape | Fixed. Null rows are empty; the total or carry-forward row is recognised by its label before the header split; blank rows are counted and sized by their paragraphs, including those at the end of a page from the room before the tail; the generators pick existing rows, a summed column and skip controls that need boxes, a second page or a metric. Fixtures: an empty table and a one-column table with blank, space-only and newline-only rows |
+| 5 | Minor: the console's table rules were untested one by one (17 of 22 deletions survived) and the width split was only tested with two columns | Fixed. A DOM test selects every column (widths on the 0.1 mm grid adding up to the table's width), rejects 24 single-rule violations, keeps a background through the canonical form and the fallback to 1.2 on removal, and checks the variable-layer rule |
+| 6 | Minor: Go rules without a test of their own: x under 10, y under 25, a field over 128 bytes, a column width off the grid, a binding to another dataset, short snapshot rows, an invalid background on 1.3, and the catalog authorization of table fields | Fixed with unit tests and an HTTP test (a table field the snapshot has but the catalog no longer lists is 403 and nothing is rendered) |
+| 7 | Minor: the page cap was tested far from its boundary and the too-tall-row check was shadowed by it | Fixed. 101 rows are exactly 100 pages and 102 one too many; the too-tall message is asserted |
+| 8 | Minor: nine messages of the table check had no negative control of their own | Fixed. Controls for text of another size, bold text among the rows, a header in the variable layer, a brought-forward row on page 1, the carry-forward row removed, a line pushed over the region's edge, besides those of findings 2 and 3; "in no column" and "split over pages" remain exercised only through other controls |
+| 9 | Minor: documentation: the review record did not exist yet; "optional table" where 1.3 requires it; "multi-page preview" through the console where the demo data yield one page | Fixed in the scope and README; the record exists |
+| 10 | Nits: a no-op `!math.IsNaN(0)`, quadratic re-summing, an order-blind `has()` helper | Fixed with the correctness round (first two); the pagination test now checks the rows' order within a page |
+
+Solid per the reviewer: every sum, scale, sign and off-by-one mutation falls to the unit tests, and the checker
+independently recomputes the carried sums and catches digit reordering, a wrong page's value, duplicated or
+removed pages and reordered rows; header, boxes, bold labels, page numbers and the total row's placement are
+each caught by a unit test and the checker; the evidence reproduces byte for byte.

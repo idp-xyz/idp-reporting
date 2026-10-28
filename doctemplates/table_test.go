@@ -46,6 +46,11 @@ func TestTableValidation(t *testing.T) {
 		"overlapping a text box":      func(d *doctemplates.Document) { d.Table.Y = 30 },
 		"pushed out by the offsets":   func(d *doctemplates.Document) { d.Print.OffsetY = 10; d.Table.Y = 165 },
 		"an empty field":              func(d *doctemplates.Document) { d.Table.Columns[0].Field = "" },
+		"x under 10":                  func(d *doctemplates.Document) { d.Table.X = 9.9; d.Table.Y = 180 },
+		"y under 25":                  func(d *doctemplates.Document) { d.Table.Y = 24.9; d.Elements = nil },
+		"a field over 128 bytes":      func(d *doctemplates.Document) { d.Table.Columns[0].Field = strings.Repeat("f", 129) },
+		"a column width off the grid": func(d *doctemplates.Document) { d.Table.Columns[0].Width = 90.05; d.Table.Columns[1].Width = 99.95 },
+		"an invalid background ref":   func(d *doctemplates.Document) { d.Background = &doctemplates.BackgroundRef{ID: "x", SHA256: "y"} },
 	} {
 		d := tableDocument()
 		change(&d)
@@ -105,6 +110,21 @@ func TestBindTableTakesRowsFromTheSnapshot(t *testing.T) {
 	d.Binding.Integration = "other"
 	if _, e = doctemplates.BindTable(d, s); !errors.Is(e, r.ErrDenied) {
 		t.Errorf("other binding: %v", e)
+	}
+	d = tableDocument()
+	d.Binding.Dataset.Version = "2"
+	if _, e = doctemplates.BindTable(d, s); !errors.Is(e, r.ErrDenied) {
+		t.Errorf("other dataset: %v", e)
+	}
+	// A snapshot row shorter than its columns, or with invalid UTF-8, is an integrity failure.
+	short := s
+	short.Result.Rows = [][]string{{"a"}}
+	if _, e = doctemplates.BindTable(tableDocument(), short); !errors.Is(e, r.ErrIntegrity) {
+		t.Errorf("short row: %v", e)
+	}
+	short.Result.Rows = [][]string{{"a", "1.\xff"}}
+	if _, e = doctemplates.BindTable(tableDocument(), short); !errors.Is(e, r.ErrIntegrity) {
+		t.Errorf("invalid UTF-8: %v", e)
 	}
 	if data, e = doctemplates.BindTable(document(), s); e != nil || data != nil {
 		t.Errorf("no table: %+v %v", data, e)

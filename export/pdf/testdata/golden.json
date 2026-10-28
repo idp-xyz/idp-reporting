@@ -19,6 +19,19 @@
   ],
   "pages": 3
  },
+ "document_table_blank.pdf": {
+  "first_rows": [
+   0,
+   4
+  ],
+  "pages": 2
+ },
+ "document_table_empty.pdf": {
+  "first_rows": [
+   null
+  ],
+  "pages": 1
+ },
  "document_table_narrow.pdf": {
   "first_rows": [
    0,

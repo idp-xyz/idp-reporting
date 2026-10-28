@@ -150,6 +150,62 @@ func TestLayOutTablePaginatesWithCarriedTotals(t *testing.T) {
 	if len(p.Pages[0].Fills) != 2 || len(p.Pages[0].Cells) != 2*(1+7+1) || len(p.Pages[0].Rules) != 0 || len(p.Pages[3].Rules) != 1 || len(p.Pages[3].Cells) != 2*(1+1+1+1) {
 		t.Errorf("page furniture %+v", p.Pages[0].Cells)
 	}
+	// Vertical placement: the header's baseline is 2 pt plus the ascent below the region top;
+	// each row starts where the previous one ends (4 pt of insets, ascent plus descent, and
+	// 1.5 font sizes per extra line); a second line is 1.5 font sizes below the first.
+	top := 40 * mm
+	rowH := 2*tableInsetY + (ascent+descent)*10
+	first := func(i int, text string) glyph {
+		for _, g := range p.Pages[i].Texts {
+			if g.Text == text {
+				return g
+			}
+		}
+		t.Fatalf("page %d lacks %q", i+1, text)
+		return glyph{}
+	}
+	if g := first(0, "客户"); !near(g.Baseline, top+tableInsetY+ascent*10) {
+		t.Errorf("header baseline %.2f", g.Baseline)
+	}
+	if g := first(0, "客户0"); !near(g.Baseline, top+rowH+tableInsetY+ascent*10) {
+		t.Errorf("first row baseline %.2f", g.Baseline)
+	}
+	if g := first(1, "承前（第 2 页）"); !near(g.Baseline, top+rowH+tableInsetY+ascent*10) {
+		t.Errorf("brought-forward baseline %.2f", g.Baseline)
+	}
+	if g := first(1, "客户7"); !near(g.Baseline, top+2*rowH+tableInsetY+ascent*10) {
+		t.Errorf("page 2 first row baseline %.2f", g.Baseline)
+	}
+	two := amounts(2)
+	two.Rows[0][0] = "a\nb"
+	q, err := layOut(d, map[string]string{"n1": "标题"}, nil, two, plainFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ga, gb, gnext glyph
+	for _, g := range q.Pages[0].Texts {
+		switch g.Text {
+		case "a":
+			ga = g
+		case "b":
+			gb = g
+		case "客户1":
+			gnext = g
+		}
+	}
+	if !near(gb.Baseline, ga.Baseline+lineStep*10) || !near(gnext.Baseline, ga.Baseline+rowH+lineStep*10) {
+		t.Errorf("second line %.2f after %.2f, next row %.2f", gb.Baseline, ga.Baseline, gnext.Baseline)
+	}
+	// Rows keep their order within a page: the customers' baselines increase with the index.
+	last := 0.0
+	for _, g := range p.Pages[0].Texts {
+		if strings.HasPrefix(g.Text, "客户") {
+			if g.Baseline <= last {
+				t.Errorf("%s at %.2f after %.2f", g.Text, g.Baseline, last)
+			}
+			last = g.Baseline
+		}
+	}
 	// Amounts are right-aligned: the sum ends at the column's right content edge.
 	right := (20+120)*mm - tableInsetX
 	for _, g := range p.Pages[3].Texts {
@@ -195,16 +251,17 @@ func TestLayOutTableRefusesWhatItCannotLayOut(t *testing.T) {
 	// A row taller than a page: 40 lines of 15 pt each in a 60 mm region.
 	data = amounts(3)
 	data.Rows[1][0] = strings.Repeat("甲\n", 40)
-	if _, err := layOut(d, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+	if _, err := layOut(d, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) || !strings.Contains(err.Error(), "taller") {
 		t.Errorf("a row taller than the region: %v", err)
 	}
-	// More than 100 pages: 1000 rows of two lines in a 30 mm region.
-	data = amounts(1000)
-	for _, row := range data.Rows {
-		row[0] = "a\nb"
-	}
+	// The page cap: in a 30 mm region (85 pt) at 10 pt, page 1 holds the header, two rows and
+	// the carry-forward row, and every later page the header, the brought-forward row, one row
+	// and its tail; 101 rows are exactly 100 pages, 102 rows one too many.
 	short := tabled("full", 20, 40, 120, 30, 10, columns...)
-	if _, err := layOut(short, map[string]string{"n1": "x"}, nil, data, plainFake()); !errors.Is(err, r.ErrUnsupported) {
+	if p, err := layOut(short, map[string]string{"n1": "x"}, nil, amounts(101), plainFake()); err != nil || len(p.Pages) != maxPages {
+		t.Errorf("%d pages: %v", maxPages, err)
+	}
+	if _, err := layOut(short, map[string]string{"n1": "x"}, nil, amounts(102), plainFake()); !errors.Is(err, r.ErrUnsupported) || !strings.Contains(err.Error(), "pages") {
 		t.Errorf("over %d pages: %v", maxPages, err)
 	}
 	// A table without its rows, or with other columns, is invalid.

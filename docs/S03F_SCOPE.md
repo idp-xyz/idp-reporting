@@ -4,7 +4,7 @@
 over as many A4 pages as it needs, with the header repeated, exact carried totals and the same preprinted form on
 every page. Same engine, same sandbox, same placement contract; behaviour is S03-E's unless stated here.
 
-F1 · Table element. Schema 1.3 adds an optional `table` to the document: `{x, y, width, height, font_size,
+F1 · Table element. Schema 1.3 adds a `table` to the document (required on 1.3, absent on the other schemas): `{x, y, width, height, font_size,
 columns: [{field, width}]}`, a region inside the safe region (10..200 × 25..270 mm, 0.1 mm grid, at least 30 mm
 high) that overlaps no text box, 1..12 columns of the bound dataset's fields whose widths (≥ 8 mm) add up to the
 table's width, 8..12 pt. The table lists every row of the frozen snapshot in snapshot order (the snapshot holds
@@ -37,10 +37,12 @@ authorized result with widths that must add up), validates it like the boxes, an
 routes; saved versions, publication, offsets and backgrounds work unchanged. scripts/check_pdf_export.py checks a
 multi-page document: the page count, every page A4, the banner and the text boxes on every page, the header on
 every page, every row's cells complete and in order on exactly one page with no row split, each text line inside
-its cell and at its plain-advance position (--font), the carried rows' amounts recomputed exactly from the rows,
-the total equal to the sum of all rows, no ink outside the boxes, the table region and the banner (without a
-background), and the layout golden (page count and first row of each page) recorded for Typst upgrades, with
-negative controls for each check.
+its cell, at its plain-advance position (--font, bold lines with the Bold face) and at the baseline its row and
+line give it (rows start where the one before ends, lines 1.5 font sizes apart), the carried rows' amounts
+recomputed exactly from the rows, the total equal to the sum of all rows, in full mode one stroked cell per
+column of every row, the header fills and the rule above the total row (and no drawing at all in the variable
+layer), no ink outside the boxes, the table region and the banner (without a background), and the layout golden
+(page count and first row of each page) recorded for Typst upgrades, with a negative control for each check.
 
 Not in this slice: grouping rows per document (one document per customer from one snapshot), subtotals per
 group, column headers other than the catalog labels, images other than the background, barcodes, signatures,

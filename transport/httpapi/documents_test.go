@@ -119,6 +119,17 @@ func TestDocumentPreviewPrivateFrozenAndReauthorizedAfterRender(t *testing.T) {
 	if w := request(h2, "POST", "/api/reporting/v1/document-previews", body, true); w.Code != 403 {
 		t.Fatalf("table with an unknown field: %d", w.Code)
 	}
+	// A table field the snapshot has but the catalog no longer authorizes is a denial too, and
+	// no render happens.
+	withTable.Table.Columns[1].Field = "customer.id"
+	input["config"] = withTable
+	body, _ = json.Marshal(input)
+	adapter.allowed = "customer.id"
+	bound = nil
+	if w := request(h2, "POST", "/api/reporting/v1/document-previews", body, true); w.Code != 403 || bound != nil {
+		t.Fatalf("table field no longer in the catalog: %d %v", w.Code, bound)
+	}
+	adapter.allowed = ""
 	input["config"] = config
 	// A template naming a background on a server without a background store is unsupported.
 	withBackground := config
