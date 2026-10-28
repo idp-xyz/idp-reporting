@@ -225,8 +225,29 @@ WHERE id=$1 AND state='running' AND generation=$2 AND lease_until>clock_timestam
 	}
 	return tx.Commit(ctx)
 }
+
+// Fail fails a job that is running, at the claim's generation, with a lease that has not run out by
+// the store's clock (clock_timestamp()); anything else is ErrLease and changes nothing.
 func (s *Store) Fail(ctx context.Context, c r.Claim, code string) error {
 	result, e := s.pool.Exec(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND state='running' AND generation=$7 AND lease_until>clock_timestamp()`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation)
+	if e != nil {
+		return e
+	}
+	if result.RowsAffected() != 1 {
+		return r.ErrLease
+	}
+	return nil
+}
+
+// ResolveFailure replaces the code ISSUE_UNRECONCILED of a failed issue job with the job's own failure
+// code once the source product has voided what it held (S03-H). It applies only to an issue job that is
+// failed, at the claim's generation, with that code: anything else is ErrLease and changes nothing. It
+// needs no lease, which a failed job has not.
+func (s *Store) ResolveFailure(ctx context.Context, c r.Claim, code string) error {
+	if code == "" || code == r.ErrUnreconciled.Error() {
+		return r.ErrInvalid
+	}
+	result, e := s.pool.Exec(ctx, `UPDATE reporting_s01.jobs SET error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND kind='issue' AND state='failed' AND generation=$7 AND error_code=$8`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation, r.ErrUnreconciled.Error())
 	if e != nil {
 		return e
 	}

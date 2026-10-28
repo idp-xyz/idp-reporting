@@ -5,10 +5,12 @@ import (
 	"errors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/adapters/contractsim/pgsource"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/postgres"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -60,9 +62,16 @@ func issueDurableService(t *testing.T, v durableEnv, issuer r.Issuer) *r.Service
 // durable source implements the document authority of both integrations.
 func issueDurableServiceOn(t *testing.T, v durableEnv, repo r.Repository, issuer r.Issuer) *r.Service {
 	t.Helper()
+	return issueDurableServiceAs(t, v, repo, issuer, v.source)
+}
+
+// issueDurableServiceAs is the service over a repository and an adapter of the test's own, which wrap the
+// store and the durable source.
+func issueDurableServiceAs(t *testing.T, v durableEnv, repo r.Repository, issuer r.Issuer, adapter r.Adapter) *r.Service {
+	t.Helper()
 	connections := []r.Connection{}
 	for _, id := range []string{contractsim.FinanceIntegration, contractsim.ShipmentIntegration} {
-		connections = append(connections, r.Connection{Tenant: v.p.Tenant, Integration: id, SourceTenant: "tenant_a", Adapter: v.source})
+		connections = append(connections, r.Connection{Tenant: v.p.Tenant, Integration: id, SourceTenant: "tenant_a", Adapter: adapter})
 	}
 	s, e := r.NewService(r.Config{Repository: repo, Connections: connections, CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDFWriter{}}, Issuer: issuer})
 	if e != nil {
@@ -99,6 +108,69 @@ func (w *shortLease) Publish(ctx context.Context, c r.Claim, p r.Publication) er
 		time.Sleep(2200 * time.Millisecond)
 	}
 	return w.Repository.Publish(ctx, c, p)
+}
+
+// watchedProduct wraps the durable source as the product of a test: it tells what the platform's store holds
+// for the job when the void arrives, can lose the answer to a confirmation after the product confirmed, and
+// can stop the worker as the void is about to be delivered (runtime.Goexit stands for a crash).
+type watchedProduct struct {
+	*pgsource.Source
+	mu          sync.Mutex
+	loseConfirm bool
+	crashAtVoid bool
+	atVoid      func(jobID string)
+	voids       []string
+}
+
+func (w *watchedProduct) ConfirmIssue(ctx context.Context, sc r.SourceContext, c r.IssueConfirmation) (r.IssueReceipt, error) {
+	rc, e := w.Source.ConfirmIssue(ctx, sc, c)
+	w.mu.Lock()
+	lose := w.loseConfirm
+	w.mu.Unlock()
+	if e == nil && lose {
+		return r.IssueReceipt{}, r.ErrUnavailable
+	}
+	return rc, e
+}
+
+func (w *watchedProduct) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, reason string) error {
+	w.mu.Lock()
+	w.voids = append(w.voids, jobID)
+	hook, crash := w.atVoid, w.crashAtVoid
+	w.mu.Unlock()
+	if hook != nil {
+		hook(jobID)
+	}
+	if crash {
+		runtime.Goexit()
+	}
+	return w.Source.VoidIssue(ctx, sc, jobID, reason)
+}
+
+// recordedFailures wraps the store: it keeps the codes of the failures recorded and resolved, and can delay
+// a failure past the lease the claim was given (the slow worker of the reviewer's scenario).
+type recordedFailures struct {
+	r.Repository
+	mu       sync.Mutex
+	fails    []string
+	resolves []string
+	delay    time.Duration
+}
+
+func (w *recordedFailures) Fail(ctx context.Context, c r.Claim, code string) error {
+	w.mu.Lock()
+	w.fails = append(w.fails, code)
+	delay := w.delay
+	w.mu.Unlock()
+	time.Sleep(delay)
+	return w.Repository.Fail(ctx, c, code)
+}
+
+func (w *recordedFailures) ResolveFailure(ctx context.Context, c r.Claim, code string) error {
+	w.mu.Lock()
+	w.resolves = append(w.resolves, code)
+	w.mu.Unlock()
+	return w.Repository.ResolveFailure(ctx, c, code)
 }
 
 // expireBeforePublish lets the snapshot's source read run out, by the store's own clock, between the
@@ -579,6 +651,121 @@ func TestDurablePostgresIssues(t *testing.T) {
 			t.Fatalf("a lost lease voided at the product: %+v %v", rec, held)
 		}
 	})
+	// The failure is recorded before the void is asked for, and resolved to the job's own code after it
+	// succeeded; a worker that vanishes between the two leaves the job ISSUE_UNRECONCILED, with the product
+	// still holding the reservation, and nobody claims the job again.
+	t.Run("failure_is_recorded_before_the_void_and_resolved_after_and_a_crash_between_leaves_it_unreconciled", func(t *testing.T) {
+		v := newDurable(t)
+		issuer := &stampIssuer{err: r.ErrUnpublished}
+		product := &watchedProduct{Source: v.source}
+		store := &recordedFailures{Repository: v.repo}
+		s := issueDurableServiceAs(t, v, store, issuer, product)
+		snap := durableFreeze(t, durableEnv{s: s, repo: v.repo, source: v.source, p: v.p}, contractsim.FinancialQuery(), "snap")
+		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 0), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		var atVoid r.Job
+		product.atVoid = func(id string) {
+			st, e := v.repo.Job(ctx, v.p.Identity, id)
+			if e != nil {
+				t.Error(e)
+			}
+			atVoid = st
+		}
+		if _, e = s.RunOne(ctx); !errors.Is(e, r.ErrUnpublished) || errors.Is(e, r.ErrUnreconciled) {
+			t.Fatal(e)
+		}
+		if atVoid.State != "failed" || atVoid.ErrorCode != "ISSUE_UNRECONCILED" || atVoid.Generation != 1 {
+			t.Fatalf("when the product was told to void, the job was %+v; want failed, ISSUE_UNRECONCILED", atVoid)
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "failed" || st.ErrorCode != "TEMPLATE_NOT_PUBLISHED" || st.Generation != 1 || !st.LeaseUntil.IsZero() {
+			t.Fatalf("the void succeeded and the job is %+v %v; want failed with its own code", st, e)
+		}
+		if len(store.fails) != 1 || store.fails[0] != "ISSUE_UNRECONCILED" || len(store.resolves) != 1 || store.resolves[0] != "TEMPLATE_NOT_PUBLISHED" {
+			t.Fatalf("failed with %v, resolved to %v", store.fails, store.resolves)
+		}
+		if rec, held := productRecord(t, v, j.ID); !held || rec.State != contractsim.IssueVoid || rec.Reason != "TEMPLATE_NOT_PUBLISHED" {
+			t.Fatalf("the product's record: %+v %v", rec, held)
+		}
+		// The worker vanishes once the failure is recorded.
+		crashed, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 1), "two")
+		if e != nil {
+			t.Fatal(e)
+		}
+		product.mu.Lock()
+		product.atVoid, product.crashAtVoid = nil, true
+		product.mu.Unlock()
+		finished := make(chan bool, 1)
+		go func() {
+			ok := false
+			defer func() { finished <- ok }()
+			_, _ = s.RunOne(ctx)
+			ok = true
+		}()
+		if <-finished {
+			t.Fatal("the worker survived the crash")
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, crashed.ID); e != nil || st.State != "failed" || st.ErrorCode != "ISSUE_UNRECONCILED" || st.Generation != 1 {
+			t.Fatalf("%+v %v; want failed, ISSUE_UNRECONCILED", st, e)
+		}
+		if rec, held := productRecord(t, v, crashed.ID); !held || rec.State != contractsim.IssueReserved {
+			t.Fatalf("the reservation the product keeps for the job: %+v %v", rec, held)
+		}
+		product.mu.Lock()
+		product.crashAtVoid = false
+		product.mu.Unlock()
+		if ran, e := s.RunOne(ctx); ran || e != nil {
+			t.Fatal("a failed job was claimed again", ran, e)
+		}
+	})
+	// The reviewer's scenario, on the store's own clock: the product confirmed but its answer was lost, and the
+	// worker is slow, so its failure is recorded after its lease ran out. The store refuses it (nothing is
+	// voided), the next worker claims the job, has the confirmation answered again and publishes: the
+	// number that was published is never voided.
+	t.Run("a_failure_recorded_after_the_lease_never_voids_a_published_number", func(t *testing.T) {
+		v := newDurable(t)
+		product := &watchedProduct{Source: v.source, loseConfirm: true}
+		store := &recordedFailures{Repository: &shortLease{Repository: v.repo}, delay: 2200 * time.Millisecond}
+		s := issueDurableServiceAs(t, v, store, &stampIssuer{}, product)
+		snap := durableFreeze(t, durableEnv{s: s, repo: v.repo, source: v.source, p: v.p}, contractsim.FinancialQuery(), "snap")
+		j, e := s.SubmitIssue(ctx, v.p, issueInput(snap.SnapshotID, 1), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if ran, e := s.RunOne(ctx); !ran || !errors.Is(e, r.ErrUnavailable) || errors.Is(e, r.ErrUnreconciled) {
+			t.Fatal(ran, e)
+		}
+		if len(product.voids) != 0 {
+			t.Fatalf("a failure that was recorded after the lease was voided: %v", product.voids)
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "running" || st.Generation != 1 || st.ErrorCode != "" {
+			t.Fatalf("%+v %v; want it left to its lease", st, e)
+		}
+		confirmed, held := productRecord(t, v, j.ID)
+		if !held || confirmed.State != contractsim.IssueConfirmed {
+			t.Fatalf("%+v %v", confirmed, held)
+		}
+		// Worker 2.
+		product.mu.Lock()
+		product.loseConfirm = false
+		product.mu.Unlock()
+		store.mu.Lock()
+		store.delay = 0
+		store.mu.Unlock()
+		if ran, e := s.RunOne(ctx); !ran || e != nil {
+			t.Fatal(ran, e)
+		}
+		st, e := v.repo.Job(ctx, v.p.Identity, j.ID)
+		if e != nil || st.State != "succeeded" || st.Generation != 2 {
+			t.Fatalf("%+v %v", st, e)
+		}
+		after, held := productRecord(t, v, j.ID)
+		a, e := s.Download(ctx, v.p, st.ArtifactID)
+		if e != nil || !held || after.State != contractsim.IssueConfirmed || after.Number != "AR-000001" || after.SHA256 != a.SHA256 || after.ConfirmationRef != confirmed.ConfirmationRef || len(product.voids) != 0 {
+			t.Fatalf("the product's record %+v (held %v), the file %v, voids %v", after, held, e, product.voids)
+		}
+	})
 	// An issue job is cancelled only while queued; a running one is returned unchanged, with its
 	// lease. Another kind is cancelled while running, as before.
 	t.Run("a_running_issue_job_is_not_cancelled", func(t *testing.T) {
@@ -700,10 +887,38 @@ UPDATE reporting_s01.profile SET version=2 WHERE singleton;`); e != nil {
 		}
 		_, e = s.Issue(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
-		// The job's frozen template changed without its digest: the stored job is corrupt.
+		// The job's frozen template changed with the payload digest recomputed, but without the template's own
+		// digest, which the request hash and the job's fields bind: the stored job is corrupt.
+		for _, sql := range []string{`UPDATE reporting_s01.jobs SET data=jsonb_set(data,'{Template}',to_jsonb('{"schema_version":"1.1"}'::text)) WHERE id=$1`, `UPDATE reporting_s01.jobs SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex') WHERE id=$1`} {
+			if _, e = p.Exec(ctx, sql, j.ID); e != nil {
+				t.Fatal(e)
+			}
+		}
+		_, e = v.repo.Job(ctx, v.p.Identity, j.ID)
+		mustError(t, e, r.ErrIntegrity)
+		_, e = s.Job(ctx, v.p, j.ID)
+		mustError(t, e, r.ErrIntegrity)
+		_, e = s.Issues(ctx, v.p, 10)
+		mustError(t, e, r.ErrIntegrity)
+		// Restored (the same text, the digest recomputed again), the job reads again.
+		for _, sql := range []string{`UPDATE reporting_s01.jobs SET data=jsonb_set(data,'{Template}',to_jsonb($2::text)) WHERE id=$1`, `UPDATE reporting_s01.jobs SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex') WHERE id=$1`} {
+			args := []any{j.ID}
+			if strings.Contains(sql, "$2") {
+				args = append(args, frozenTemplate)
+			}
+			if _, e = p.Exec(ctx, sql, args...); e != nil {
+				t.Fatal(e)
+			}
+		}
+		if _, e = v.repo.Job(ctx, v.p.Identity, j.ID); e != nil {
+			t.Fatal("the restored job does not read:", e)
+		}
+		// The row index changed without the payload digest recomputed: the stored job is corrupt.
 		if _, e = p.Exec(ctx, `UPDATE reporting_s01.jobs SET data=jsonb_set(data,'{RowIndex}','2') WHERE id=$1`, j.ID); e != nil {
 			t.Fatal(e)
 		}
+		_, e = v.repo.Job(ctx, v.p.Identity, j.ID)
+		mustError(t, e, r.ErrIntegrity)
 		_, e = s.Job(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
 		_, e = s.Issues(ctx, v.p, 10)

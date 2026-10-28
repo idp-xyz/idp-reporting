@@ -13,38 +13,55 @@ interface: `PrepareDocument(sc, IssueIntent) -> IssueReservation`, `ConfirmIssue
 IssueReceipt`, `VoidIssue(sc, jobID, reason)`. Every call is idempotent by the platform job id; the
 semantics are in the interface's comments and are the contract the simulators and real products implement.
 The intent carries the frozen snapshot's source read, the row index, the digest of the row's values
-(`Digest(row)`) and the template id, version and digest; the product checks the row against its own source
-snapshot. A reservation carries the product's reference, the number (`ValidIssueNumber`: 1..32 of
-`A-Za-z0-9._-`, starting alphanumeric), the issue time (UTC, whole second) and an expiry. A receipt carries
-the product's confirmation reference and time. An integration whose adapter does not implement the interface
+(`Digest(row)`: the SHA-256 of the row as one JSON array of its strings, encoded exactly as docs/API.md
+specifies, which has test vectors a product not written in Go can reproduce) and the template id, version and
+digest; the product checks the row against its own source snapshot. A reservation carries the product's
+reference (1..128 printable ASCII characters, 0x21..0x7E), the number (`ValidIssueNumber`: 1..32 of
+`A-Za-z0-9._-`, starting alphanumeric), the issue time (a whole second between 1970-01-01T00:00:00Z and
+9999-12-31T23:59:59Z, which is the range a PDF can carry as its creation date) and an expiry (after the issue
+time and within the same years; it need not be a whole second, a source read's expiry has a fraction). A
+receipt carries the product's confirmation reference (the same shape) and time (a whole second in the same
+years, not before the issue time). The platform judges every time by value: the product's time may carry any
+location (a time read back from its database), and the platform keeps it as the same instant in UTC. An integration whose adapter does not implement the interface
 cannot issue: `POST /issues` answers 422 and a stored job fails with UNSUPPORTED_COMBINATION.
 
 H2 · The worker. For an issue job the worker, after the S03-G checks (snapshot current and verified, row
 present), first runs every check the issuer can make without rendering (`Issuer.Check`: the frozen
 template still the published version, the row and the table bind, the background resolves, the layout
 accepts the values), so that a withdrawn template or an unprintable row reserves nothing at the product;
-only then calls `PrepareDocument`; validates the reservation (reference 1..128
-bytes, the job's id, a valid number, issue time a UTC whole second, expiry after it; else
-INTEGRITY_FAILURE); renders with the stamp `ISSUED No. <number> - <issue time> - <record id>`, set at 8 pt in
+only then calls `PrepareDocument`; validates the reservation (H1's reference, the job's id, a valid
+number, an issue time that is a whole second between 1970 and 9999 judged by value and normalized to UTC,
+an expiry after it within those years; else INTEGRITY_FAILURE, before anything is rendered or published);
+renders with the stamp `ISSUED No. <number> - <issue time> - <record id>`, set at 8 pt in
 the banner strip so that the stamp of every number the contract allows fits with every record id and time
 (the widest measures 534.6 of the strip's 538.6 pt), and the issue time as the PDF's creation date, so the
 bytes depend only on frozen inputs and the reservation; calls
-`ConfirmIssue` with the digest and page count and validates the receipt (reference 1..128 bytes, time a UTC
-whole second not before the issue time); re-checks the source as before; publishes the artifact and the
-record. When the job fails after this attempt called `PrepareDocument` (whatever its outcome), or after a
-claim of a later generation (an earlier attempt may have reserved or confirmed), other than by the lease
-being lost to another worker, the worker calls `VoidIssue(job id, error code)` with a detached context of at
-most 5 seconds before failing the job; if the void cannot be delivered the job fails with
-ISSUE_UNRECONCILED instead of its own code. A first attempt that fails before reaching the product calls
-nothing there. A lost lease never voids: the worker that holds the job reuses the same reservation (idempotent by job
-id), renders the same bytes and confirms idempotently. Issue jobs can be cancelled only while queued; the
-cancel route returns a running issue job unchanged.
+`ConfirmIssue` with the digest and page count and validates the receipt (H1's reference, a time that is a
+whole second between the issue time and 9999, by value; else INTEGRITY_FAILURE); re-checks the source as
+before; publishes the artifact and the record. When the job fails after this attempt called
+`PrepareDocument` (whatever its outcome), or after a claim of a later generation (an earlier attempt may have
+reserved or confirmed), other than by the lease being lost to another worker, the failure is recorded first
+and the product is told after: the worker fails the job as ISSUE_UNRECONCILED, fenced by its claim (the job
+must be running, at the claim's generation, with a lease that has not run out by the store's clock); only if
+that took does it call `VoidIssue(job id, error code)` with a detached context of at most 5 seconds; when the
+void succeeded the job's own code replaces ISSUE_UNRECONCILED (fenced on the failed state, the claim's
+generation and that code); when it did not, the job stays ISSUE_UNRECONCILED, and so it does when the worker
+dies between the steps (which is true: the product may hold a reservation). If the failure cannot be recorded
+(the lease is lost to another worker, or the store cannot be reached) nothing is voided and the lease
+decides: the next claim, of a later generation, voids. The order is what keeps a void that is delayed past the
+lease from voiding a number another worker has since confirmed and published: once the failure is recorded
+nobody can claim the job. A panic in a job's execution, in the issuer or in an adapter, is a failure with the
+code EXECUTION_FAILED (its value is not kept) and follows the same rule. A first attempt that fails before
+reaching the product calls nothing there. A lost lease never voids: the worker that holds the job reuses the
+same reservation (idempotent by job id), renders the same bytes and confirms idempotently. Issue jobs can be
+cancelled only while queued; the cancel route returns a running issue job unchanged.
 
 H3 · Records and views. The record (`reporting.Issue`) holds the product's number (string), the
 reservation and confirmation references, the confirmation time and the issue time from the product, beside
 S03-G's fields; the stamp is recomputed from number, issue time and id wherever it is checked. A job carries
 no number. The job view's `issue` summary gains `number` only once the job succeeded (read from its
-record); `GET /issues` and `GET /issues/{id}` return `number` (omitted until succeeded), `reservation_ref`,
+record), wherever the job is shown: `GET /jobs/{id}`, the replay of an admission whose key belongs to a job
+that has succeeded, and the answer of the cancel route; `GET /issues` and `GET /issues/{id}` return `number` (omitted until succeeded), `reservation_ref`,
 `confirmation_ref`, `confirmed_at` and `issued_at`. The download keeps the name `issued-<record id>.pdf`;
 the console saves it as `issued-<number>.pdf`.
 
@@ -52,7 +69,9 @@ H4 · Storage. Migration 004 drops `issue_numbers`. Its up step refuses (with th
 `down --to 2 --accept-data-loss`) while issue jobs or issue records exist: they are S03-G's platform-numbered
 documents, never confirmed by a product. Its down step recreates the empty table and refuses while issue
 jobs or records exist unless data loss is accepted (they would be unreadable by an S03-G binary); accepted,
-it deletes them, the issued PDFs staying as plain artifacts. The application role's data tables become
+it deletes them. The issued PDFs stay in the store but can no longer be downloaded (a download needs the
+record the artifact names, which is gone: 409 INTEGRITY_FAILURE); they expire with their snapshots. They are
+not plain artifacts. The application role's data tables become
 `jobs` and `assets`; `roles` still accepts the older schemas.
 
 H5 · Simulators. Both contract simulators (in memory and durable) implement the capability: numbers

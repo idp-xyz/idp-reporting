@@ -45,16 +45,18 @@ bootstrapped from its profile version on the first `up` (those rows carry the ch
 Rollback is `down --to N`, newest step first; a target above the current version is refused. A down that
 would discard rows is refused unless `--accept-data-loss` is passed; the message names what would go: 004
 discards the issue jobs and records (an S03-H issue record carries the source product's string number and
-references, which an S03-G binary could not read) and recreates the empty `issue_numbers`, the issued PDFs
-staying as plain artifacts without their records; 003 discards the issue jobs, the records and the issue
-counters (the counters exist at version 3 only: S03-G's platform numbering, after which the numbering of every
-tenant and integration restarts at 1, reusing numbers already printed) while the issued PDFs stay as plain
-artifacts without their records; 001 discards everything including the profile row (`init-profile` is needed
+references, which an S03-G binary could not read) and recreates the empty `issue_numbers`; 003 discards the
+issue jobs, the records and the issue counters (the counters exist at version 3 only: S03-G's platform
+numbering, after which the numbering of every tenant and integration restarts at 1, reusing numbers already
+printed). After either, the issued PDFs stay in the store but can no longer be downloaded (a download needs the
+record the artifact names, which is gone, and answers 409 INTEGRITY_FAILURE); they expire with their snapshots.
+They are not plain artifacts: they keep their `Issue` field. 001 discards everything including the profile row (`init-profile` is needed
 after the next `up`). The up step of 004 has the opposite precondition: it is refused, whatever the operator
 accepts, while any issue job or issue record exists, because those are S03-G's documents, numbered by the
 platform and never confirmed by a source product, and cannot become source-confirmed ones. The message names
-the count and the remedy, `reporting-migrate down --to 2 --accept-data-loss`, which deletes them (their issued
-PDFs stay as plain artifacts); then `up` applies 003 and 004. A store that never issued under S03-G migrates
+the count and the remedy, `reporting-migrate down --to 2 --accept-data-loss`, which deletes them (the issued
+PDFs stay in the store but can no longer be downloaded, their records being gone; they expire with their
+snapshots); then `up` applies 003 and 004. A store that never issued under S03-G migrates
 without ceremony. Qualification: a fresh database taken up to the latest, down to zero and up again has a
 catalog (columns, types, defaults, nullability, constraints, indexes) identical to the first, and 004 down gives
 back exactly the catalog of version 3 (integration/migrate_test.go, integration/testdata/catalog_00{3,4}.txt).
@@ -93,10 +95,38 @@ the connected role against every rule above; any failure is a refusal to start. 
 (`postgres.Open`, fixture database names on a loopback address, the contract-simulator profile) keeps the
 superuser connections the destructive test resets need; a production store cannot be reset.
 
+## Workers and issue jobs
+
+A worker is a process that calls `Service.RunOne` in a loop (the demo runs one). Workers that share a store claim
+jobs from it by the database's clock, one lease at a time, and a claim is not filtered by what the worker can do:
+every worker sharing a store must therefore run with the same capabilities (the issuer, the document authority of
+each integration's adapter and the PDF renderer). A worker without one claims an issue job it cannot render and
+fails it (UNSUPPORTED_COMBINATION), possibly after another worker's earlier attempt had reserved a number for it,
+which is then voided.
+
+The failure of an issue job (S03-H, docs/API.md) is recorded before the source product is told, in this order:
+
+1. the job is failed as `ISSUE_UNRECONCILED`, fenced by the worker's claim (running, the claim's generation, a
+   lease that has not run out by the database's clock);
+2. only if that took, the product is told to void whatever it holds for the job id, in a context of its own of at
+   most 5 seconds;
+3. when the void succeeded, the job's own code replaces `ISSUE_UNRECONCILED`.
+
+If the failure cannot be recorded (the lease is lost, or the store cannot be reached) nothing is voided: the job is
+left to its lease and the next claim, of a later generation, voids it. A void that failed, and a worker that died
+between steps 1 and 3, leave the job `ISSUE_UNRECONCILED`: the product may still hold a reservation, which it finds
+by the job id; reconciling it is the product's operator's work (retries of a failed void are not in the platform
+yet). A job that failed for another reason shows its own code, and its number, if the product had reserved one, is
+voided there. A job claimed again never asks the product for a new number: the product answers the same job id with
+the same reservation.
+
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the
-same migrator. The CI postgres job and the local throwaway server run `TestPostgresMigrations` and
+same migrator. When a fixture store cannot be opened the demo prints the platform's own refusals (a migration's
+precondition with its remedy, a schema older than the binary's, a database that is not a fixture one: they name the
+reason and carry nothing of the connection) and nothing else of the error: a connection failure, which may carry the
+connection's details, is reduced to a generic text. The CI postgres job and the local throwaway server run `TestPostgresMigrations` and
 `TestMigrateCommand` with roles they create (`reporting_app_t`, `reporting_migrator_t`, the attribute,
 membership and command-test roles): the application role runs every write the server performs through the
 production path (with the test-only option that lifts TLS and the fixture name), the migrator role runs the

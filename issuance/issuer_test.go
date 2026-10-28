@@ -1,7 +1,9 @@
 package issuance_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/doctemplates"
@@ -77,6 +79,33 @@ func document() doctemplates.Document {
 		Table:    &doctemplates.Table{X: 20, Y: 60, Width: 100, Height: 100, FontSize: 9, Columns: []doctemplates.TableColumn{{Field: "customer", Width: 50}, {Field: "amount", Width: 50}}}}
 }
 
+// notCanonical is the same configuration in other bytes: indented, with its keys and values spaced out. It
+// decodes strictly to the same document, and is not what doctemplates.Canonical writes.
+func notCanonical(t *testing.T, canonical string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := json.Indent(&out, []byte(canonical), "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() == canonical {
+		t.Fatal("the canonical bytes are already indented")
+	}
+	// It is the same configuration: it decodes strictly, and to the same canonical bytes.
+	var d, again doctemplates.Document
+	if err := r.DecodeStrict(strings.NewReader(canonical), &d); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.DecodeStrict(strings.NewReader(out.String()), &again); err != nil {
+		t.Fatal("the indented configuration does not decode:", err)
+	}
+	a, _ := doctemplates.Canonical(d)
+	b, _ := doctemplates.Canonical(again)
+	if string(a) != canonical || string(b) != canonical {
+		t.Fatal("the indented configuration is not the same configuration")
+	}
+	return out.String()
+}
+
 func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 	ctx := context.Background()
 	owner := snapshot().Owner
@@ -128,6 +157,8 @@ func TestIssuerRendersOnlyThePublishedFrozenVersion(t *testing.T) {
 		"export job":    {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Kind = "export"; return s }, r.ErrInvalid},
 		"empty stamp":   {func(j *r.Job, s r.Snapshot) r.Snapshot { return s }, r.ErrInvalid},
 		"no issue time": {func(j *r.Job, s r.Snapshot) r.Snapshot { return s }, r.ErrInvalid},
+		// The same configuration, as JSON says it, in bytes that are not the canonical ones the version was frozen as.
+		"equal but not canonical bytes": {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = notCanonical(t, j.Template); return s }, r.ErrIntegrity},
 	} {
 		j := job
 		s := c.change(&j, snapshot())
@@ -235,12 +266,13 @@ func TestIssuerChecksWhatItCanWithoutRendering(t *testing.T) {
 		change func(*r.Job, r.Snapshot) r.Snapshot
 		want   error
 	}{
-		"other bytes":   {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = `{"x":1}`; return s }, r.ErrIntegrity},
-		"other version": {func(j *r.Job, s r.Snapshot) r.Snapshot { j.TemplateVersion = 2; return s }, r.ErrUnpublished},
-		"other row":     {func(j *r.Job, s r.Snapshot) r.Snapshot { j.RowIndex = 2; return s }, r.ErrInvalid},
-		"other dataset": {func(j *r.Job, s r.Snapshot) r.Snapshot { s.Query.Dataset.Version = "2"; return s }, r.ErrDenied},
-		"export job":    {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Kind = "export"; return s }, r.ErrInvalid},
-		"no template":   {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = ""; return s }, r.ErrInvalid},
+		"other bytes":                   {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = `{"x":1}`; return s }, r.ErrIntegrity},
+		"other version":                 {func(j *r.Job, s r.Snapshot) r.Snapshot { j.TemplateVersion = 2; return s }, r.ErrUnpublished},
+		"other row":                     {func(j *r.Job, s r.Snapshot) r.Snapshot { j.RowIndex = 2; return s }, r.ErrInvalid},
+		"other dataset":                 {func(j *r.Job, s r.Snapshot) r.Snapshot { s.Query.Dataset.Version = "2"; return s }, r.ErrDenied},
+		"export job":                    {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Kind = "export"; return s }, r.ErrInvalid},
+		"no template":                   {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = ""; return s }, r.ErrInvalid},
+		"equal but not canonical bytes": {func(j *r.Job, s r.Snapshot) r.Snapshot { j.Template = notCanonical(t, j.Template); return s }, r.ErrIntegrity},
 	} {
 		j := job
 		s := c.change(&j, snapshot())

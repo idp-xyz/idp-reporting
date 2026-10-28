@@ -365,15 +365,18 @@ func (lay *tableLayout) drawRow(pg *pageData, y float64, row []cell, bold, heade
 
 // splitShaped splits a line between two consecutive characters that Typst would shape together
 // within one text object: CJK punctuation, which it compresses when it follows another mark,
-// and dashes and ellipses, which the font may join. Each piece is placed by the server, so
-// Typst never sees two of them in one run; an opening mark at the start of a piece keeps its
-// position thanks to the template's empty inline box.
+// and dashes and ellipses, which the font may join. An ellipsis (U+2026, U+22EF) is split from
+// whatever stands next to it, a letter and a space as well as a mark: the font kerns a Latin
+// letter into it (the "l" of "Total…" draws 0.59 pt wider than the plain advances), so an
+// ellipsis is always a piece of its own. Each piece is placed by the server, so Typst never
+// sees two of them in one run; an opening mark at the start of a piece keeps its position
+// thanks to the template's empty inline box.
 func splitShaped(line string) []string {
 	var out []string
 	start := 0
 	var prev rune
 	for i, ch := range line {
-		if i > 0 && shaped(prev) && shaped(ch) {
+		if i > 0 && ((shaped(prev) && shaped(ch)) || ellipsis(prev) || ellipsis(ch)) {
 			out = append(out, line[start:i])
 			start = i
 		}
@@ -381,6 +384,9 @@ func splitShaped(line string) []string {
 	}
 	return append(out, line[start:])
 }
+
+// ellipsis reports the horizontal ellipsis and the midline horizontal ellipsis.
+func ellipsis(ch rune) bool { return ch == 0x2026 || ch == 0x22EF }
 
 // shaped reports a character Typst shapes differently next to another such character.
 func shaped(ch rune) bool {

@@ -23,8 +23,10 @@ var (
 	// ErrUnpublished: an issue names a template version that is not the published one.
 	ErrUnpublished = errors.New("TEMPLATE_NOT_PUBLISHED")
 	// ErrUnreconciled: an issue job failed after the source product may have reserved or confirmed
-	// a number for it, and the platform could not void that at the product (S03-H). The product
-	// can find the reservation by the job id.
+	// a number for it, and the platform has not voided that at the product (S03-H): the failure is
+	// recorded as this before the void is asked for, and stays so when the void fails, or the worker
+	// dies, or the job's own code cannot be recorded afterwards. The product can find the
+	// reservation by the job id.
 	ErrUnreconciled = errors.New("ISSUE_UNRECONCILED")
 )
 
@@ -304,6 +306,15 @@ type IssueResult struct {
 // cancels a queued job, and a running job of any kind but issue; a running issue job is
 // returned unchanged, because the product may already hold a reservation for it. Issues lists
 // an identity's issue jobs under the given integrations, newest first, at most limit of them.
+//
+// Fail and ResolveFailure are fenced by the claim. Fail fails a job that is running, at the
+// claim's generation, with a lease that has not run out by the store's clock; anything else is
+// ErrLease and changes nothing. ResolveFailure replaces the code ISSUE_UNRECONCILED of a failed
+// issue job with the job's own failure code, once the source product has voided what it held
+// (S03-H): it applies only to an issue job that is failed, at the claim's generation, with the
+// code ISSUE_UNRECONCILED (a job is failed through Fail, never through it); anything else is
+// ErrLease and changes nothing, and a code that is empty or ISSUE_UNRECONCILED itself is
+// ErrInvalid. It needs no lease: a failed job has none.
 type Repository interface {
 	Admit(context.Context, Job) (Job, error)
 	Job(context.Context, Identity, string) (Job, error)
@@ -311,6 +322,7 @@ type Repository interface {
 	Claim(context.Context, time.Duration) (*Claim, error)
 	Publish(context.Context, Claim, Publication) error
 	Fail(context.Context, Claim, string) error
+	ResolveFailure(context.Context, Claim, string) error
 	Snapshot(context.Context, Identity, string) (Snapshot, error)
 	Artifact(context.Context, Identity, string) (Artifact, error)
 	Issue(context.Context, Identity, string) (Issue, error)
@@ -350,8 +362,9 @@ const LeaseDuration = 30 * time.Second
 const WorkTimeout = 20 * time.Second
 
 // VoidTimeout bounds the call that voids a failed issue job at the source product (S03-H). It runs in
-// a context of its own, after the job's work time may have run out; with the 2 s allowed to fail
-// the job, a worker is done within its lease (WorkTimeout + VoidTimeout + 2 s < LeaseDuration).
+// a context of its own, after the failure is recorded: the order is fail first (fenced by the claim,
+// within the lease: WorkTimeout + leaseCheckTimeout + failTimeout < LeaseDuration), then void, so a void
+// that is delayed can only void a job that no other worker can claim any more.
 const VoidTimeout = 5 * time.Second
 
 func NewID() string {
@@ -401,11 +414,11 @@ type IssueIntent struct {
 
 // IssueReservation is the product's answer to PrepareDocument.
 type IssueReservation struct {
-	Ref       string    // the product's reservation id, 1..128 bytes
+	Ref       string    // the product's reservation id: 1..128 printable ASCII characters (0x21..0x7E), no space
 	JobID     string    // the intent's JobID
 	Number    string    // the product's document number (ValidIssueNumber)
-	IssuedAt  time.Time // the product's issue time, UTC, whole second
-	ExpiresAt time.Time // after it an unconfirmed reservation cannot be confirmed
+	IssuedAt  time.Time // the product's issue time: a whole second between 1970-01-01T00:00:00Z and 9999-12-31T23:59:59Z
+	ExpiresAt time.Time // after it an unconfirmed reservation cannot be confirmed; after IssuedAt, within the same years
 }
 
 // IssueConfirmation tells the product which file now carries the reserved number.
@@ -418,8 +431,8 @@ type IssueConfirmation struct {
 
 // IssueReceipt is the product's record of the confirmation.
 type IssueReceipt struct {
-	Ref         string    // the product's confirmation id, 1..128 bytes
-	ConfirmedAt time.Time // the product's time, UTC, whole second
+	Ref         string    // the product's confirmation id: 1..128 printable ASCII characters (0x21..0x7E), no space
+	ConfirmedAt time.Time // the product's time: a whole second between IssuedAt and 9999-12-31T23:59:59Z
 }
 
 // ValidIssueNumber: 1..32 characters of A-Z a-z 0-9 . _ -, starting with a letter or a digit,

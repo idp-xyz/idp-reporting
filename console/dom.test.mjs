@@ -615,7 +615,23 @@ test('official issue of the open published template downloads the stamped PDF an
  const digest=createHash('sha256').update(bytes).digest('hex');assert.equal(row.cells[5].textContent,digest+' · 1 页');assert.equal(row.cells[6].textContent,raw.confirmation_ref+' · '+raw.confirmed_at);
  // The record downloads the same bytes again under the same name.
  row.cells[7].querySelector('button').click();await until(()=>a.downloads.length===2&&!a.$('preview').disabled,'record download');assert.equal(a.downloads[1].name,'issued-AR-000001.pdf');assert.deepEqual(Buffer.from(await a.downloads[1].blob.arrayBuffer()),bytes);
- if(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR){await mkdir(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,{recursive:true});await writeFile(join(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,'console_issued.pdf'),bytes);await writeFile(join(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,'console_issued.json'),JSON.stringify({template_id:id,version:1,row_index:2,sha256:digest,record:raw,source:'real Go issue job through the console; the PDF is the artifact the record names'},null,2));}
+ if(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR){
+  const dir=process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,authorized={headers:{Authorization:'Bearer '+token}};await mkdir(dir,{recursive:true});await writeFile(join(dir,'console_issued.pdf'),bytes);
+  // The record of the real stack, kept as it was read; the checker's expectation of the same PDF is console_issued.json.
+  await writeFile(join(dir,'console_issued_record.json'),JSON.stringify({template_id:id,version:1,row_index:2,sha256:digest,record:raw,source:'real Go issue job through the console; the PDF is the artifact the record names'},null,2));
+  // What the checker verifies the PDF against: the published template's own boxes and the values of the frozen row as the test
+  // knows them, the product's record with the PDF's digest, and the preview of the same document, which must not pass as the issue.
+  const published=await (await fetch(url+'/api/reporting/v1/document-templates/'+id+'/published',authorized)).json();assert.equal(published.version,1);
+  const frozen=await (await fetch(url+'/api/reporting/v1/snapshots/'+raw.snapshot_id+'/rows?limit=100',authorized)).json();
+  const known={'ar.open_balance':frozen.rows[2][frozen.columns.findIndex(c=>c.id==='ar.open_balance')]};assert.equal(known['ar.open_balance'],'9007199254740893.00');
+  const print=published.config.print||{mode:'full',offset_x:0,offset_y:0};assert.equal(print.mode,'full');assert.equal(published.config.background,undefined);assert.equal(published.config.table,undefined);
+  assert.ok(published.config.elements.length>0);
+  const elements=published.config.elements.map(e=>{assert.ok(e.source==='literal'||e.source==='row',e.source);if(e.source==='row')assert.ok(Object.hasOwn(known,e.field),e.field);return {text:e.source==='literal'?e.text:known[e.field],x:e.x,y:e.y,width:e.width,height:e.height,size:e.font_size,align:e.align};});
+  assert.ok(elements.some(e=>e.text==='9007199254740893.00'));
+  const preview=Buffer.from(await (await fetch(url+'/api/reporting/v1/document-templates/'+id+'/previews',{method:'POST',headers:{...authorized.headers,'Content-Type':'application/json'},body:JSON.stringify({version:1,snapshot_id:raw.snapshot_id,row_index:2})})).arrayBuffer());assert.equal(preview.subarray(0,5).toString(),'%PDF-');
+  await writeFile(join(dir,'console_issued.preview.pdf'),preview);
+  await writeFile(join(dir,'console_issued.json'),JSON.stringify({kind:'document',file:'console_issued.pdf',background:false,mode:print.mode,offset_x:print.offset_x,offset_y:print.offset_y,elements,issue:{number:raw.number,issue_id:raw.issue_id,issued_at:raw.issued_at,stamp:raw.stamp,sha256:digest,pages:raw.pages,preview_file:'console_issued.preview.pdf'}},null,1));
+ }
  // Withdrawn: the console refuses before submitting; a server refusal is reported as such.
  a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'state');a.click('doc-release-withdraw');await until(()=>a.$('doc-release-status').textContent.includes('当前未发布')&&!a.$('preview').disabled,'withdrawn');
  a.click('doc-issue');await until(()=>a.$('notice').textContent.includes('已发布的模板版本')&&!a.$('preview').disabled,'server refusal');assert.equal(a.downloads.length,2);
@@ -792,6 +808,53 @@ test('only a queued issue job can be cancelled; a cancel that comes after it sta
   }finally{b.close();}
 });
 
+// The real server, in two situations a console meets: the answer to the issue request is lost and the request is made again with the same
+// key, and a cancel is clicked on a job that has just succeeded. The server shows the number in both answers, as the poll does.
+const authorized={headers:{Authorization:'Bearer '+token}};
+async function realJob(id){return (await fetch(url+'/api/reporting/v1/jobs/'+id,authorized)).json();}
+async function untilRealJob(id,state){for(const end=Date.now()+20000;Date.now()<end;await sleep(40)){if((await realJob(id)).state===state)return;}throw new Error('the real job did not reach '+state);}
+test('a lost answer to the issue request, asked again with the same key, shows the issued job and downloads it',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{
+  let lost=null;
+  // The request reaches the server and is admitted; only its answer is lost on the way back.
+  const a=app(async(path,options)=>{if(path.endsWith('/issues')&&options?.method==='POST'&&!lost){lost=await (await fetch(url+path,options)).json();throw new TypeError('the answer was lost');}});
+  try{
+    await snapshotReady(a);await publishedOpen(a);a.input('doc-row','2');a.click('doc-issue');
+    await until(()=>lost&&!a.$('notice').hidden&&!a.$('preview').disabled,'answer lost');
+    assert.equal(lost.kind,'issue');assert.equal(a.downloads.length,0);assert.equal(issueRow(a),undefined);
+    // The server issues it meanwhile; the next request with the same key shows it as it is.
+    await untilRealJob(lost.job_id,'succeeded');
+    a.click('doc-issue');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'issued after the retry',20000);
+    const posts=a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST');assert.equal(posts.length,2);assert.ok(posts[0].key);assert.equal(posts[1].key,posts[0].key);
+    const job=await realJob(lost.job_id),number=job.issue.number;assert.match(number,/^AR-\d{6}$/);
+    assert.equal(a.downloads[0].name,'issued-'+number+'.pdf');assert.equal(Buffer.from(await a.downloads[0].blob.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+    assert.equal(a.$('tasks-body').rows.length>=1,true);const row=issueRow(a);assert.equal(row.cells[0].textContent,'正式出具 No. '+number);assert.equal(row.cells[1].textContent,lost.job_id);assert.equal(row.cells[2].textContent,'已完成');
+    assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});
+test('a cancel clicked on an issue job that has just succeeded shows it as succeeded, with its number',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{
+  // The console's last view of the job is one answered before it succeeded (queued, so it offers the cancel); the cancel itself goes to the real server.
+  let stale=true;
+  const a=app(async(path,options)=>{
+    if(stale&&/\/jobs\/[a-f0-9]{32}$/.test(path)&&(!options||!options.method||options.method==='GET')){const real=await (await fetch(url+path,options)).json();return json(real.kind==='issue'?{...real,state:'queued',artifact_id:undefined,issue:{...real.issue,number:undefined}}:real);}
+    if(path.endsWith('/cancel')&&options?.method==='POST')stale=false;
+  });
+  try{
+    await snapshotReady(a);await publishedOpen(a);a.input('doc-row','1');a.click('doc-issue');
+    await until(()=>issueRow(a),'listed');const row=()=>issueRow(a),buttons=()=>[...row().cells[3].querySelectorAll('button')];const id=row().cells[1].textContent;
+    assert.deepEqual(buttons().map(v=>v.textContent),['刷新','取消']);assert.equal(row().cells[0].textContent,'正式出具（编号待来源产品确认）');
+    await untilRealJob(id,'succeeded');
+    buttons().find(v=>v.textContent==='取消').click();
+    await until(()=>a.$('notice').textContent.includes('任务已结束')||a.$('notice').textContent.includes('无法验证'),'cancel answered');
+    // The answer was believed: the job is shown as succeeded with the product's number, not rejected.
+    assert.ok(a.$('notice').textContent.includes('任务已结束，未更改已发布结果'),a.$('notice').textContent);assert.equal(a.$('notice').className.includes('error'),false);
+    const number=(await realJob(id)).issue.number;assert.match(number,/^AR-\d{6}$/);
+    assert.equal(a.trace.filter(v=>v.path.endsWith('/jobs/'+id+'/cancel')&&v.method==='POST').length,1);
+    assert.equal(row().cells[0].textContent,'正式出具 No. '+number);assert.equal(row().cells[2].textContent,'已完成');
+    // The poll that was waiting then reads the real job and the issued file is downloaded.
+    await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'downloaded',20000);assert.equal(a.downloads[0].name,'issued-'+number+'.pdf');assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});
+
 test('a failed issue job says why: the source product refused, or could not be told to void its reservation',async()=>{
   for(const [code,expected] of [
     ['AUTH_SCOPE_DENIED',/AUTH_SCOPE_DENIED.*来源产品拒绝出具.*无出具权限.*未获批准.*来源数据已变化/],
@@ -862,6 +925,17 @@ test('issue records are checked against the product-numbered shapes before any i
       ['a confirmation on a failed record',[open({state:'failed',error_code:'INTEGRITY_FAILURE',confirmation_ref:'CNF-3'})],/不应带有/],
       ['a stamp on a cancelled record',[open({state:'cancelled',stamp:stamp('AR-000003',issued,F)})],/不应带有/],
       ['confirmed before it was issued',[rec({confirmed_at:'2026-10-28T06:12:02Z'})],/确认时间早于出具时间/],
+      ['an artifact id that is no id',[rec({artifact_id:'x'})],/无法验证出具记录。/],
+      ['an artifact id in upper case',[rec({artifact_id:pdfArtifact.toUpperCase()})],/无法验证出具记录。/],
+      ['no artifact id',[rec({artifact_id:undefined})],/无法验证出具记录。/],
+      ['0 pages',[rec({pages:0})],/无法验证出具记录。/],
+      ['101 pages',[rec({pages:101})],/无法验证出具记录。/],
+      ['1.5 pages',[rec({pages:1.5})],/无法验证出具记录。/],
+      ['pages as a string',[rec({pages:'2'})],/无法验证出具记录。/],
+      ['a snapshot digest in upper case',[rec({snapshot_sha256:'A'.repeat(64)})],/无法验证出具记录。/],
+      ['a snapshot digest of 63 characters',[rec({snapshot_sha256:'a'.repeat(63)})],/无法验证出具记录。/],
+      ['a snapshot digest that is not hexadecimal',[rec({snapshot_sha256:'g'.repeat(64)})],/无法验证出具记录。/],
+      ['no snapshot digest',[rec({snapshot_sha256:undefined})],/无法验证出具记录。/],
       ['no confirmation reference',[rec({confirmation_ref:undefined})],/无法验证出具记录。/],
       ['an empty confirmation reference',[rec({confirmation_ref:''})],/无法验证出具记录。/],
       ['a confirmation reference of 129 characters',[rec({confirmation_ref:'x'.repeat(129)})],/无法验证出具记录。/],
@@ -874,6 +948,8 @@ test('issue records are checked against the product-numbered shapes before any i
       ['101 records',Array.from({length:101},()=>rec()),/无法验证出具记录列表。/],
       ['no list',{},/无法验证出具记录列表。/],
     ]){assert.match(await refresh(records),expected,label);assert.equal(a.$('doc-issues-wrap').hidden,true,label);assert.equal(a.$('doc-issues-body').rows.length,0,label);}
+    // The page counts the contract allows pass, at both ends.
+    for(const pages of [1,100]){assert.match(await refresh([rec({pages})]),/共 1 条/,'pages '+pages);assert.equal(a.$('doc-issues-body').rows[0].cells[5].textContent,fixtureDigest+' · '+pages+' 页');}
     // The numbers a product may choose pass; the ones it may not never do, here as in the job views.
     for(const number of goodNumbers){assert.match(await refresh([withNumber(number)]),/共 1 条/,number);assert.equal(a.$('doc-issues-body').rows[0].cells[0].textContent,'No. '+number,number);}
     for(const number of [...badNumbers,undefined]){assert.match(await refresh([withNumber(number)]),/无法验证出具记录。/,String(number));assert.equal(a.$('doc-issues-wrap').hidden,true,String(number));}

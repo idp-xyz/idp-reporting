@@ -4,6 +4,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	r "idp.local/reporting/reporting"
 	"slices"
 	"sync"
@@ -27,16 +28,20 @@ func New(now func() time.Time) *Store {
 	}
 	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}}
 }
-func clone[T any](v T) T {
+
+// clone copies a value through JSON, as the durable store keeps it. A value that cannot be encoded
+// (a time outside the years 0..9999, say) is an error, never a panic: a worker must not die with a job
+// running because of what it was asked to store.
+func clone[T any](v T) (T, error) {
+	var out T
 	b, e := json.Marshal(v)
 	if e != nil {
-		panic(e)
+		return out, fmt.Errorf("memory store: a value cannot be copied: %w", e)
 	}
-	var out T
 	if e = json.Unmarshal(b, &out); e != nil {
-		panic(e)
+		return out, fmt.Errorf("memory store: a value cannot be copied: %w", e)
 	}
-	return out
+	return out, nil
 }
 func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if e := ctx.Err(); e != nil {
@@ -56,7 +61,7 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 		if v.RequestHash != j.RequestHash {
 			return r.Job{}, r.ErrConflict
 		}
-		return clone(v), nil
+		return clone(v)
 	}
 	if _, ok := s.jobs[j.ID]; ok {
 		return r.Job{}, r.ErrConflict
@@ -64,10 +69,14 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if len(s.jobs) >= 10000 {
 		return r.Job{}, r.ErrBudget
 	}
+	stored, e := clone(j)
+	if e != nil {
+		return r.Job{}, e
+	}
 	s.keys[key] = j.ID
-	s.jobs[j.ID] = clone(j)
+	s.jobs[j.ID] = stored
 	s.order = append(s.order, j.ID)
-	return clone(j), nil
+	return clone(j)
 }
 func (s *Store) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
 	if e := ctx.Err(); e != nil {
@@ -79,7 +88,7 @@ func (s *Store) Job(ctx context.Context, i r.Identity, id string) (r.Job, error)
 	if !ok || v.Owner.Identity != i {
 		return r.Job{}, r.ErrNotFound
 	}
-	return clone(v), nil
+	return clone(v)
 }
 func (s *Store) Cancel(ctx context.Context, i r.Identity, id string) (r.Job, error) {
 	if e := ctx.Err(); e != nil {
@@ -98,7 +107,7 @@ func (s *Store) Cancel(ctx context.Context, i r.Identity, id string) (r.Job, err
 		v.LeaseUntil = time.Time{}
 		s.jobs[id] = v
 	}
-	return clone(v), nil
+	return clone(v)
 }
 func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error) {
 	if e := ctx.Err(); e != nil {
@@ -116,8 +125,12 @@ func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error
 			j.State = "running"
 			j.Generation++
 			j.LeaseUntil = s.now().Add(lease)
+			claimed, e := clone(j)
+			if e != nil {
+				return nil, e
+			}
 			s.jobs[id] = j
-			return &r.Claim{Job: clone(j)}, nil
+			return &r.Claim{Job: claimed}, nil
 		}
 	}
 	return nil, nil
@@ -135,7 +148,10 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e := r.ValidatePublication(j, p); e != nil {
 		return e
 	}
-	p = clone(p)
+	p, e := clone(p)
+	if e != nil {
+		return e
+	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}
@@ -172,6 +188,9 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	s.jobs[j.ID] = j
 	return nil
 }
+
+// Fail fails a job that is running, at the claim's generation, with a lease that has not run out by
+// the store's clock; anything else is ErrLease.
 func (s *Store) Fail(ctx context.Context, c r.Claim, code string) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -188,6 +207,27 @@ func (s *Store) Fail(ctx context.Context, c r.Claim, code string) error {
 	s.jobs[j.ID] = j
 	return nil
 }
+
+// ResolveFailure replaces the code ISSUE_UNRECONCILED of a failed issue job with the job's own failure
+// code once the source product has voided what it held (S03-H). It applies only to an issue job that is
+// failed, at the claim's generation, with that code: anything else is ErrLease. It needs no lease.
+func (s *Store) ResolveFailure(ctx context.Context, c r.Claim, code string) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	if code == "" || code == r.ErrUnreconciled.Error() {
+		return r.ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[c.Job.ID]
+	if !ok || j.Owner != c.Job.Owner || j.Kind != "issue" || j.State != "failed" || j.Generation != c.Job.Generation || j.ErrorCode != r.ErrUnreconciled.Error() {
+		return r.ErrLease
+	}
+	j.ErrorCode = code
+	s.jobs[j.ID] = j
+	return nil
+}
 func (s *Store) Snapshot(ctx context.Context, i r.Identity, id string) (r.Snapshot, error) {
 	if e := ctx.Err(); e != nil {
 		return r.Snapshot{}, e
@@ -198,7 +238,7 @@ func (s *Store) Snapshot(ctx context.Context, i r.Identity, id string) (r.Snapsh
 	if !ok || v.Owner.Identity != i {
 		return r.Snapshot{}, r.ErrNotFound
 	}
-	return clone(v), nil
+	return clone(v)
 }
 func (s *Store) Artifact(ctx context.Context, i r.Identity, id string) (r.Artifact, error) {
 	if e := ctx.Err(); e != nil {
@@ -210,7 +250,7 @@ func (s *Store) Artifact(ctx context.Context, i r.Identity, id string) (r.Artifa
 	if !ok || v.Owner.Identity != i {
 		return r.Artifact{}, r.ErrNotFound
 	}
-	return clone(v), nil
+	return clone(v)
 }
 
 func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, error) {
@@ -223,7 +263,7 @@ func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, er
 	if !ok || v.Owner.Identity != i {
 		return r.Issue{}, r.ErrNotFound
 	}
-	return clone(v), nil
+	return clone(v)
 }
 func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
 	if e := ctx.Err(); e != nil {
@@ -238,7 +278,11 @@ func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string,
 	for n := len(s.order) - 1; n >= 0 && len(out) < limit; n-- {
 		j := s.jobs[s.order[n]]
 		if j.Kind == "issue" && j.Owner.Identity == i && slices.Contains(integrations, j.Owner.Integration) {
-			out = append(out, clone(j))
+			c, e := clone(j)
+			if e != nil {
+				return nil, e
+			}
+			out = append(out, c)
 		}
 	}
 	return out, nil
