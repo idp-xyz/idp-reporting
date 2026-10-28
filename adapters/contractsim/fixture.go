@@ -9,16 +9,18 @@ import (
 )
 
 // Fixture is synthetic source configuration. It contains no grants or prepared
-// handles. Real source adapters do not use this seeding API.
+// handles. Real source adapters do not use this seeding API. NumberPrefix is the prefix of
+// the document numbers the source issues (S03-H), such as AR; empty means DefaultNumberPrefix.
 type Fixture struct {
-	Dataset r.Dataset
-	Records []Record
+	Dataset      r.Dataset
+	Records      []Record
+	NumberPrefix string
 }
 
 func (s *Simulator) Fixture() Fixture {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Fixture{Dataset: copyValue(s.dataset), Records: copyValue(s.records)}
+	return Fixture{Dataset: copyValue(s.dataset), Records: copyValue(s.records), NumberPrefix: s.prefix}
 }
 
 // ReadFrozenPage projects an already authorized immutable fixture version. Both
