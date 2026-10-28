@@ -20,7 +20,8 @@ Go 普通/race 各 117 项顶层测试通过（264 个通过事件），仅 2 �
 （变量层无任何图形、末页只有一条合计线），692 项负对照全部被抓到，版式与 export/pdf/testdata/golden.json 一致；
 veraPDF 对 29 份 PDF（含控制台真实下载的 5 份）判定 PDF/A-2b 通过，负对照判失败。
 两路独立审查（正确性与安全；测试有效性与质量），发现与处理见 docs/CODE_REVIEW_S03F.md。
-未验：真实打印机与实纸对位、真实浏览器、GitHub Actions 上本阶段的 pdf 任务（推送后首次运行）、PostgreSQL 存储下的模板。
+GitHub Actions 四项任务（含 pdf 任务的单据表格测试与检查器）在 PR #8 上通过（run 40647824620）。
+未验：真实打印机与实纸对位、真实浏览器、PostgreSQL 存储下的模板。
 不在本阶段：按维度分组出单（每个客户一份）、分组小计、底稿以外的图片、条码/签章、正式出具记录、画布编辑器、生产资格；真实接入最后。
 当前证据 evidence/s03f；规格 docs/S03F_SCOPE.md；决策 docs/ADR_0002_SINGLE_PDF_ENGINE.md；审查 docs/CODE_REVIEW_S03F.md；接口 docs/API.md。
 

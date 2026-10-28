@@ -56,5 +56,17 @@
   "pymupdf": "1.27.2.3",
   "go": "go1.26.10",
   "node": "v24.22.0"
+ },
+ "github_actions": {
+  "pull_request": 8,
+  "run": 40647824620,
+  "head": "574de81",
+  "jobs": [
+   "Go format, vet, build, test and race",
+   "PostgreSQL contract and durable tests",
+   "Console syntax and DOM tests",
+   "PDF export and document previews with the pinned Typst, fonts and veraPDF"
+  ],
+  "result": "all pass"
  }
 }
