@@ -118,7 +118,6 @@ func checkGroupRows(w http.ResponseWriter, req *http.Request, s *r.Service, p r.
 	if e = authorizeDocument(req, s, p, config, assets); e != nil {
 		return e
 	}
-	w.Header().Set("Cache-Control", "no-store")
 	return send(w, 200, map[string]any{"rows": answer})
 }
 

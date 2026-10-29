@@ -53,7 +53,7 @@ func WithDocumentPreviews(fallback http.Handler, s *r.Service, auth Authenticate
 	if checker, ok := renderer.(DocumentChecker); ok {
 		mountDocumentChecks(mux, s, auth, checker, assets)
 	}
-	return mux, nil
+	return secured(mux), nil
 }
 
 func describeDocumentBinding(req *http.Request, s *r.Service, p r.Principal, b doctemplates.Binding) (r.Dataset, error) {
@@ -210,7 +210,6 @@ func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Servic
 	}
 	digest := sha256.Sum256(pdf)
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Disposition", `attachment; filename="document-preview.pdf"`)
 	w.Header().Set("X-Content-SHA256", hex.EncodeToString(digest[:]))
 	w.WriteHeader(200)

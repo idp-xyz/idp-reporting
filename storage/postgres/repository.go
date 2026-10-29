@@ -139,19 +139,62 @@ state=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN 'canc
 lease_until=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN NULL ELSE lease_until END
 WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 RETURNING `+jobFields, id, i.Tenant, i.Issuer, i.Subject))
 }
+
+// Claim claims the oldest job that is queued, or running with a lease that has run out, by the database's clock. A job whose stored
+// payload cannot be decoded (corrupt, or written by a binary this one cannot read) is failed in the transaction of its claim, terminally
+// (r.UnreadableJobCode: INTEGRITY_FAILURE, or ISSUE_UNRECONCILED for an issue job that had been claimed before), and Claim goes on to
+// the next job, so that nil still means that nothing is claimable. Its kind and its generation come from their own columns, never from
+// the payload; nothing is logged.
 func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error) {
 	if lease < time.Second || lease > 5*time.Minute {
 		return nil, r.ErrInvalid
 	}
-	j, e := scanJob(s.pool.QueryRow(ctx, `UPDATE reporting_s01.jobs SET state='running',generation=generation+1,lease_until=clock_timestamp()+$1*interval '1 microsecond'
-WHERE id=(SELECT id FROM reporting_s01.jobs WHERE state='queued' OR (state='running' AND lease_until<=clock_timestamp()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING `+jobFields, lease.Microseconds()))
-	if errors.Is(e, r.ErrNotFound) {
-		return nil, nil
+	for {
+		claim, failed, e := s.claimNext(ctx, lease)
+		if e != nil || !failed {
+			return claim, e
+		}
+	}
+}
+
+// claimNext claims one job, or fails one that cannot be decoded (the bool is true then and the caller claims again); an error of any
+// other kind rolls the transaction back, so that no job is left claimed by a claim that was never answered.
+func (s *Store) claimNext(ctx context.Context, lease time.Duration) (*r.Claim, bool, error) {
+	tx, e := s.pool.Begin(ctx)
+	if e != nil {
+		return nil, false, e
+	}
+	defer func() {
+		cleanup, cancel := fixturedb.RollbackContext(ctx)
+		defer cancel()
+		_ = tx.Rollback(cleanup)
+	}()
+	var id, kind string
+	var prior int64
+	e = tx.QueryRow(ctx, `SELECT id,kind,generation FROM reporting_s01.jobs WHERE state='queued' OR (state='running' AND lease_until<=clock_timestamp()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &kind, &prior)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return nil, false, nil
 	}
 	if e != nil {
-		return nil, e
+		return nil, false, e
 	}
-	return &r.Claim{Job: j}, nil
+	j, e := scanJob(tx.QueryRow(ctx, `UPDATE reporting_s01.jobs SET state='running',generation=generation+1,lease_until=clock_timestamp()+$1*interval '1 microsecond' WHERE id=$2 RETURNING `+jobFields, lease.Microseconds(), id))
+	if e == nil {
+		if e = tx.Commit(ctx); e != nil {
+			return nil, false, e
+		}
+		return &r.Claim{Job: j}, false, nil
+	}
+	if !errors.Is(e, r.ErrIntegrity) {
+		return nil, false, e
+	}
+	if _, e = tx.Exec(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1 WHERE id=$2`, r.UnreadableJobCode(kind, prior), id); e != nil {
+		return nil, false, e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return nil, false, e
+	}
+	return nil, true, nil
 }
 func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	tx, e := s.pool.Begin(ctx)

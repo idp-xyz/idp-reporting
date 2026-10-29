@@ -107,10 +107,12 @@ which is then voided.
 Issue by group (S03-K, docs/API.md) adds no migration: a group issue job and its record carry the group in their JSON
 payloads. It does add a rolling constraint. A group job is asked of an adapter that declares contract version 2
 (`IssueContractVersion() == 2`) and fails with UNSUPPORTED_COMBINATION, asking the product nothing, on a worker whose
-adapter does not; and a binary older than S03-K reads a group job as corrupt (its request hash is not a row's), so that
-its claim and its reads of that job fail with INTEGRITY_FAILURE: roll the platform's binaries together, and do not run an
-older worker against a store that holds group jobs. Real products implement version 2 when they are integrated; until
-then a 2.0 template is issued only by the contract simulators.
+adapter does not; and a binary older than S03-K reads a group job as corrupt (its request hash is not a row's): its reads of
+that job fail with INTEGRITY_FAILURE and its claim fails the job for good (see "A job that cannot be read" below), so an
+older worker that meets a group job destroys it (before, the job stayed claimable for a newer worker). Roll the platform's binaries together:
+stop the older workers before a group job can be admitted, and do not run an older worker against a store that holds group
+jobs. Real products implement version 2 when they are integrated; until then a 2.0 template is issued only by the
+contract simulators.
 
 The failure of an issue job (S03-H, docs/API.md) is recorded before the source product is told, in this order:
 
@@ -127,6 +129,28 @@ by the job id; reconciling it is the product's operator's work (retries of a fai
 yet). A job that failed for another reason shows its own code, and its number, if the product had reserved one, is
 voided there. A job claimed again never asks the product for a new number: the product answers the same job id with
 the same reservation.
+
+### A job that cannot be read
+
+A claim can meet a stored job whose payload it cannot decode: the row is corrupt (the payload does not match its digest, or
+disagrees with the row's own columns), or it was written by a binary that knows more than this one (the rolling constraint
+above). Such a job is never handed to a worker and never left running, which used to make every later claim, after its
+lease, take it again at a higher generation, forever. In the transaction of its claim (the memory store: in the same step) it
+is failed for good, and the claim goes on to the next job, so that a claim that returns nothing still means that nothing is
+claimable and the jobs behind the unreadable one are not delayed.
+
+- The code is `INTEGRITY_FAILURE`, except for an issue job that had been claimed before (its generation before this claim was at
+  least 1): an earlier attempt may have reserved a number at the source product, which cannot be voided because the job cannot
+  be read, so it is failed `ISSUE_UNRECONCILED` and the product finds the reservation by the job id (reconcile it as above). An
+  issue job that was never claimed (generation 0) cannot have reached the product.
+- The decision uses the row's own `kind` and `generation` columns, never the payload that could not be read, and nothing is
+  logged: no value may reach a log, and the store has no logger. The record is the row (`state = 'failed'`, `error_code`,
+  `generation` one above what it was); for example `SELECT id, kind, generation, error_code FROM reporting_s01.jobs WHERE
+  state = 'failed' AND error_code IN ('INTEGRITY_FAILURE', 'ISSUE_UNRECONCILED')` (a job that failed its execution with the
+  same code is listed too).
+- The owner reads such a job as `409 INTEGRITY_FAILURE` (it cannot be read), as before, and an unreadable issue job also fails
+  the owner's issue listing. A failed job is final: resubmit a snapshot or an export under a new idempotency key; do not
+  resubmit an issue job that is `ISSUE_UNRECONCILED` before the product's operator has reconciled its reservation.
 
 ## Barcodes, images and the checker (S03-M)
 

@@ -339,6 +339,10 @@ type IssueResult struct {
 // code ISSUE_UNRECONCILED (a job is failed through Fail, never through it); anything else is
 // ErrLease and changes nothing, and a code that is empty or ISSUE_UNRECONCILED itself is
 // ErrInvalid. It needs no lease: a failed job has none.
+//
+// Claim returns the oldest job that is queued, or running with a lease that has run out, claimed for the lease it is given (the
+// generation one higher), or nil when there is none. A job that cannot be decoded is not claimed: it is failed in the same transaction as
+// its claim, terminally, with UnreadableJobCode, and Claim goes on to the next job, so that nil still means that nothing is claimable.
 type Repository interface {
 	Admit(context.Context, Job) (Job, error)
 	Job(context.Context, Identity, string) (Job, error)

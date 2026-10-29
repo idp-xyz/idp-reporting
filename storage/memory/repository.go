@@ -122,6 +122,16 @@ func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error
 	for _, id := range s.order {
 		j := s.jobs[id]
 		if j.State == "queued" || (j.State == "running" && !j.LeaseUntil.After(s.now())) {
+			// A job that cannot be copied as it is stored is what the durable store cannot decode: it is failed at its claim, terminally,
+			// and the next job is claimed, so that it neither blocks the jobs behind it nor is claimed again. Kind and generation are
+			// its own plain fields. What cannot be copied after the claim (a lease beyond the years JSON holds, from the store's clock) is
+			// not the job's: the job is left as it was.
+			if _, e := clone(j); e != nil {
+				j.State, j.ErrorCode, j.LeaseUntil = "failed", r.UnreadableJobCode(j.Kind, j.Generation), time.Time{}
+				j.Generation++
+				s.jobs[id] = j
+				continue
+			}
 			j.State = "running"
 			j.Generation++
 			j.LeaseUntil = s.now().Add(lease)

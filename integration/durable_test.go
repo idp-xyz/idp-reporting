@@ -515,6 +515,7 @@ func TestDurablePostgresContract(t *testing.T) {
 		_, e = v.s.Job(ctx, v.p, j.ID)
 		mustError(t, e, r.ErrIntegrity)
 	})
+	t.Run("unreadable_job_is_failed_at_its_claim_and_never_claimed_again", durableUnreadableJobs)
 	t.Run("fixture_v1_upgrade_preserves_existing_assets", func(t *testing.T) {
 		v := newDurable(t)
 		j := durableFreeze(t, v, contractsim.FinancialQuery(), "one")
