@@ -165,7 +165,7 @@ func mountDocumentImages(mux *http.ServeMux, s *r.Service, auth Authenticate, im
 		w.Header().Set("Content-Type", media)
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		w.Header().Set("Content-Disposition", `inline; filename="image.`+map[string]string{"image/png": "png", "image/jpeg": "jpg"}[media]+`"`)
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'")
 		w.Header().Set("X-Content-SHA256", hex.EncodeToString(digest[:]))
 		w.WriteHeader(200)
 		if _, e = w.Write(data); e != nil {

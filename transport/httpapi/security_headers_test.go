@@ -8,12 +8,14 @@ import (
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/dashboards"
 	"idp.local/reporting/doctemplates"
+	"idp.local/reporting/embedding"
 	"idp.local/reporting/layouts"
 	"idp.local/reporting/transport/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,7 +42,7 @@ type headerCase struct {
 
 // TestEveryRouteAnswersWithTheSecurityHeaders asks every route of every mount, a success and a refusal each (and, of each, the answer to
 // a caller who is not authenticated), and requires that the answer carries Cache-Control: no-store, X-Content-Type-Options: nosniff and
-// X-Reporting-Data-Class exactly once, as the core API's does. Each With* mount is asked over a bare fallback, so that its headers can
+// X-Reporting-Data-Class exactly once, as the core API's does, and is unframeable: X-Frame-Options DENY and a policy whose one frame-ancestors source is 'none' (ADR 0006). Each With* mount is asked over a bare fallback, so that its headers can
 // only be its own: the routes it adds answer through the wrapper it applies, not through the one of the handler beneath it.
 func TestEveryRouteAnswersWithTheSecurityHeaders(t *testing.T) {
 	v := newIssueHTTP(t, nil)
@@ -134,6 +136,14 @@ func TestEveryRouteAnswersWithTheSecurityHeaders(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	embeddingConfig, e := embedding.New(map[string][]string{contractsim.FinanceIntegration: {"https://app.brant.example"}}, embedding.Options{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	withEmbedding, e := httpapi.WithEmbedding(bare, service, auth, embeddingConfig)
+	if e != nil {
+		t.Fatal(e)
+	}
 	const base = "/api/reporting/v1/"
 	// An identifier of the right shape that nothing holds.
 	const missing = "00000000000000000000000000000000"
@@ -186,6 +196,9 @@ func TestEveryRouteAnswersWithTheSecurityHeaders(t *testing.T) {
 			{"issue unsupported", "POST", base + "issues", v.input(2), 422, nil},
 		}, private(base+"layouts", layout.ID, layout.ID, map[string]any{"id": "", "expected_version": 0, "layout": layouts.Document{Schema: "1.0", Binding: layouts.Binding{Integration: binding.Integration, Dataset: binding.Dataset}, Columns: []layouts.Column{{ID: catalog[0].Columns[0].ID, Align: "left"}}}})...)},
 		{"dashboards", withDashboards, private(base+"dashboards", board.ID, board.ID, map[string]any{"id": "", "expected_version": 0, "config": dashboards.Document{Schema: "1.0", Kind: "dashboard", Binding: dashboards.Binding{Integration: binding.Integration, Dataset: binding.Dataset}, Widgets: []dashboards.Widget{{Type: "metric", Field: &numeric}}}})},
+		{"embedding", withEmbedding, []headerCase{
+			{"capabilities", "GET", base + "capabilities", nil, 200, nil},
+		}},
 		{"assets and images", withAssets, []headerCase{
 			{"background upload", "POST", base + "document-backgrounds", map[string]any{"binding": binding, "png": base64.StdEncoding.EncodeToString(background)}, 201, nil},
 			{"background upload refused", "POST", base + "document-backgrounds", map[string]any{"binding": binding, "png": "bad base64!"}, 400, nil},
@@ -238,6 +251,14 @@ func TestEveryRouteAnswersWithTheSecurityHeaders(t *testing.T) {
 						if got := w.Header().Values(name); len(got) != 1 || got[0] != value {
 							t.Errorf("%s %s answered %d with %s %q, want exactly %q", c.method, c.path, w.Code, name, got, value)
 						}
+					}
+					// No answer of the API can be framed (ADR 0006): the one frame-ancestors source is 'none', in the policy a route has of its
+					// own as well, and X-Frame-Options says DENY.
+					if got := w.Header().Values("X-Frame-Options"); len(got) != 1 || got[0] != "DENY" {
+						t.Errorf("%s %s answered %d with X-Frame-Options %q", c.method, c.path, w.Code, got)
+					}
+					if got := w.Header().Values("Content-Security-Policy"); len(got) != 1 || strings.Count(got[0], "frame-ancestors") != 1 || !strings.Contains(got[0], "frame-ancestors 'none'") {
+						t.Errorf("%s %s answered %d with Content-Security-Policy %q", c.method, c.path, w.Code, got)
 					}
 					if authorized {
 						for _, name := range c.keeps {

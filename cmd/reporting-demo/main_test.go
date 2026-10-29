@@ -41,3 +41,34 @@ func TestOpenFailureKeepsThePlatformsRefusalsAndHidesTheRest(t *testing.T) {
 		}
 	}
 }
+
+// -embed-origin is read strictly and at startup: exact origins only, loopback http only here, and only for the integrations the demo has.
+func TestEmbedConfigStopsTheStartOnAnythingMalformed(t *testing.T) {
+	integrations := []string{"brant-contract-demo", "shipment-contract-demo"}
+	config, err := embedConfig([]string{"brant-contract-demo=http://127.0.0.1:7811", "brant-contract-demo=https://app.brant.example", "shipment-contract-demo=https://ship.example:8443"}, integrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !config.Allows("brant-contract-demo", "http://127.0.0.1:7811") || !config.Allows("shipment-contract-demo", "https://ship.example:8443") || config.Allows("shipment-contract-demo", "http://127.0.0.1:7811") {
+		t.Error("the configuration is not what was given")
+	}
+	if config, err := embedConfig(nil, integrations); err != nil || len(config.Integrations()) != 0 {
+		t.Errorf("no flag is an empty configuration: %v", err)
+	}
+	for name, value := range map[string]string{
+		"no equals":            "brant-contract-demo",
+		"a path":               "brant-contract-demo=https://app.brant.example/app",
+		"a trailing slash":     "brant-contract-demo=https://app.brant.example/",
+		"a wildcard":           "brant-contract-demo=https://*.brant.example",
+		"plain http, public":   "brant-contract-demo=http://app.brant.example",
+		"http, not loopback":   "brant-contract-demo=http://192.168.1.2:8080",
+		"upper case":           "brant-contract-demo=https://APP.brant.example",
+		"another integration":  "unknown-integration=https://app.brant.example",
+		"the default port":     "brant-contract-demo=https://app.brant.example:443",
+		"a malformed integers": "=https://app.brant.example",
+	} {
+		if _, err := embedConfig([]string{value}, integrations); err == nil || !strings.Contains(err.Error(), "-embed-origin") {
+			t.Errorf("%s: %q accepted (%v)", name, value, err)
+		}
+	}
+}

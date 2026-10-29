@@ -9,7 +9,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | Method and path | Request / response |
 |---|---|
 | GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials |
-| GET /capabilities | Exact simulator capability profile; production_approved=false |
+| GET /capabilities | Exact simulator capability profile; production_approved=false. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
 | POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission |
@@ -69,7 +69,7 @@ demo has the matching directories, and previews when it has the PDF flags:
 | POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
 | GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
 | GET, POST /document-images | Private images of schema 2.1 templates (S03-M, ADR 0005): list the caller's images of the datasets the caller may still read; upload `{binding, image}` (PNG or JPEG in base64, at most 512 KiB, 2000 x 2000 pixels, the format read from the content) and get `201 {id, sha256, binding, format, width, height}`; mounted with the backgrounds; the answers of the three image routes are `no-store` and `nosniff` |
-| GET /document-images/{id}/content | The bytes of one image to its owner only (another identity's id is 404), while the caller may read its dataset (else 403): `Content-Type` `image/png` or `image/jpeg`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `X-Content-SHA256` (the digest the template names) |
+| GET /document-images/{id}/content | The bytes of one image to its owner only (another identity's id is 404), while the caller may read its dataset (else 403): `Content-Type` `image/png` or `image/jpeg`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox; frame-ancestors 'none'`, `X-Content-SHA256` (the digest the template names) |
 | POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` (a schema 2.0 template: `row_index` or `group`, see "Issue by group" below) with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}` (a group issue: `group` in place of `row_index`), and the product's `number` once the job succeeded (read from its record), wherever the job is shown: the 202 of a request repeated with the key of a job that has succeeded (a client whose answer was lost asks again), `GET /jobs/{id}` and the 200 of `POST /jobs/{id}/cancel` |
 | GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
 | GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's, so once the snapshot expired it is refused (403 with the contract simulators, whose adapter denies an expired read; 409 for the download), while `GET /issues/{id}` still answers; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
@@ -396,3 +396,13 @@ snapshots are qualified only in the protected S01-B simulator fixture. S02-A's
 signature/audience/token-purpose/scope checks are locally qualified. Real
 delegated subjects, issuer/membership authority and source authorization SLA
 remain S02 contracts, not simulated by a service account.
+
+## Embedding (S03-N, ADR 0006, docs/EMBEDDING.md)
+
+No API answer can be framed: every route of every mount answers with `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`
+(the one policy a route sets of its own, the image content route's, includes the same source), next to `Cache-Control: no-store`,
+`X-Content-Type-Options: nosniff` and `X-Reporting-Data-Class`. The one frameable answer of the platform is an embed page of the console
+package (`GET /embed/report`, `/embed/dashboard`, `/embed/document-designer`), served only for an integration's configured origin and framed by
+that one origin; the API itself is unchanged by embedding and needs no CORS: the embed page calls it from its own origin with the same
+`Authorization: Bearer` header as the console. `GET /capabilities` carries `embedding: true|false` for the caller's integrations (`httpapi.WithEmbedding`;
+the core API alone says false).

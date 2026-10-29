@@ -1,9 +1,14 @@
 'use strict';
 (function () {
   const base = '/api/reporting/v1';
+  // Embed mode (S03-N, ADR 0006, docs/EMBEDDING.md): the page served under /embed/ runs this same script for one view, with no token form. The
+  // access token arrives from the parent page by postMessage (embed.js) and lives in state.token like the console's: in memory only, and sent only
+  // as the Bearer header of requests to this origin.
+  const embedded = location.pathname.startsWith('/embed/');
+  let embed = null, embedRequest = null;
   const $ = (id) => document.getElementById(id);
   const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',documents:'文档模板设计器',tasks:'任务工作区',system:'能力与环境'};
-  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0};
+  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
   const documents=window.createReportingDocuments({
    // Private images (schema 2.1): an upload like a background's; the listing and the bytes of an image are read in the background (no busy state, no notice: the canvas shows a labelled box until they arrive).
@@ -22,7 +27,7 @@
     }).catch(()=>{if(current(m))apply(null);});
     return true;
    },
-   upload:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('PNG超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);const value=await request('/document-backgrounds',{method:'POST',body:{binding,png:btoa(raw)}});if(!current(m))throw new Stale();apply(value);},{label:'底稿上传',uncertain:'上传结果未确认；请刷新底稿列表核对，勿直接重复上传。'}),active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),issuance:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf')&&state.capabilities.issuance===true,snapshot:()=>state.snapshot,issue:(body,banded)=>perform(m=>createIssue(m,body,banded===true),{label:'正式出具',snapshot:body.snapshot_id,uncertain:'出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。'}),issued:(id,number,sha256)=>perform(m=>download(id,m,'pdf',issuedName(number),sha256),{label:'出具下载'}),exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label,uncertain:'写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}),check:(body,apply)=>perform(async m=>{let value;try{value=await request('/document-checks',{method:'POST',body});}catch(error){if(error&&error.status===404&&error.code==='REQUEST_FAILED'){error.status=0;error.code='CHECK_UNAVAILABLE';}if(error&&error.status===422)error.code='CHECK_UNSUPPORTED';throw error;}if(!current(m))throw new Stale();apply(value);},{label:'样本检查',snapshot:body.snapshot_id}),download:(body,path='/document-previews',onRefusal)=>perform(async m=>{let bytes;try{bytes=await request(path,{method:'POST',body,binary:'application/pdf'});}catch(error){if(error&&error.status===422&&error.code==='UNSUPPORTED_COMBINATION'){error.code='DOCUMENT_LAYOUT';if(error.detail&&current(m)&&onRefusal)onRefusal(error.detail);}throw error;}if(!current(m))throw new Stale();if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download='document-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('PDF预览已通过摘要校验，下载已发起。','success');},{label:'PDF预览',snapshot:body.snapshot_id,uncertain:'预览生成结果未确认；可重新生成，不会正式出具。'})});
+   upload:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('PNG超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);const value=await request('/document-backgrounds',{method:'POST',body:{binding,png:btoa(raw)}});if(!current(m))throw new Stale();apply(value);},{label:'底稿上传',uncertain:'上传结果未确认；请刷新底稿列表核对，勿直接重复上传。'}),active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),issuance:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf')&&state.capabilities.issuance===true,snapshot:()=>state.snapshot,issue:(body,banded)=>perform(m=>createIssue(m,body,banded===true),{label:'正式出具',snapshot:body.snapshot_id,uncertain:'出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。'}),issued:(id,number,sha256)=>perform(m=>download(id,m,'pdf',issuedName(number),sha256),{label:'出具下载'}),exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);if(embedded)announce(path,options,value);},{label,uncertain:'写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}),check:(body,apply)=>perform(async m=>{let value;try{value=await request('/document-checks',{method:'POST',body});}catch(error){if(error&&error.status===404&&error.code==='REQUEST_FAILED'){error.status=0;error.code='CHECK_UNAVAILABLE';}if(error&&error.status===422)error.code='CHECK_UNSUPPORTED';throw error;}if(!current(m))throw new Stale();apply(value);},{label:'样本检查',snapshot:body.snapshot_id}),download:(body,path='/document-previews',onRefusal)=>perform(async m=>{let bytes;try{bytes=await request(path,{method:'POST',body,binary:'application/pdf'});}catch(error){if(error&&error.status===422&&error.code==='UNSUPPORTED_COMBINATION'){error.code='DOCUMENT_LAYOUT';if(error.detail&&current(m)&&onRefusal)onRefusal(error.detail);}throw error;}if(!current(m))throw new Stale();if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download='document-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('PDF预览已通过摘要校验，下载已发起。','success');},{label:'PDF预览',snapshot:body.snapshot_id,uncertain:'预览生成结果未确认；可重新生成，不会正式出具。'})});
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   // detail is a layout or binding refusal's reason and place (S03-J), when the server named them and the shape is the known one.
   class Failure extends Error { constructor(status,code,detail) { super(code); this.status=status; this.code=code; if(detail!==undefined)this.detail=detail; } }
@@ -55,14 +60,16 @@
   }
   function disconnect(message) {
     dashboard.clear(true);documents.clear(true);state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
-    state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;
+    state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
     $('query-companies').value='';$('query-date').value='';$('query-timezone').textContent='—';$('query-currency').textContent='—';$('query-shape').textContent='选择数据集后显示批准组合';
-    $('restore-id').value='';$('access-token').value='';$('actor-label').textContent='未连接';$('tenant-label').textContent='访问令牌仅保留在本次会话';$('connection-label').textContent='尚未连接';$('connection-dot').className='status-dot';$('logout').disabled=true;
-    $('connection-overlay').hidden=false;document.querySelector('.shell').inert=true;$('connect-button').disabled=false;
-    $('notice').hidden=true;$('connect-error').hidden=!message;$('connect-error').textContent=message||'';busy(0);$('access-token').focus();
+    $('restore-id').value='';if(!embedded)$('access-token').value='';$('actor-label').textContent='未连接';$('tenant-label').textContent='访问令牌仅保留在本次会话';$('connection-label').textContent='尚未连接';$('connection-dot').className='status-dot';if(!embedded)$('logout').disabled=true;
+    $('connection-overlay').hidden=false;document.querySelector('.shell').inert=true;if(!embedded)$('connect-button').disabled=false;
+    $('notice').hidden=true;$('connect-error').hidden=!message;$('connect-error').textContent=message||'';busy(0);
+    // The embed has nobody to sign in and must not take the focus from the product's page: it shows a card and waits for the parent's token.
+    if(embedded){document.querySelector('.shell').hidden=true;if(embed)embed.forget();}else $('access-token').focus();
   }
   function errorMessage(error) {
     if(error.status===401)return '访问令牌无效或已失效，请重新连接。';
@@ -90,6 +97,7 @@
     const affectsResult=!context||(context.snapshot&&context.snapshot===state.snapshot);
     if(affectsResult&&error.code!=='TEMPLATE_NOT_PUBLISHED'&&([403,404,409,503].includes(error.status)||error.code==='INVALID_RESPONSE'))clearResult();
     notify((context?context.label+'：':'')+(context?.uncertain&&!error.status&&error.code!=='INVALID_RESPONSE'?context.uncertain:errorMessage(error)),'error');
+    if(embed)embed.error(embedCode(error));
   }
   async function readBounded(response,limit) {
     const declared=response.headers.get('Content-Length');
@@ -100,20 +108,23 @@
     finally { await reader.cancel().catch(()=>{});reader.releaseLock(); }
     const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;
   }
-  async function request(path,options) {
-    if(!state.token)throw new Stale();
+  class Unauthorized extends Error {}
+  // One try of one request with the given token: the only place a token leaves this page, as the Bearer header of a request to this origin
+  // (never in a URL, a cookie, storage or a message). A 401 is not decided here: what it ends depends on the mode (request below).
+  async function attempt(path,options,token) {
+    if(!token)throw new Stale();
     const epoch=state.epoch;const controller=new AbortController();state.controllers.add(controller);
     const timer=setTimeout(()=>controller.abort(),25000);
-    const headers={'Authorization':'Bearer '+state.token,'Accept':'application/json'};
+    const headers={'Authorization':'Bearer '+token,'Accept':'application/json'};
     const settings=options||{};if(settings.body!==undefined)headers['Content-Type']='application/json';
     if(settings.key)headers['Idempotency-Key']=settings.key;
     try {
-      const response=await fetch(base+path,{method:settings.method||'GET',headers:headers,body:settings.body===undefined?undefined:JSON.stringify(settings.body),signal:controller.signal,credentials:'same-origin',cache:'no-store'});
+      const response=await fetch(base+path,{method:settings.method||'GET',headers:headers,body:settings.body===undefined?undefined:JSON.stringify(settings.body),signal:controller.signal,credentials:embedded?'omit':'same-origin',cache:'no-store'});
       const bytes=await readBounded(response,settings.binary?(8<<20):(2<<20));
       if(epoch!==state.epoch)throw new Stale();
       if(!response.ok) {
         let code='REQUEST_FAILED',detail;try{const problem=JSON.parse(new TextDecoder().decode(bytes));if(typeof problem.error==='string')code=problem.error;if(window.reportingRefusal.valid(problem.detail))detail=problem.detail;}catch(_){}
-        if(response.status===401){disconnect('访问令牌无效或已失效，请重新连接。');throw new Stale();}
+        if(response.status===401)throw new Unauthorized();
         throw new Failure(response.status,code,detail);
       }
       if(settings.binary) {
@@ -129,7 +140,64 @@
       try{return JSON.parse(new TextDecoder().decode(bytes));}catch(_){throw new Failure(0,'INVALID_RESPONSE');}
     } finally { clearTimeout(timer);state.controllers.delete(controller); }
   }
+  async function request(path,options) {
+    if(!state.token)throw new Stale();
+    const used=state.token,epoch=state.epoch;
+    try { return await attempt(path,options,used); }
+    catch(error) {
+      if(!(error instanceof Unauthorized))throw error;
+      // Embedded: a refused token is asked of the parent once; the request is retried once with the fresh one. A second 401 is signed out.
+      if(embedded&&await refreshToken(used,epoch)) {
+        try { return await attempt(path,options,state.token); }
+        catch(second) { if(!(second instanceof Unauthorized))throw second; }
+      }
+      if(epoch!==state.epoch)throw new Stale();
+      disconnect(embedded?'访问令牌无效或已失效；请重新向产品页面请求令牌。':'访问令牌无效或已失效，请重新连接。');if(embed)embed.error('UNAUTHENTICATED');
+      throw new Stale();
+    }
+  }
+  let refreshing=null;
+  // Embed: a request was refused with 401. One fresh token is asked of the parent and waited for (a request that finds the token already
+  // replaced just retries); false when none comes, or when it is not the same user's.
+  function refreshToken(failed,epoch) {
+    if(!embed||epoch!==state.epoch)return Promise.resolve(false);
+    if(state.token&&state.token!==failed)return Promise.resolve(true);
+    if(!refreshing)refreshing=(async()=>{
+      try { const fresh=await embed.refresh(failed);return !!fresh&&await adoptToken(fresh,epoch); }
+      finally { refreshing=null; }
+    })();
+    return refreshing;
+  }
+  // Embed: may this token replace the one in use? It must be accepted for /session and name the same user (tenant, issuer, subject) as the session
+  // on the page. Another user's token is not a refresh: the page starts over with it, so that nothing of the previous user stays on screen.
+  async function adoptToken(token,epoch) {
+    let session;
+    try { session=await attempt('/session',undefined,token); } catch(_) { return false; }
+    if(epoch!==state.epoch||!embed)return false;
+    const known=state.session&&state.session.identity,now=session&&session.identity;
+    if(known&&(!now||now.tenant!==known.tenant||now.issuer!==known.issuer||now.subject!==known.subject)){start(token);return false;}
+    state.token=token;embed.expect(token);return true;
+  }
+  // A token the parent sent unasked (the first one, a refresh it chose to push, one after being signed out).
+  function embedToken(token) {
+    if(state.starting)return;
+    if(!state.session){start(token);return;}
+    adoptToken(token,state.epoch);
+  }
+  // The class of a failure, for the parent: a closed code, never the server's text.
+  function embedCode(error) {
+    if(['RESOURCE_UNAVAILABLE','INVALID_RESPONSE','INTEGRITY_FAILURE'].includes(error.code))return error.code;
+    return {401:'UNAUTHENTICATED',403:'FORBIDDEN',404:'NOT_FOUND',503:'UNAVAILABLE'}[error.status]||'REQUEST_FAILED';
+  }
+  // Template saves and publishes, and issues, are told to the parent by id and number only.
+  function announce(path,options,value) {
+    if(!options||options.method!=='POST'||!value||typeof value!=='object')return;
+    if(path==='/document-templates'){embed.event('saved',{template_id:value.id,version:value.version});return;}
+    const release=/^\/document-templates\/([a-f0-9]{32})\/release$/.exec(path);
+    if(release&&options.body&&options.body.action==='publish')embed.event('published',{template_id:release[1],version:value.published_version});
+  }
   function openPage(page) {
+    if(embedded)return;
     if(!pages[page])page='overview';
     for(const name of Object.keys(pages))$('page-'+name).hidden=name!==page;
     document.querySelectorAll('.nav-item').forEach(b=>{const active=b.dataset.page===page;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
@@ -170,23 +238,72 @@
     finally {if(active()){state.catalogLoading=false;busy(0);}}
   }
   function addDetails(id,pairs) {const target=$(id);target.replaceChildren();for(const [label,value] of pairs){const row=node('div');row.append(node('dt',label),node('dd',String(value)));target.append(row);}}
-  async function connect(event) {
+  function connect(event) {
     event.preventDefault();const token=$('access-token').value.trim();if(!token)return;
-    disconnect();state.token=token;$('connect-error').hidden=true;$('connect-button').disabled=true;const epoch=state.epoch;
+    return start(token);
+  }
+  // Starts a session with this token: the console's form gives it, in the embed the parent page does (embedToken).
+  async function start(token) {
+    disconnect();state.token=token;state.starting=true;if(!embedded){$('connect-error').hidden=true;$('connect-button').disabled=true;}const epoch=state.epoch;
     try {
       const session=await request('/session');const caps=await request('/capabilities');
       if(epoch!==state.epoch)throw new Stale();
       if(!session.identity||!['tenant','issuer','subject'].every(k=>typeof session.identity[k]==='string'&&session.identity[k])||!Array.isArray(session.integrations)||!session.integrations.length||session.integrations.length>32||!session.integrations.every(i=>typeof i==='string'&&i.length<=128)||!Array.isArray(caps.formats))throw new Failure(0,'INVALID_RESPONSE');
+      // The embed shows one integration, the one its address names (and must be one the token's identity has).
+      const offered=embedded?session.integrations.filter(i=>i===embedRequest.integration):session.integrations;
+      if(!offered.length)throw new Failure(403,'AUTH_SCOPE_DENIED');
       state.session=session;state.capabilities=caps;$('export-pdf').hidden=!caps.formats.includes('pdf');
-      for(const id of ['catalog-product','query-product'])for(const integration of session.integrations){const option=node('option',integration);option.value=integration;$(id).append(option);}
+      for(const id of ['catalog-product','query-product'])for(const integration of offered){const option=node('option',integration);option.value=integration;$(id).append(option);}
       $('overview-products').textContent=String(session.integrations.length);$('overview-formats').textContent=caps.formats.map(f=>String(f).toUpperCase()).join(' / ');
-      $('actor-label').textContent=session.identity.subject;$('tenant-label').textContent=session.identity.tenant;$('connection-label').textContent='API 已连接';$('connection-dot').className='status-dot connected';$('logout').disabled=false;
+      $('actor-label').textContent=session.identity.subject;$('tenant-label').textContent=session.identity.tenant;$('connection-label').textContent='API 已连接';$('connection-dot').className='status-dot connected';if(!embedded)$('logout').disabled=false;
       addDetails('identity-details',[['平台租户',session.identity.tenant],['当前主体',session.identity.subject],['发行方',session.identity.issuer],['产品连接',session.integrations.join('、')]]);
       addDetails('capability-details',[['来源配置',caps.profile],['数据类别','合同模拟器 / 合成数据'],['查询组合',caps.query_shapes],['导出格式',caps.formats.join('、')],['生产准入',caps.production_approved===true?'已准入':'尚未准入']]);
-      $('connection-overlay').hidden=true;document.querySelector('.shell').inert=false;busy(0);openPage(location.hash.slice(1));$('main').focus();
-      try{await loadProduct(session.integrations[0]);}catch(error){fail(error);}
-    }catch(error){if(!(error instanceof Stale)){disconnect(errorMessage(error));}}
-    finally{if(!state.session)$('connect-button').disabled=false;}
+      $('connection-overlay').hidden=true;document.querySelector('.shell').inert=false;busy(0);
+      if(embedded){document.querySelector('.shell').hidden=false;showEmbedView();embed.expect(state.token);}else{openPage(location.hash.slice(1));$('main').focus();}
+      state.starting=false;
+      try{
+        await loadProduct(offered[0]);
+        // The resource is prepared before anything can be started: a dataset selected under a query in flight would discard that query.
+        if(embedded){busy(1);try{await prepareResource();}finally{if(epoch===state.epoch)busy(-1);}}
+      }catch(error){fail(error);}
+    }catch(error){if(!(error instanceof Stale)){disconnect(errorMessage(error));if(embed)embed.error(embedCode(error));}}
+    finally{if(epoch===state.epoch)state.starting=false;if(!embedded&&!state.session)$('connect-button').disabled=false;}
+  }
+  // Embed: only the view the address names is shown; the query panel (company scope and date) comes with a view that is not the report viewer.
+  function showEmbedView() {
+    for(const name of ['workspace','dashboard','documents'])$('page-'+name).hidden=name!==embedRequest.page;
+    const panel=document.querySelector('.query-panel'),target=$('page-'+embedRequest.page);
+    if(panel.closest('.page')!==target)target.querySelector('.page-heading').after(panel);
+  }
+  function selectDataset(d) {$('query-dataset').value=d.dataset.id+'@'+d.dataset.version;queryChanged();$('query-date').value=dateInZone(d.timezone);}
+  // Embed: the resource the product asked for. A dataset is selected. A dashboard or a template is read once to learn which dataset it is bound to
+  // (its latest version unless the address names one), and that dataset is selected; the user still gives the company scope and the date, and
+  // openResource opens the saved version when the authorized result is on the page. Anything unknown, not the user's own or bound to another
+  // integration is the same refusal.
+  async function prepareResource() {
+    const wanted=embedRequest.resource,missing=()=>new Failure(404,'RESOURCE_UNAVAILABLE');
+    const only=(id,version)=>{const found=state.datasets.filter(d=>d.dataset.id===id&&(version===undefined||d.dataset.version===version));if(found.length!==1)throw missing();return found[0];};
+    if(wanted.kind==='dataset'){const [id,version]=wanted.id.split('@');selectDataset(only(id,version));return;}
+    const route=wanted.kind==='dashboard'?'/dashboards':'/document-templates';
+    let version=wanted.version;
+    if(!version){const list=await request(route);const known=Array.isArray(list)?list.find(v=>v&&v.id===wanted.id):null;if(!known||!Number.isSafeInteger(known.version)||known.version<1||known.version>20)throw missing();version=known.version;}
+    const entry=await request(route+'/'+wanted.id+'?version='+version),binding=entry&&entry.config&&entry.config.binding;
+    if(!entry||entry.id!==wanted.id||entry.version!==version||!binding||binding.integration_id!==embedRequest.integration||!binding.dataset||typeof binding.dataset.id!=='string'||typeof binding.dataset.version!=='string')throw missing();
+    const d=only(binding.dataset.id,binding.dataset.version);state.resource={kind:wanted.kind,id:wanted.id,version};selectDataset(d);
+  }
+  function openResource() {
+    const wanted=state.resource;if(!embedded||!wanted||state.opened||!state.lastResult)return;
+    state.opened=true;(wanted.kind==='dashboard'?dashboard:documents).openServer(wanted.id,wanted.version);
+  }
+  function startEmbed() {
+    disconnect();
+    embedRequest=window.reportingEmbedRequest(location.pathname,location.search);
+    const stop=message=>{$('connect-title').textContent='此视图无法显示';$('embed-state').hidden=true;$('connect-error').textContent=message;$('connect-error').hidden=false;$('embed-retry').hidden=true;};
+    if(!embedRequest){stop('嵌入地址无效。');return;}
+    try { embed=window.createReportingEmbed({parent:window.parent,origin:embedRequest.parent,token:embedToken,theme:name=>document.documentElement.setAttribute('data-theme',name)}); }
+    catch(_) { stop('此视图只能由产品页面以框架嵌入。');return; }
+    $('embed-retry').addEventListener('click',()=>embed.tokenRequest());
+    embed.watch(document.body);embed.ready();
   }
   function buildQuery() {
     const d=selected();const companies=$('query-companies').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
@@ -260,6 +377,7 @@
     $('result-pager').hidden=!meta;
     if(meta){$('page-info').textContent='第 '+state.page+' 页 · 共 '+meta.total+' 行';$('next-page').disabled=!state.cursor;$('first-page').disabled=state.page<=1;}
     $('export').disabled=!state.snapshot||state.busy>0;$('export-pdf').disabled=!state.snapshot||state.busy>0;
+    if(embedded)setTimeout(openResource,0);
   }
   function renderJobs() {
     const values=Array.from(state.jobs.values()).reverse();$('task-count').textContent=String(values.length);$('overview-jobs').textContent=String(values.length);$('tasks-note').textContent=values.length+' 项';
@@ -336,7 +454,7 @@
     });if(!current(m))throw new Stale();
     // The job view carries no number until the source product has confirmed the issue, so there is nothing to name before then.
     notify('正式出具任务已提交'+(job.issue.group?'（分组 '+window.reportingIssueGroup.text(job.issue.group)+'）':'')+'，正在等待来源产品确认编号；任务成功后才有编号和可下载的正式文件。');const done=await poll(job.job_id,m);if(!done)return;
-    if(done.state==='succeeded'){if(!done.artifact_id)throw new Failure(0,'INVALID_RESPONSE');await download(done.artifact_id,m,'pdf',issuedName(done.issue.number),undefined,'来源产品已确认编号 No. '+done.issue.number+(done.issue.group?'（分组 '+window.reportingIssueGroup.text(done.issue.group)+'）':'')+'；');}
+    if(done.state==='succeeded'){if(!done.artifact_id)throw new Failure(0,'INVALID_RESPONSE');if(embed)embed.event('issued',{job_id:done.job_id});await download(done.artifact_id,m,'pdf',issuedName(done.issue.number),undefined,'来源产品已确认编号 No. '+done.issue.number+(done.issue.group?'（分组 '+window.reportingIssueGroup.text(done.issue.group)+'）':'')+'；');}
     else notify(done.state==='cancelled'?'出具任务已取消，未生成正式文件。':issueFailure(done),done.state==='cancelled'?'':'error');
   }
   // Why an issue job failed, in the source product's terms.
@@ -354,7 +472,7 @@
   }
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));
-  $('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());
+  if(!embedded){$('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());}
   for(const id of ['catalog-product','query-product'])$(id).addEventListener('change',()=>loadProduct($(id).value).catch(error=>fail(error)));
   $('query-dataset').addEventListener('change',()=>{queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';});
   for(const id of ['query-companies','query-date'])$(id).addEventListener('input',queryChanged);
@@ -365,7 +483,7 @@
   $('page-size').addEventListener('change',()=>{if(state.busy||state.catalogLoading){$('page-size').value=state.pageLimit;return;}if(state.snapshot){state.view++;perform(m=>loadSnapshot(state.snapshot,state.query,m,true));}});
   $('restore-job').addEventListener('click',()=>{const id=$('restore-id').value.trim();perform(async m=>{if(!isID(id))throw new Failure(400,'INVALID_REQUEST');await refreshJob(id);if(current(m))notify('已恢复当前身份可访问的任务。','success');},taskContext(id,'任务恢复'));});
   $('refresh-tasks').addEventListener('click',()=>perform(async m=>{let complete=true;for(const id of Array.from(state.jobs.keys())){if(!current(m))throw new Stale();if(!await refreshTask(id,m))complete=false;}if(complete&&current(m))notify('已知任务状态已刷新。','success');},{label:'任务刷新'}));
-  $('connection-overlay').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const first=$('access-token'),last=$('connect-button');if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
-  window.addEventListener('hashchange',()=>openPage(location.hash.slice(1)));
-  openPage(location.hash.slice(1));disconnect();
+  if(!embedded)$('connection-overlay').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const first=$('access-token'),last=$('connect-button');if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
+  if(!embedded)window.addEventListener('hashchange',()=>openPage(location.hash.slice(1)));
+  if(embedded)startEmbed();else{openPage(location.hash.slice(1));disconnect();}
 })();

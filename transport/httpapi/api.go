@@ -198,7 +198,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": slices.Clone(p.Integrations)})
 	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}})
+		return send(w, 200, capabilities(service, false))
 	})
 	bind("GET "+base+"/catalog", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		values := req.URL.Query()
@@ -355,15 +355,27 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	return secured(mux), nil
 }
 
+// capabilities is the one capability document. embedding is whether embed pages are configured for the caller's integrations
+// (WithEmbedding computes it; the core API alone says false); it never carries the origins.
+func capabilities(service *r.Service, embedding bool) map[string]any {
+	view := map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
+	view["embedding"] = embedding
+	return view
+}
+
 // secured is the one wrapper of every answer of this API, a success and a refusal alike: never cached, never sniffed, and marked
-// with the class of the data it carries. Handler applies it to the core API and each With* mount applies it to the routes it adds,
-// so that no route answers without these headers whichever mounts a deployment composes; a route sets only what is its own
+// with the class of the data it carries, and unframeable. Handler applies it to the core API and each With* mount applies it to the routes it
+// adds, so that no route answers without these headers whichever mounts a deployment composes; a route sets only what is its own
 // (a content type, a disposition, a digest, a policy of its own) and never repeats these.
 func secured(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Reporting-Data-Class", "contract-simulator")
+		// No answer of the API can be shown in a frame (ADR 0006): only the embed pages of the console package can, and only for an
+		// origin the deployment lists. A route that sets a policy of its own includes the same frame-ancestors source in it.
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		next.ServeHTTP(w, req)
 	})
 }

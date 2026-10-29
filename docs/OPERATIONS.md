@@ -172,6 +172,29 @@ Schema 2.1 (docs/API.md, ADR 0005) adds a third-party library to the formal rend
 - Rolling: a schema 2.1 template needs the binary of this slice to be previewed, checked and issued (an older binary cannot read the template);
   1.x and 2.0 templates and their files are unchanged. No SQL migration.
 
+## Embedding origins (S03-N)
+
+Embedding (docs/EMBEDDING.md, ADR 0006) lets a product frame the console's views, for its own user, from a listed origin. Which origins may frame is
+trusted server configuration:
+
+- The demo: repeatable `-embed-origin integration=origin`, for example
+  `-embed-origin brant-contract-demo=https://app.brant.example -embed-origin brant-contract-demo=http://127.0.0.1:7822`.
+  Origins are exact `https://host[:port]` (lower case, ASCII, no default port, no path, query, fragment, user information, wildcard or list);
+  `http://` is accepted for a loopback IP address only (the demo allows it; `embedding.Options.LoopbackHTTP` is the switch for a service). The
+  integration must be one the deployment has. The configuration is validated before anything else is opened: a malformed origin, an unknown
+  integration or a duplicate stops the start with a message naming the flag. Without the flag the embed routes exist and answer 403 to everyone.
+- A service: `embedding.New(map[string][]string, embedding.Options)` (at most 32 integrations of 16 origins), given to `console.HandlerWithEmbedding`
+  (the pages) and `httpapi.WithEmbedding` (the `embedding` flag of `GET /capabilities`; skip it when nothing is configured, the flag then says false).
+  Neither reads configuration from a request. Changing the list needs a restart (it is read once).
+- The product page and the platform need no CORS and no cookies: the page calls the platform's API from the platform's own origin with the
+  bearer token the product page gives it by `postMessage`. Serve the platform over HTTPS in a real deployment: the product page's origin is
+  https, and the frame needs a secure context for Web Crypto (the digest check of downloads).
+- A product page that sandboxes the frame needs `allow-scripts allow-same-origin allow-downloads`. A reverse proxy in front of the platform must
+  pass the `Content-Security-Policy` and `X-Frame-Options` headers of the answers unchanged: the embed page's has `frame-ancestors <origin>` and no
+  `X-Frame-Options`, every other answer has `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+- The browser evidence is local: `scripts/browser_embed_s03n.mjs` (header of the script: the demo with `-embed-origin`, two static servers of
+  `console/embed-host/` on a listed and an unlisted loopback port, and a headless Chrome).
+
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the

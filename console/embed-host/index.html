@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Reference host for the IDP Reporting embed</title>
+  <link rel="stylesheet" href="host.css">
+  <script src="host.js" defer></script>
+</head>
+<body>
+<!-- A stand-in for a product's page (S03-N, ADR 0006, docs/EMBEDDING.md). It is not served by the platform: serve this folder from the product's own origin,
+     which the platform lists for the integration (-embed-origin integration=origin). Configuration is in the address of this page:
+       ?platform=https://reporting.example&integration=brant&view=dashboard&dashboard=<id>
+     view is report (dataset=<id>[@<version>]), dashboard (dashboard=<id>) or document-designer (template=<id>[&version=<n>]). -->
+<main>
+  <h1>Product page (reference host)</h1>
+  <p>The frame below is the platform's embed page. This page gives it the signed-in user's platform access token when it asks, and listens to its size and events. A real product's backend gets the token from the identity provider; here it is typed.</p>
+  <div class="row">
+    <label for="token">Platform access token</label>
+    <input id="token" type="password" autocomplete="off" spellcheck="false">
+    <button type="button" id="theme-dark">Dark</button>
+    <button type="button" id="theme-light">Light</button>
+  </div>
+  <iframe id="frame" title="IDP Reporting" sandbox="allow-scripts allow-same-origin allow-downloads" referrerpolicy="no-referrer"></iframe>
+  <h2>Heard from the frame</h2>
+  <ol id="log" aria-live="polite"></ol>
+</main>
+</body>
+</html>
