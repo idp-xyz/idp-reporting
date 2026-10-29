@@ -8,6 +8,7 @@ import {spawn,execFileSync} from 'node:child_process';
 import {createServer} from 'node:net';
 import {randomBytes,webcrypto,createHash} from 'node:crypto';
 import {JSDOM,VirtualConsole} from 'jsdom';
+import {inflateSync} from 'node:zlib';
 
 const root=resolve(import.meta.dirname,'..');
 const html=await readFile(join(root,'console/assets/index.html'),'utf8');
@@ -1569,26 +1570,27 @@ test('the console validates a 2.0 template as the platform does: every shared ca
  assert.equal(a.errors.length,0);
  }finally{a.close();}});
 
-test('a 2.0 template shows a note in place of the canvas, lists its bands, is edited as JSON and takes none of the 1.x edits; a 1.x template brings the canvas back',async()=>{const a=await designer();try{
- const note=()=>a.$('doc-canvas-note'),scroll=()=>a.$('doc-canvas-scroll');
- assert.equal(note().hidden,true);assert.equal(scroll().hidden,false);
+test('a 2.0 template is drawn by the canvas and edited by the panels (S03-L): the 1.x inputs and edits give way, JSON still works, and a 1.x template brings its inputs back',async()=>{const a=await designer();try{
+ const scroll=()=>a.$('doc-canvas-scroll');
+ assert.equal(a.$('doc2-panel').hidden,true);assert.equal(a.$('doc-panel-elements').hidden,false);
  cv.load(a,banded());
- assert.equal(note().hidden,false);assert.match(note().textContent,/只显示 1\.x 模板/);assert.equal(scroll().hidden,true);assert.equal(note().getAttribute('role'),'status');assert.deepEqual(cv.keys(a),[]);
- assert.match(a.$('doc-canvas-status').textContent,/只显示 1\.x/);assert.equal(a.$('doc-undo').disabled,true);assert.equal(a.$('doc-dup').disabled,true);assert.equal(a.$('doc-del').disabled,true);
- // The bands are listed, read-only: no input of the 1.x rows.
- const lines=[...a.$('doc-elements').children].map(e=>e.textContent);assert.equal(lines.length,5);assert.match(lines[0],/^页眉带 14 毫米：e1 文本（固定文字）；e2 文本（页码）；e3 线$/);assert.match(lines[1],/e5 文本（字段 aging\.bucket，自动换行）/);assert.match(lines[2],/^明细带：e6 明细表 3 列$/);assert.match(lines[3],/e8 文本（分组合计 ar\.open_balance）/);assert.equal(a.$('doc-elements').querySelectorAll('input,button').length,0);
- assert.match(a.$('doc-print-status').textContent,/模板 2\.0 · 分带版面/);assert.match(a.$('doc-table-status').textContent,/2\.0 分带模板：明细表 3 列/);
- // The 1.x edits refuse, naming the way: every button that edits boxes, the table, the print profile or the background.
+ // The canvas shows the page in place of S03-J's note ("画布只显示 1.x 模板"): bands and elements, selectable and editable; the 2.0 panels replace the 1.x ones.
+ assert.equal(a.$('doc-canvas-note'),null);assert.equal(scroll().hidden,false);assert.deepEqual(cv.keys(a),['e1','e2','e3','e4','e5','e6','e7','e8','e9']);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-band').length,5);
+ assert.doesNotMatch(a.$('doc-canvas-status').textContent,/只显示 1\.x/);assert.doesNotMatch(a.$('doc-canvas-panel').textContent,/只显示 1\.x|画布暂只/);
+ assert.equal(a.$('doc2-panel').hidden,false);for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])assert.equal(a.$(id).hidden,true,id);assert.equal(a.$('doc-elements').children.length,0,'no 1.x rows');
+ assert.match(a.$('doc-print-status').textContent,/模板 2\.0 · 分带版面/);
+ // The 1.x buttons still refuse a 2.0 template, naming the way (they are hidden with their panels).
  const before=cv.tpl(a);
- for(const id of ['doc-add-text','doc-add-row','doc-add-total','doc-table-add','doc-table-remove','doc-print-apply','doc-background-remove']){a.$('doc-status').textContent='';a.click(id);assert.match(a.$('doc-status').textContent,/2\.0 分带模板请用“模板元数据JSON”编辑/,id);assert.deepEqual(cv.tpl(a),before,id+' left the template as it was');}
+ for(const id of ['doc-add-text','doc-add-row','doc-add-total','doc-table-add','doc-table-remove','doc-print-apply','doc-background-remove']){a.$('doc-status').textContent='';a.click(id);assert.match(a.$('doc-status').textContent,/2\.0 分带模板请在画布与“2\.0 分带模板”面板编辑/,id);assert.deepEqual(cv.tpl(a),before,id+' left the template as it was');}
  // JSON edits: a band 0.5 mm taller, applied and read back; an invalid edit is refused and leaves it.
  const taller=banded();taller.bands.page_header.height=14.5;cv.load(a,taller);assert.equal(cv.tpl(a).bands.page_header.height,14.5);
  const wrong=banded();wrong.bands.page_header.height=4;a.$('doc-json').value=JSON.stringify(wrong);a.click('doc-json-open');assert.notEqual(a.$('doc-status').textContent,READY);assert.equal(cv.tpl(a).bands.page_header.height,14.5);
- // A 1.x template brings the canvas back; opening 2.0 again takes it away.
- cv.load(a,cv.four(a));assert.equal(note().hidden,true);assert.equal(scroll().hidden,false);assert.deepEqual(cv.keys(a),['n1','n2','n3','n4']);
- cv.load(a,banded());assert.equal(note().hidden,false);assert.deepEqual(cv.keys(a),[]);
- // "New template" (reset) is a 1.0 template, and the canvas is back.
- a.click('doc-reset');assert.equal(note().hidden,true);assert.deepEqual(cv.keys(a),['n1']);
+ // A 1.x template brings its inputs and canvas back; opening 2.0 again takes them away.
+ cv.load(a,cv.four(a));assert.equal(a.$('doc2-panel').hidden,true);assert.equal(a.$('doc-panel-elements').hidden,false);assert.deepEqual(cv.keys(a),['n1','n2','n3','n4']);assert.equal(a.$('doc-elements').children.length,4);
+ cv.load(a,banded());assert.equal(a.$('doc2-panel').hidden,false);assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-key]').length,9);
+ // "New template" (reset) is a 1.0 template, and the 1.x panels are back; the 2.0 panel has its own reset.
+ a.click('doc-reset');assert.equal(a.$('doc2-panel').hidden,true);assert.deepEqual(cv.keys(a),['n1']);
+ cv.load(a,banded());a.click('doc2-reset');assert.equal(cv.tpl(a).schema_version,'1.0');assert.equal(a.$('doc2-panel').hidden,true);
  assert.equal(a.errors.length,0);
  }finally{a.close();}});
 
@@ -1605,8 +1607,8 @@ test('a 2.0 template previews the group of the row and is checked by group: what
  assert.equal(bodies.length,1);assert.equal(bodies[0].config.schema_version,'2.0');assert.equal(bodies[0].samples,'boundary');
  const rows=checkRows(a);assert.deepEqual(rows[0],['第 1 行','通过','首行、行数最多的分组']);
  assert.equal(rows[1][0],'第 3 行');assert.match(rows[1][1],/^不通过 · UNSUPPORTED_COMBINATION（.*） · 同一分组内该字段的取值不一致 · 单据头带 · 元素 e5 · 快照第 2 行 · 列 账龄区间（aging\.bucket）$/);assert.equal(rows[1][2],'末行、e5 最长、列 账龄区间 最长的单元格、行数最少的分组');
- // A 2.0 template has no canvas to point at: no locate button.
- assert.equal(a.$('doc-check-body').rows[1].cells[3].querySelectorAll('button').length,1);
+ // A refusal that names an element can be shown on the 2.0 canvas too (S03-L): the locate button is there.
+ assert.equal(a.$('doc-check-body').rows[1].cells[3].querySelectorAll('button').length,2);a.$('doc-check-body').rows[1].cells[3].querySelectorAll('button')[1].click();assert.deepEqual([...a.$('doc-canvas-host').querySelectorAll('.cv-refused')].map(e=>e.getAttribute('data-key')),['e5']);
  assert.equal(a.errors.length,0);
  }finally{a.close();}});
 
@@ -1667,7 +1669,7 @@ test('a 2.0 template is saved, opened, published and read back like any template
  a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&!a.$('preview').disabled,'release');
  a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'publish');
  a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'published open');
- assert.deepEqual(cv.tpl(a),banded());assert.equal(a.$('doc-canvas-note').hidden,false);
+ assert.deepEqual(cv.tpl(a),banded());assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-band').length,5,'the canvas draws the opened published 2.0 template');
  // The console issues it (S03-K): the request is the published version, the snapshot and the preview row, which the server turns into the
  // row's group; the stub server here refuses it as a template that is not published, which is shown as such.
  a.input('doc-row','3');a.click('doc-issue');await until(()=>a.$('notice').textContent.includes('已发布的模板版本')&&!a.$('preview').disabled,'issue request');
@@ -1856,3 +1858,619 @@ test('official issue of a published 2.0 template through the real server and the
   if(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR){const dir=process.env.REPORTING_DOCUMENT_EVIDENCE_DIR;await mkdir(dir,{recursive:true});await writeFile(join(dir,'console_banded_issued.pdf'),bytes);await writeFile(join(dir,'console_banded_issued_record.json'),JSON.stringify({template_id:id,version:1,sha256:digest,record:raw,source:'real Go group issue job through the console; the PDF is the artifact the record names'},null,2));}
   assert.equal(a.errors.length,0);
   }finally{a.close();}});
+
+// ---- S03-L: the canvas for schema 2.0 bands ------------------------------------------------------------------------------------------
+// Geometry as the canvas draws it, in mm: the bands from the top of the safe region (25 mm), the detail band taking what the others leave of the
+// 245 mm (never less than the table's minimum), the page footer at the bottom (270 mm); an element's page position is its band's top plus its own.
+const tenths=n=>Math.round(n*10),minDetail2=size=>Math.floor(((400+146*size)*4*254+7199)/7200);
+function geom(t){
+  const h=n=>t.bands[n]?tenths(t.bands[n].height):0,ph=h('page_header'),dh=h('document_header'),df=h('document_footer'),pf=h('page_footer'),detail=Math.max(minDetail2(t.bands.detail.elements[0].font_size),2450-ph-dh-pf-df);
+  const at=(top,height)=>({top:top/10,height:height/10});
+  return {page_header:at(250,ph),document_header:at(250+ph,dh),detail:at(250+ph+dh,detail),document_footer:at(250+ph+dh+detail,df),page_footer:at(2700-pf,pf)};
+}
+const find2=(t,id)=>{for(const n of Object.keys(t.bands)){const e=t.bands[n].elements.find(v=>v.id===id);if(e)return {band:n,e};}return null;};
+// The page rectangle of an element (mm): [x, y, width, height]; a line's is its bounding box, the table's the detail band's.
+function page2(t,id){
+  const g=geom(t),{band,e}=find2(t,id),top=g[band].top;
+  if(e.type==='line')return [10+Math.min(e.x1,e.x2),top+Math.min(e.y1,e.y2),Math.abs(e.x2-e.x1),Math.abs(e.y2-e.y1)];
+  if(e.type==='table')return [10+e.x,top,e.width,g[band].height];
+  return [10+e.x,top+e.y,e.width,e.height];
+}
+const mid2=(t,id)=>{const [x,y,w,h]=page2(t,id);return [x+w/2,y+h/2];};
+const el2=(a,id)=>find2(cv.tpl(a),id)?.e;
+Object.assign(cv,{
+  c2:(a,id)=>mid2(cv.tpl(a),id),
+  click2:(a,id,o={})=>{const [x,y]=cv.c2(a,id);const g=cv.press(a,cv.item(a,id),x,y,o);g.up(x,y,o);},
+  // Drag an element by its middle, or from a point `from` (mm from its top-left corner), by (dx, dy) mm.
+  drag2:(a,id,dx,dy,o={},from)=>{const t=cv.tpl(a),[x0,y0,w,h]=page2(t,id),[x,y]=from?[x0+from[0],y0+from[1]]:[x0+w/2,y0+h/2],g=cv.press(a,cv.item(a,id),x,y,o);g.move(x+dx/2,y+dy/2,o);g.move(x+dx,y+dy,o);g.up(x+dx,y+dy,o);return [x+dx,y+dy];},
+  band:(a,name)=>a.$('doc-canvas-host').querySelector('.cv-bk[data-band="'+name+'"]'),
+  dragBand:(a,name,dy,o={})=>{const t=cv.tpl(a),g=geom(t)[name],x=100,y=g.top+g.height,h=cv.press(a,cv.band(a,name),x,y,o);h.move(x,y+dy/2,o);h.move(x,y+dy,o);h.up(x,y+dy,o);},
+  end:(a,n)=>a.$('doc-canvas-host').querySelector('[data-end="'+n+'"]'),
+  col:(a,k)=>a.$('doc-canvas-host').querySelector('[data-col="'+k+'"]'),
+  rel:(a,id)=>{const e=el2(a,id);return e.type==='line'?[e.x1,e.y1,e.x2,e.y2]:[e.x,e.y,e.width,e.height];},
+});
+const geometry2=a=>geom(cv.tpl(a));
+const attrs=(e,...k)=>k.map(n=>Number(e.getAttribute(n)));
+const SC=(a)=>SCALE*Number(a.$('doc-zoom').value)/100;
+const X2=(a,mm)=>ORIGIN+mm*SC(a);
+
+test('S03-L L1: a 2.0 template is drawn as its page: the bands stacked from the top of the safe region, each labelled with its height, the elements inside their bands',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ const t=cv.tpl(a),g=geom(t),host=a.$('doc-canvas-host');
+ // The bands in order, each a region at the place the stacking rule gives, 190 mm wide from x 10 mm.
+ const boxes=[...host.querySelectorAll('.cv-band')];assert.deepEqual(boxes.map(b=>b.getAttribute('data-band-box')),['page_header','document_header','detail','document_footer','page_footer']);
+ for(const b of boxes){const n=b.getAttribute('data-band-box');assert.deepEqual(attrs(b,'x','y','width','height'),[X2(a,10),X2(a,g[n].top),190*SC(a),g[n].height*SC(a)],n);}
+ assert.deepEqual([g.page_header,g.document_header,g.detail,g.document_footer,g.page_footer].map(v=>[v.top,v.height]),[[25,14],[39,24],[63,177],[240,20],[260,10]],'the detail band takes the 177 mm the others leave');
+ // The labels say which band and how high; the detail band says it stretches.
+ const tags=[...host.querySelectorAll('.cv-band-tag')].map(e=>e.textContent);
+ assert.deepEqual(tags,['页眉带 · 14 毫米','单据头带 · 24 毫米','明细带 · 约 177 毫米','单据尾带 · 20 毫米','页脚带 · 10 毫米']);assert.deepEqual([...host.querySelectorAll('.cv-band-note')].map(e=>e.textContent),['随页面伸展']);
+ // The labels are in a gutter right of the page, level with the top of their band: they never lie over an element.
+ assert.deepEqual(attrs(host.querySelectorAll('.cv-band-tag')[1],'x'),[X2(a,210)+6]);assert.equal(Number(a.$('doc-canvas-host').querySelector('svg').getAttribute('width')),Math.round(24+210*SC(a)+16+104));
+ // Elements, in reading order (the page's y, then x), keyed by their ids, with the source and a wrap marker.
+ assert.deepEqual(cv.keys(a),['e1','e2','e3','e4','e5','e6','e7','e8','e9']);
+ const tagsOf=[...host.querySelectorAll('.cv-tag')].map(e=>e.textContent);
+ assert.deepEqual(tagsOf.sort(),['e1 · 固定文字','e2 · 页码文字','e3 · 线','e4 · 字段','e5 · 字段 · 换行','e6 · 明细表','e7 · 矩形','e8 · 分组合计','e9 · 固定文字'].sort());
+ // Page texts show their placeholders; a field shows its label; a group sum is marked as a sum; bold is drawn bold.
+ assert.equal(cv.item(a,'e1').querySelector('text').textContent,'Statement of account');assert.equal(cv.item(a,'e1').querySelector('text').getAttribute('font-weight'),'700');
+ assert.equal(cv.item(a,'e2').querySelector('text').textContent,'Page {page} of {pages}');assert.equal(cv.item(a,'e2').querySelector('text').getAttribute('text-anchor'),'end','right-aligned');
+ assert.equal(cv.item(a,'e4').querySelector('text').textContent,'〔客户〕');assert.equal(cv.item(a,'e8').querySelector('text').textContent,'〔合计〕应收余额');
+ assert.equal(cv.item(a,'e5').querySelector('.cv-wrap').textContent,'↵','the wrap marker');assert.equal(cv.item(a,'e4').querySelector('.cv-wrap'),null);
+ // Positions are band positions plus the band's top: e4 is 2 mm into the document header (top 39 mm), e9 2 mm into the page footer (top 260 mm).
+ assert.deepEqual(attrs(cv.item(a,'e4').querySelector('.cv-box'),'x','y','width','height'),[X2(a,10),X2(a,41),90*SC(a),8*SC(a)]);
+ assert.deepEqual(attrs(cv.item(a,'e9').querySelector('.cv-box'),'x','y'),[X2(a,10),X2(a,262)]);
+ // A line is drawn between its two points (band-relative): e3 runs along y 12 mm of the page header.
+ const stroke=cv.item(a,'e3').querySelector('.cv-stroke');assert.deepEqual(attrs(stroke,'x1','y1','x2','y2'),[X2(a,10),X2(a,37),X2(a,200),X2(a,37)]);assert.equal(stroke.getAttribute('stroke-width'),'1','0.5 pt is under a pixel: drawn one pixel wide');
+ // A rectangle with its fill and outline.
+ const shape=host.querySelector('.cv-shapes .cv-shape');assert.deepEqual(attrs(shape,'x','y','width','height'),[X2(a,110),X2(a,242),90*SC(a),10*SC(a)]);assert.equal(shape.getAttribute('fill'),'rgb(232,232,232)');assert.equal(shape.getAttribute('stroke'),'currentColor');
+ // The table fills the detail band: header labels (a literal label wins), column boundaries, one sample body row.
+ const table=cv.item(a,'e6');assert.deepEqual(attrs(table.querySelector('.cv-box'),'x','y','width','height'),[X2(a,10),X2(a,63),190*SC(a),177*SC(a)]);
+ assert.deepEqual([...table.querySelectorAll('.cv-bold')].map(e=>e.textContent),['账龄区间','Customer','应收余额']);assert.deepEqual([...table.querySelectorAll('.cv-sample')].map(e=>e.textContent).slice(0,3),['〔账龄区间〕','〔客户〕','〔应收余额〕']);
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-col]').length,2);assert.equal(table.querySelectorAll('.cv-colline').length,2);
+ assert.equal(table.querySelectorAll('.cv-bold')[2].getAttribute('text-anchor'),'end','a metric column is right-aligned unless it says otherwise');
+ // The grabbable bottom edges: the four fixed bands have one, the detail band none.
+ assert.deepEqual([...host.querySelectorAll('.cv-bk[data-band]')].map(e=>e.getAttribute('data-band')),['page_header','document_header','document_footer','page_footer']);
+ assert.match(a.$('doc-canvas-mode').textContent,/2\.0 分带模板.*分组 customer\.id/);
+ // The note of S03-J is gone: the canvas shows the page, and the status line says so.
+ assert.equal(a.$('doc-canvas-note'),null);assert.equal(a.$('doc-canvas-scroll').hidden,false);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: select, multi-select, Esc and Ctrl/Cmd-A work on the elements of every band and on the table',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ cv.click2(a,'e4');assert.deepEqual(cv.selected(a),['e4']);assert.match(a.$('doc-canvas-live').textContent,/^已选择 e4，字段 客户，字号 12 点，x 0 毫米，y 2 毫米，宽 90 毫米，高 8 毫米，单据头带。$/);
+ cv.click2(a,'e1',{shiftKey:true});assert.deepEqual(cv.selected(a).sort(),['e1','e4']);assert.equal(a.$('doc-canvas-live').textContent,'已选择 2 项：e1、e4。');
+ cv.click2(a,'e1',{shiftKey:true});assert.deepEqual(cv.selected(a),['e4']);
+ cv.key(a,cv.item(a,'e4'),'Escape');assert.deepEqual(cv.selected(a),[]);
+ cv.key(a,cv.item(a,'e1'),'a',{ctrlKey:true});assert.deepEqual(cv.selected(a).sort(),['e1','e2','e3','e4','e5','e6','e7','e8','e9']);assert.match(a.$('doc-canvas-live').textContent,/全选：9 项/);
+ // Clicking the page (a band's empty place) clears; the table, a line and a rectangle are selected by their body.
+ const g=cv.press(a,cv.svg(a),150,150);g.up(150,150);assert.deepEqual(cv.selected(a),[]);
+ cv.click2(a,'e6');assert.deepEqual(cv.selected(a),['e6']);assert.match(a.$('doc-canvas-live').textContent,/^已选择 明细表 e6，列 账龄区间、Customer、应收余额，字号 9 点，x 0 毫米，宽 190 毫米，明细带。$/);
+ cv.click2(a,'e3');assert.deepEqual(cv.selected(a),['e3']);assert.match(a.$('doc-canvas-live').textContent,/^已选择 e3，线，从 x 0 y 12 到 x 190 y 12 毫米，线宽 0\.5 点，页眉带。$/);
+ cv.click2(a,'e7');assert.deepEqual(cv.selected(a),['e7']);assert.match(a.$('doc-canvas-live').textContent,/^已选择 e7，矩形，线宽 0\.5 点，填充 grey2，x 100 毫米，y 2 毫米/);
+ // Every item can be named and reached by the keyboard, in reading order (top to bottom, then left to right).
+ assert.deepEqual(cv.keys(a),['e1','e2','e3','e4','e5','e6','e7','e8','e9']);
+ for(const k of cv.keys(a))assert.ok(cv.item(a,k).getAttribute('aria-label').length>8&&cv.item(a,k).getAttribute('tabindex')==='0',k);
+ cv.key(a,cv.item(a,'e5'),'Enter');assert.deepEqual(cv.selected(a),['e5']);
+ // The tab order is the elements in reading order, then the four edges of the fixed bands (which only the keyboard reaches: the pointer's twin of each lies under the elements and is hidden from assistive technology).
+ assert.deepEqual([...a.$('doc-canvas-host').querySelectorAll('[tabindex="0"]')].map(e=>e.getAttribute('data-key')||'band:'+e.getAttribute('data-band')),[...cv.keys(a),'band:page_header','band:document_header','band:document_footer','band:page_footer']);
+ assert.deepEqual([...a.$('doc-canvas-host').querySelectorAll('.cv-bh')].map(e=>[e.getAttribute('aria-hidden'),e.hasAttribute('tabindex')]),[['true',false],['true',false],['true',false],['true',false]]);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: a drag moves elements inside their band with the grid (1 mm, Alt 0.1 mm) and with the edges and centres of the band and of the other elements; one drag is one undo step',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ // e4 (document header, x 0, y 2): 7.4 mm right and 3.2 mm down lands on whole millimetres, 7 and 5, in the band's own coordinates.
+ cv.drag2(a,'e4',7.4,3.2);assert.deepEqual(cv.rel(a,'e4'),[7,5,90,8]);assert.equal(a.$('doc-undo').disabled,false);assert.equal(cv.status(a),'已移动。可用 Ctrl/Cmd+Z 撤销。');
+ // With Alt held the grid is 0.1 mm.
+ cv.drag2(a,'e4',1.6,0,{altKey:true});assert.deepEqual(cv.rel(a,'e4'),[8.6,5,90,8]);
+ a.click('doc-undo');a.click('doc-undo');assert.deepEqual(cv.rel(a,'e4'),[0,2,90,8],'two drags, two steps');a.click('doc-redo');assert.deepEqual(cv.rel(a,'e4'),[7,5,90,8]);a.click('doc-undo');
+ // An edge of another element within 1 mm wins over the grid, and a guide shows it: e4's right edge (x 90) is 10.2 mm short of e5's left edge (x 100);
+ // moving 9.6 mm puts it 0.6 mm from it, so it lands on it (x 10) and the guide is at page x 110 mm.
+ const g=cv.press(a,cv.item(a,'e4'),55,45);g.move(55+4.8,45);g.move(55+9.6,45,{altKey:true});
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-guide').length>=1,true,'a guide while dragging');assert.match(a.$('doc-canvas-host').querySelector('.cv-readout').textContent,/^x 10\s+y 2 毫米 · 单据头带$/);
+ g.up(55+9.6,45,{altKey:true});assert.deepEqual(cv.rel(a,'e4'),[10,2,90,8]);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-guide').length,0,'the guide goes with the drag');
+ a.click('doc-undo');
+ // The band's own edges are targets too: e1 (page header, x 0..120) dragged 70.4 mm right has its right edge within 1 mm of the band's (190), so it lands at x 70,
+ // where it would overlap e2: the validator refuses, says why, and the element goes back.
+ const t0=cv.tpl(a);cv.drag2(a,'e1',70.4,0.3);assert.equal(cv.status(a),'未应用：同一带内的文本框不能重叠。 项目已恢复原位。');
+ assert.deepEqual(cv.tpl(a),t0,'the element is back, and nothing was applied');assert.equal(a.$('doc-undo').disabled,true,'no undo step for a refused edit');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: dragging across a band boundary moves the element into the band under the pointer; a move the validator refuses snaps back and names the reason',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ // e9 (page footer, top 260 mm, y 2) dragged 10 mm up: the pointer is in the document footer (240..260 mm), so e9 leaves the page footer for it and its position becomes relative to the footer: y 12.
+ cv.drag2(a,'e9',0,-10);
+ let t=cv.tpl(a);assert.deepEqual(t.bands.page_footer.elements,[]);assert.deepEqual(t.bands.document_footer.elements.map(e=>e.id),['e7','e8','e9']);assert.deepEqual(cv.rel(a,'e9'),[0,12,120,6]);assert.equal(find2(t,'e9').band,'document_footer');assert.equal(cv.status(a),'已移动。可用 Ctrl/Cmd+Z 撤销。');
+ assert.match(cv.item(a,'e9').getAttribute('aria-label'),/单据尾带/);assert.deepEqual(cv.selected(a),['e9']);
+ // The page position is where it was dropped: 240 + 12 = 252 mm.
+ assert.deepEqual(page2(t,'e9').slice(0,2),[10,252]);
+ a.click('doc-undo');t=cv.tpl(a);assert.deepEqual(t.bands.page_footer.elements.map(e=>e.id),['e9']);assert.deepEqual(cv.rel(a,'e9'),[0,2,120,6],'one undo step takes it back to its band and its place');
+ // The same across more than one boundary: e4 (document header) to the page footer, over the detail band, where e9 is: refused (it overlaps), nothing changes.
+ const before=cv.tpl(a);cv.drag2(a,'e4',0,222,{altKey:true});
+ assert.match(cv.status(a),/^未应用：.*项目已恢复原位。$/);assert.deepEqual(cv.tpl(a),before,'a refused move leaves the template as it was');assert.equal(a.$('doc-undo').disabled,true);
+ // A line crosses too: e3 (page header, y 12) dragged 10 mm down is in the document header (top 39 mm) and keeps its shape, relative to the new band.
+ cv.drag2(a,'e3',0,10);t=cv.tpl(a);assert.equal(find2(t,'e3').band,'document_header');assert.deepEqual(cv.rel(a,'e3'),[0,8,190,8]);assert.deepEqual(t.bands.page_header.elements.map(e=>e.id),['e1','e2']);assert.equal(t.bands.document_header.elements.at(-1).id,'e3');
+ a.click('doc-undo');assert.deepEqual(cv.rel(a,'e3'),[0,12,190,12]);
+ // A drag whose pointer is over the detail band keeps the element in its own band (nothing else can take it) and is judged there: out of the band, refused.
+ const keep=cv.tpl(a);cv.drag2(a,'e4',0,40);assert.match(cv.status(a),/^未应用：/);assert.deepEqual(cv.tpl(a),keep);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: handles resize one element, a table by its left and right edges (columns scale), and the minimum sizes and the band are the validator\'s',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ // A text box has the eight handles; its east handle drags the right edge onto the grid: e4 (90 mm wide) dragged 6.4 mm in is 84 wide and stays at x 0.
+ cv.click2(a,'e4');assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-handle').length,8);
+ let [x,y,w,h]=page2(cv.tpl(a),'e4');let g=cv.press(a,cv.handle(a,'e'),x+w,y+h/2);g.move(x+w-3,y+h/2);g.move(x+w-6.4,y+h/2);g.up(x+w-6.4,y+h/2);
+ assert.deepEqual(cv.rel(a,'e4'),[0,2,84,8]);assert.equal(cv.status(a),'已调整大小。可用 Ctrl/Cmd+Z 撤销。');
+ // The south-east corner takes width and height: both grids, in the band's own coordinates.
+ [x,y,w,h]=page2(cv.tpl(a),'e4');cv.click2(a,'e4');g=cv.press(a,cv.handle(a,'se'),x+w,y+h);g.move(x+w-1,y+h+1);g.move(x+w-2.2,y+h+3.1);g.up(x+w-2.2,y+h+3.1);
+ const r=cv.rel(a,'e4');assert.equal(r[2],82);assert.ok(r[3]>=8,'taller');
+ // The minimum height the font needs (12 pt: 6.7 mm): a box dragged down to 3 mm high is refused and goes back.
+ cv.click2(a,'e4');[x,y,w,h]=page2(cv.tpl(a),'e4');const before=cv.tpl(a);g=cv.press(a,cv.handle(a,'s'),x+w/2,y+h);g.move(x+w/2,y+h-2);g.move(x+w/2,y+3);g.up(x+w/2,y+3);
+ assert.deepEqual(cv.tpl(a),before);assert.match(cv.status(a),/^未应用：e4：超出带范围、尺寸、字号、来源或文字无效。 项目已恢复原位。$/);
+ a.click('doc-undo');a.click('doc-undo');assert.deepEqual(cv.rel(a,'e4'),[0,2,90,8]);
+ // The table has two handles, on its left and right edges; the columns scale in proportion, rounded to 0.1 mm, the remainder on the last.
+ cv.click2(a,'e6');assert.deepEqual([...a.$('doc-canvas-host').querySelectorAll('.cv-handle')].map(e=>e.getAttribute('data-dir')).sort(),['e','w']);
+ [x,y,w,h]=page2(cv.tpl(a),'e6');g=cv.press(a,cv.handle(a,'e'),x+w,y+h/2);g.move(x+w-10,y+h/2);g.move(x+w-20,y+h/2);g.up(x+w-20,y+h/2);
+ let t=cv.tpl(a).bands.detail.elements[0];assert.equal(t.width,170);assert.deepEqual(t.columns.map(c=>c.width),[53.7,53.7,62.6]);assert.equal(t.columns.reduce((s,c)=>s+tenths(c.width),0),1700);assert.equal(t.columns[1].label,'Customer');assert.equal(t.columns[2].align,'right','labels and alignments are kept');
+ // Its left edge moves x and the width together.
+ cv.click2(a,'e6');[x,y,w,h]=page2(cv.tpl(a),'e6');g=cv.press(a,cv.handle(a,'w'),x,y+h/2);g.move(x+5,y+h/2);g.move(x+10,y+h/2);g.up(x+10,y+h/2);
+ t=cv.tpl(a).bands.detail.elements[0];assert.deepEqual([t.x,t.width],[10,160]);assert.equal(t.columns.reduce((s,c)=>s+tenths(c.width),0),1600);
+ // Too narrow for the columns (8 mm each): the validator refuses and the table snaps back.
+ cv.click2(a,'e6');[x,y,w,h]=page2(cv.tpl(a),'e6');const keep=cv.tpl(a);g=cv.press(a,cv.handle(a,'e'),x+w,y+h/2);g.move(x+w-50,y+h/2);g.move(x+w-150,y+h/2);g.up(x+w-150,y+h/2);
+ assert.deepEqual(cv.tpl(a),keep);assert.match(cv.status(a),/^未应用：/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: arrow keys nudge by 0.1 mm and Shift-arrows by 1 mm; align and distribute act on the selection in 0.1 mm units; delete and duplicate',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ cv.click2(a,'e4');cv.key(a,cv.item(a,'e4'),'ArrowRight');cv.key(a,cv.item(a,'e4'),'ArrowDown',{shiftKey:true});assert.deepEqual(cv.rel(a,'e4'),[0.1,3,90,8]);assert.equal(cv.status(a),'已微调。可用 Ctrl/Cmd+Z 撤销。');
+ // An arrow that would leave the band is refused: e4 at y 3 goes 3 mm up to the band's top, and no further.
+ cv.key(a,cv.item(a,'e4'),'ArrowUp',{shiftKey:true});cv.key(a,cv.item(a,'e4'),'ArrowUp',{shiftKey:true});cv.key(a,cv.item(a,'e4'),'ArrowUp',{shiftKey:true});assert.deepEqual(cv.rel(a,'e4'),[0.1,0,90,8]);cv.key(a,cv.item(a,'e4'),'ArrowUp');assert.deepEqual(cv.rel(a,'e4'),[0.1,0,90,8]);assert.match(cv.status(a),/^未应用：/);
+ // The line moves by its body, as a whole.
+ cv.click2(a,'e3');cv.key(a,cv.item(a,'e3'),'ArrowDown');assert.deepEqual(cv.rel(a,'e3'),[0,12.1,190,12.1]);cv.key(a,cv.item(a,'e3'),'ArrowRight',{shiftKey:true});assert.match(cv.status(a),/^未应用：/,'a line may not leave the band: x 191 is outside 0..190');assert.deepEqual(cv.rel(a,'e3'),[0,12.1,190,12.1]);
+ // Align: e1 and e2 (page header) by their tops, bottoms and middles; the table and an element of another band align horizontally.
+ cv.click2(a,'e2');cv.click2(a,'e1',{shiftKey:true});assert.equal(a.$('doc-align-top').disabled,false);
+ a.click('doc-align-bottom');assert.deepEqual(cv.rel(a,'e1'),[0,0,120,9]);assert.deepEqual(cv.rel(a,'e2'),[130,0,60,9]);
+ cv.click2(a,'e1');cv.click2(a,'e9',{shiftKey:true});a.click('doc-align-right');assert.equal(find2(cv.tpl(a),'e1').e.x+120,find2(cv.tpl(a),'e9').e.x+120,'right edges level');
+ // Distribute needs three; three elements in a band are spread with equal gaps (e7 rectangle, e8 text and a new line).
+ cv.click2(a,'e1');cv.click2(a,'e2',{shiftKey:true});assert.equal(a.$('doc-distribute-h').disabled,true);
+ // Duplicate: the lowest free id, in the same band, at the nearest free place below; a copy of the table is not possible.
+ cv.load(a,banded());
+ cv.click2(a,'e5');cv.key(a,cv.item(a,'e5'),'Delete');assert.equal(find2(cv.tpl(a),'e5'),null);assert.equal(cv.status(a),'已删除。可用 Ctrl/Cmd+Z 撤销。');
+ cv.click2(a,'e4');cv.key(a,cv.item(a,'e4'),'d',{ctrlKey:true});let t=cv.tpl(a);assert.equal(find2(t,'e5').band,'document_header');assert.deepEqual(cv.rel(a,'e5'),[0,10,90,8],'the lowest free id is e5, 8 mm (its height) below e4');assert.deepEqual(cv.selected(a),['e5']);assert.equal(t.bands.document_header.elements.at(-1).id,'e5');
+ // The band has no room for a third copy: refused with the reason.
+ cv.click2(a,'e4');cv.key(a,cv.item(a,'e4'),'d',{ctrlKey:true});assert.match(cv.status(a),/^未应用：下方没有可放置副本的空位。$|^未应用：/);assert.equal(cv.tpl(a).bands.document_header.elements.length,2);
+ // A line is copied 1 mm below itself, in its band; a rectangle that has no room below it (the footer is 20 mm high, the rectangle ends at 12 mm) is refused.
+ cv.click2(a,'e3');cv.key(a,cv.item(a,'e3'),'d',{ctrlKey:true});t=cv.tpl(a);assert.equal(find2(t,'e10').band,'page_header');assert.deepEqual(cv.rel(a,'e10'),[0,13,190,13]);
+ cv.click2(a,'e7');cv.key(a,cv.item(a,'e7'),'d',{ctrlKey:true});assert.match(cv.status(a),/^未应用：/);assert.equal(find2(cv.tpl(a),'e11'),null);
+ // The table is not copied, and cannot be deleted; deleting a selection that holds it deletes the rest.
+ cv.click2(a,'e6');a.click('doc-dup');assert.equal(a.$('doc-dup').disabled,true);cv.key(a,cv.item(a,'e6'),'Delete');assert.match(cv.status(a),/^未应用：明细表不能删除/);assert.ok(find2(cv.tpl(a),'e6'));
+ cv.key(a,cv.item(a,'e6'),'a',{ctrlKey:true});cv.key(a,cv.item(a,'e6'),'Delete');t=cv.tpl(a);assert.deepEqual(Object.values(t.bands).flatMap(b=>b.elements.map(e=>e.id)),['e6'],'only the table is left');assert.equal(a.$('doc-del').disabled,false);
+ a.click('doc-undo');assert.equal(Object.values(cv.tpl(a).bands).flatMap(b=>b.elements).length,10);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: a fixed band\'s bottom edge is dragged to change its height (the detail band cannot be); the keyboard does it too; a height the template refuses goes back',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ assert.equal(cv.band(a,'detail'),null,'the detail band has no edge to drag');
+ // 6.3 mm down: whole millimetres, 20; the bands under it move down by 6 mm and the detail band shrinks to match.
+ cv.dragBand(a,'page_header',6.3);let t=cv.tpl(a);assert.equal(t.bands.page_header.height,20);assert.equal(cv.status(a),'已调整带高。可用 Ctrl/Cmd+Z 撤销。');
+ assert.deepEqual([geometry2(a).document_header.top,geometry2(a).detail.height],[45,171]);assert.deepEqual(cv.rel(a,'e4'),[0,2,90,8],'the elements keep their band positions');
+ assert.deepEqual(attrs(a.$('doc-canvas-host').querySelector('[data-band-box="document_header"]'),'y'),[X2(a,45)]);
+ // With Alt 0.1 mm.
+ cv.dragBand(a,'page_header',-1.4,{altKey:true});assert.equal(cv.tpl(a).bands.page_header.height,18.6);
+ a.click('doc-undo');a.click('doc-undo');assert.equal(cv.tpl(a).bands.page_header.height,14);
+ // Within 1 mm of the bottom of the lowest element (the line at 12 mm) the edge snaps to it, with a guide.
+ let g=geometry2(a).page_header,h=cv.press(a,cv.band(a,'page_header'),100,g.top+g.height);h.move(100,g.top+g.height-0.8);h.move(100,g.top+g.height-1.6,{altKey:true});
+ assert.match(a.$('doc-canvas-host').querySelector('.cv-readout').textContent,/^页眉带高度 12 毫米$/);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-guide').length,1);h.up(100,g.top+g.height-1.6,{altKey:true});assert.equal(cv.tpl(a).bands.page_header.height,12);a.click('doc-undo');
+ // Too small for its elements: while dragging the band is marked and the readout says it will be refused; on release it goes back.
+ const before=cv.tpl(a);g=geometry2(a).page_header;h=cv.press(a,cv.band(a,'page_header'),100,g.top+g.height);h.move(100,g.top+g.height-4);h.move(100,g.top+g.height-9);
+ assert.match(a.$('doc-canvas-host').querySelector('.cv-readout').textContent,/页眉带高度 5 毫米（将被拒绝）/);assert.ok(a.$('doc-canvas-host').querySelector('[data-band-box="page_header"]').getAttribute('class').includes('cv-bad-band'));
+ h.up(100,g.top+g.height-9);assert.deepEqual(cv.tpl(a),before);assert.match(cv.status(a),/^未应用：.*项目已恢复原位。$/);assert.equal(a.$('doc-undo').disabled,true);
+ // Too tall for the page (the bands and the table's minimum must fit 245 mm): refused.
+ g=geometry2(a).document_header;h=cv.press(a,cv.band(a,'document_header'),100,g.top+g.height);h.move(100,g.top+g.height+100);h.move(100,g.top+g.height+200);h.up(100,g.top+g.height+200);assert.deepEqual(cv.tpl(a),before);assert.match(cv.status(a),/^未应用：页眉、单据头与页脚的高度加上明细表的最小高度超出安全区/);
+ // The keyboard: Tab to the edge, arrows 0.1 mm, Shift 1 mm; an edge that cannot go further says so.
+ cv.band(a,'page_header').focus();assert.equal(a.w.document.activeElement.getAttribute('data-band'),'page_header');assert.equal(cv.band(a,'page_header').getAttribute('role'),'slider');assert.equal(cv.band(a,'page_header').getAttribute('aria-valuenow'),'14');
+ cv.key(a,cv.band(a,'page_header'),'ArrowDown');assert.equal(cv.tpl(a).bands.page_header.height,14.1);cv.key(a,cv.band(a,'page_header'),'ArrowDown',{shiftKey:true});assert.equal(cv.tpl(a).bands.page_header.height,15.1);cv.key(a,cv.band(a,'page_header'),'ArrowUp');assert.equal(cv.tpl(a).bands.page_header.height,15);
+ assert.equal(a.w.document.activeElement.getAttribute('data-band'),'page_header','focus stays on the edge after a redraw');assert.equal(cv.band(a,'page_header').getAttribute('aria-valuetext'),'页眉带高度 15 毫米');
+ for(let k=0;k<12;k++)cv.key(a,cv.band(a,'page_header'),'ArrowUp',{shiftKey:true});assert.match(cv.status(a),/^未应用：/);assert.ok(cv.tpl(a).bands.page_header.height>=10);
+ cv.key(a,cv.band(a,'page_header'),'Delete');assert.ok(cv.tpl(a).bands.page_header,'Delete on an edge does nothing');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: a line is moved by its body and edited by its two end handles, with the mouse and the keyboard; a line is not resized by the eight handles',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ cv.click2(a,'e3');assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-handle').length,2,'a line has its two ends');assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-dir]').length,0);
+ assert.deepEqual([cv.end(a,1),cv.end(a,2)].map(e=>e&&e.getAttribute('aria-label')),['线 e3 的起点：拖动或用方向键移动','线 e3 的终点：拖动或用方向键移动']);
+ // By its body: 1.6 mm down is within 1 mm of the band's bottom (14 mm), which the line snaps to; 20 mm up takes the pointer above every band, where it is judged in its own band and refused.
+ cv.drag2(a,'e3',0,1.6);assert.deepEqual(cv.rel(a,'e3'),[0,14,190,14]);
+ cv.drag2(a,'e3',0,-20);assert.match(cv.status(a),/^未应用：/,'above the page header');assert.deepEqual(cv.rel(a,'e3'),[0,14,190,14]);
+ // End 2 dragged 30 mm left: the line is shorter; end 1 is untouched.
+ cv.click2(a,'e3');let g=cv.press(a,cv.end(a,2),200,39);g.move(185,39);g.move(170,39);g.up(170,39);assert.deepEqual(cv.rel(a,'e3'),[0,14,160,14]);assert.equal(cv.status(a),'已移动端点。可用 Ctrl/Cmd+Z 撤销。');
+ // End 1 moved 1.7 mm up lands on the grid: the line is slanted, which is allowed.
+ g=cv.press(a,cv.end(a,1),10,39);g.move(10,38);g.move(10,37.3);g.up(10,37.3);assert.deepEqual(cv.rel(a,'e3'),[0,12,160,14]);
+ // Snapping to the other end (and the band's bottom) makes a line level again: end 1 back down to within 1 mm of end 2's y lands exactly on it.
+ g=cv.press(a,cv.end(a,1),10,37);g.move(10,38);g.move(10,38.7);g.up(10,38.7);assert.deepEqual(cv.rel(a,'e3'),[0,14,160,14]);
+ // A zero-length line or an end outside the band is refused.
+ const before=cv.tpl(a);g=cv.press(a,cv.end(a,1),10,39);g.move(100,39);g.move(250,39);g.up(250,39);assert.deepEqual(cv.tpl(a),before);assert.match(cv.status(a),/^未应用：/);
+ // The keyboard: Tab to an end, arrows move it by 0.1 mm, Shift by 1 mm.
+ cv.end(a,1).focus();cv.key(a,cv.end(a,1),'ArrowRight');assert.deepEqual(cv.rel(a,'e3'),[0.1,14,160,14]);cv.key(a,cv.end(a,1),'ArrowLeft',{shiftKey:true});assert.match(cv.status(a),/^未应用：/);
+ assert.equal(a.w.document.activeElement.getAttribute('data-end'),'1');cv.key(a,cv.end(a,2),'ArrowUp',{shiftKey:true});assert.deepEqual(cv.rel(a,'e3'),[0.1,14,160,13]);
+ // Each applied edit is one undo step.
+ for(let k=0;k<6;k++)a.click('doc-undo');assert.deepEqual(cv.rel(a,'e3'),[0,12,190,12]);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2: the table\'s column boundaries are dragged as in 1.x, in the detail band; three elements distribute with equal gaps',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-col]').length,2);
+ // Pressing a boundary selects the table; 10 mm right: the left column takes it from its neighbour, the table keeps its width.
+ let g=cv.press(a,cv.col(a,0),70,100);g.move(75,100);g.move(80,100);g.up(80,100);let cols=()=>cv.tpl(a).bands.detail.elements[0].columns.map(c=>c.width);
+ assert.deepEqual(cols(),[70,50,70]);assert.deepEqual(cv.selected(a),['e6']);assert.equal(cv.status(a),'已调整列宽。可用 Ctrl/Cmd+Z 撤销。');
+ // Alt: 0.1 mm; far to the right: the column to the right keeps its minimum, 8 mm.
+ g=cv.press(a,cv.col(a,0),80,100);g.move(80.5,100,{altKey:true});g.move(81.3,100,{altKey:true});g.up(81.3,100,{altKey:true});assert.deepEqual(cols(),[71.3,48.7,70]);
+ g=cv.press(a,cv.col(a,0),81,100);g.move(120,100);g.move(180,100);g.up(180,100);assert.deepEqual(cols(),[112,8,70]);
+ g=cv.press(a,cv.col(a,1),120,100);g.move(60,100);g.move(10,100);g.up(10,100);assert.deepEqual(cols(),[112,8,70],'the boundary stops at the neighbour\'s minimum');
+ // A boundary snaps to the band's centre (page x 105 mm, 95 mm into the band).
+ a.click('doc-undo');a.click('doc-undo');a.click('doc-undo');assert.deepEqual(cols(),[60,60,70]);
+ g=cv.press(a,cv.col(a,0),70,100);g.move(75,100);g.move(104.4,100);g.up(104.4,100);assert.deepEqual(cols(),[95,25,70],'the band\'s centre');
+ // The keyboard: the table selected, Tab to a boundary, arrows 0.1 mm.
+ cv.col(a,0).focus();cv.key(a,cv.col(a,0),'ArrowRight');assert.deepEqual(cols(),[95.1,24.9,70]);assert.equal(cv.col(a,0).getAttribute('aria-valuenow'),'95.1');assert.equal(a.w.document.activeElement.getAttribute('data-col'),'0');
+ // Distribute: three text boxes at x 0, 50 and 150 (30 mm wide) get equal gaps: the middle one goes to x 75.
+ const t=banded();t.bands.page_header.elements=[0,50,150].map((x,k)=>({id:'e'+(k+1),type:'text',source:'literal',text:'T'+k,field:'',wrap:false,x,y:0,width:30,height:9,font_size:10,align:'left',bold:false}));cv.load(a,t);
+ cv.click2(a,'e1');cv.click2(a,'e2',{shiftKey:true});cv.click2(a,'e3',{shiftKey:true});a.click('doc-distribute-h');assert.deepEqual([1,2,3].map(k=>cv.rel(a,'e'+k)[0]),[0,75,150]);
+ a.click('doc-distribute-v');assert.deepEqual([1,2,3].map(k=>cv.rel(a,'e'+k)[1]),[0,0,0]);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+// ---- the 2.0 panels (L3) ----
+const chg=(a,id,value)=>{const e=a.$(id);if(e.type==='checkbox')e.checked=value;else e.value=String(value);e.dispatchEvent(new a.w.Event('change',{bubbles:true}));};
+const clickId=(a,id)=>a.$(id).click();
+const undoAll=a=>{let n=0;while(!a.$('doc-undo').disabled){a.click('doc-undo');n++;}return n;};
+const doc2status=a=>a.$('doc-status').textContent;
+
+test('S03-L L3: the group fields are one to three dimension fields in order, or none; every change is one undo step and a refusal says why',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ assert.equal(a.$('doc2-panel').hidden,false);for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])assert.equal(a.$(id).hidden,true,id+' is the 1.x panel');
+ assert.deepEqual([0,1,2].map(n=>a.$('doc2-group-'+n).value),['customer.id','','']);
+ assert.deepEqual([...a.$('doc2-group-0').options].map(o=>o.value),['','customer.id','aging.bucket'],'dimensions only: no metric');
+ assert.match(a.$('doc2-group-status').textContent,/^分组：customer\.id。/);
+ chg(a,'doc2-group-1','aging.bucket');assert.deepEqual(cv.tpl(a).group,{fields:['customer.id','aging.bucket']});assert.match(a.$('doc2-group-status').textContent,/customer\.id、aging\.bucket/);assert.match(a.$('doc-canvas-mode').textContent,/分组 customer\.id、aging\.bucket/);
+ chg(a,'doc2-group-0','');assert.deepEqual(cv.tpl(a).group,{fields:['aging.bucket']},'an empty slot leaves the others in order');assert.deepEqual([0,1,2].map(n=>a.$('doc2-group-'+n).value),['aging.bucket','','']);
+ chg(a,'doc2-group-0','customer.id');assert.deepEqual(cv.tpl(a).group,{fields:['customer.id']});
+ chg(a,'doc2-group-1','customer.id');assert.match(doc2status(a),/分组字段需为1–3个不同的维度字段/);assert.deepEqual(cv.tpl(a).group,{fields:['customer.id']},'a duplicate is refused');assert.equal(a.$('doc2-group-1').value,'','and the inputs go back to the template');
+ for(const n of [0,1,2])chg(a,'doc2-group-'+n,'');assert.equal('group' in cv.tpl(a),false,'no group: the key is gone');assert.match(a.$('doc2-group-status').textContent,/^无分组：整个快照一份文档/);
+ assert.equal(undoAll(a),4,'four applied changes, four undo steps; the refused one is none');assert.deepEqual(cv.tpl(a),banded());
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L3: bands: an optional band is added with a default height or removed with its elements; its height is an input; the canvas and the inputs agree',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ assert.deepEqual([...a.$('doc2-bands').children].map(r=>r.querySelector('.cv2-name').textContent),['页眉带（3 个元素）','单据头带（2 个元素）','单据尾带（2 个元素）','页脚带（1 个元素）','明细带：必有，只放一个明细表；高度随页面伸展（至少 24.2 毫米：表头、承前行、一行明细与过次或合计行）。']);
+ assert.equal(a.$('doc2-band-height-page_header').value,'14');
+ // Height by the input: the canvas follows (the bands below move).
+ chg(a,'doc2-band-height-page_header',20);assert.equal(cv.tpl(a).bands.page_header.height,20);assert.equal(geometry2(a).document_header.top,45);assert.equal(a.$('doc2-band-height-page_header').value,'20');
+ // Height by dragging: the input follows.
+ cv.dragBand(a,'page_header',-5.2);assert.equal(a.$('doc2-band-height-page_header').value,'15');
+ // A height the elements do not fit in is refused with the validator's words and the input goes back.
+ chg(a,'doc2-band-height-page_header',4);assert.match(doc2status(a),/页眉带的高度须为5–245毫米/);assert.equal(a.$('doc2-band-height-page_header').value,'15');assert.equal(cv.tpl(a).bands.page_header.height,15);
+ chg(a,'doc2-band-height-page_header',8);assert.match(doc2status(a),/^e1：超出带范围/);assert.equal(cv.tpl(a).bands.page_header.height,15);
+ // Remove an optional band: it goes with its elements, one step; the canvas has no such band and its elements are gone.
+ clickId(a,'doc2-band-remove-page_footer');{const t=cv.tpl(a);assert.equal('page_footer' in t.bands,false);assert.equal(find2(t,'e9'),null);assert.equal(geometry2(a).detail.height,245-15-24-20);assert.equal(cv.band(a,'page_footer'),null);assert.equal(cv.item(a,'e9'),null);}
+ assert.equal(a.$('doc2-band-add-page_footer').textContent,'添加页脚带');assert.deepEqual([...a.$('doc2-add-band').options].map(o=>o.value),['page_header','document_header','document_footer']);
+ // Add it back: a default height (12 mm), no elements; the table is the detail band's only one and stays.
+ clickId(a,'doc2-band-add-page_footer');let t=cv.tpl(a);assert.deepEqual(t.bands.page_footer,{height:12,elements:[]});assert.deepEqual(Object.keys(t.bands),['page_header','document_header','detail','document_footer','page_footer'],'canonical order');
+ assert.ok(cv.band(a,'page_footer'));
+ // A band that leaves no room for the table is refused: the document header at 200 mm.
+ chg(a,'doc2-band-height-document_header',200);assert.match(doc2status(a),/页眉、单据头与页脚的高度加上明细表的最小高度超出安全区/);assert.equal(cv.tpl(a).bands.document_header.height,24);
+ // Each applied change is one undo step: the height input, the height drag, the removal and the addition of a band.
+ assert.equal(undoAll(a),4);assert.deepEqual(cv.tpl(a),banded());
+ // All four optional bands can be removed: the page is the table alone.
+ for(const n of ['page_header','document_header','document_footer','page_footer'])clickId(a,'doc2-band-remove-'+n);t=cv.tpl(a);assert.deepEqual(Object.keys(t.bands),['detail']);assert.equal(geometry2(a).detail.height,245);assert.deepEqual(cv.keys(a),['e6']);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L3: an element of each kind is added to a chosen band under the lowest free id, at a free place, and is selected on the canvas; each is one undo step',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ const pick=name=>{a.$('doc2-add-band').value=name;};
+ // A literal text in the document header: the first free place is below e4 (y 10), 80 mm wide, 6 mm high, 10 pt.
+ pick('document_header');a.$('doc2-text').value='发票';clickId(a,'doc2-add-literal');assert.equal(doc2status(a),READY);let t=cv.tpl(a);
+ assert.deepEqual(find2(t,'e10').e,{id:'e10',type:'text',source:'literal',text:'发票',field:'',wrap:false,x:0,y:10,width:80,height:6,font_size:10,align:'left',bold:false});assert.equal(find2(t,'e10').band,'document_header');assert.deepEqual(cv.selected(a),['e10']);
+ // The id is the lowest free one: delete e2, add again.
+ cv.click2(a,'e2');cv.key(a,cv.item(a,'e2'),'Delete');pick('document_footer');a.$('doc2-text').value='';clickId(a,'doc2-add-literal');assert.equal(find2(cv.tpl(a),'e2').band,'document_footer');assert.equal(find2(cv.tpl(a),'e2').e.text,'固定文字','the default text');
+ // A field text with the chosen field; a group sum falls back to the first metric when the field chosen is not one.
+ pick('document_header');a.$('doc2-field').value='aging.bucket';clickId(a,'doc2-add-field');assert.deepEqual([find2(cv.tpl(a),'e11').e.source,find2(cv.tpl(a),'e11').e.field],['field','aging.bucket']);
+ pick('document_footer');a.$('doc2-field').value='customer.id';clickId(a,'doc2-add-sum');const sum=find2(cv.tpl(a),'e12');assert.deepEqual([sum.band,sum.e.source,sum.e.field,sum.e.text],['document_footer','group_sum','ar.open_balance','']);
+ // A page text keeps the placeholders it was given, or gets the default.
+ a.$('doc2-text').value='{page}/{pages}';pick('document_footer');clickId(a,'doc2-add-page');const pg=find2(cv.tpl(a),'e13');assert.ok(pg,'added: '+doc2status(a));assert.deepEqual([pg.e.source,pg.e.text,pg.e.wrap],['page','{page}/{pages}',false]);
+ a.$('doc2-text').value='无占位';clickId(a,'doc2-add-page');assert.equal(find2(cv.tpl(a),'e14').e.text,'Page {page} of {pages}','a page text needs a placeholder: the default');
+ // A line along the band's bottom edge, a rectangle at its top-left corner.
+ pick('page_header');clickId(a,'doc2-add-line');const line=find2(cv.tpl(a),'e15');assert.deepEqual(line.e,{id:'e15',type:'line',x1:0,y1:14,x2:190,y2:14,stroke:0.5});
+ pick('document_header');clickId(a,'doc2-add-rect');const rect=find2(cv.tpl(a),'e16');assert.deepEqual(rect.e,{id:'e16',type:'rect',x:0,y:0,width:60,height:10,stroke:0.5,fill:'none'});assert.deepEqual(cv.selected(a),['e16']);
+ // They are on the canvas, in their bands.
+ assert.deepEqual(page2(cv.tpl(a),'e16'),[10,39,60,10]);assert.ok(cv.item(a,'e15')&&cv.item(a,'e13'));
+ // No place in a band: the page footer (10 mm) is full of e9; the refusal says so and nothing is added.
+ const before=cv.tpl(a);pick('page_footer');a.$('doc2-text').value='x';clickId(a,'doc2-add-literal');assert.match(doc2status(a),/带内没有放得下新文本框的空位/);assert.deepEqual(cv.tpl(a),before);
+ assert.equal(undoAll(a),9,'one undo step per element added or deleted');assert.deepEqual(cv.tpl(a),banded());
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L3: the selected element\'s properties are inputs for every key its type has, in sync with the canvas both ways; the validator decides and a refusal puts the value back',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ assert.match(a.$('doc2-props').textContent,/在画布上点击一个元素/);
+ cv.click2(a,'e4');assert.equal(a.$('doc2-p-title').textContent,'e4 · 单据头带 · 文本（字段）');
+ const ids=()=>[...a.$('doc2-props').querySelectorAll('[id^="doc2-p-"]')].map(e=>e.id.slice(7)).filter(k=>k!=='title');
+ assert.deepEqual(ids(),['band','source','field','x','y','width','height','font_size','align','wrap','bold','delete'],'every key of a field text but its id');
+ assert.deepEqual(['x','y','width','height','font_size'].map(k=>a.$('doc2-p-'+k).value),['0','2','90','8','12']);assert.equal(a.$('doc2-p-field').value,'customer.id');assert.equal(a.$('doc2-p-wrap').checked,false);
+ // Typing moves it on the canvas; moving it on the canvas changes the input.
+ chg(a,'doc2-p-x',5.5);assert.deepEqual(cv.rel(a,'e4'),[5.5,2,90,8]);assert.deepEqual(attrs(cv.item(a,'e4').querySelector('.cv-box'),'x'),[X2(a,15.5)]);
+ cv.drag2(a,'e4',-3.2,0,{altKey:true});assert.equal(a.$('doc2-p-x').value,'2.3');assert.deepEqual(cv.selected(a),['e4']);
+ chg(a,'doc2-p-font_size',14);chg(a,'doc2-p-align','right');chg(a,'doc2-p-bold',true);chg(a,'doc2-p-wrap',true);
+ assert.deepEqual([el2(a,'e4').font_size,el2(a,'e4').align,el2(a,'e4').bold,el2(a,'e4').wrap],[14,'right',true,true]);assert.equal(cv.item(a,'e4').querySelector('text').getAttribute('font-weight'),'700');assert.ok(cv.item(a,'e4').querySelector('.cv-wrap'));assert.match(cv.item(a,'e4').getAttribute('aria-label'),/粗体，自动换行/);
+ // A value the validator refuses: the status says why, the input goes back, the canvas is untouched.
+ const before=cv.tpl(a);chg(a,'doc2-p-width',5);assert.match(doc2status(a),/^e4：超出带范围、尺寸、字号、来源或文字无效。$/);assert.equal(a.$('doc2-p-width').value,'90');assert.deepEqual(cv.tpl(a),before);
+ chg(a,'doc2-p-height',3);assert.equal(a.$('doc2-p-height').value,'8');chg(a,'doc2-p-font_size',40);assert.equal(a.$('doc2-p-font_size').value,'14');
+ // The source: to a literal (with its text), to a group sum (a metric field), to a page text (placeholders).
+ chg(a,'doc2-p-source','literal');assert.equal(el2(a,'e4').source,'literal');assert.deepEqual([el2(a,'e4').text,el2(a,'e4').field],['固定文字','']);assert.equal(a.$('doc2-p-text').value,'固定文字');assert.equal(a.$('doc2-p-field'),null);
+ chg(a,'doc2-p-text','总计 ' + '字'.repeat(3));assert.equal(el2(a,'e4').text,'总计 字字字');assert.equal(cv.item(a,'e4').querySelector('text').textContent,'总计 字字字');
+ chg(a,'doc2-p-source','group_sum');assert.deepEqual([el2(a,'e4').source,el2(a,'e4').field,el2(a,'e4').text],['group_sum','ar.open_balance','']);assert.deepEqual([...a.$('doc2-p-field').options].map(o=>o.value),['ar.open_balance'],'a sum takes a metric');
+ chg(a,'doc2-p-source','page');assert.deepEqual([el2(a,'e4').source,el2(a,'e4').text,el2(a,'e4').wrap,el2(a,'e4').field],['page','Page {page} of {pages}',false,'']);
+ chg(a,'doc2-p-text','没有占位');assert.match(doc2status(a),/^e4：/);assert.equal(a.$('doc2-p-text').value,'Page {page} of {pages}');
+ chg(a,'doc2-p-source','field');assert.deepEqual([el2(a,'e4').source,el2(a,'e4').field,el2(a,'e4').text],['field','customer.id','']);chg(a,'doc2-p-field','aging.bucket');assert.equal(el2(a,'e4').field,'aging.bucket');
+ // The band: moving an element to another band keeps its place in it; e9 into the document footer overlaps e8? it does not (x 0..120, y 2..8, e8 at x 102..188, y 3..11): refused.
+ cv.click2(a,'e9');chg(a,'doc2-p-band','document_footer');assert.match(doc2status(a),/^同一带内的文本框不能重叠。$/);assert.equal(find2(cv.tpl(a),'e9').band,'page_footer');assert.equal(a.$('doc2-p-band').value,'page_footer');
+ cv.click2(a,'e1');chg(a,'doc2-p-band','document_header');assert.match(doc2status(a),/./);assert.equal(find2(cv.tpl(a),'e1').band,'page_header','refused: no room in the document header');
+ // A line, a rectangle: their own keys.
+ cv.click2(a,'e3');assert.deepEqual(ids(),['band','x1','y1','x2','y2','stroke','delete']);assert.equal(a.$('doc2-p-title').textContent,'e3 · 页眉带 · 线');chg(a,'doc2-p-y2',13);chg(a,'doc2-p-stroke',1.25);assert.deepEqual(cv.rel(a,'e3'),[0,12,190,13]);assert.equal(el2(a,'e3').stroke,1.25);
+ chg(a,'doc2-p-stroke',0.3);assert.match(doc2status(a),/^e3：/);assert.equal(a.$('doc2-p-stroke').value,'1.25','a stroke is a multiple of a quarter point');
+ cv.click2(a,'e7');assert.deepEqual(ids(),['band','x','y','width','height','stroke','fill','delete']);assert.deepEqual([...a.$('doc2-p-fill').options].map(o=>o.value),['none','grey1','grey2','grey3','grey4']);assert.equal(a.$('doc2-p-fill').value,'grey2');chg(a,'doc2-p-fill','grey4');assert.equal(el2(a,'e7').fill,'grey4');assert.equal(a.$('doc-canvas-host').querySelector('.cv-shape[fill="rgb(190,190,190)"]')!==null,true);
+ chg(a,'doc2-p-stroke',0);chg(a,'doc2-p-fill','none');assert.match(doc2status(a),/^e7：/,'a rectangle with neither outline nor fill is not drawn at all: refused');
+ // The table's keys are in the table area; a selection of more than one shows no inputs.
+ cv.click2(a,'e6');assert.match(a.$('doc2-props').textContent,/明细表的位置、宽度、字号和各列在下方“明细表”区域编辑/);cv.click2(a,'e1',{shiftKey:true});assert.match(a.$('doc2-props').textContent,/已选择 2 项：属性一次编辑一个元素/);
+ // Delete from the panel.
+ cv.click2(a,'e8');clickId(a,'doc2-p-delete');assert.equal(find2(cv.tpl(a),'e8'),null);assert.deepEqual(cv.selected(a),[]);assert.match(a.$('doc2-props').textContent,/在画布上点击一个元素/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L2/L3: the table\'s columns are added, removed, reordered and given a header label and an alignment from the table\'s panel; the table\'s x, width and type size are inputs',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ const table=()=>cv.tpl(a).bands.detail.elements[0],cols=()=>table().columns.map(c=>[c.field,c.width,c.label??null,c.align??null]);
+ assert.deepEqual(cols(),[['aging.bucket',60,null,null],['customer.id',60,'Customer',null],['ar.open_balance',70,null,'right']]);
+ assert.deepEqual([...a.$('doc2-table').querySelectorAll('.cv2-row .cv2-name')].map(e=>e.textContent),['第 1 列','第 2 列','第 3 列']);
+ // A literal header label (empty: the dataset's label again) and an alignment (default: right for a metric, left otherwise).
+ chg(a,'doc2-col-label-0','账龄');assert.equal(table().columns[0].label,'账龄');assert.deepEqual([...cv.item(a,'e6').querySelectorAll('.cv-bold')].map(e=>e.textContent),['账龄','Customer','应收余额']);
+ chg(a,'doc2-col-label-0','');assert.equal('label' in table().columns[0],false);assert.equal(a.$('doc2-col-label-0').placeholder,'账龄区间');
+ chg(a,'doc2-col-align-0','center');assert.equal(table().columns[0].align,'center');chg(a,'doc2-col-align-0','');assert.equal('align' in table().columns[0],false);assert.deepEqual([...a.$('doc2-col-align-2').options].map(o=>o.textContent),['默认（右）','左对齐','居中','右对齐']);assert.deepEqual([...a.$('doc2-col-align-0').options].map(o=>o.textContent)[0],'默认（左）');
+ chg(a,'doc2-col-label-1','x'.repeat(65));assert.match(doc2status(a),/^明细表或元素总数无效/);assert.equal(a.$('doc2-col-label-1').value,'Customer');
+ // Width: the neighbour to the right makes up the difference (the last column: the one to its left); each column is at least 8 mm.
+ chg(a,'doc2-col-width-0',70);assert.deepEqual(cols().map(c=>c[1]),[70,50,70]);chg(a,'doc2-col-width-2',65.5);assert.deepEqual(cols().map(c=>c[1]),[70,54.5,65.5]);
+ chg(a,'doc2-col-width-0',200);assert.match(doc2status(a),/./);assert.deepEqual(cols().map(c=>c[1]),[70,54.5,65.5]);
+ // Order: up and down; a column that is already first or last cannot move.
+ clickId(a,'doc2-col-up-2');assert.deepEqual(cols().map(c=>c[0]),['aging.bucket','ar.open_balance','customer.id']);assert.deepEqual(cols().map(c=>c[1]),[70,65.5,54.5],'a column keeps its width');clickId(a,'doc2-col-down-0');assert.deepEqual(cols().map(c=>c[0]),['ar.open_balance','aging.bucket','customer.id']);
+ clickId(a,'doc2-col-up-0');assert.match(doc2status(a),/已是第一列/);clickId(a,'doc2-col-down-2');assert.match(doc2status(a),/已是最后一列/);assert.deepEqual(cols().map(c=>c[0]),['ar.open_balance','aging.bucket','customer.id']);
+ // The field of a column: any field of the result that no other column takes.
+ assert.deepEqual([...a.$('doc2-col-field-0').options].map(o=>o.value),['ar.open_balance'],'every field is a column already');
+ // Remove: the width goes to the left neighbour (the right one for the first); at least one column stays.
+ clickId(a,'doc2-col-remove-1');assert.deepEqual(cols().map(c=>[c[0],c[1]]),[['ar.open_balance',135.5],['customer.id',54.5]]);assert.equal(table().width,190);
+ assert.deepEqual([...a.$('doc2-col-field-0').options].map(o=>o.value).sort(),['aging.bucket','ar.open_balance']);
+ clickId(a,'doc2-col-remove-0');assert.deepEqual(cols().map(c=>[c[0],c[1]]),[['customer.id',190]]);clickId(a,'doc2-col-remove-0');assert.match(doc2status(a),/明细表至少保留一列/);
+ // Add: the new column takes half of the widest, next to it; the table keeps its width; no field left means no column.
+ a.$('doc2-col-field').value='aging.bucket';clickId(a,'doc2-col-add');assert.deepEqual(cols().map(c=>[c[0],c[1]]),[['customer.id',95],['aging.bucket',95]]);
+ a.$('doc2-col-field').value='ar.open_balance';clickId(a,'doc2-col-add');assert.deepEqual(cols().map(c=>[c[0],c[1]]),[['customer.id',47.5],['ar.open_balance',47.5],['aging.bucket',95]],'the widest of two equals: the first');
+ assert.equal(a.$('doc2-col-field').options.length,0);clickId(a,'doc2-col-add');assert.match(doc2status(a),/没有可添加的字段/);
+ // x, width and type size: the width scales the columns in proportion; a width too small for the columns is refused.
+ chg(a,'doc2-table-width',171);assert.equal(table().width,171);assert.equal(table().columns.reduce((s,c)=>s+tenths(c.width),0),1710);assert.deepEqual(cols().map(c=>c[1]),[42.8,42.8,85.4],'47.5, 47.5 and 95 scaled by 171/190, each rounded to 0.1 mm, the remainder on the last');
+ chg(a,'doc2-table-x',10);assert.equal(table().x,10);assert.equal(page2(cv.tpl(a),'e6')[0],20);chg(a,'doc2-table-x',30);assert.match(doc2status(a),/^明细表或元素总数无效/);assert.equal(a.$('doc2-table-x').value,'10');
+ chg(a,'doc2-table-font',12);assert.equal(table().font_size,12);chg(a,'doc2-table-font',20);assert.match(doc2status(a),/./);assert.equal(a.$('doc2-table-font').value,'12');
+ chg(a,'doc2-table-width',20);assert.match(doc2status(a),/./,'three columns of at least 8 mm: 24');assert.equal(table().width,171);
+ // The canvas shows it: three columns, two boundaries.
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-col]').length,2);assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-key="e6"] .cv-bold').length,3);
+ // A header label that is a number or markup is only text.
+ const hostile='<img src=x onerror=alert(1)>';chg(a,'doc2-col-label-0',hostile);assert.equal(table().columns[0].label,hostile);assert.equal(cv.item(a,'e6').querySelector('.cv-bold').textContent,hostile);assert.equal(a.$('doc-canvas-host').querySelectorAll('img').length,0);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+// ---- the 1.x to 2.0 conversion (L4) ----
+const notes=a=>[...a.$('doc-convert-notes').children].map(e=>e.textContent);
+// An invoice-like 1.3 template: a title and a customer above the table, a total and a signature line below it.
+const invoice1x=a=>cv.table(a,[['n1',10,30,100,10,'literal','应收对账单'],['n2',120,30,80,10,'row','customer.id'],['n3',10,45,60,8,'literal','客户：'],['n4',120,190,80,10,'total','ar.open_balance'],['n5',10,205,100,8,'literal','制单人：']],[['aging.bucket',60],['customer.id',60],['ar.open_balance',70]],{x:10,y:60,width:190,height:120,font_size:9});
+const text2=(id,source,text,field,x,y,width,height,font_size,align)=>({id,type:'text',source,text,field,wrap:false,x,y,width,height,font_size,align,bold:false});
+
+test('S03-L L4: "转换为 2.0" turns a 1.x template into the 2.0 form: boxes above the table become the document header, the table the detail band, boxes below it the document footer',async()=>{const a=await designer();try{
+ const one=invoice1x(a);one.elements[0].font_size=18;one.elements[1].align='right';one.elements[3].align='right';cv.load(a,one);
+ assert.equal(a.$('doc-convert').hidden,false);assert.match(a.$('doc-convert-status').textContent,/^当前是 1\.x 模板/);
+ a.click('doc-convert');assert.match(a.$('doc-status').textContent,/^已转换为 2\.0（未保存）：请先生成预览核对，再保存为新版本。$/);
+ const t=cv.tpl(a);
+ // The mapping, element by element: ids e1.. top to bottom (header, table, footer); x relative to the band (10 mm), y relative to the top of the safe region (25 mm) in the header and to the table region's bottom (180 mm) in the footer.
+ assert.deepEqual(t,{schema_version:'2.0',kind:'document',binding:one.binding,bands:{
+  document_header:{height:35,elements:[text2('e1','literal','应收对账单','',0,5,100,10,18,'left'),text2('e2','field','','customer.id',110,5,80,10,12,'right'),text2('e3','literal','客户：','',0,20,60,8,12,'left')]},
+  detail:{elements:[{id:'e4',type:'table',x:0,width:190,font_size:9,columns:[{field:'aging.bucket',width:60},{field:'customer.id',width:60},{field:'ar.open_balance',width:70}]}]},
+  document_footer:{height:33,elements:[text2('e5','group_sum','','ar.open_balance',110,10,80,10,12,'right'),text2('e6','literal','制单人：','',0,25,100,8,12,'left')]}}});
+ assert.equal(t.group,undefined,'no group: the whole snapshot is one document');
+ // The page: the header is as high as the space above the table (35 mm), so the table starts where it did (60 mm).
+ assert.equal(geom(t).detail.top,60);assert.equal(geom(t).document_header.height,35);
+ // The canvas shows 2.0 now, the panels follow, the template is an unsaved change that one undo takes back.
+ assert.equal(a.$('doc2-panel').hidden,false);assert.equal(a.$('doc-panel-elements').hidden,true);assert.equal(a.$('doc-convert').hidden,true);assert.deepEqual(cv.keys(a),['e1','e2','e3','e4','e5','e6']);
+ assert.equal(a.$('doc-undo').disabled,false);
+ // The notes: what changed meaning. The footer follows the table, row boxes need a group, totals are group sums, the table's height is not part of 2.0.
+ const n=notes(a);assert.equal(n.length,4);assert.match(n[0],/^表格下方的 2 个文本框已移到单据尾带：2\.0 把单据尾带放在明细表最后一行（含合计）之后，不再停在原来的页面位置/);assert.match(n[1],/^1 个行字段文本框已改为分组字段文本。.*请在“分组字段”中选择维度字段。$/);assert.match(n[2],/^1 个合计文本框已改为分组合计/);assert.match(n[3],/^明细表的“高”不属于 2\.0/);
+ assert.match(a.$('doc-convert-status').textContent,/^本模板由 1\.x 转换而来，尚未保存/);
+ a.click('doc-undo');assert.equal(cv.tpl(a).schema_version,'1.3');assert.deepEqual(cv.tpl(a),one,'the 1.x template is exactly as it was');assert.equal(a.$('doc2-panel').hidden,true);assert.equal(a.$('doc-convert').hidden,false);assert.deepEqual(notes(a),[]);
+ a.click('doc-redo');assert.equal(cv.tpl(a).schema_version,'2.0');assert.equal(notes(a).length,4,'redo brings the notes back');
+ // Opening something else forgets them.
+ cv.load(a,banded());assert.deepEqual(notes(a),[]);assert.match(a.$('doc-convert-status').textContent,/^当前是 2\.0 分带模板。$/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L4: a template that is not 1.x cannot be converted; a box that overlaps the table\'s vertical extent refuses the conversion by name and changes nothing',async()=>{const a=await designer();try{
+ // n3 sits beside the narrow table (1.x allows it) in its vertical extent: refused, with its name and the extents.
+ const beside=cv.table(a,[['n1',10,30,100,10],['n3',120,70,60,10]],[['aging.bucket',60],['customer.id',40]],{x:10,y:60,width:100,height:100,font_size:9});cv.load(a,beside);
+ a.click('doc-convert');assert.match(a.$('doc-status').textContent,/^文本框 n3 与明细表的纵向范围重叠（y 70–80 毫米，表 60–160 毫米），无法转换为 2\.0：请先把它移到表的上方或下方。$/);
+ assert.deepEqual(cv.tpl(a),beside);assert.equal(a.$('doc-undo').disabled,true);assert.deepEqual(notes(a),[]);
+ // Move it above the table's top: the conversion goes through; the box is in the document header.
+ const ok=structuredClone(beside);ok.elements[1].y=40;cv.load(a,ok);a.click('doc-convert');assert.equal(cv.tpl(a).schema_version,'2.0');assert.deepEqual(cv.tpl(a).bands.document_header.elements.map(e=>e.id),['e1','e2']);
+ // A box that touches the table's top edge exactly is above it; one that touches its bottom edge is below.
+ const edge=cv.table(a,[['n1',10,50,100,10],['n2',10,160,100,10]],[['aging.bucket',100],['customer.id',90]],{x:10,y:60,width:190,height:100,font_size:9});cv.load(a,edge);a.click('doc-convert');
+ assert.deepEqual([cv.tpl(a).bands.document_header.elements.map(e=>e.id),cv.tpl(a).bands.document_footer.elements.map(e=>e.id)],[['e1'],['e3']]);assert.deepEqual(cv.rel(a,'e3'),[0,0,100,10]);assert.equal(cv.tpl(a).bands.document_footer.height,10);
+ // 2.0 is not converted again.
+ assert.equal(a.$('doc-convert').hidden,true);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L4: a template with a print offset, the variables mode or a background converts with a warning that these are not part of 2.0 and are dropped; a template without a table gets a default one',async()=>{const a=await designer();try{
+ const bg={id:'a'.repeat(32),sha256:'b'.repeat(64)};
+ const full=cv.table(a,[['n1',10,30,100,10,'literal','Title'],['n2',120,30,70,10,'row','customer.id']],[['aging.bucket',60],['customer.id',60],['ar.open_balance',60]],{x:10,y:60,width:180,height:100,font_size:9});
+ full.schema_version='1.3';full.print={mode:'variables',offset_x:1.5,offset_y:-2};full.background=bg;cv.load(a,full);a.click('doc-convert');assert.match(a.$('doc-status').textContent,/有被丢弃的设置/);
+ let n=notes(a);assert.ok(n.some(x=>/^警告：变量层模式不属于 2\.0，已丢弃；2\.0 打印全部文本（含固定文字）。$/.test(x)),n.join('|'));assert.ok(n.some(x=>/^警告：整体偏移 1\.5 \/ -2 毫米不属于 2\.0，已丢弃；文本位置按偏移前的位置转换。$/.test(x)));assert.ok(n.some(x=>/^警告：底稿引用不属于 2\.0，已丢弃；2\.0 预览不叠加底稿。$/.test(x)));
+ let t=cv.tpl(a);assert.equal('print' in t,false);assert.equal('background' in t,false);assert.deepEqual(t.bands.document_header.elements.map(e=>[e.x,e.y]),[[0,5],[110,5]],'positions as before the offset');
+ // An offset of zero in full mode is nothing to warn about.
+ const quiet=cv.table(a,[['n1',10,30,100,10]],[['aging.bucket',100]],{x:10,y:60,width:100,height:100,font_size:9});cv.load(a,quiet);a.click('doc-convert');assert.equal(notes(a).some(x=>x.startsWith('警告')),false);
+ // 1.2 (a background, no table) has no table either: a default table of the first columns takes the detail band.
+ const paper={schema_version:'1.2',kind:'document',binding:cv.tpl(a).binding,elements:[{id:'n1',source:'literal',field:'',text:'Title',x:10,y:30,width:100,height:10,font_size:12,align:'left'},{id:'n2',source:'row',field:'customer.id',text:'',x:120,y:60.5,width:80,height:8,font_size:10,align:'right'}],print:{mode:'full',offset_x:0,offset_y:0},background:bg};
+ cv.load(a,paper);a.click('doc-convert');const lastStatus=a.$('doc-status').textContent;t=cv.tpl(a);
+ assert.deepEqual(t.bands.document_header,{height:43.5,elements:[text2('e1','literal','Title','',0,5,100,10,12,'left'),text2('e2','field','','customer.id',110,35.5,80,8,10,'right')]},'the header reaches the lowest box');
+ assert.deepEqual(t.bands.detail.elements[0],{id:'e3',type:'table',x:0,width:190,font_size:10,columns:[{field:'customer.id',width:63.3},{field:'aging.bucket',width:63.3},{field:'ar.open_balance',width:63.4}]});assert.equal(t.bands.document_footer,undefined);
+ n=notes(a);assert.match(n[0],/^1\.x 模板没有明细表，而 2\.0 的明细带必须有一个明细表：已加入默认明细表（结果的前 3 个字段，10 点，全宽），请按需要调整列。$/);assert.ok(n.some(x=>/^警告：底稿引用/.test(x)));assert.equal(lastStatus.includes('丢弃'),true);
+ // No room for the default table below the lowest box: refused, naming what is missing.
+ const low=structuredClone(paper);low.elements[1].y=262;low.elements[1].height=8;cv.load(a,low);a.click('doc-convert');assert.match(a.$('doc-status').textContent,/^这个 1\.x 模板没有明细表，而 2\.0 必须有明细带：文本框最低处（y 270 毫米）没有给默认明细表留下至少 \d+(\.\d+)? 毫米的空间/);assert.equal(cv.tpl(a).schema_version,'1.2');
+ // Only boxes below the table: there is no header; the table moves to the top of the safe region, which the notes say. A table too low for 2.0's minimum is refused by the validator.
+ const under=cv.table(a,[['n1',10,200,100,10]],[['aging.bucket',100],['customer.id',90]],{x:10,y:100,width:190,height:100,font_size:9});cv.load(a,under);a.click('doc-convert');t=cv.tpl(a);
+ assert.equal('document_header' in t.bands,false);assert.deepEqual(Object.keys(t.bands),['detail','document_footer']);assert.deepEqual(cv.rel(a,'e2'),[0,0,100,10]);assert.match(notes(a)[0],/^明细表原在第一页 y 100 毫米；2\.0 的明细表紧接在上方各带之后，现在位于安全区顶部（y 25 毫米）/);
+ const lowTable=cv.table(a,[['n1',10,30,100,10]],[['aging.bucket',100],['customer.id',90]],{x:10,y:240,width:190,height:30,font_size:12});lowTable.elements[0].y=30;cv.load(a,lowTable);a.click('doc-convert');assert.match(a.$('doc-status').textContent,/页眉、单据头与页脚的高度加上明细表的最小高度超出安全区/);assert.equal(cv.tpl(a).schema_version,'1.3');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+// The text a PDF draws, as the page program emits it: one `q 1 0 0 -1 X Y cm ... BT ... /fN SIZE Tf` per glyph, X and Y in points (Y from the page's bottom edge).
+// Glyph numbers differ between files with different text, positions do not: the positions are what the layout decides.
+function pdfGlyphs(bytes){
+  const pages=[];let pos=0;
+  for(;;){const i=bytes.indexOf('stream\n',pos,'latin1');if(i<0)break;const start=i+7,end=bytes.indexOf('endstream',start,'latin1');if(end<0)break;pos=end+9;
+   let text;try{text=inflateSync(bytes.subarray(start,end)).toString('latin1');}catch{continue;}
+   if(!/ Tf/.test(text))continue;const page=[],re=/q 1 0 0 -1 ([\d.]+) ([\d.]+) cm[^\n]*\nBT[^\n]*?\/f\d+ ([\d.]+) Tf/g;let m;
+   while((m=re.exec(text)))page.push([Number(m[1]),Number(m[2]),Number(m[3])]);pages.push(page);}
+  return pages;
+}
+const A4_POINTS=841.8898,pt=mm=>mm*72/25.4;
+const aboveMm=(page,mm)=>page.filter(g=>g[1]>A4_POINTS-pt(mm)).map(g=>g.join(' ')).sort();
+
+test('S03-L L4: the converted template previews through the real server and pinned Typst renderer, and every box converted into the document header is at the page position the 1.x preview gave it',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');a.w.document.querySelector('[data-page="documents"]').click();
+ const one=invoice1x(a);one.elements[0].font_size=18;one.elements[1].align='right';cv.load(a,one);a.input('doc-row','3');
+ a.click('doc-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'the 1.x preview',20000);const pdf1=pdfGlyphs(Buffer.from(await a.downloads[0].blob.arrayBuffer()))[0];
+ // The 2.0 preview of the converted template without a group: the customer differs between the rows, so the row field is refused, with its place, which the canvas outlines.
+ a.click('doc-convert');a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('模板无法排版')&&!a.$('preview').disabled,'inconsistent group',20000);
+ assert.match(a.$('notice').textContent,/位置：同一分组内该字段的取值不一致 · 单据头带 · 元素 e2 · 快照第 \d+ 行 · 列 .*（customer\.id）。/);
+ assert.deepEqual([...a.$('doc-canvas-host').querySelectorAll('.cv-refused')].map(e=>e.getAttribute('data-key')),['e2'],'the row field text is outlined');assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-refused-band').length,1,'and its band');assert.equal(a.$('doc-canvas-host').querySelector('.cv-refused-band').getAttribute('data-band-box'),'document_header');
+ assert.match(a.$('doc-canvas-status').textContent,/已描出轮廓：单据头带，e2/);
+ // Grouped by customer, the row's group is its customer: the same preview row 3.
+ chg(a,'doc2-group-0','customer.id');assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-refused').length,0,'an edit takes the outline away');
+ a.click('doc-pdf');await until(()=>a.downloads.length===2&&!a.$('preview').disabled,'the 2.0 preview',20000);const pdf2=pdfGlyphs(Buffer.from(await a.downloads[1].blob.arrayBuffer()))[0];
+ // Everything above the table's top edge (60 mm): the banner, the title (18 pt), the customer and the label (12 pt) are drawn at the same points in both files.
+ const head1=aboveMm(pdf1,60),head2=aboveMm(pdf2,60);assert.ok(head1.length>=19,'the banner and the three boxes: '+head1.length);assert.deepEqual(head2,head1,'the boxes of the document header are where the 1.x preview put them');
+ // The footer boxes (12 pt, below the table) are where 1.x drew them, 205 mm from the top, in the 1.x file, and directly under the table's last row in the 2.0 file: higher on the page.
+ const foot=page=>page.filter(g=>g[2]===12&&g[1]<A4_POINTS-pt(60)).map(g=>g[1]),f1=foot(pdf1),f2=foot(pdf2),rows2=pdf2.filter(g=>g[2]===9).map(g=>g[1]);
+ assert.ok(Math.abs(Math.min(...f1)-(A4_POINTS-pt(205)-1.16*12))<0.01,'the 1.x label is 205 mm down');assert.ok(Math.min(...f2)>Math.max(...f1)+100,'the 2.0 footer follows the table');assert.ok(Math.max(...f2)<Math.min(...rows2),'and is under the last row');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L4: a converted template is saved only when the user saves it, as the next version of the template; the earlier 1.x version stays as it was',async()=>{const a=app(offeringIssuance({bodies:[]}));try{
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');a.w.document.querySelector('[data-page="documents"]').click();
+ const one=invoice1x(a);cv.load(a,one);a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'saved 1.x');
+ const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+ a.click('doc-convert');assert.equal(a.$('doc-server-status').textContent.includes('版本 1'),true,'converting saves nothing');
+ // Unsaved: publishing or previewing the saved version is refused until it is saved.
+ a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&!a.$('preview').disabled,'release');a.click('doc-release-publish');assert.match(a.$('doc-status').textContent,/请先保存当前修改，再发布或按保存版本预览/);
+ a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'saved 2.0');
+ // The server kept the 2.0 form as version 2 of the same template; version 1 is still the 1.x template.
+ a.click('doc-server-list');await until(()=>[...a.$('doc-server-listing').options].some(o=>o.value===id)&&!a.$('preview').disabled,'list');a.$('doc-server-listing').value=id;a.$('doc-server-version').value='1';a.click('doc-server-open');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&a.$('doc-server-status').textContent.includes('正在编辑')&&!a.$('preview').disabled,'open v1');
+ assert.deepEqual(cv.tpl(a),one);a.$('doc-server-version').value='2';a.click('doc-server-open');await until(()=>a.$('doc-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'open v2');assert.equal(cv.tpl(a).schema_version,'2.0');assert.equal(cv.tpl(a).bands.document_header.height,35);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L5: a refusal names a band, an element or a column of a 2.0 template, and the canvas outlines it as for 1.x',async()=>{
+ let answerWith={reason:'DOES_NOT_FIT',band:'document_header',element:'e5',row:1};
+ const columnDetail={reason:'DOES_NOT_FIT',band:'detail',element:'e6',column:'ar.open_balance',row:2},bandDetail={reason:'BAND_OVERFLOW',band:'document_footer'};
+ const check=offeringChecks({rows:[{row_index:0,ok:true,reasons:['first']},{row_index:1,ok:false,code:'UNSUPPORTED_COMBINATION',detail:bandDetail,reasons:['last']},{row_index:2,ok:false,code:'UNSUPPORTED_COMBINATION',detail:columnDetail,reasons:['cell:ar.open_balance']}]});
+ const a=app(async(path,options)=>{if(path.endsWith('/document-previews'))return new Response(JSON.stringify({error:'UNSUPPORTED_COMBINATION',detail:answerWith}),{status:422,headers:{'Content-Type':'application/json'}});return check(path,options);});try{
+ await checkReady(a);cv.load(a,banded());
+ const host=a.$('doc-canvas-host'),outlined=()=>[...host.querySelectorAll('.cv-refused')].map(e=>e.getAttribute('data-key')),bands=()=>[...host.querySelectorAll('.cv-refused-band')].map(e=>e.getAttribute('data-band-box')),columns=()=>[...host.querySelectorAll('.cv-refused-col')].map(e=>e.getAttribute('data-refused'));
+ assert.deepEqual([outlined(),bands(),columns()],[[],[],[]]);
+ // A text that does not fit: its band and its box are outlined, the notice names both, the box says so to a screen reader.
+ a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('模板无法排版')&&!a.$('preview').disabled,'refusal');
+ assert.match(a.$('notice').textContent,/位置：放不下：值比所在的框、列或页更宽或更高 · 单据头带 · 元素 e5 · 快照第 2 行。/);assert.deepEqual([outlined(),bands(),columns()],[['e5'],['document_header'],[]]);
+ assert.match(cv.item(a,'e5').getAttribute('aria-label'),/预览或检查指出此处/);assert.equal(cv.item(a,'e4').getAttribute('aria-label').includes('预览或检查'),false);assert.match(a.$('doc-canvas-status').textContent,/已描出轮廓：单据头带，e5/);
+ // The outline is the canvas's, not the template's: an edit takes it away, and nothing was written.
+ assert.equal(JSON.stringify(cv.tpl(a)),JSON.stringify(banded()));cv.click2(a,'e4');cv.key(a,cv.item(a,'e4'),'ArrowDown');assert.deepEqual([outlined(),bands(),columns()],[[],[],[]]);
+ // A band that is too full (the document footer does not fit a page): only the band.
+ answerWith=bandDetail;a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('带放不下')&&!a.$('preview').disabled,'band refusal');
+ assert.match(a.$('notice').textContent,/位置：带放不下：超出页面留给它的高度 · 单据尾带。/);assert.deepEqual([outlined(),bands(),columns()],[[],['document_footer'],[]]);
+ // A column of the table: the column over the detail band, whatever the pointer does.
+ answerWith=columnDetail;a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('（ar.open_balance）')&&!a.$('preview').disabled,'column refusal');
+ assert.deepEqual([outlined(),bands(),columns()],[['e6'],['detail'],['ar.open_balance']]);
+ const rect=host.querySelector('.cv-refused-col'),g=geometry2(a).detail;assert.deepEqual(attrs(rect,'x','y','width','height'),[X2(a,130),X2(a,g.top),70*SC(a),g.height*SC(a)],'the third column, over the whole detail band');
+ // A detail the console cannot verify is not shown.
+ for(const bad of [{reason:'DOES_NOT_FIT',band:'middle'},{reason:'DOES_NOT_FIT',element:'n9x'},{reason:'BAND_OVERFLOW',extra:1}]){answerWith=bad;cv.load(a,banded());a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('模板无法排版')&&!a.$('preview').disabled,'unverified');assert.equal(a.$('notice').textContent.includes('位置：'),false);assert.deepEqual([outlined(),bands(),columns()],[[],[],[]]);}
+ // The check shows each refused row's place and one click outlines it, on the canvas of a 2.0 template.
+ cv.load(a,banded());a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===3&&!a.$('preview').disabled,'checked');
+ const rows=checkRows(a);assert.match(rows[1][1],/不通过 · UNSUPPORTED_COMBINATION（.*） · 带放不下.* · 单据尾带$/);assert.match(rows[2][1],/放不下.* · 明细带 · 元素 e6 · 快照第 3 行 · 列 .*（ar\.open_balance）$/);
+ const locate=r=>a.$('doc-check-body').rows[r].cells[3].querySelectorAll('button');assert.equal(locate(0).length,1);assert.equal(locate(1).length,2,'a band is a place');assert.equal(locate(2).length,2);
+ locate(1)[1].click();assert.deepEqual([outlined(),bands(),columns()],[[],['document_footer'],[]]);locate(2)[1].click();assert.deepEqual([outlined(),bands(),columns()],[['e6'],['detail'],['ar.open_balance']]);assert.match(a.$('doc-check-status').textContent,/第 3 行：放不下/);
+ // A new check takes the outline away with the old result.
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===3&&!a.$('preview').disabled,'checked again');cv.click2(a,'e4');cv.key(a,cv.item(a,'e4'),'ArrowDown');assert.deepEqual([outlined(),bands(),columns()],[[],[],[]]);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L: the palette lists the 2.0 actions for a 2.0 template and the conversion for a 1.x one, each only while its button is present, visible and enabled, and runs the button',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));cv.click(a,'n1');const item=cv.item(a,'n1');item.focus();cv.key(a,item,'k',{ctrlKey:true});
+ let listed=options(a);assert.ok(listed.includes('转换为 2.0 分带模板'));for(const label of ['在所选带加线','添加明细表列'])assert.ok(!listed.includes(label),label+' belongs to 2.0');
+ typeInto(a,'转换');assert.deepEqual(options(a),['转换为 2.0 分带模板']);press(a,'Enter');assert.equal(cv.tpl(a).schema_version,'2.0');assert.equal(a.w.document.querySelector('.cv-palette').parentElement.hidden,true);
+ // The 2.0 template: the add commands of the band chosen in the panel, the table's column command, undo (there is history now); no 1.x commands, no conversion.
+ const first=cv.keys(a)[0];cv.click2(a,first);cv.key(a,cv.item(a,first),'k',{ctrlKey:true});listed=options(a);
+ for(const label of ['在所选带加固定文字','在所选带加字段文本','在所选带加分组合计','在所选带加页码文字','在所选带加线','在所选带加矩形','添加明细表列','撤销','删除所选项目'])assert.ok(listed.includes(label),label+' is listed: '+listed);
+ for(const label of ['添加固定文字','添加行字段','添加原范围合计','添加或替换明细表','移除明细表','转换为 2.0 分带模板'])assert.ok(!listed.includes(label),label+' is a 1.x command or done');
+ typeInto(a,'在所选带');assert.deepEqual(options(a),['在所选带加固定文字','在所选带加字段文本','在所选带加分组合计','在所选带加页码文字','在所选带加线','在所选带加矩形']);
+ typeInto(a,'ADD line');assert.deepEqual(options(a),['在所选带加线']);
+ // It runs the button: a line in the band the panel has chosen.
+ const before=Object.values(cv.tpl(a).bands).flatMap(b=>b.elements).length;a.$('doc2-add-band').value='document_header';press(a,'Enter');assert.equal(Object.values(cv.tpl(a).bands).flatMap(b=>b.elements).length,before+1);assert.equal(cv.tpl(a).bands.document_header.elements.at(-1).type,'line');
+ // Hidden or disabled: the panel's buttons leave the list at once.
+ a.$('doc2-add-rect').disabled=true;a.$('doc2-add-sum').hidden=true;cv.key(a,cv.item(a,first),'k',{ctrlKey:true});listed=options(a);assert.ok(!listed.includes('在所选带加矩形'));assert.ok(!listed.includes('在所选带加分组合计'));assert.ok(listed.includes('在所选带加线'));press(a,'Escape');
+ a.$('doc2-panel').hidden=true;cv.key(a,cv.item(a,first),'k',{ctrlKey:true});assert.ok(!options(a).includes('在所选带加线'),'inside a hidden panel');press(a,'Escape');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L: every way of changing a 2.0 template is one undo step, and undo and redo walk back and forth through canvas, panels and conversion',async()=>{const a=await designer();try{
+ cv.load(a,banded());const start=cv.tpl(a);let n=0;const step=fn=>{fn();n++;};
+ step(()=>cv.drag2(a,'e4',7.4,3.2));step(()=>cv.dragBand(a,'page_header',2.2));step(()=>{cv.click2(a,'e4');cv.key(a,cv.item(a,'e4'),'ArrowLeft');});
+ step(()=>{a.$('doc2-add-band').value='document_header';clickId(a,'doc2-add-line');});step(()=>chg(a,'doc2-band-height-page_footer',12));step(()=>chg(a,'doc2-group-1','aging.bucket'));step(()=>chg(a,'doc2-col-label-2','余额'));step(()=>clickId(a,'doc2-band-remove-document_footer'));
+ step(()=>{cv.click2(a,'e4');cv.click2(a,'e5',{shiftKey:true});a.click('doc-align-top');});
+ const refusedBefore=cv.tpl(a);cv.click2(a,'e4');chg(a,'doc2-p-x',9999);assert.deepEqual(cv.tpl(a),refusedBefore,'a refused change is no step');
+ assert.equal(undoAll(a),n);assert.deepEqual(cv.tpl(a),start);
+ for(let k=0;k<n;k++)a.click('doc-redo');assert.deepEqual(cv.tpl(a),refusedBefore);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L: what the 2.0 canvas and panels draw is DOM nodes and CSSOM only: no style attribute, no inline handler, hostile text stays text',async()=>{const a=await designer();try{
+ const hostile='<img src=x onerror=alert(1)>',t=banded();t.bands.page_header.elements[0].text=hostile;t.bands.document_footer.elements[1].field='ar.open_balance';cv.load(a,t);
+ cv.click2(a,'e4');cv.drag2(a,'e4',5,2);cv.dragBand(a,'page_header',1.6);cv.click2(a,'e3');cv.drag2(a,'e3',0,-1);cv.click2(a,'e6');cv.key(a,cv.item(a,'e6'),'k',{ctrlKey:true});typeInto(a,'线');press(a,'Escape');
+ for(const root of [a.$('doc-canvas-panel'),a.$('doc2-panel'),a.$('doc-convert-panel'),palette(a)].filter(Boolean)){assert.equal(root.querySelectorAll('[style]').length,0,'no style attribute in '+(root.id||root.className));for(const e of root.querySelectorAll('*'))assert.equal([...e.attributes].some(x=>/^on/i.test(x.name)),false,'no inline handler');}
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('img,script').length,0);assert.equal(cv.item(a,'e1').querySelector('text').textContent,hostile);assert.ok(cv.item(a,'e1').getAttribute('aria-label').includes(hostile));
+ assert.equal(a.$('doc2-panel').querySelectorAll('img,script').length,0);cv.click2(a,'e1');assert.equal(a.$('doc2-p-text').value,hostile,'a text shown in an input is a value, not markup');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-L L3: a panel is updated in place when its controls stay, so the focus and a click are not lost, and replaced when the element is another, so no handler acts on the wrong one',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ cv.click2(a,'e4');const x=a.$('doc2-p-x');x.focus();assert.equal(a.w.document.activeElement,x);
+ chg(a,'doc2-p-x',3);assert.equal(el2(a,'e4').x,3);assert.equal(a.$('doc2-p-x'),x,'the same input, updated');assert.equal(a.w.document.activeElement,x,'and it keeps the focus');
+ // Moved on the canvas, the input is updated in place too.
+ cv.drag2(a,'e4',2,0);assert.equal(a.$('doc2-p-x'),x);assert.equal(x.value,String(el2(a,'e4').x));
+ // Another element: another panel, whose controls act on that element only.
+ cv.click2(a,'e5');assert.notEqual(a.$('doc2-p-x'),x);assert.equal(a.$('doc2-p-title').textContent,'e5 · 单据头带 · 文本（字段）');const before=el2(a,'e4').x;chg(a,'doc2-p-x',99);assert.equal(el2(a,'e5').x,99);assert.equal(el2(a,'e4').x,before,'e4 is untouched');
+ // The same type of element, selected after another: its own values, its own handlers.
+ cv.click2(a,'e8');assert.equal(a.$('doc2-p-x').value,String(el2(a,'e8').x));chg(a,'doc2-p-x',101);assert.equal(el2(a,'e8').x,101);assert.equal(el2(a,'e5').x,99);
+ // The table's columns: a width typed is updated in place; a reordered column has other options in its field select, so its row is replaced, and its handlers still go by position.
+ const width=a.$('doc2-col-width-1');chg(a,'doc2-col-width-1',33);assert.equal(a.$('doc2-col-width-1'),width);assert.equal(cv.tpl(a).bands.detail.elements[0].columns[1].width,33);clickId(a,'doc2-col-up-2');chg(a,'doc2-col-width-2',30);assert.deepEqual(cv.tpl(a).bands.detail.elements[0].columns.map(c=>c.field),['aging.bucket','ar.open_balance','customer.id']);assert.equal(cv.tpl(a).bands.detail.elements[0].columns[2].width,30);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
