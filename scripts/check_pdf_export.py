@@ -57,6 +57,19 @@ checked as the preview of the same 2.0 document, except that the strip of every 
 colour at 8 pt in place of the banner, the PDF is the one the record names by digest and with its page count, and every date
 the file carries is the record's issue time, exactly as for a 1.x issue (above).
 
+A "document2" expectation may also hold schema 2.1 elements (S03-M, ADR 0005): `barcode` (Code 128), `qrcode` and `image`, and texts, barcodes
+and QR codes whose source is `issue_number`. The checker derives the geometry itself and decodes every code with zxing-cpp, which shares nothing
+with the encoder. A barcode: its bars are black rectangles of one height (the box's less the line of the value, when it prints one), the bars and
+spaces whole numbers of one module, the symbol 13 + 11k modules, the box's width the symbol and ten modules of quiet zone on each side divided into
+modules of at least 0.25 mm, the bars at least the larger of 5 mm and 15 % of the symbol's width high, the line of the value checked like a text, and
+the decoder reads exactly the expected value as Code 128 where the bars are. A QR code: rectangles one module high on one grid, the symbol the box
+less four modules of quiet zone on each side, a module of at least 0.4 mm, the version the least that holds the value at the level (the standard's
+capacities), the finder and timing patterns, and the decoder reads the value and the error correction level. An image: a picture of the expected
+pixels drawn contained in the element's box, centred, aspect ratio kept; no other picture and no raster in place of a code. An element that shows the
+issue number must hold the record's number in an issued document and PREVIEW-NUMBER in a preview, so that the drawing is not compared with a wrong
+expectation. The negative controls change the value, move a code, widen or raise its box, draw it with a module below the least, cover a module or a
+finder pattern, replace it by a picture, and move or remove an image.
+
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
@@ -64,7 +77,7 @@ the expectations and the PDFs in several ways and fails unless each corruption i
 a copy without XMP metadata, which must fail.
 
 Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | --write-golden FILE]
-       [--font FILE] [--verapdf IMAGE]   (needs PyMuPDF: scripts/requirements-pdfcheck.txt)
+       [--font FILE] [--verapdf IMAGE]   (needs PyMuPDF and zxing-cpp: scripts/requirements-pdfcheck.txt)
 """
 import argparse
 import copy
@@ -82,6 +95,7 @@ import unicodedata
 import xml.etree.ElementTree as ET
 
 import pymupdf
+import zxingcpp
 
 TITLE, META, TABLE, FOOT = 13.0, 7.5, 8.0, 6.5
 BOTTOM_MARGIN = 18 / 25.4 * 72
@@ -666,9 +680,10 @@ def check_page(directory, page, number, exp, metrics, region):
             if region.x0 - 1 <= (c["x0"] + c["x1"]) / 2 <= region.x1 + 1 and region.y0 - 1 <= c["base"] <= region.y1 + 1:
                 used.add(c["n"])
     images = page.get_images(full=True)
-    if len(images) != int(exp["background"]):
-        problems.append(f"{len(images)} images, expected {int(exp['background'])}")
-    for img in images:
+    # The pictures of a 2.1 document's image elements are checked with their elements (check_coded).
+    if len(images) != int(exp["background"]) + exp.get("element_images", 0):
+        problems.append(f"{len(images)} images, expected {int(exp['background']) + exp.get('element_images', 0)}")
+    for img in images if exp["background"] else []:
         w, h = img[2], img[3]
         scale = min(210 * MM / w, 297 * MM / h)
         x0, y0 = (210 * MM - w * scale) / 2, (297 * MM - h * scale) / 2
@@ -1068,6 +1083,8 @@ def issue_expectation_corruptions(exp, changed):
         wide_digits = lambda text: "".join(chr(ord(c) + 0xFEE0) if "0" <= c <= "9" else c for c in text)
         same_instant = (utc_second(issued_at) + datetime.timedelta(hours=8)).strftime("%Y-%m-%dT%H:%M:%S+08:00")
         for what, number_to in (("starts with a dash", "-" + number[1:]), ("starts with a dot", "." + number[1:]), ("has 33 characters", "A" * 33), ("is in full-width characters", wide(number)), ("has full-width digits", wide_digits(number))):
+            if number_to == number:
+                continue  # a number without digits (a 2.1 document may carry one of letters) has no full-width digits to put in
             yield changed(f"the record's number {what}", restamped(number=number_to), expected="is not a product number")
         for what, id_to in (("is not hexadecimal", issue_id[:-1] + "g"), ("is in upper case", "ABCDEF" + "0" * 26), ("is in full-width digits", wide("7" * 32))):
             yield changed(f"the record's id {what}", restamped(issue_id=id_to), expected="has no id")
@@ -1623,6 +1640,215 @@ def claim_drawings(page, claims, drawings):
     return problems, left
 
 
+# ---- schema 2.1 (S03-M, ADR 0005): barcodes, QR codes and images. The checker derives the modules, the quiet zones and the positions
+# from the template's numbers and the drawn rectangles itself, and decodes every code with zxing-cpp, which shares nothing with the
+# encoder (github.com/boombuler/barcode behind export/barcode) or with the layout. ----
+CODED_TYPES = ("barcode", "qrcode", "image")
+CODE_QUIET, QR_QUIET = 10, 4  # modules of quiet zone, inside the element's box
+CODE_MIN_MODULE, QR_MIN_MODULE = 0.25, 0.4  # millimetres
+CODE_BAR_MM, CODE_BAR_RATIO = 5.0, 0.15
+HUMAN_GAP = 1.0  # points between the bars and the line of the value
+DESCENT = 0.3  # below the last baseline, in font sizes
+GRID_TOLERANCE = 0.05  # points: the precision of the numbers a PDF carries
+# The data codewords of QR versions 1 to 17 at L, M, Q and H (the standard's table); a symbol of 256 bytes is at most version 17.
+QR_DATA_CODEWORDS = [(19, 16, 13, 9), (34, 28, 22, 16), (55, 44, 34, 26), (80, 64, 48, 36), (108, 86, 62, 46), (136, 108, 76, 60), (156, 124, 88, 66),
+                     (194, 154, 110, 86), (232, 182, 132, 100), (274, 216, 154, 122), (324, 254, 180, 140), (370, 290, 206, 158), (428, 334, 244, 180),
+                     (461, 365, 261, 197), (523, 415, 295, 223), (589, 453, 325, 253), (647, 507, 367, 283)]
+
+
+def qr_version(nbytes, ecc):
+    """The least version that holds nbytes in byte mode at the level, from the standard's table; None beyond version 17."""
+    level = "LMQH".index(ecc)
+    for version, words in enumerate(QR_DATA_CODEWORDS, 1):
+        if words[level] - (2 if version < 10 else 3) >= nbytes:
+            return version
+    return None
+
+
+def black_rect(d):
+    """The rectangle of a drawing that is one rectangle filled black and not outlined, else None."""
+    if len(d["items"]) != 1 or d["items"][0][0] != "re" or d["fill"] is None or d["color"] is not None or max(d["fill"][:3]) > 0.02:
+        return None
+    return d["items"][0][1]
+
+
+def take_bars(drawings, box):
+    """Splits the drawings into the black rectangles inside box (widened by 0.3 pt) and the others."""
+    inside = pymupdf.Rect(box.x0 - 0.3, box.y0 - 0.3, box.x1 + 0.3, box.y1 + 0.3)
+    bars, rest = [], []
+    for d in drawings:
+        r = black_rect(d)
+        if r is not None and inside.contains(r):
+            bars.append(r)
+        else:
+            rest.append(d)
+    return bars, rest
+
+
+def decode_in(page, box, formats, module):
+    """Decodes the codes inside box (a pymupdf.Rect) from the page rendered with the module of the symbol (points) at 6, 8, 4 and 10
+    pixels, whichever the decoder reads first (its binarizer works on blocks of a few pixels), with white around. Returns the zxing
+    results with their positions converted to page points; none when no rendering decodes."""
+    pad = 24
+    for pixels in (6, 8, 4, 10):
+        scale = pixels / module
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), clip=pymupdf.Rect(box), colorspace=pymupdf.csGRAY, alpha=False)
+        width, height = pix.width, pix.height
+        samples = pix.samples
+        padded = bytearray(b"\xff" * ((width + 2 * pad) * (height + 2 * pad)))
+        for y in range(height):
+            start = (y + pad) * (width + 2 * pad) + pad
+            padded[start:start + width] = samples[y * pix.stride:y * pix.stride + width]
+        padded = bytes(padded)  # kept alive for as long as the view is read
+        view = zxingcpp.ImageView(memoryview(padded), width + 2 * pad, height + 2 * pad, zxingcpp.ImageFormat.Lum, width + 2 * pad, 1)
+        out = []
+        for b in zxingcpp.read_barcodes(view, formats=formats, try_rotate=False, try_invert=False):
+            corners = [b.position.top_left, b.position.top_right, b.position.bottom_right, b.position.bottom_left]
+            out.append((b, [(box.x0 + (c.x - pad) / scale, box.y0 + (c.y - pad) / scale) for c in corners]))
+        if out:
+            return out
+    return []
+
+
+def check_code128(page, el, top, bars, chars, used, metrics, number, pages):
+    """Checks one barcode: its bars (black rectangles from one end to the other of the symbol, each as high as the box less the line of
+    the value, on one module grid of the box's width over the symbol and ten modules of quiet zone on each side, a module of at least
+    0.25 mm, bars at least the larger of 5 mm and 15 % of the symbol's width high), the line of the value under them when it prints it,
+    and what a decoder reads from the page, which must be the value, as Code 128, where the symbol is."""
+    name = f"barcode {el['id']}"
+    left, box_top = (BAND_X + el["x"]) * MM, top + el["y"] * MM
+    width, height = el["width"] * MM, el["height"] * MM
+    if el.get("symbology") != "code128":
+        return [f"{name}: symbology {el.get('symbology')!r} is not Code 128"]
+    if not bars:
+        return [f"{name}: no bars are drawn in its box"]
+    problems = []
+    zone = HUMAN_GAP + (ASCENT + DESCENT) * el["size"] if el["human_readable"] else 0
+    bar_height = height - zone
+    bars = sorted(bars, key=lambda r: r.x0)
+    if any(abs(r.y0 - box_top) > GRID_TOLERANCE or abs(r.height - bar_height) > GRID_TOLERANCE for r in bars):
+        problems.append(f"{name}: the bars are not all as high as the box less the line of the value ({bar_height:.2f} pt from {box_top:.2f} pt)")
+    widths = [r.width for r in bars] + [b.x0 - a.x1 for a, b in zip(bars, bars[1:])]
+    module = min(widths)
+    # One module grid: every bar and every space is a whole number of modules.
+    if module <= 0 or any(abs(w / module - round(w / module)) * module > GRID_TOLERANCE for w in widths):
+        return problems + [f"{name}: the bars and spaces are not whole numbers of one module"]
+    symbol = round((bars[-1].x1 - bars[0].x0) / module)
+    total = symbol + 2 * CODE_QUIET
+    if symbol < 46 or (symbol - 13) % 11 != 0:
+        problems.append(f"{name}: a symbol of {symbol} modules is not a Code 128 symbol")
+    elif (symbol - 13) // 11 - 3 > len(el["value"]):
+        problems.append(f"{name}: a symbol of {symbol} modules has more symbols than characters")
+    if abs(module - width / total) > GRID_TOLERANCE / 10 + 1e-4 * module:
+        problems.append(f"{name}: the module is {module / MM:.4f} mm, not the box's width over the {total} modules of the symbol and its quiet zones ({width / total / MM:.4f} mm)")
+    if abs(bars[0].x0 - (left + CODE_QUIET * module)) > GRID_TOLERANCE or abs(bars[-1].x1 - (left + width - CODE_QUIET * module)) > GRID_TOLERANCE:
+        problems.append(f"{name}: the quiet zone is not ten modules on each side inside the box")
+    if module / MM < CODE_MIN_MODULE - 1e-3:
+        problems.append(f"{name}: the module is {module / MM:.4f} mm, below the least of {CODE_MIN_MODULE} mm")
+    if bar_height / MM < max(CODE_BAR_MM, CODE_BAR_RATIO * symbol * module / MM) - 1e-3:
+        problems.append(f"{name}: the bars are {bar_height / MM:.2f} mm high, below the larger of {CODE_BAR_MM} mm and 15 % of the symbol's width ({CODE_BAR_RATIO * symbol * module / MM:.2f} mm)")
+    if el["human_readable"]:
+        line = {"id": el["id"], "type": "text", "source": "literal", "text": el["value"], "wrap": False, "bold": False, "align": "center", "size": el["size"],
+                "x": el["x"], "width": el["width"], "y": el["y"] + (height - (ASCENT + DESCENT) * el["size"]) / MM, "height": (ASCENT + DESCENT) * el["size"] / MM}
+        problems += check_text2(chars, used, line, top, metrics, number, pages)
+    box = pymupdf.Rect(left, box_top, left + width, box_top + height)
+    read = decode_in(page, box, zxingcpp.BarcodeFormat.Code128, module)
+    if len(read) != 1:
+        return problems + [f"{name}: {len(read)} codes decoded from its box, expected one"]
+    result, pts = read[0]
+    if not result.valid or result.text != el["value"]:
+        problems.append(f"{name}: the decoder reads a value that is not the expected one")
+    # Where the decoder found the symbol: from the first bar to the last, within the bars' height, to two modules.
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    if abs(min(xs) - bars[0].x0) > 2 * module or abs(max(xs) - bars[-1].x1) > 2 * module or min(ys) < box_top - 2 * module or max(ys) > box_top + bar_height + 2 * module:
+        problems.append(f"{name}: the decoder finds the symbol at {min(xs):.1f}-{max(xs):.1f} pt, not where its bars are")
+    return problems
+
+
+def check_qr(page, el, top, bars):
+    """Checks one QR code: its rectangles (each one module high, a whole number of modules wide, on one grid of the box's side over the
+    symbol and four modules of quiet zone on each side, a module of at least 0.4 mm), the symbol's version (the least that holds the
+    value at the level), the finder and timing patterns, and what a decoder reads from the page: the value, as a QR code of the level."""
+    name = f"QR code {el['id']}"
+    left, box_top, side = (BAND_X + el["x"]) * MM, top + el["y"] * MM, el["side"] * MM
+    if not bars:
+        return [f"{name}: no modules are drawn in its box"]
+    problems = []
+    module = min(r.height for r in bars)
+    if module <= 0 or any(abs(r.height - module) > GRID_TOLERANCE for r in bars):
+        return [f"{name}: the rectangles are not all one module high"]
+    total = round(side / module)
+    n = total - 2 * QR_QUIET
+    if abs(module - side / total) > GRID_TOLERANCE / 10 + 1e-4 * module:
+        problems.append(f"{name}: the module is {module / MM:.4f} mm, not the box's side over {total} modules ({side / total / MM:.4f} mm)")
+    expected = qr_version(len(el["value"].encode("utf-8")), el["ecc"])
+    if expected is None or n != 17 + 4 * expected:
+        return problems + [f"{name}: a symbol of {n} modules is not version {expected} (the least that holds {len(el['value'].encode('utf-8'))} bytes at {el['ecc']})"]
+    if module / MM < QR_MIN_MODULE - 1e-3:
+        problems.append(f"{name}: the module is {module / MM:.4f} mm, below the least of {QR_MIN_MODULE} mm")
+    grid = [[False] * n for _ in range(n)]
+    for r in bars:
+        row, col, run = round((r.y0 - box_top) / module) - QR_QUIET, round((r.x0 - left) / module) - QR_QUIET, round(r.width / module)
+        if not (0 <= row < n and 0 <= col and col + run <= n and run >= 1) or abs(r.x0 - left - (col + QR_QUIET) * module) > GRID_TOLERANCE or abs(r.y0 - box_top - (row + QR_QUIET) * module) > GRID_TOLERANCE or abs(r.width - run * module) > GRID_TOLERANCE:
+            return problems + [f"{name}: a rectangle is not on the module grid inside the quiet zone"]
+        for k in range(run):
+            if grid[row][col + k]:
+                problems.append(f"{name}: a module is drawn twice")
+            grid[row][col + k] = True
+    # The symbol reaches the edges of the quiet zone (the finder patterns are at three corners), and has finder and timing patterns.
+    if min(r.x0 for r in bars) - left > QR_QUIET * module + GRID_TOLERANCE or max(r.x1 for r in bars) < left + side - QR_QUIET * module - GRID_TOLERANCE:
+        problems.append(f"{name}: the symbol does not fill its box inside the quiet zone")
+    for ox, oy in [(0, 0), (n - 7, 0), (0, n - 7)]:
+        for dy in range(7):
+            for dx in range(7):
+                if grid[oy + dy][ox + dx] != (dx in (0, 6) or dy in (0, 6) or (2 <= dx <= 4 and 2 <= dy <= 4)):
+                    problems.append(f"{name}: a finder pattern is not as the standard has it")
+                    break
+            else:
+                continue
+            break
+    if any(grid[6][i] != (i % 2 == 0) or grid[i][6] != (i % 2 == 0) for i in range(8, n - 8)):
+        problems.append(f"{name}: a timing pattern is not as the standard has it")
+    box = pymupdf.Rect(left, box_top, left + side, box_top + side)
+    read = decode_in(page, box, zxingcpp.BarcodeFormat.QRCode, module)
+    if len(read) != 1:
+        return problems + [f"{name}: {len(read)} codes decoded from its box, expected one"]
+    result, pts = read[0]
+    if not result.valid or result.text != el["value"]:
+        problems.append(f"{name}: the decoder reads a value that is not the expected one")
+    if result.ec_level != el["ecc"]:
+        problems.append(f"{name}: the decoder reads error correction level {result.ec_level!r}, not {el['ecc']!r}")
+    # The symbol's corners, as the decoder finds them, are the box's less the quiet zone, to three modules (the fourth is estimated).
+    corners = [(left + QR_QUIET * module, box_top + QR_QUIET * module), (left + side - QR_QUIET * module, box_top + QR_QUIET * module),
+               (left + side - QR_QUIET * module, box_top + side - QR_QUIET * module), (left + QR_QUIET * module, box_top + side - QR_QUIET * module)]
+    if any(abs(p[0] - c[0]) > 3 * module or abs(p[1] - c[1]) > 3 * module for p, c in zip(pts, corners)):
+        problems.append(f"{name}: the decoder finds the symbol's corners at {[(round(x, 1), round(y, 1)) for x, y in pts]}, not where its modules are")
+    return problems
+
+
+def contained(el, box_left, box_top):
+    """The rectangle a picture covers when it is drawn contained in the element's box: scaled to touch it on one axis, centred, aspect ratio kept."""
+    w, h = el["width"] * MM, el["height"] * MM
+    scale = min(w / el["width_px"], h / el["height_px"])
+    dw, dh = el["width_px"] * scale, el["height_px"] * scale
+    return pymupdf.Rect(box_left + (w - dw) / 2, box_top + (h - dh) / 2, box_left + (w + dw) / 2, box_top + (h + dh) / 2)
+
+
+def take_image(images, el, top):
+    """Matches the image element with a picture of the page at the contained rectangle, with the pixels it names; returns the problems
+    and the pictures left."""
+    name = f"image {el['id']}"
+    want = contained(el, (BAND_X + el["x"]) * MM, top + el["y"] * MM)
+    for i, info in enumerate(images):
+        r = pymupdf.Rect(info["bbox"])
+        if max(abs(r.x0 - want.x0), abs(r.y0 - want.y0), abs(r.x1 - want.x1), abs(r.y1 - want.y1)) <= 0.3:
+            problems = []
+            if (info["width"], info["height"]) != (el["width_px"], el["height_px"]):
+                problems.append(f"{name}: the picture is {info['width']} x {info['height']} pixels, not {el['width_px']} x {el['height_px']}")
+            return problems, images[:i] + images[i + 1:]
+    return [f"{name}: no picture is drawn contained in its box ({want.x0:.2f}, {want.y0:.2f}, {want.x1:.2f}, {want.y1:.2f})"], images
+
+
 def check_document2(directory, exp, font=None):
     """Checks a schema 2.0 document preview (S03-J) against its expectation: the bands of the template in
     millimetres with the values of their texts, the table with its raw rows, and where the layout put the
@@ -1652,6 +1878,14 @@ def check_document2(directory, exp, font=None):
         for el in band["elements"]:
             if el["type"] == "text" and el["source"] == "group_sum" and el["text"] != exact_sum(el["sum_values"], el["scale"]):
                 problems.append(f"group sum {el['id']}: the bound sum is not the exact sum of the group's values")
+    # The issue number (schema 2.1): an element that shows it shows the record's number in an issued document and the placeholder in a
+    # preview, never another value; the expectation is checked here, so that the checks of the drawing below (which compare the file
+    # with the expectation) cannot agree with a wrong value.
+    shown = issue["number"] if issue else "PREVIEW-NUMBER"
+    for band in exp["bands"]:
+        for el in band["elements"]:
+            if el.get("source") == "issue_number" and el["type"] in ("text", "barcode", "qrcode") and el["text" if el["type"] == "text" else "value"] != shown:
+                problems.append(f"element {el['id']} shows the issue number: the document must show the {'record' + chr(39) + 's number' if issue else 'placeholder ' + shown}")
     pages, footer, table_pages = doc.page_count, exp.get("footer"), exp["table_pages"]
     want_pages = footer["page"] if footer else table_pages
     if pages != want_pages or table_pages < 1 or table_pages > pages:
@@ -1662,7 +1896,9 @@ def check_document2(directory, exp, font=None):
     table_pages_data, per_page = [], []
     for i, page in enumerate(doc):
         number = i + 1
-        page_problems, chars, used = check_page(directory, page, i, shim, metrics, None)
+        # Barcodes, QR codes and images (schema 2.1) of the bands this page carries: checked after the texts, with the drawings they own.
+        coded = [(el, top) for band, top in bands_on_page2(exp, number) for el in band["elements"] if el["type"] in CODED_TYPES]
+        page_problems, chars, used = check_page(directory, page, i, dict(shim, element_images=sum(1 for el, top in coded if el["type"] == "image")), metrics, None)
         problems += [f"page {number}: {p}" for p in page_problems]
         claims, allowed = [], [strip]
         for band, top in bands_on_page2(exp, number):
@@ -1671,6 +1907,9 @@ def check_document2(directory, exp, font=None):
                     found = check_text2(chars, used, el, top, metrics, number, pages)
                     problems += [f"page {number}: {p}" for p in found]
                     allowed.append(pymupdf.Rect((BAND_X + el["x"]) * MM, top + el["y"] * MM, (BAND_X + el["x"] + el["width"]) * MM, top + (el["y"] + el["height"]) * MM))
+                elif el["type"] in CODED_TYPES:
+                    side = el["side"] if el["type"] == "qrcode" else None
+                    allowed.append(pymupdf.Rect((BAND_X + el["x"]) * MM, top + el["y"] * MM, (BAND_X + el["x"] + (side if side else el["width"])) * MM, top + (el["y"] + (side if side else el["height"])) * MM))
                 else:
                     claims.append((el, top))
                     if el["type"] == "line":
@@ -1679,7 +1918,19 @@ def check_document2(directory, exp, font=None):
                         allowed.append(pymupdf.Rect((BAND_X + el["x"]) * MM, top + el["y"] * MM, (BAND_X + el["x"] + el["width"]) * MM, top + (el["y"] + el["height"]) * MM))
         # The banner's white background is the page program's own: it is the strip, filled.
         banner_box = lambda d: d["fill"] is not None and max(abs(d["rect"].x0 - strip.x0), abs(d["rect"].x1 - strip.x1), abs(d["rect"].y0 - strip.y0), abs(d["rect"].y1 - strip.y1)) <= 0.1
-        found, rest = claim_drawings(page, claims, [d for d in page.get_drawings() if not banner_box(d)])
+        drawings = [d for d in page.get_drawings() if not banner_box(d)]
+        pictures = page.get_image_info(xrefs=True)
+        for el, top in coded:
+            if el["type"] == "image":
+                found, pictures = take_image(pictures, el, top)
+            else:
+                box = pymupdf.Rect((BAND_X + el["x"]) * MM, top + el["y"] * MM, (BAND_X + el["x"] + (el["side"] if el["type"] == "qrcode" else el["width"])) * MM, top + (el["y"] + (el["side"] if el["type"] == "qrcode" else el["height"])) * MM)
+                bars, drawings = take_bars(drawings, box)
+                found = check_qr(page, el, top, bars) if el["type"] == "qrcode" else check_code128(page, el, top, bars, chars, used, metrics, number, pages)
+            problems += [f"page {number}: {p}" for p in found]
+        if pictures:
+            problems.append(f"page {number}: {len(pictures)} pictures that no image element draws")
+        found, rest = claim_drawings(page, claims, drawings)
         problems += [f"page {number}: {p}" for p in found]
         if number <= table_pages:
             region = region2(exp, number)
@@ -1798,6 +2049,39 @@ def document2_corruptions(exp):
         yield changed("a rectangle moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("x", el["x"] + 0.5), "")
         yield changed("a rectangle's outline widened", lambda e: e["bands"][b]["elements"][k].__setitem__("stroke", el["stroke"] + 0.25), "")
         yield changed("a rectangle removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no element draws")
+    # Schema 2.1: the controls of a barcode, a QR code and an image, one each, whichever the expectation has.
+    numbered = next(((b, k, el) for b, k, el in elements() if el.get("source") == "issue_number"), None)
+    if numbered:
+        b, k, el = numbered
+        key = "text" if el["type"] == "text" else "value"
+        yield changed("an issue number element shows another number", lambda e: e["bands"][b]["elements"][k].__setitem__(key, "ZZ-999999"), "must show the")
+    barcode = next(((b, k) for b, k, el in elements("barcode")), None)
+    if barcode:
+        b, k = barcode
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a barcode's value changed", lambda e: e["bands"][b]["elements"][k].__setitem__("value", el["value"] + "X"), "decoder reads a value")
+        yield changed("a barcode moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("x", el["x"] + 0.5), "quiet zone")
+        yield changed("a barcode's box made 5 mm wider", lambda e: e["bands"][b]["elements"][k].__setitem__("width", el["width"] + 5), "the module is")
+        yield changed("a barcode's box made 3 mm lower", lambda e: e["bands"][b]["elements"][k].__setitem__("height", el["height"] + 3), "high")
+        yield changed("a barcode's printed value switched", lambda e: (e["bands"][b]["elements"][k].__setitem__("human_readable", not el["human_readable"]), e["bands"][b]["elements"][k].__setitem__("size", 0 if el["human_readable"] else 9)), "high")
+        yield changed("a barcode removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no element draws")
+    qr = next(((b, k) for b, k, el in elements("qrcode")), None)
+    if qr:
+        b, k = qr
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a QR code's value changed", lambda e: e["bands"][b]["elements"][k].__setitem__("value", el["value"] + "X"), "")
+        yield changed("a QR code's level changed", lambda e: e["bands"][b]["elements"][k].__setitem__("ecc", "L" if el["ecc"] != "L" else "H"), "")
+        yield changed("a QR code moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("x", el["x"] + 0.5), "module grid")
+        yield changed("a QR code's box made 2 mm larger", lambda e: e["bands"][b]["elements"][k].__setitem__("side", el["side"] + 2), "module")
+        yield changed("a QR code removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no element draws")
+    image = next(((b, k) for b, k, el in elements("image")), None)
+    if image:
+        b, k = image
+        el = exp["bands"][b]["elements"][k]
+        yield changed("an image moved by 1 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("x", el["x"] + 1), "no picture is drawn contained")
+        yield changed("an image's box made 3 mm narrower", lambda e: e["bands"][b]["elements"][k].__setitem__("width", el["width"] - 3), "no picture is drawn contained")
+        yield changed("an image of other pixels", lambda e: (e["bands"][b]["elements"][k].__setitem__("width_px", el["width_px"] * 2), e["bands"][b]["elements"][k].__setitem__("height_px", el["height_px"] * 2)), "pixels, not")
+        yield changed("an image removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no image element draws")
     t = exp["table"]
     rows, columns = t["rows"] or [], t["columns"]
     solid = next((i for i, row in enumerate(rows) if any(squash(v) for v in row)), None)
@@ -1978,8 +2262,106 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
     total_rows = exp["table"]["rows"]
     if total_rows and exp["table_pages"] > 1:
         yield "the last table page removed", "pages, expected", copy_with("lasttable", lambda doc: doc.delete_page(exp["table_pages"] - 1))
+    # Schema 2.1: a code moved, drawn below its least module size, damaged or drawn as a picture instead of as rectangles.
+    yield from coded_pdf_corruptions(directory, exp, copy_with)
 
 
+
+
+def coded_pdf_corruptions(directory, exp, copy_with):
+    """Yields (what, what a problem must say, directory of the corrupted copy[, the expectation to check it against]) for the
+    corruptions of the first barcode and the first QR code on the first page of a 2.1 document: moved, drawn with a module below
+    the least, damaged, and drawn as a picture instead of as rectangles."""
+    page = pymupdf.open(os.path.join(directory, exp["file"]))[0]
+    drawings = [d for d in page.get_drawings() if black_rect(d) is not None]
+    done = set()
+    # The first QR code, and the first barcode that does not print its value (the module control needs room for the line of the value).
+    candidates = [(el, top) for band, top in bands_on_page2(exp, 1) for el in band["elements"] if el["type"] in ("barcode", "qrcode")]
+    candidates.sort(key=lambda c: c[0]["type"] == "barcode" and c[0]["human_readable"])
+    for el, top in candidates:
+        if True:
+            if el["type"] in done:
+                continue
+            qr = el["type"] == "qrcode"
+            left, box_top = (BAND_X + el["x"]) * MM, top + el["y"] * MM
+            width, height = (el["side"], el["side"]) if qr else (el["width"], el["height"])
+            box = pymupdf.Rect(left, box_top, left + width * MM, box_top + height * MM)
+            inside = pymupdf.Rect(box.x0 - 0.3, box.y0 - 0.3, box.x1 + 0.3, box.y1 + 0.3)
+            mine = [black_rect(d) for d in drawings if inside.contains(black_rect(d))]
+            if not mine:
+                continue
+            done.add(el["type"])
+            name, tag = ("QR code" if qr else "barcode"), el["id"]
+            bounds = pymupdf.Rect(min(r.x0 for r in mine), min(r.y0 for r in mine), max(r.x1 for r in mine), max(r.y1 for r in mine))
+            bars = sorted(mine, key=lambda r: r.x0)
+            module = min(r.height for r in mine) if qr else min([r.width for r in bars] + [b.x0 - a.x1 for a, b in zip(bars, bars[1:])])
+            total = round(width * MM / module) if qr else round((bars[-1].x1 - bars[0].x0) / module) + 2 * CODE_QUIET
+
+            def redraw(change, rects=mine, bounds=bounds):
+                """Removes the rectangles of the code and draws the given ones in black in their place."""
+                def apply(d):
+                    p = d[0]
+                    p.add_redact_annot(pymupdf.Rect(bounds.x0 - 0.5, bounds.y0 - 0.5, bounds.x1 + 0.5, bounds.y1 + 0.5))
+                    p.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED, text=pymupdf.PDF_REDACT_TEXT_NONE)
+                    for r in change(rects):
+                        p.draw_rect(r, color=None, fill=(0, 0, 0), overlay=True)
+                return apply
+            shift = 1.5 * MM
+            yield (f"the {name} {tag} moved by 1.5 mm", "module grid" if qr else "quiet zone",
+                   copy_with(f"moved-{tag}", redraw(lambda rs: [pymupdf.Rect(r.x0 + shift, r.y0, r.x1 + shift, r.y1) for r in rs])))
+            # Drawn with a module below the least, in a box that is exactly as large as that module makes it, so that nothing else is
+            # wrong: the checker must report the module alone.
+            least = QR_MIN_MODULE if qr else CODE_MIN_MODULE
+            narrow = 0.8 * least * MM
+            f = narrow / module
+            smaller = copy.deepcopy(exp)
+            for b in smaller["bands"]:
+                for e in b["elements"]:
+                    if e["id"] == tag:
+                        if qr:
+                            e["side"] = total * narrow / MM
+                        else:
+                            e["width"], e["human_readable"], e["size"] = total * narrow / MM, False, 0
+            if qr:
+                make = lambda rs: [pymupdf.Rect(left + (r.x0 - left) * f, box_top + (r.y0 - box_top) * f, left + (r.x1 - left) * f, box_top + (r.y1 - box_top) * f) for r in rs]
+            else:
+                make = lambda rs: [pymupdf.Rect(left + (r.x0 - left) * f, r.y0, left + (r.x1 - left) * f, r.y1) for r in rs]
+            if qr or not el["human_readable"]:
+                yield (f"the {name} {tag} drawn with a module of {0.8 * least:.2f} mm", "below the least", copy_with(f"small-{tag}", redraw(make)), smaller)
+            # Damaged: one rectangle of a barcode, or the first finder pattern of a QR code, covered by a white box the decoder cannot read through.
+            if qr:
+                victim = pymupdf.Rect(bounds.x0 - 0.2, bounds.y0 - 0.2, bounds.x0 + 7 * module + 0.2, bounds.y0 + 7 * module + 0.2)
+            else:
+                v = bars[len(bars) // 2]
+                victim = pymupdf.Rect(v.x0 - 0.1, v.y0 - 0.1, v.x1 + 0.1, v.y1 + 0.1)
+            yield (f"the {name} {tag} damaged", "codes decoded", copy_with(f"damaged-{tag}", lambda d, v=victim: d[0].draw_rect(v, color=None, fill=(1, 1, 1), overlay=True)))
+
+            # Drawn as a picture instead of as rectangles: the rectangles are gone and a raster of the code is in their place.
+            def raster(d, bounds=bounds):
+                p = d[0]
+                pix = p.get_pixmap(matrix=pymupdf.Matrix(4, 4), clip=bounds, colorspace=pymupdf.csGRAY, alpha=False)
+                p.add_redact_annot(pymupdf.Rect(bounds.x0 - 0.5, bounds.y0 - 0.5, bounds.x1 + 0.5, bounds.y1 + 0.5))
+                p.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED, text=pymupdf.PDF_REDACT_TEXT_NONE)
+                p.insert_image(bounds, pixmap=pix)
+            yield (f"the {name} {tag} as a picture", "no image element draws", copy_with(f"raster-{tag}", raster))
+    # An image deleted from the page, and one drawn 2 mm from its place.
+    shown = next(((el, top) for band, top in bands_on_page2(exp, 1) for el in band["elements"] if el["type"] == "image"), None)
+    if shown:
+        el, top = shown
+        want = contained(el, (BAND_X + el["x"]) * MM, top + el["y"] * MM)
+        info = next(i for i in page.get_image_info(xrefs=True) if max(abs(i["bbox"][0] - want.x0), abs(i["bbox"][1] - want.y0)) <= 0.3)
+        where = pymupdf.Rect(info["bbox"])
+
+        def remove(d):
+            d[0].add_redact_annot(pymupdf.Rect(where.x0 - 0.5, where.y0 - 0.5, where.x1 + 0.5, where.y1 + 0.5))
+            d[0].apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_REMOVE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE, text=pymupdf.PDF_REDACT_TEXT_NONE)
+
+        def move(d):
+            data = d.extract_image(info["xref"])["image"]
+            remove(d)
+            d[0].insert_image(pymupdf.Rect(where.x0 + 2 * MM, where.y0, where.x1 + 2 * MM, where.y1), stream=data)
+        yield (f"the image {el['id']} missing", "no picture is drawn contained", copy_with(f"noimage-{el['id']}", remove))
+        yield (f"the image {el['id']} drawn 2 mm from its place", "no picture is drawn contained", copy_with(f"movedimage-{el['id']}", move))
 
 
 def descent_of(size):
@@ -2178,12 +2560,12 @@ def main():
                 print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")
                 failed |= not caught
             with tempfile.TemporaryDirectory() as scratch:
-                for what, expected, directory in document2_pdf_corruptions(args.directory, exp, scratch, args.font):
-                    against = exp
+                for what, expected, directory, *other in document2_pdf_corruptions(args.directory, exp, scratch, args.font):
+                    against = other[0] if other else exp
                     if exp.get("issue"):
                         # The record names the corrupted file by digest, so that every other check is exercised; the
                         # digest check has its own control among the expectations.
-                        against = copy.deepcopy(exp)
+                        against = copy.deepcopy(against)
                         with open(os.path.join(directory, exp["file"]), "rb") as f:
                             against["issue"]["sha256"] = hashlib.sha256(f.read()).hexdigest()
                     caught = any(expected in p for p in check_document2(directory, against, args.font)[0])

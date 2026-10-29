@@ -101,6 +101,120 @@
   "footer_page": 4,
   "pages": 4
  },
+ "coded_images.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_invoice.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "coded_issue_invoice.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "coded_issue_multipage.pdf": {
+  "first_rows": [
+   0,
+   27,
+   56,
+   85
+  ],
+  "footer_page": 4,
+  "pages": 4
+ },
+ "coded_issue_service_multipage.pdf": {
+  "first_rows": [
+   0,
+   25,
+   54,
+   83,
+   112
+  ],
+  "footer_page": 5,
+  "pages": 5
+ },
+ "coded_issue_service_one_line.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "coded_issue_waybill.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "coded_symbols.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "coded_symbols_pages.pdf": {
+  "first_rows": [
+   0,
+   25,
+   58
+  ],
+  "footer_page": 4,
+  "pages": 4
+ },
+ "coded_tightest_code_128_digits.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_tightest_code_128_widest.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_tightest_qr_code_h_digits.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_tightest_qr_code_h_widest.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_tightest_text_12_pt_bold_digits.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_tightest_text_12_pt_bold_widest.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "coded_waybill.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
  "console_issued.pdf": {
   "pages": 1
  },

@@ -96,7 +96,7 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			if e != nil {
 				return e
 			}
-			banded := entry.Layout.Schema == doctemplates.SchemaBanded
+			banded := entry.Layout.Banded()
 			// A 1.x template has rows and no group.
 			if !banded && input.Group != nil {
 				return r.ErrInvalid

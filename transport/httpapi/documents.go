@@ -17,6 +17,13 @@ type DocumentRenderer interface {
 	Render(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData) ([]byte, error)
 }
 
+// ResolvedRenderer is the part of a renderer that draws a schema 2.1 template (ADR 0005, S03-M): with the bytes of its images
+// by element id, which the route resolved with the caller's authorization. A preview prints the placeholder
+// barcode.PreviewNumber wherever the template shows the issue number. A renderer without it cannot preview a 2.1 template, which is then unsupported.
+type ResolvedRenderer interface {
+	RenderWith(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData, doctemplates.Resolved) ([]byte, error)
+}
+
 // WithDocumentPreviews mounts opt-in ephemeral single-row previews; no issuance or artifact history.
 // When the renderer also implements DocumentChecker it mounts POST /document-checks too.
 func WithDocumentPreviews(fallback http.Handler, s *r.Service, auth Authenticate, renderer DocumentRenderer, assets *doctemplates.Assets) (http.Handler, error) {
@@ -68,6 +75,9 @@ func authorizeDocument(req *http.Request, s *r.Service, p r.Principal, config do
 	if _, e := resolveDocumentBackground(p, config, assets); e != nil {
 		return e
 	}
+	if _, e := resolveDocumentImages(p, config, assets); e != nil {
+		return e
+	}
 	d, e := describeDocumentBinding(req, s, p, config.Binding)
 	if e != nil {
 		return e
@@ -80,7 +90,7 @@ func authorizeDocument(req *http.Request, s *r.Service, p r.Principal, config do
 	for _, m := range d.Metrics {
 		metrics[m.ID] = true
 	}
-	if config.Schema == doctemplates.SchemaBanded {
+	if config.Banded() {
 		return authorizeBanded(config, d, columns, metrics)
 	}
 	for _, v := range config.Elements {
@@ -118,7 +128,7 @@ func authorizeBanded(config doctemplates.Document, d r.Dataset, columns, metrics
 	}
 	for _, bi := range config.Items() {
 		switch it := bi.Item; {
-		case it.Type == doctemplates.TypeText && it.Source == doctemplates.SourceField && !columns[it.Field]:
+		case (it.Type == doctemplates.TypeText || it.Type == doctemplates.TypeBarcode || it.Type == doctemplates.TypeQRCode) && it.Source == doctemplates.SourceField && !columns[it.Field]:
 			return r.ErrDenied
 		case it.Type == doctemplates.TypeText && it.Source == doctemplates.SourceGroupSum && (!columns[it.Field] || !metrics[it.Field]):
 			return r.ErrDenied
@@ -136,7 +146,7 @@ func authorizeBanded(config doctemplates.Document, d r.Dataset, columns, metrics
 // bindPreview binds the document of the snapshot that holds the row: for 1.x the row's box values
 // and the table of every row, for 2.0 the row's group, whole.
 func bindPreview(config doctemplates.Document, snap r.Snapshot, index int) (map[string]string, *doctemplates.TableData, error) {
-	if config.Schema == doctemplates.SchemaBanded {
+	if config.Banded() {
 		group, e := doctemplates.GroupOf(config, snap, index)
 		if e != nil {
 			return nil, nil, e
@@ -171,8 +181,22 @@ func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Servic
 	if config.Print != nil && config.Print.Mode == "variables" {
 		background = nil
 	}
-	pdf, e := renderer.Render(req.Context(), config, values, background, table)
-	if e != nil {
+	var pdf []byte
+	if config.Coded() {
+		// A 2.1 template draws images and codes, and may show the issue number, which a preview replaces with a placeholder.
+		rr, ok := renderer.(ResolvedRenderer)
+		if !ok {
+			return r.ErrUnsupported
+		}
+		images, e := resolveDocumentImages(p, config, assets)
+		if e != nil {
+			return e
+		}
+		pdf, e = rr.RenderWith(req.Context(), config, values, background, table, doctemplates.Resolved{Images: images})
+		if e != nil {
+			return e
+		}
+	} else if pdf, e = renderer.Render(req.Context(), config, values, background, table); e != nil {
 		return e
 	}
 	if len(pdf) > r.MaxArtifactBytes || len(pdf) < 8 || string(pdf[:5]) != "%PDF-" {

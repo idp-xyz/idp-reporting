@@ -134,8 +134,8 @@ func (t *TableData) SnapshotRow(i int) int {
 // never caller values. A field the snapshot lacks is a denial, as in Bind; a cell the
 // single-line preview could not print is accepted here, as cells wrap.
 func BindTable(d Document, s r.Snapshot) (*TableData, error) {
-	if d.Schema == SchemaBanded {
-		return nil, fmt.Errorf("doctemplates: the table of a 2.0 document is bound by row group: %w", r.ErrUnsupported)
+	if d.Banded() {
+		return nil, fmt.Errorf("doctemplates: the table of a 2.x document is bound by row group: %w", r.ErrUnsupported)
 	}
 	if d.Table == nil {
 		return nil, nil

@@ -2,7 +2,7 @@
 // What a layout or binding refusal says (S03-J): a reason and, where they apply, the band, the element, the snapshot row and the
 // column's field id: names and indices, never values. The server adds it as `detail` to a problem answer and to a check's rows.
 window.reportingRefusal=(()=>{
- const reasons={DOES_NOT_FIT:'放不下：值比所在的框、列或页更宽或更高',NOT_COVERED:'无法按原样打印：含字体不支持的字符、控制字符或预览横幅文字',INCONSISTENT_GROUP:'同一分组内该字段的取值不一致',TOO_MANY_PAGES:'超过 100 页',BAND_OVERFLOW:'带放不下：超出页面留给它的高度'};
+ const reasons={DOES_NOT_FIT:'放不下：值比所在的框、列或页更宽或更高',NOT_COVERED:'无法按原样打印：含字体不支持的字符、控制字符或预览横幅文字；条码与二维码的值还须在其字符集内（Code 128 只含 ASCII 32–126）且不能为空',INCONSISTENT_GROUP:'同一分组内该字段的取值不一致',TOO_MANY_PAGES:'超过 100 页',BAND_OVERFLOW:'带放不下：超出页面留给它的高度'};
  const bandLabels={page_header:'页眉带',document_header:'单据头带',detail:'明细带',document_footer:'单据尾带',page_footer:'页脚带'};
  const valid=v=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).every(k=>['reason','band','element','row','column'].includes(k))&&Object.hasOwn(reasons,v.reason)&&(v.band===undefined||Object.hasOwn(bandLabels,v.band))&&(v.element===undefined||(typeof v.element==='string'&&/^(?:n(?:[1-9]|1[0-9]|2[0-4])|e(?:[1-9]|[1-5][0-9]|6[0-4]))$/.test(v.element)))&&(v.row===undefined||(Number.isSafeInteger(v.row)&&v.row>=0&&v.row<1000000))&&(v.column===undefined||(typeof v.column==='string'&&v.column.length>=1&&v.column.length<=128&&!/[\x00-\x1f\x7f]/.test(v.column)));
  // labels: the field ids of the current result and their labels, to name a column.
@@ -20,12 +20,14 @@ window.reportingIssueGroup=(()=>{
 })();
 window.createReportingDocuments=function(ports){
  const $=id=>document.getElementById(id),node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
- let result=null,query=null,config=null,saved=null,release=null,backgrounds=[],publishedOpen=false,past=[],future=[],scope='',checks=null;
+ let result=null,query=null,config=null,saved=null,release=null,backgrounds=[],publishedOpen=false,past=[],future=[],scope='',checks=null,images=[],imageUrls=new Map(),imagesAsked=false;
  const HISTORY=200;
  const keys=(v,k)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===k.slice().sort().join(',');
+ // Schema 2.0 and 2.1 are one family: bands over row groups; 2.1 adds barcodes, QR codes, images and the issue number (ADR 0005).
+ const is2=d=>d?.schema_version==='2.0'||d?.schema_version==='2.1';
  const binding=()=>({integration_id:query.integration_id,dataset:{id:query.dataset.id,version:query.dataset.version}});
  function validate(d){
-  if(d?.schema_version==='2.0')return validate2(d);
+  if(is2(d))return validate2(d);
   if(Array.isArray(d?.elements)&&d.elements.length<1)throw Error('至少保留一个文本框。');
   if(Array.isArray(d?.elements)&&d.elements.length>24)throw Error('最多24个文本框。');
   const expected=d?.schema_version==='1.3'?(d.background===undefined?['schema_version','kind','binding','elements','print','table']:['schema_version','kind','binding','elements','print','background','table']):d?.schema_version==='1.2'?['schema_version','kind','binding','elements','print','background']:d?.schema_version==='1.1'?['schema_version','kind','binding','elements','print']:['schema_version','kind','binding','elements'];
@@ -55,13 +57,22 @@ window.createReportingDocuments=function(ports){
   for(const e of d.elements)if(units(t.x)<units(e.x)+units(e.width)&&units(e.x)<units(t.x)+units(t.width)&&units(t.y)<units(e.y)+units(e.height)&&units(e.y)<units(t.y)+units(t.height))throw Error('明细表不能与文本框重叠。');
  }
 
- function canonical(d){if(d.schema_version==='2.0')return canonical2(d);const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}},elements:d.elements.map(e=>({id:e.id,source:e.source,field:e.field,text:e.text,x:e.x,y:e.y,width:e.width,height:e.height,font_size:e.font_size,align:e.align}))};if(d.schema_version!=='1.0')value.print={mode:d.print.mode,offset_x:d.print.offset_x,offset_y:d.print.offset_y};if(d.schema_version==='1.2'||(d.schema_version==='1.3'&&d.background))value.background={id:d.background.id,sha256:d.background.sha256};if(d.schema_version==='1.3')value.table={x:d.table.x,y:d.table.y,width:d.table.width,height:d.table.height,font_size:d.table.font_size,columns:d.table.columns.map(c=>({field:c.field,width:c.width}))};return value;}
+ function canonical(d){if(is2(d))return canonical2(d);const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}},elements:d.elements.map(e=>({id:e.id,source:e.source,field:e.field,text:e.text,x:e.x,y:e.y,width:e.width,height:e.height,font_size:e.font_size,align:e.align}))};if(d.schema_version!=='1.0')value.print={mode:d.print.mode,offset_x:d.print.offset_x,offset_y:d.print.offset_y};if(d.schema_version==='1.2'||(d.schema_version==='1.3'&&d.background))value.background={id:d.background.id,sha256:d.background.sha256};if(d.schema_version==='1.3')value.table={x:d.table.x,y:d.table.y,width:d.table.width,height:d.table.height,font_size:d.table.font_size,columns:d.table.columns.map(c=>({field:c.field,width:c.width}))};return value;}
  const bandLabels=window.reportingRefusal.bandLabels;
  // ---- schema 2.0 (S03-J): bands over row groups. The same closed form as the server's validator (doctemplates.validateBanded) and the same shared cases. ----
  const bandNames=['page_header','document_header','detail','document_footer','page_footer'];
  const fixedBands=['page_header','document_header','document_footer','page_footer'];
  const fillNames=['grey1','grey2','grey3','grey4'];
- const itemKeys={text:['id','type','source','text','field','wrap','x','y','width','height','font_size','align','bold'],line:['id','type','x1','y1','x2','y2','stroke'],rect:['id','type','x','y','width','height','stroke','fill'],table:['id','type','x','width','font_size','columns']};
+ const itemKeys={text:['id','type','source','text','field','wrap','x','y','width','height','font_size','align','bold'],line:['id','type','x1','y1','x2','y2','stroke'],rect:['id','type','x','y','width','height','stroke','fill'],table:['id','type','x','width','font_size','columns'],
+  // Schema 2.1. A barcode has font_size only when it prints its value; the key is then required, and otherwise absent.
+  barcode:['id','type','source','text','field','x','y','width','height','symbology','human_readable'],qrcode:['id','type','source','text','field','x','y','size','ecc'],image:['id','type','x','y','width','height','image']};
+ const codedTypes=['barcode','qrcode','image'],eccLevels=['L','M','Q','H'];
+ const hex=(v,n)=>typeof v==='string'&&v.length===n&&/^[a-f0-9]+$/.test(v);
+ // The keys an element must have: those of its type, and a barcode's font_size when it prints its value.
+ const keysOf=e=>e.type==='barcode'&&e.human_readable===true?[...itemKeys.barcode,'font_size']:itemKeys[e.type];
+ // A text, a code and an image own a box of their band.
+ const boxedType=t=>t==='text'||codedTypes.includes(t),extentOf=e=>e.type==='qrcode'?[e.size,e.size]:[e.width,e.height];
+ const overlapping=(a,b)=>{const [aw,ah]=extentOf(a),[bw,bh]=extentOf(b);return tenths(a.x)<tenths(b.x)+tenths(bw)&&tenths(b.x)<tenths(a.x)+tenths(aw)&&tenths(a.y)<tenths(b.y)+tenths(bh)&&tenths(b.y)<tenths(a.y)+tenths(ah);};
  const inRange=(n,lo,hi)=>typeof n==='number'&&n>=lo&&n<=hi,onGrid=n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n*10-Math.round(n*10))<1e-7,tenths=n=>Math.round(n*10);
  const quarter=(n,lo,hi)=>inRange(n,lo,hi)&&Math.abs(n*4-Math.round(n*4))<1e-9;
  const runes=s=>[...s].length;
@@ -72,7 +83,7 @@ window.createReportingDocuments=function(ports){
  function validate2(d){
   const fail=m=>{throw Error(m);};
   if(!keys(d,d.group===undefined?['schema_version','kind','binding','bands']:['schema_version','kind','binding','group','bands'])||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||new TextEncoder().encode(JSON.stringify(d)).length>65536)fail('模板或当前数据集绑定无效，或超过64KiB。');
-  const columns=new Set(result.columns.map(c=>c.id)),metrics=new Set((query.metrics||[]).map(m=>m.id)),dimensions=new Set(query.dimensions||[]);
+  const columns=new Set(result.columns.map(c=>c.id)),metrics=new Set((query.metrics||[]).map(m=>m.id)),dimensions=new Set(query.dimensions||[]),coded21=d.schema_version==='2.1';
   if(d.group!==undefined){
    const f=d.group?.fields;
    if(!keys(d.group,['fields'])||!Array.isArray(f)||f.length<1||f.length>3||!f.every(v=>typeof v==='string'&&v.length>=1&&v.length<=128)||new Set(f).size!==f.length)fail('分组字段需为1–3个不同的维度字段。');
@@ -90,11 +101,11 @@ window.createReportingDocuments=function(ports){
    for(const [i,e] of band.elements.entries()){
     if(!e||typeof e!=='object'||Array.isArray(e)||typeof e.id!=='string'||!/^e(?:[1-9]|[1-5][0-9]|6[0-4])$/.test(e.id)||ids.has(e.id))fail('元素编号须为 e1–e64 且不重复。');
     ids.add(e.id);
-    if(!Object.hasOwn(itemKeys,e.type)||e.type==='table')fail('元素类型只能是 text、line、rect；条码、二维码与图片尚未提供。');
-    if(!keys(e,itemKeys[e.type]))fail(e.id+'：键缺失或多余。');
-    if(!validItem2(e,tenths(band.height)))fail(e.id+'：超出带范围、尺寸、字号、来源或文字无效。');
-    if(e.type==='text')for(const p of band.elements.slice(0,i))if(p.type==='text'&&tenths(e.x)<tenths(p.x)+tenths(p.width)&&tenths(p.x)<tenths(e.x)+tenths(e.width)&&tenths(e.y)<tenths(p.y)+tenths(p.height)&&tenths(p.y)<tenths(e.y)+tenths(e.height))fail('同一带内的文本框不能重叠。');
-    if(e.type==='text'&&e.source==='field'&&!columns.has(e.field))fail(e.id+'：字段不在当前授权结果中。');
+    if(!Object.hasOwn(itemKeys,e.type)||e.type==='table'||(!coded21&&codedTypes.includes(e.type)))fail('元素类型只能是 text、line、rect'+(coded21?'、barcode、qrcode、image':'；条码、二维码与图片属于模板 2.1')+'。');
+    if(!keys(e,keysOf(e)))fail(e.id+'：键缺失或多余。');
+    if(!validItem2(e,tenths(band.height),coded21))fail(e.id+(codedTypes.includes(e.type)||e.source==='issue_number'?'：超出带范围、尺寸、字号、来源、值或图片引用无效。':'：超出带范围、尺寸、字号、来源或文字无效。'));
+    if(boxedType(e.type))for(const p of band.elements.slice(0,i))if(boxedType(p.type)&&overlapping(e,p))fail(codedTypes.includes(e.type)||codedTypes.includes(p.type)?'同一带内的文本框、条码、二维码与图片不能重叠。':'同一带内的文本框不能重叠。');
+    if((e.type==='text'||e.type==='barcode'||e.type==='qrcode')&&e.source==='field'&&!columns.has(e.field))fail(e.id+'：字段不在当前授权结果中。');
     if(e.type==='text'&&e.source==='group_sum'&&(!columns.has(e.field)||!metrics.has(e.field)))fail(e.id+'：分组合计需要当前结果中的指标字段。');
    }
   }
@@ -105,14 +116,28 @@ window.createReportingDocuments=function(ports){
   if(!t.columns.every(c=>columns.has(c.field)))fail('明细表列必须是当前授权结果的字段。');
   if(stack+minDetail(t.font_size)>2450)fail('页眉、单据头与页脚的高度加上明细表的最小高度超出安全区。');
  }
- function validItem2(e,height){
+ // The value a barcode or a QR code takes: a literal (one line, 1 to 64 characters; a QR code's at most 256 bytes), a field of the group or the issue number.
+ // Whether the symbology can encode it is the layout's to say, as the fonts' coverage is for a text.
+ function validCodeValue2(e,maxRunes,maxBytes){
+  if(typeof e.text!=='string'||typeof e.field!=='string')return false;
+  if(e.source==='literal')return e.field===''&&e.text!==''&&new TextEncoder().encode(e.text).length<=maxBytes&&printable(e.text,false,maxRunes);
+  if(e.source==='field')return e.text===''&&e.field.length>=1&&e.field.length<=128;
+  return e.source==='issue_number'&&e.text===''&&e.field==='';
+ }
+ const inBand2=(x,y,w,h,height)=>[x,y,w,h].every(onGrid)&&inRange(x,0,190)&&inRange(y,0,height/10)&&tenths(x)+tenths(w)<=1900&&tenths(y)+tenths(h)<=height;
+ const validRef2=r=>keys(r,['id','sha256'])&&hex(r.id,32)&&hex(r.sha256,64);
+ function validItem2(e,height,coded){
   const H=height/10;
+  if(e.type==='barcode')return coded&&inBand2(e.x,e.y,e.width,e.height,height)&&inRange(e.width,10,190)&&inRange(e.height,5,H)&&e.symbology==='code128'&&typeof e.human_readable==='boolean'&&(e.human_readable?Number.isSafeInteger(e.font_size)&&e.font_size>=8&&e.font_size<=28:e.font_size===undefined)&&validCodeValue2(e,64,256);
+  if(e.type==='qrcode')return coded&&inBand2(e.x,e.y,e.size,e.size,height)&&inRange(e.size,10,190)&&eccLevels.includes(e.ecc)&&validCodeValue2(e,256,256);
+  if(e.type==='image')return coded&&inBand2(e.x,e.y,e.width,e.height,height)&&inRange(e.width,5,190)&&inRange(e.height,5,H)&&!!e.image&&typeof e.image==='object'&&validRef2(e.image);
   if(e.type==='line')return[e.x1,e.y1,e.x2,e.y2].every(onGrid)&&inRange(e.x1,0,190)&&inRange(e.x2,0,190)&&inRange(e.y1,0,H)&&inRange(e.y2,0,H)&&(tenths(e.x1)!==tenths(e.x2)||tenths(e.y1)!==tenths(e.y2))&&quarter(e.stroke,0.25,2);
   if(e.type==='rect')return[e.x,e.y,e.width,e.height].every(onGrid)&&inRange(e.x,0,190)&&inRange(e.y,0,H)&&inRange(e.width,0.1,190)&&inRange(e.height,0.1,H)&&tenths(e.x)+tenths(e.width)<=1900&&tenths(e.y)+tenths(e.height)<=height&&quarter(e.stroke,0,2)&&(fillNames.includes(e.fill)||e.fill==='none')&&(e.stroke>0||fillNames.includes(e.fill));
   if(!['x','y','width','height'].every(k=>onGrid(e[k]))||!inRange(e.x,0,190)||!inRange(e.y,0,H)||!inRange(e.width,10,190)||!inRange(e.height,5,H)||tenths(e.x)+tenths(e.width)>1900||tenths(e.y)+tenths(e.height)>height||!Number.isSafeInteger(e.font_size)||e.font_size<8||e.font_size>28||tenths(e.height)*72<e.font_size*400||!['left','center','right'].includes(e.align)||typeof e.wrap!=='boolean'||typeof e.bold!=='boolean'||typeof e.text!=='string'||typeof e.field!=='string')return false;
   if(e.source==='literal')return e.field===''&&printable(e.text,e.wrap,e.wrap?1024:256);
   if(e.source==='page')return e.field===''&&!e.wrap&&placeholders(e.text)&&printable(e.text,false,256);
   if(e.source==='field'||e.source==='group_sum')return e.text===''&&e.field.length>=1&&e.field.length<=128;
+  if(e.source==='issue_number')return coded&&e.text===''&&e.field===''&&!e.wrap;
   return false;
  }
  function validTable2(t){
@@ -128,7 +153,7 @@ window.createReportingDocuments=function(ports){
  }
  // The canonical form is the server's: the keys of each type in the server's order, an optional key only when set.
  function canonical2(d){
-  const item=e=>e.type==='text'?{id:e.id,type:e.type,source:e.source,text:e.text,field:e.field,wrap:e.wrap,x:e.x,y:e.y,width:e.width,height:e.height,font_size:e.font_size,align:e.align,bold:e.bold}:e.type==='line'?{id:e.id,type:e.type,x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,stroke:e.stroke}:e.type==='rect'?{id:e.id,type:e.type,x:e.x,y:e.y,width:e.width,height:e.height,stroke:e.stroke,fill:e.fill}:{id:e.id,type:e.type,x:e.x,width:e.width,font_size:e.font_size,columns:e.columns.map(c=>{const o={field:c.field,width:c.width};if(c.align!==undefined)o.align=c.align;if(c.label!==undefined)o.label=c.label;return o;})};
+  const item=e=>e.type==='text'?{id:e.id,type:e.type,source:e.source,text:e.text,field:e.field,wrap:e.wrap,x:e.x,y:e.y,width:e.width,height:e.height,font_size:e.font_size,align:e.align,bold:e.bold}:e.type==='line'?{id:e.id,type:e.type,x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,stroke:e.stroke}:e.type==='rect'?{id:e.id,type:e.type,x:e.x,y:e.y,width:e.width,height:e.height,stroke:e.stroke,fill:e.fill}:e.type==='barcode'?(e.human_readable?{id:e.id,type:e.type,source:e.source,text:e.text,field:e.field,x:e.x,y:e.y,width:e.width,height:e.height,symbology:e.symbology,human_readable:true,font_size:e.font_size}:{id:e.id,type:e.type,source:e.source,text:e.text,field:e.field,x:e.x,y:e.y,width:e.width,height:e.height,symbology:e.symbology,human_readable:false}):e.type==='qrcode'?{id:e.id,type:e.type,source:e.source,text:e.text,field:e.field,x:e.x,y:e.y,size:e.size,ecc:e.ecc}:e.type==='image'?{id:e.id,type:e.type,x:e.x,y:e.y,width:e.width,height:e.height,image:{id:e.image.id,sha256:e.image.sha256}}:{id:e.id,type:e.type,x:e.x,width:e.width,font_size:e.font_size,columns:e.columns.map(c=>{const o={field:c.field,width:c.width};if(c.align!==undefined)o.align=c.align;if(c.label!==undefined)o.label=c.label;return o;})};
   const bands={};
   for(const name of bandNames){const band=d.bands[name];if(band===undefined)continue;bands[name]=name==='detail'?{elements:band.elements.map(item)}:{height:band.height,elements:band.elements.map(item)};}
   const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}}};
@@ -162,7 +187,7 @@ window.createReportingDocuments=function(ports){
  function issuance(){previews();if(!ports.issuance())throw Error('服务端未启用正式出具。');}
  $('doc-issue').addEventListener('click',()=>action(()=>{issuance();const id=cleanSaved();if(!publishedOpen)throw Error('正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。');const row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');
   // A 2.0 template is issued for the row group that holds the row (S03-K): the server finds the group by the row and freezes it.
-  const banded=config?.schema_version==='2.0';
+  const banded=is2(config);
   $('doc-issue-status').textContent='正在提交正式出具：模板 '+id+' · 版本 '+saved.version+(banded?' · 第 '+row+' 行所在分组（由服务端按模板的分组字段在冻结快照中确定）。':' · 第 '+row+' 行。');
   ports.issue({template_id:id,version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1},banded);}));
  const issueStates={queued:'排队中',running:'执行中',succeeded:'已出具',failed:'失败',cancelled:'已取消'};
@@ -210,26 +235,26 @@ window.createReportingDocuments=function(ports){
  // What the canvas calls: the same validation and canonical form as the inputs, answered instead of thrown.
  function edit(d,label){try{if(!ports.active()||!result)throw Error('请先查询当前授权数据并等待操作结束。');apply(d,label);return {ok:true};}catch(e){return {ok:false,message:e.message};}}
  function test(d){try{validate(d);return '';}catch(e){return e.message;}}
- function syncPrint(){$('doc-background-status').textContent=config?.background?'当前底稿 '+config.background.id+' · SHA256 '+config.background.sha256:'当前模板无底稿。';const p=config?.print||{mode:'full',offset_x:0,offset_y:0};$('doc-print-mode').value=p.mode;$('doc-offset-x').value=String(p.offset_x);$('doc-offset-y').value=String(p.offset_y);$('doc-print-status').textContent=config?.schema_version==='2.0'?'模板 2.0 · 分带版面（无套打层与底稿，预览仍含PREVIEW标记）':'模板 '+(config?.schema_version||'—')+' · '+(p.mode==='variables'?'变量层对位预览（仍含PREVIEW标记）':'完整文本预览')+' · 偏移 '+p.offset_x+' / '+p.offset_y+' mm';}
- const canvas=window.createReportingCanvas({columns:()=>result?result.columns:[],metrics:()=>new Set((query?.metrics||[]).map(m=>m.id)),minDetail,edit,test,columnMinimum:(font,i,band)=>band?8:i===0?Math.max(8,labelMinimum[font]||0):8,canUndo:()=>past.length>0,canRedo:()=>future.length>0,selected:()=>renderProps()});
+ function syncPrint(){$('doc-background-status').textContent=config?.background?'当前底稿 '+config.background.id+' · SHA256 '+config.background.sha256:'当前模板无底稿。';const p=config?.print||{mode:'full',offset_x:0,offset_y:0};$('doc-print-mode').value=p.mode;$('doc-offset-x').value=String(p.offset_x);$('doc-offset-y').value=String(p.offset_y);$('doc-print-status').textContent=is2(config)?'模板 '+config.schema_version+' · 分带版面（无套打层与底稿，预览仍含PREVIEW标记）':'模板 '+(config?.schema_version||'—')+' · '+(p.mode==='variables'?'变量层对位预览（仍含PREVIEW标记）':'完整文本预览')+' · 偏移 '+p.offset_x+' / '+p.offset_y+' mm';}
+ const canvas=window.createReportingCanvas({image:ref=>imageUrl(ref),columns:()=>result?result.columns:[],metrics:()=>new Set((query?.metrics||[]).map(m=>m.id)),minDetail,edit,test,columnMinimum:(font,i,band)=>band?8:i===0?Math.max(8,labelMinimum[font]||0):8,canUndo:()=>past.length>0,canRedo:()=>future.length>0,selected:()=>renderProps()});
  // The place a refused preview names (the template cannot change while a preview is being made: edits wait for the operation to end).
  const refusalFor=()=>refused;
  function refused(detail){if(!window.reportingRefusal.valid(detail)||!config)return;$('doc-status').textContent='预览指出的位置：'+window.reportingRefusal.text(detail,labelsOf())+'。';canvas.mark(detail);}
- function render(){syncPrint();canvas.mark(null);const target=$('doc-elements'),two=config?.schema_version==='2.0';target.replaceChildren();for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=two;$('doc2-panel').hidden=!two;renderConvert();if(!config){canvas.show(null);renderBanded();return;}
+ function render(){syncPrint();canvas.mark(null);const target=$('doc-elements'),two=is2(config);target.replaceChildren();for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=two;$('doc2-panel').hidden=!two;renderConvert();if(!config){canvas.show(null);renderBanded();return;}
   // Panels follow the template: 1.x inputs, or the 2.0 groups, bands and elements.
-  if(config.schema_version==='2.0'){$('doc-table-status').textContent='2.0 分带模板：明细表 '+tableOf2(config).columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。';canvas.show(config);renderBanded();return;}
+  if(is2(config)){$('doc-table-status').textContent=config.schema_version+' 分带模板：明细表 '+tableOf2(config).columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。';canvas.show(config);renderBanded();return;}
   for(const e of config.elements){const item=node('div');item.className='designer-row';item.append(node('span',e.id+' · '+e.source+' · '+(e.source==='literal'?e.text:e.field)));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=e[k];input.setAttribute('aria-label',e.id+' '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.elements.find(v=>v.id===e.id)[k]=Number(input.value);if(k!=='font_size'&&!Number.isInteger(Number(input.value))&&d.schema_version==='1.0'){d.schema_version='1.1';d.print={mode:'full',offset_x:0,offset_y:0};}apply(d,'修改 '+e.id+' '+k);}));label.append(input);item.append(label);}const remove=node('button','移除');remove.type='button';remove.addEventListener('click',()=>action(()=>apply({...config,elements:config.elements.filter(v=>v.id!==e.id)},'移除 '+e.id)));item.append(remove);target.append(item);}
   if(config.table){const t=config.table,item=node('div');item.className='designer-row';item.append(node('span','明细表 · '+t.columns.map(c=>c.field+' '+c.width+'mm').join('、')));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=t[k];input.setAttribute('aria-label','table '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.table[k]=Number(input.value);apply(d,'修改明细表 '+k);}));label.append(input);item.append(label);}const remove=node('button','移除明细表');remove.type='button';remove.addEventListener('click',()=>action(()=>removeTable()));item.append(remove);target.append(item);}
   $('doc-table-status').textContent=config.table?'明细表：'+config.table.columns.length+' 列，列出冻结快照的全部行，超过一页自动续页并承前过次。':'无明细表。';canvas.show(config);renderBanded();}
  // A template with a table is 1.3 whatever else changes (print settings, background); without one the given version applies.
  const schemaFor=(c,otherwise)=>c.table?'1.3':otherwise;
- const only1x=()=>{if(config?.schema_version==='2.0')throw Error('2.0 分带模板请在画布与“2.0 分带模板”面板编辑（或用模板元数据JSON）；文本框、明细表、套打与底稿设置只适用于 1.x 模板。');};
+ const only1x=()=>{if(is2(config))throw Error('2.0 分带模板请在画布与“2.0 分带模板”面板编辑（或用模板元数据JSON）；文本框、明细表、套打与底稿设置只适用于 1.x 模板。');};
  // ---- schema 2.0 panels (S03-L): groups, bands, the element to add, the selected element's properties, the table's columns. Every
  // change builds a configuration and goes through apply (validate + canonical + one undo step); a refusal says why and the inputs go back. ----
  const clone=v=>JSON.parse(JSON.stringify(v));
  const bandOrder=['page_header','document_header','document_footer','page_footer'],bandDefaults={page_header:15,document_header:30,document_footer:20,page_footer:12};
- const sourceLabels={literal:'固定文字',field:'字段',group_sum:'分组合计',page:'页码文字'},alignLabels={left:'左对齐',center:'居中',right:'右对齐'},fillLabels={none:'无填充',grey1:'浅灰 1',grey2:'浅灰 2',grey3:'灰 3',grey4:'深灰 4'};
- const propLabels={x:'x（毫米）',y:'y（毫米）',width:'宽（毫米）',height:'高（毫米）',font_size:'字号（点）',x1:'x1（毫米）',y1:'y1（毫米）',x2:'x2（毫米）',y2:'y2（毫米）',stroke:'线宽 stroke（点）'};
+ const sourceLabels={literal:'固定文字',field:'字段',group_sum:'分组合计',page:'页码文字',issue_number:'出具编号'},codeSources={literal:'固定文字',field:'字段',issue_number:'出具编号'},alignLabels={left:'左对齐',center:'居中',right:'右对齐'},fillLabels={none:'无填充',grey1:'浅灰 1',grey2:'浅灰 2',grey3:'灰 3',grey4:'深灰 4'};
+ const propLabels={x:'x（毫米）',y:'y（毫米）',width:'宽（毫米）',height:'高（毫米）',size:'边长（毫米）',font_size:'字号（点）',x1:'x1（毫米）',y1:'y1（毫米）',x2:'x2（毫米）',y2:'y2（毫米）',stroke:'线宽 stroke（点）'};
  const named=text=>{const e=node('span',text);e.className='cv2-name';return e;};
  const ctl=(tag,id,fn)=>{const e=node(tag);if(id)e.id=id;if(fn)fn(e);return e;};
  const wrapped=(text,control,className)=>{const l=node('label',text);if(className)l.className=className;l.append(control);return l;};
@@ -237,11 +262,15 @@ window.createReportingDocuments=function(ports){
  const selectInput=(id,options,value,commit)=>ctl('select',id,s=>{for(const [v,t] of options){const o=node('option',t);o.value=v;s.append(o);}s.value=value;s.addEventListener('change',()=>commit(s.value));});
  const checkInput=(id,value,commit)=>ctl('input',id,i=>{i.type='checkbox';i.checked=!!value;i.addEventListener('change',()=>commit(i.checked));});
  const buttonOf=(id,text,fn)=>ctl('button',id,b=>{b.textContent=text;b.type='button';b.className='button secondary small';b.addEventListener('click',fn);});
- const only2=()=>{if(config?.schema_version!=='2.0')throw Error('只有 2.0 分带模板有带与元素面板。');};
+ const only2=()=>{if(!is2(config))throw Error('只有 2.0 / 2.1 分带模板有带与元素面板。');};
  const elementOf=(d,id)=>{for(const n of bandNames){const b=d.bands[n];if(!b)continue;const e=b.elements.find(v=>v.id===id);if(e)return {band:n,e};}return null;};
  const tableOf2=d=>d.bands.detail.elements[0];
  // An edit of the open 2.0 template: fn changes a copy; a refusal (from apply, or fn's own) is shown and the panels go back to the template.
- const edit2=(label,fn)=>action(()=>{try{only2();const d=clone(config);fn(d);apply(d,label);}catch(e){renderBanded();throw e;}});
+ // A 2.0 template that gets an element only 2.1 has (a barcode, a QR code, an image, the issue number) becomes a 2.1 template: the same template in the form
+ // that has it, kept by the next version it is saved as.
+ const uses21=d=>Object.values(d.bands||{}).some(b=>(b.elements||[]).some(e=>codedTypes.includes(e.type)||(e.type==='text'&&e.source==='issue_number')));
+ const upgrade=d=>{if(d.schema_version==='2.0'&&uses21(d))d.schema_version='2.1';return d;};
+ const edit2=(label,fn)=>action(()=>{try{only2();const d=clone(config);fn(d);upgrade(d);apply(d,label);}catch(e){renderBanded();throw e;}});
  const freeId=d=>{const used=new Set();for(const n of bandNames)for(const e of d.bands[n]?.elements||[])used.add(e.id);for(let k=1;k<=64;k++)if(!used.has('e'+k))return 'e'+k;throw Error('最多64个元素。');};
  // A panel is rebuilt after every applied change. When the rebuilt panel has the same shape as the one on the page (the same controls, with the same
  // options), the controls already there are updated in place, so that the focus stays where the user's Tab or Enter left it and a click is not lost to a
@@ -265,7 +294,7 @@ window.createReportingDocuments=function(ports){
   const prev=select.value;select.replaceChildren(...pairs.map(([v,t])=>{const o=node('option',t);o.value=v;return o;}));if(pairs.some(p=>p[0]===prev))select.value=prev;
  }
  function renderBanded(){
-  if(!config||!result||!query||config.schema_version!=='2.0'){for(const id of ['doc2-group','doc2-bands','doc2-table'])$(id).replaceChildren();renderProps();return;}
+  if(!config||!result||!query||!is2(config)){for(const id of ['doc2-group','doc2-bands','doc2-table'])$(id).replaceChildren();renderProps();return;}
   const lab=labelsOf(),dims=(query.dimensions||[]).filter(id=>result.columns.some(c=>c.id===id)),fields=config.group?.fields||[];
   // Group: up to three dimension fields, in order, or none.
   reconcile($('doc2-group'),[0,1,2].map(n=>wrapped('分组字段 '+(n+1),selectInput('doc2-group-'+n,[['','（无）'],...dims.map(id=>[id,(lab[id]||id)+'（'+id+'）'])],fields[n]||'',()=>setGroup()))));
@@ -285,10 +314,10 @@ window.createReportingDocuments=function(ports){
  }
  function setGroup(){edit2('分组字段',d=>{const f=[0,1,2].map(n=>$('doc2-group-'+n).value).filter(Boolean);if(f.length)d.group={fields:f};else delete d.group;});}
  // A free place for a text box of this size in the band: down the left column, then the right; the first that overlaps no other text box.
- function freeSpot(band,w,h){
-  const H=tenths(band.height),texts=band.elements.filter(e=>e.type==='text').map(e=>[tenths(e.x),tenths(e.y),tenths(e.width),tenths(e.height)]);
+ function freeSpot(band,w,h,what='文本框'){
+  const H=tenths(band.height),texts=band.elements.filter(e=>boxedType(e.type)).map(e=>{const [ew,eh]=extentOf(e);return [tenths(e.x),tenths(e.y),tenths(ew),tenths(eh)];});
   for(const x of [0,100])for(let y=0;y*10+h*10<=H;y++){const a=[x*10,y*10,w*10,h*10];if(!texts.some(t=>a[0]<t[0]+t[2]&&t[0]<a[0]+a[2]&&a[1]<t[1]+t[3]&&t[1]<a[1]+a[3]))return {x,y};}
-  throw Error('带内没有放得下新文本框的空位：请先调高该带，或移动其他元素。');
+  throw Error('带内没有放得下新'+what+'的空位：请先调高该带，或移动其他元素。');
  }
  const sourceOf={literal:'literal',field:'field',sum:'group_sum',page:'page'};
  function add2(kind){
@@ -297,24 +326,67 @@ window.createReportingDocuments=function(ports){
    const id=freeId(d),H=tenths(band.height),metricIds=(query.metrics||[]).map(m=>m.id);let e;
    if(kind==='line')e={id,type:'line',x1:0,y1:H/10,x2:190,y2:H/10,stroke:0.5};
    else if(kind==='rect')e={id,type:'rect',x:0,y:0,width:60,height:Math.min(10,H/10),stroke:0.5,fill:'none'};
-   else{
+   else if(kind==='barcode'||kind==='qrcode'){
+    const source=$('doc2-code-source').value,typed=$('doc2-text').value,chosen=$('doc2-field').value,w=kind==='qrcode'?24:80,h=kind==='qrcode'?24:18,spot=freeSpot(band,w,h,'元素');
+    const base={id,type:kind,source,text:source==='literal'?(typed||(kind==='barcode'?'INV-0001':'https://example.invalid/')):'',field:source==='field'?chosen:'',x:spot.x,y:spot.y};
+    e=kind==='qrcode'?{...base,size:w,ecc:'M'}:{...base,width:w,height:h,symbology:'code128',human_readable:false};
+   }else if(kind==='image'){
+    const pick=images.find(v=>v.id===$('doc2-image-listing').value);if(!pick)throw Error('请先上传或读取私有图片，并在列表中选择一张。');
+    const w=40,h=Math.min(H/10,Math.max(5,Math.round(w*pick.height/pick.width*10)/10)),spot=freeSpot(band,w,h,'元素');
+    e={id,type:'image',x:spot.x,y:spot.y,width:w,height:h,image:{id:pick.id,sha256:pick.sha256}};
+   }else if(kind==='number'){
+    const size=H>=60?10:8,h=size===10?6:5,spot=freeSpot(band,60,h,'元素');
+    e={id,type:'text',source:'issue_number',text:'',field:'',wrap:false,x:spot.x,y:spot.y,width:60,height:h,font_size:size,align:'left',bold:false};
+   }else{
     const size=H>=60?10:8,h=size===10?6:5,w=kind==='page'?60:80,spot=freeSpot(band,w,h),typed=$('doc2-text').value,chosen=$('doc2-field').value,field=kind==='sum'&&!metricIds.includes(chosen)?metricIds[0]||chosen:chosen;
     e={id,type:'text',source:sourceOf[kind],text:kind==='literal'?(typed||'固定文字'):kind==='page'?(/\{pages?\}/.test(typed)?typed:'Page {page} of {pages}'):'',field:kind==='field'||kind==='sum'?field:'',wrap:false,x:spot.x,y:spot.y,width:w,height:h,font_size:size,align:'left',bold:false};
    }
-   band.elements.push(e);apply(d,'添加 '+id);canvas.select([id]);
+   band.elements.push(e);upgrade(d);apply(d,'添加 '+id);canvas.select([id]);
   });
  }
- for(const kind of ['literal','field','sum','page','line','rect'])$('doc2-add-'+kind).addEventListener('click',()=>add2(kind));
+ for(const kind of ['literal','field','sum','page','line','rect','barcode','qrcode','image','number'])$('doc2-add-'+kind).addEventListener('click',()=>add2(kind));
+ // ---- images (schema 2.1, ADR 0005): the caller's private images of this dataset, uploaded and listed here and drawn on the canvas from the content route. ----
+ const imageFormatNames={png:'PNG',jpeg:'JPEG'};
+ const imageText=v=>v.id.slice(0,8)+' · '+v.width+' × '+v.height+' · '+imageFormatNames[v.format];
+ const validImage=v=>!!v&&keys(v,['id','sha256','binding','format','width','height'])&&validID(v.id)&&hex(v.sha256,64)&&Object.hasOwn(imageFormatNames,v.format)&&Number.isSafeInteger(v.width)&&v.width>=1&&v.width<=2000&&Number.isSafeInteger(v.height)&&v.height>=1&&v.height<=2000&&keys(v.binding,['integration_id','dataset'])&&keys(v.binding.dataset,['id','version']);
+ function showImages(values){
+  if(!Array.isArray(values)||values.length>16||!values.every(validImage))throw Error('无法验证图片列表。');
+  images=values.filter(sameBinding);
+  listOptions($('doc2-image-listing'),images.map(v=>[v.id,imageText(v)]));
+  $('doc-image-status').textContent='当前数据集可用图片 '+images.length+' 张（私有，仅当前身份可见；上传后不可修改）。';
+  if(config&&is2(config))renderBanded();
+ }
+ // The listing says which format the bytes of an id are; it is read once the template names an image, or when asked.
+ function loadImages(){
+  imagesAsked=true;
+  if(!ports.background||!ports.background('/document-images',values=>{try{showImages(values);canvas.refresh();}catch(e){$('doc-image-status').textContent=e.message;}},()=>{$('doc-image-status').textContent='读取图片列表失败：服务端未启用图片存储，或当前身份无权访问。';}))imagesAsked=false;
+ }
+ // The picture for the canvas: a data URL once the content route has answered (the console checks its digest), else nothing and a labelled box.
+ function imageUrl(ref){
+  const have=imageUrls.get(ref.id);
+  if(have)return have.sha===ref.sha256?have.url:'';
+  if(!imagesAsked&&config&&query)loadImages();
+  const known=images.find(v=>v.id===ref.id&&v.sha256===ref.sha256);
+  if(!known||!ports.fetchImage)return '';
+  if(ports.fetchImage(known,url=>{imageUrls.set(ref.id,{sha:ref.sha256,url:url||''});canvas.refresh();}))imageUrls.set(ref.id,{sha:ref.sha256,url:''});
+  return '';
+ }
+ $('doc-image-upload').addEventListener('click',()=>action(()=>{
+  const file=$('doc-image-file').files[0];if(!file||file.size<1||file.size>524288)throw Error('请选择不超过512KiB的PNG或JPEG图片（最多2000 × 2000 像素）。');
+  $('doc-image-file').value='';
+  ports.uploadImage(file,binding(),summary=>{if(!validImage(summary)||!sameBinding(summary))throw Error('无法验证上传结果。');showImages([...images.filter(v=>v.id!==summary.id),summary]);$('doc-status').textContent='图片已上传；可在“添加图片”中使用，或在所选图片元素的属性中换用。';});
+ }));
+ $('doc-image-list').addEventListener('click',()=>action(()=>{imageUrls=new Map();loadImages();$('doc-image-status').textContent='正在读取图片列表…';}));
  // The selected element: every key its type has, each a validated input (the validator decides; a refusal puts the value back).
  function renderProps(){
   const box=$('doc2-props'),out=[];
-  if(!config||!result||!query||config.schema_version!=='2.0'){reconcile(box,[]);return;}
+  if(!config||!result||!query||!is2(config)){reconcile(box,[]);return;}
   const sel=canvas.selection();
   if(sel.length!==1){reconcile(box,[node('p',sel.length?'已选择 '+sel.length+' 项：属性一次编辑一个元素，请只选一项。':'在画布上点击一个元素，这里列出它的每个属性。')]);return;}
   const hit=elementOf(config,sel[0]);if(!hit){reconcile(box,[]);return;}
   const {band,e}=hit,id=e.id,grid=node('div'),set=(key,v)=>edit2('修改 '+id+' '+key,d=>{elementOf(d,id).e[key]=v;}),num=(key,step)=>wrapped(propLabels[key]||key,numberInput('doc2-p-'+key,e[key],step||'0.1',v=>set(key,v)));
   grid.className='cv2-grid';
-  const head=node('p',id+' · '+bandLabels[band]+' · '+(e.type==='text'?'文本（'+sourceLabels[e.source]+'）':{line:'线',rect:'矩形',table:'明细表'}[e.type]));head.id='doc2-p-title';
+  const head=node('p',id+' · '+bandLabels[band]+' · '+(e.type==='text'?'文本（'+sourceLabels[e.source]+'）':{line:'线',rect:'矩形',table:'明细表',barcode:'条码 Code 128',qrcode:'二维码',image:'图片'}[e.type]));head.id='doc2-p-title';
   out.push(head);
   if(e.type==='table'){out.push(node('p','明细表的位置、宽度、字号和各列在下方“明细表”区域编辑。'));reconcile(box,out,id);return;}
   grid.append(wrapped('所在带',selectInput('doc2-p-band',bandOrder.filter(n=>config.bands[n]).map(n=>[n,bandLabels[n]]),band,v=>edit2('移动 '+id+' 到'+bandLabels[v],d=>{const h=elementOf(d,id);if(h.band===v)return;d.bands[h.band].elements.splice(d.bands[h.band].elements.indexOf(h.e),1);d.bands[v].elements.push(h.e);}))));
@@ -324,12 +396,37 @@ window.createReportingDocuments=function(ports){
     x.source=v;
     if(v==='literal'){x.field='';x.text=x.text||'固定文字';}
     else if(v==='page'){x.field='';x.wrap=false;if(!/\{pages?\}/.test(x.text))x.text='Page {page} of {pages}';}
+    else if(v==='issue_number'){x.text='';x.field='';x.wrap=false;}
     else{x.text='';x.field=v==='group_sum'&&!metricIds.includes(x.field)?metricIds[0]||x.field:(x.field||first);}
    }))));
    if(e.source==='literal'||e.source==='page')grid.append(wrapped('文字',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=e.source==='page'?256:1024;i.addEventListener('change',()=>set('text',i.value));})));
-   else grid.append(wrapped('字段',selectInput('doc2-p-field',result.columns.filter(c=>e.source!=='group_sum'||(query.metrics||[]).some(m=>m.id===c.id)).map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
+   else if(e.source!=='issue_number')grid.append(wrapped('字段',selectInput('doc2-p-field',result.columns.filter(c=>e.source!=='group_sum'||(query.metrics||[]).some(m=>m.id===c.id)).map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
    for(const key of ['x','y','width','height'])grid.append(num(key));
    grid.append(num('font_size','1'),wrapped('align',selectInput('doc2-p-align',Object.entries(alignLabels),e.align,v=>set('align',v))),wrapped('自动换行（wrap）',checkInput('doc2-p-wrap',e.wrap,v=>set('wrap',v)),'cv2-check'),wrapped('粗体（bold）',checkInput('doc2-p-bold',e.bold,v=>set('bold',v)),'cv2-check'));
+  }else if(e.type==='barcode'||e.type==='qrcode'){
+   // The value: a literal, a field of the group or the issue number (the platform prints a placeholder in a preview, proves the fit for every number
+   // before issuing and prints the product's in the issue).
+   grid.append(wrapped('值的来源',selectInput('doc2-p-source',Object.entries(codeSources),e.source,v=>edit2('修改 '+id+' 来源',d=>{
+    const x=elementOf(d,id).e;x.source=v;
+    if(v==='literal'){x.field='';x.text=x.text||(x.type==='barcode'?'INV-0001':'https://example.invalid/');}
+    else if(v==='field'){x.text='';x.field=x.field||result.columns[0]?.id||'';}
+    else{x.text='';x.field='';}
+   }))));
+   if(e.source==='literal')grid.append(wrapped('值（文字）',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=256;i.addEventListener('change',()=>set('text',i.value));})));
+   else if(e.source==='field')grid.append(wrapped('字段',selectInput('doc2-p-field',result.columns.map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
+   if(e.type==='barcode'){
+    for(const key of ['x','y','width','height'])grid.append(num(key));
+    grid.append(wrapped('在条下印出值（human_readable）',checkInput('doc2-p-human',e.human_readable,v=>edit2('修改 '+id+' 印出值',d=>{const x=elementOf(d,id).e;x.human_readable=v;if(v)x.font_size=x.font_size||9;else delete x.font_size;})),'cv2-check'));
+    if(e.human_readable)grid.append(num('font_size','1'));
+   }else{
+    for(const key of ['x','y','size'])grid.append(num(key));
+    grid.append(wrapped('纠错级别（ecc）',selectInput('doc2-p-ecc',eccLevels.map(l=>[l,l]),e.ecc,v=>set('ecc',v))));
+   }
+  }else if(e.type==='image'){
+   for(const key of ['x','y','width','height'])grid.append(num(key));
+   // The picture: one of the caller's private images of this dataset; the template holds its id and digest and the picture is drawn contained in the box.
+   const known=images.some(v=>v.id===e.image.id&&v.sha256===e.image.sha256),pairs=[...(known?[]:[[e.image.id,e.image.id.slice(0,8)+'…（当前引用）']]),...images.map(v=>[v.id,imageText(v)])];
+   grid.append(wrapped('图片',selectInput('doc2-p-image',pairs,e.image.id,v=>edit2('修改 '+id+' 图片',d=>{const pick=images.find(w=>w.id===v);if(!pick)throw Error('列表中没有这张图片。');elementOf(d,id).e.image={id:pick.id,sha256:pick.sha256};}))));
   }else if(e.type==='line'){
    for(const key of ['x1','y1','x2','y2'])grid.append(num(key));grid.append(num('stroke','0.25'));
   }else{
@@ -416,13 +513,13 @@ window.createReportingDocuments=function(ports){
  }
  let conversion=[];
  function renderConvert(){
-  const two=config?.schema_version==='2.0';
+  const two=is2(config);
   $('doc-convert').hidden=!config||two;
   $('doc-convert-status').textContent=!config?'尚无当前授权模板。':two?(conversion.length?'本模板由 1.x 转换而来，尚未保存；转换时的说明如下。':'当前是 2.0 分带模板。'):'当前是 1.x 模板；“转换为 2.0”生成 2.0 配置并作为未保存的修改打开（可撤销），保存才会成为新版本。';
   $('doc-convert-notes').replaceChildren(...(two?conversion:[]).map(n=>node('li',n)));
  }
  $('doc-convert').addEventListener('click',()=>action(()=>{
-  if(!config||config.schema_version==='2.0')throw Error('只有 1.x 模板可以转换为 2.0。');
+  if(!config||is2(config))throw Error('只有 1.x 模板可以转换为 2.0。');
   const out=convertTo2(config);apply(out.config,'转换为 2.0');conversion=out.notes;renderConvert();
   $('doc-status').textContent='已转换为 2.0（未保存）：'+(out.notes.some(n=>n.startsWith('警告'))?'有被丢弃的设置，见下方说明；':'')+'请先生成预览核对，再保存为新版本。';
  }));
@@ -465,7 +562,7 @@ window.createReportingDocuments=function(ports){
    load.addEventListener('click',()=>{$('doc-row').value=String(r.row_index+1);line.textContent='预览行号已设为 '+(r.row_index+1)+'。';});
    const act=node('td');act.append(load);
    // A refusal that names an element or a column of a 1.x template can be shown on the canvas (S03-J).
-   if(r.detail&&(r.detail.element||r.detail.column||(r.detail.band&&config?.schema_version==='2.0'))){const where=node('button','在画布定位');where.type='button';where.className='button secondary small';where.addEventListener('click',()=>{canvas.mark(r.detail);line.textContent='第 '+(r.row_index+1)+' 行：'+window.reportingRefusal.text(r.detail,labelsOf())+'。';});act.append(where);}
+   if(r.detail&&(r.detail.element||r.detail.column||(r.detail.band&&is2(config)))){const where=node('button','在画布定位');where.type='button';where.className='button secondary small';where.addEventListener('click',()=>{canvas.mark(r.detail);line.textContent='第 '+(r.row_index+1)+' 行：'+window.reportingRefusal.text(r.detail,labelsOf())+'。';});act.append(where);}
    row.append(node('td','第 '+(r.row_index+1)+' 行'),node('td',r.ok?'通过':'不通过 · '+r.code+(checkCodes[r.code]?'（'+checkCodes[r.code]+'）':'')+(r.detail?' · '+window.reportingRefusal.text(r.detail,labelsOf()):'')),node('td',(r.reasons||[]).map(reasonText).join('、')||'—'),act);body.append(row);
   }
   const bad=v.rows.filter(r=>!r.ok).length;checks=v;
@@ -473,6 +570,6 @@ window.createReportingDocuments=function(ports){
   wrap.hidden=!v.rows.length;
  }
  $('doc-check').addEventListener('click',()=>action(()=>{previews();validate(config);if(!ports.snapshot())throw Error('请先生成/打开冻结快照，再检查样本。');const body={config:JSON.parse(JSON.stringify(config)),snapshot_id:ports.snapshot(),samples:'boundary'};$('doc-check-status').textContent='正在检查样本…';ports.check(body,v=>showChecks(v,body));}));
- return {clear(logout=false){past=[];future=[];conversion=[];$('doc2-panel').hidden=true;for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=false;$('doc-convert').hidden=true;$('doc-convert-status').textContent='尚无当前授权模板。';$('doc-convert-notes').replaceChildren();for(const id of ['doc2-group','doc2-bands','doc2-table','doc2-props','doc2-add-band','doc2-field','doc2-col-field'])$(id).replaceChildren();scope='';checks=null;$('doc-check-body').replaceChildren();$('doc-check-wrap').hidden=true;$('doc-check-status').textContent='检查样本：用当前模板检查冻结快照的首行、末行与各行字段最长/最短的行，不渲染 PDF。';$('doc-check').hidden=true;canvas.clear();backgrounds=[];$('doc-background-file').value='';$('doc-background-listing').replaceChildren();$('doc-background-status').textContent='尚无当前授权模板。';$('doc-pdf').hidden=$('doc-saved-pdf').hidden=true;$('doc-issue').hidden=true;publishedOpen=false;$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent='正式出具需要已发布模板、冻结快照与行号。';resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('doc-print-mode').value='full';$('doc-offset-x').value='0';$('doc-offset-y').value='0';$('doc-print-status').textContent='尚无当前授权模板。';$('doc-server-listing').replaceChildren();$('doc-server-version').value='1';$('doc-server-status').textContent='查询当前授权结果后可使用服务器模板。';$('doc-elements').replaceChildren();$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc-table-status').textContent='无明细表。';$('doc-json').value='';$('doc-text').value='';$('doc-row').value='1';$('doc-status').textContent='先查询当前授权数据；生成PDF需冻结快照。';},refresh(value,q){resetRelease();result=value;query=q;if(saved&&!sameBinding(saved.config))saved=null;$('doc-server-status').textContent=saved?'正在编辑模板 '+saved.id+' · 版本 '+saved.version:'未关联服务器模板。';const key=JSON.stringify([q,ports.snapshot()]);if(key!==scope){past=[];future=[];scope=key;}
+ return {clear(logout=false){past=[];future=[];conversion=[];$('doc2-panel').hidden=true;for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=false;$('doc-convert').hidden=true;$('doc-convert-status').textContent='尚无当前授权模板。';$('doc-convert-notes').replaceChildren();for(const id of ['doc2-group','doc2-bands','doc2-table','doc2-props','doc2-add-band','doc2-field','doc2-col-field'])$(id).replaceChildren();scope='';checks=null;$('doc-check-body').replaceChildren();$('doc-check-wrap').hidden=true;$('doc-check-status').textContent='检查样本：用当前模板检查冻结快照的首行、末行与各行字段最长/最短的行，不渲染 PDF。';$('doc-check').hidden=true;canvas.clear();backgrounds=[];$('doc-background-file').value='';$('doc-background-listing').replaceChildren();images=[];imageUrls=new Map();imagesAsked=false;$('doc-image-file').value='';$('doc2-image-listing').replaceChildren();$('doc-image-status').textContent='尚无当前授权模板。';$('doc-background-status').textContent='尚无当前授权模板。';$('doc-pdf').hidden=$('doc-saved-pdf').hidden=true;$('doc-issue').hidden=true;publishedOpen=false;$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent='正式出具需要已发布模板、冻结快照与行号。';resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('doc-print-mode').value='full';$('doc-offset-x').value='0';$('doc-offset-y').value='0';$('doc-print-status').textContent='尚无当前授权模板。';$('doc-server-listing').replaceChildren();$('doc-server-version').value='1';$('doc-server-status').textContent='查询当前授权结果后可使用服务器模板。';$('doc-elements').replaceChildren();$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc-table-status').textContent='无明细表。';$('doc-json').value='';$('doc-text').value='';$('doc-row').value='1';$('doc-status').textContent='先查询当前授权数据；生成PDF需冻结快照。';},refresh(value,q){resetRelease();result=value;query=q;images=[];imageUrls=new Map();imagesAsked=false;$('doc2-image-listing').replaceChildren();$('doc-image-status').textContent='图片按需读取：模板含图片时自动读取，也可点“读取私有图片”。';if(saved&&!sameBinding(saved.config))saved=null;$('doc-server-status').textContent=saved?'正在编辑模板 '+saved.id+' · 版本 '+saved.version:'未关联服务器模板。';const key=JSON.stringify([q,ports.snapshot()]);if(key!==scope){past=[];future=[];scope=key;}
 try{validate(config);}catch{past=[];future=[];conversion=[];config={schema_version:'1.0',kind:'document',binding:binding(),elements:[{id:'n1',source:'literal',field:'',text:'Document preview',x:10,y:25,width:190,height:12,font_size:18,align:'left'}]};}$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc2-field').replaceChildren();for(const c of value.columns){const o=node('option',c.label);o.value=c.id;$('doc-field').append(o);const p=node('option',c.label);p.value=c.id;$('doc-table-columns').append(p);const f=node('option',c.label+'（'+c.id+'）');f.value=c.id;$('doc2-field').append(f);}render();$('doc-pdf').hidden=$('doc-saved-pdf').hidden=$('doc-check').hidden=!ports.previews();$('doc-issue').hidden=!ports.issuance();$('doc-status').textContent=ports.previews()?'单页文本模板；生成PDF需当前冻结快照，行号为快照全局行号。':'单页文本模板；服务端未启用 PDF 渲染，不提供预览。';}};
 };

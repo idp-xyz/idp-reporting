@@ -33,6 +33,10 @@
   for c in pg.cells { place(top + left, dx: c.x * 1pt, dy: c.y * 1pt, rect(width: c.w * 1pt, height: c.h * 1pt, fill: none, stroke: 0.5pt + luma(150))) }
   // The rectangle elements of a 2.0 document: a fill of one of the template's greys, an outline or both.
   for x in pg.at("boxes", default: ()) { place(top + left, dx: x.x * 1pt, dy: x.y * 1pt, rect(width: x.w * 1pt, height: x.h * 1pt, fill: if x.fill >= 0 { luma(x.fill) } else { none }, stroke: if x.stroke > 0 { x.stroke * 1pt + luma(60) } else { none })) }
+  // The pictures of a 2.1 document at the rectangle the server computed (aspect ratio kept, centred in the element's box), then the
+  // modules of its codes: filled black rectangles at the server's positions. Nothing is drawn when a page has none.
+  for im in pg.at("images", default: ()) { place(top + left, dx: im.x * 1pt, dy: im.y * 1pt, image(im.file, width: im.w * 1pt, height: im.h * 1pt, fit: "stretch")) }
+  for m in pg.at("bars", default: ()) { place(top + left, dx: m.x * 1pt, dy: m.y * 1pt, rect(width: m.w * 1pt, height: m.h * 1pt, fill: luma(0), stroke: none)) }
   for l in pg.rules { place(top + left, dx: l.x0 * 1pt, dy: l.y0 * 1pt, line(end: ((l.x1 - l.x0) * 1pt, (l.y1 - l.y0) * 1pt), stroke: l.stroke * 1pt + luma(60))) }
   for g in pg.texts { glyph(g) }
   place(top + left, dx: b.left * 1pt, dy: b.top * 1pt, rect(width: b.width * 1pt, height: b.height * 1pt, fill: white, stroke: none))

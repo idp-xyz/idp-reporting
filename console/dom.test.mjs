@@ -8,7 +8,7 @@ import {spawn,execFileSync} from 'node:child_process';
 import {createServer} from 'node:net';
 import {randomBytes,webcrypto,createHash} from 'node:crypto';
 import {JSDOM,VirtualConsole} from 'jsdom';
-import {inflateSync} from 'node:zlib';
+import {inflateSync,deflateSync,crc32} from 'node:zlib';
 
 const root=resolve(import.meta.dirname,'..');
 const html=await readFile(join(root,'console/assets/index.html'),'utf8');
@@ -1874,6 +1874,7 @@ function page2(t,id){
   const g=geom(t),{band,e}=find2(t,id),top=g[band].top;
   if(e.type==='line')return [10+Math.min(e.x1,e.x2),top+Math.min(e.y1,e.y2),Math.abs(e.x2-e.x1),Math.abs(e.y2-e.y1)];
   if(e.type==='table')return [10+e.x,top,e.width,g[band].height];
+  if(e.type==='qrcode')return [10+e.x,top+e.y,e.size,e.size];
   return [10+e.x,top+e.y,e.width,e.height];
 }
 const mid2=(t,id)=>{const [x,y,w,h]=page2(t,id);return [x+w/2,y+h/2];};
@@ -2473,4 +2474,233 @@ test('S03-L L3: a panel is updated in place when its controls stay, so the focus
  // The table's columns: a width typed is updated in place; a reordered column has other options in its field select, so its row is replaced, and its handlers still go by position.
  const width=a.$('doc2-col-width-1');chg(a,'doc2-col-width-1',33);assert.equal(a.$('doc2-col-width-1'),width);assert.equal(cv.tpl(a).bands.detail.elements[0].columns[1].width,33);clickId(a,'doc2-col-up-2');chg(a,'doc2-col-width-2',30);assert.deepEqual(cv.tpl(a).bands.detail.elements[0].columns.map(c=>c.field),['aging.bucket','ar.open_balance','customer.id']);assert.equal(cv.tpl(a).bands.detail.elements[0].columns[2].width,30);
  assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+
+// ---- S03-M: barcodes, QR codes, images and the issue number (schema 2.1, ADR 0005) ----------------------------------------------------
+// A PNG of one colour, made here (no dependency): the signature, a header, one compressed data chunk and the end.
+function pngOf(w,h,rgba=[30,90,200,255]){
+  const raw=Buffer.alloc((w*4+1)*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++)Buffer.from(rgba).copy(raw,y*(w*4+1)+1+x*4);
+  const chunk=(type,data)=>{const body=Buffer.concat([Buffer.from(type),data]),out=Buffer.alloc(12+data.length);out.writeUInt32BE(data.length,0);body.copy(out,4);out.writeUInt32BE(crc32(body)>>>0,8+data.length);return out;};
+  const header=Buffer.alloc(13);header.writeUInt32BE(w,0);header.writeUInt32BE(h,4);header[8]=8;header[9]=6;
+  return Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),chunk('IHDR',header),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);
+}
+const setFile=(a,id,bytes,size=bytes.length)=>Object.defineProperty(a.$(id),'files',{configurable:true,value:[{size,arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}]});
+const ready=a=>!a.$('preview').disabled;
+// The 2.0 test template as 2.1 with one element of each new kind: a QR code of a literal in the document header, a Code 128 and a picture in the
+// document footer, the issue number as text in the page footer.
+const FAKE_IMAGE={id:'a'.repeat(32),sha256:'b'.repeat(64)};
+function coded(){
+  const t=banded();t.schema_version='2.1';t.bands.document_header.height=30;
+  t.bands.document_header.elements.push({id:'e20',type:'qrcode',source:'literal',text:'https://example.invalid/i/1',field:'',x:0,y:10,size:14,ecc:'Q'});
+  t.bands.document_footer.elements.push({id:'e21',type:'barcode',source:'issue_number',text:'',field:'',x:0,y:0,width:60,height:12,symbology:'code128',human_readable:false},{id:'e23',type:'image',x:65,y:0,width:30,height:18,image:{...FAKE_IMAGE}});
+  t.bands.page_footer.elements.push({id:'e22',type:'text',source:'issue_number',text:'',field:'',wrap:false,x:125,y:2,width:65,height:6,font_size:8,align:'left',bold:false});
+  return t;
+}
+
+test('S03-M M5: a 2.1 template is drawn: codes are labelled placeholders inside their quiet zone, an image a labelled box, the issue number a text; each is named and selectable',async()=>{const a=await designer();try{
+ cv.load(a,coded());
+ assert.deepEqual(cv.keys(a).sort(),['e1','e2','e20','e21','e22','e23','e3','e4','e5','e6','e7','e8','e9']);
+ const names={
+  e20:/^e20，二维码，纠错 Q，值 固定 “https:\/\/example\.invalid\/i\/1”，x 0 毫米，y 10 毫米，边长 14 毫米，单据头带$/,
+  e21:/^e21，条码 Code 128，值 出具编号，不印出值，x 0 毫米，y 0 毫米，宽 60 毫米，高 12 毫米，单据尾带$/,
+  e22:/^e22，出具编号，字号 8 点，x 125 毫米，y 2 毫米，宽 65 毫米，高 6 毫米，页脚带$/,
+  e23:/^e23，图片 a{32}，x 65 毫米，y 0 毫米，宽 30 毫米，高 18 毫米，单据尾带$/,
+ };
+ for(const [key,pattern] of Object.entries(names))assert.match(cv.item(a,key).getAttribute('aria-label'),pattern,key);
+ // The QR code: its three finder patterns and the symbol's frame inside four modules of quiet zone. 27 bytes at level Q is version 3, 29 modules and 37 with the quiet zone.
+ const qr=cv.item(a,'e20'),box=attrs(qr.querySelector('.cv-box'),'x','y','width','height'),frame=attrs(qr.querySelector('.cv-quiet'),'x','y','width','height');
+ const q=4/37;assert.deepEqual(frame.map(v=>Math.round(v*100)/100),[box[0]+box[2]*q,box[1]+box[3]*q,box[2]*(1-2*q),box[3]*(1-2*q)].map(v=>Math.round(v*100)/100));
+ assert.equal(qr.querySelectorAll('.cv-finder').length,3);assert.equal(qr.querySelector('.cv-bars'),null);
+ assert.ok([...qr.querySelectorAll('.cv-codelabel')].some(t=>t.textContent==='二维码 QR Q · 固定 “https://example.invalid/i/1”'));assert.ok([...qr.querySelectorAll('.cv-codelabel')].some(t=>t.textContent==='静区 4 模块（约 37 模块估算）'));
+ // The barcode of the issue number: the quiet zone of the longest number, 407 modules with its ten on each side; bars, no finder patterns.
+ const bc=cv.item(a,'e21'),bbox=attrs(bc.querySelector('.cv-box'),'x','y','width','height'),bframe=attrs(bc.querySelector('.cv-quiet'),'x','width'),f=10/407;
+ assert.deepEqual(bframe.map(v=>Math.round(v*100)/100),[bbox[0]+bbox[2]*f,bbox[2]*(1-2*f)].map(v=>Math.round(v*100)/100));assert.ok(bc.querySelector('.cv-bars'));assert.equal(bc.querySelectorAll('.cv-finder').length,0);
+ assert.ok([...bc.querySelectorAll('.cv-codelabel')].some(t=>t.textContent==='条码 Code 128 · 出具编号'));assert.ok([...bc.querySelectorAll('.cv-codelabel')].some(t=>t.textContent==='静区 10 模块（约 407 模块估算）'));
+ // The picture is not read yet (or not there): a box with its id; the text of the issue number is a placeholder name, not a number.
+ assert.equal(cv.item(a,'e23').querySelector('.cv-picture'),null);assert.ok([...cv.item(a,'e23').querySelectorAll('.cv-codelabel')].some(t=>t.textContent.startsWith('图片 aaaaaaaa')));
+ assert.equal(cv.item(a,'e22').querySelector('text').textContent,'〔出具编号〕');assert.match(cv.item(a,'e22').getAttribute('class'),/cv-number/);
+ // A field's value is 16 characters for the estimate, a longer literal is longer: 8 characters of Code 128 is 11 × 10 + 13 + 20 = 143 modules.
+ const t=coded();t.bands.document_footer.elements[2]={id:'e24',type:'barcode',source:'literal',text:'INV-0001',field:'',x:100,y:12,width:50,height:8,symbology:'code128',human_readable:false};cv.load(a,t);
+ assert.ok([...cv.item(a,'e24').querySelectorAll('.cv-codelabel')].some(t=>t.textContent==='静区 10 模块（约 143 模块估算）'));
+ // A QR code is square: resized by its east edge, its side follows; undone, it is as it was. A move is one step.
+ cv.load(a,coded());cv.click2(a,'e20');const [x,y,w,h]=page2(cv.tpl(a),'e20');cv.drag(a,cv.handle(a,'e'),x+w,y+h/2,2,0);
+ assert.equal(el2(a,'e20').size,16);assert.equal(el2(a,'e20').width,undefined);a.click('doc-undo');assert.equal(el2(a,'e20').size,14);
+ cv.drag2(a,'e20',3,0);assert.equal(el2(a,'e20').x,3);assert.equal(el2(a,'e20').size,14);
+ // Overlap is the validator's: a barcode dragged onto the text of its band snaps back with the reason.
+ cv.click2(a,'e21');cv.drag2(a,'e21',102,3,{altKey:true});assert.match(cv.status(a),/^未应用：同一带内的文本框、条码、二维码与图片不能重叠。/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-M M5: the panels add a barcode, a QR code and the issue number to a 2.0 template, which becomes 2.1; each element is one undo step and its properties are inputs',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ a.$('doc2-add-band').value='document_header';chg(a,'doc2-band-height-document_header',60);chg(a,'doc2-band-height-document_footer',40);
+ // A literal Code 128 at the first free place of the document header: below e4, 80 mm wide, 18 mm high, no printed value.
+ a.$('doc2-code-source').value='literal';a.$('doc2-text').value='ABC-123';clickId(a,'doc2-add-barcode');assert.equal(doc2status(a),READY);
+ assert.equal(cv.tpl(a).schema_version,'2.1','a 2.0 template with a barcode is 2.1');
+ assert.deepEqual(el2(a,'e10'),{id:'e10',type:'barcode',source:'literal',text:'ABC-123',field:'',x:0,y:10,width:80,height:18,symbology:'code128',human_readable:false});assert.deepEqual(cv.selected(a),['e10']);
+ // A QR code of the issue number, and the issue number as a text.
+ a.$('doc2-code-source').value='issue_number';clickId(a,'doc2-add-qrcode');assert.deepEqual(el2(a,'e11'),{id:'e11',type:'qrcode',source:'issue_number',text:'',field:'',x:0,y:28,size:24,ecc:'M'});
+ clickId(a,'doc2-add-number');assert.deepEqual(el2(a,'e12'),{id:'e12',type:'text',source:'issue_number',text:'',field:'',wrap:false,x:0,y:52,width:60,height:6,font_size:10,align:'left',bold:false});
+ // A field of the group as the value of a code: the chosen field.
+ a.$('doc2-code-source').value='field';a.$('doc2-field').value='customer.id';a.$('doc2-add-band').value='document_footer';clickId(a,'doc2-add-qrcode');assert.deepEqual([find2(cv.tpl(a),'e13').band,el2(a,'e13').source,el2(a,'e13').field,el2(a,'e13').text],['document_footer','field','customer.id','']);
+ // An image needs a private image of this dataset: none is listed, so the button says so and adds nothing.
+ const before=cv.tpl(a);clickId(a,'doc2-add-image');assert.match(doc2status(a),/请先上传或读取私有图片/);assert.deepEqual(cv.tpl(a),before);
+ // The barcode's properties: its source, its value, its box, the printed value with its type size (the key only while it prints).
+ cv.click2(a,'e10');const ids=()=>[...a.$('doc2-props').querySelectorAll('[id^="doc2-p-"]')].map(e=>e.id.slice(7)).filter(k=>k!=='title');
+ assert.equal(a.$('doc2-p-title').textContent,'e10 · 单据头带 · 条码 Code 128');assert.deepEqual(ids(),['band','source','text','x','y','width','height','human','delete']);
+ chg(a,'doc2-p-text','XYZ-9');assert.equal(el2(a,'e10').text,'XYZ-9');chg(a,'doc2-p-width',70);assert.deepEqual(cv.rel(a,'e10'),[0,10,70,18]);
+ chg(a,'doc2-p-human',true);assert.deepEqual([el2(a,'e10').human_readable,el2(a,'e10').font_size],[true,9]);assert.deepEqual(ids(),['band','source','text','x','y','width','height','human','font_size','delete']);
+ chg(a,'doc2-p-font_size',7);assert.match(doc2status(a),/^e10：/);assert.equal(a.$('doc2-p-font_size').value,'9');
+ chg(a,'doc2-p-human',false);assert.equal(el2(a,'e10').human_readable,false);assert.equal('font_size' in el2(a,'e10'),false,'no type size without a printed value');
+ chg(a,'doc2-p-source','field');assert.deepEqual([el2(a,'e10').source,el2(a,'e10').field,el2(a,'e10').text],['field','customer.id','']);chg(a,'doc2-p-field','aging.bucket');assert.equal(el2(a,'e10').field,'aging.bucket');
+ chg(a,'doc2-p-source','issue_number');assert.deepEqual([el2(a,'e10').field,el2(a,'e10').text],['','']);assert.equal(a.$('doc2-p-field'),null);assert.equal(a.$('doc2-p-text'),null);
+ chg(a,'doc2-p-source','literal');assert.equal(el2(a,'e10').text,'INV-0001');
+ chg(a,'doc2-p-width',9);assert.match(doc2status(a),/^e10：超出带范围、尺寸、字号、来源、值或图片引用无效。$/);assert.equal(a.$('doc2-p-width').value,'70');
+ // The QR code's: its side and its level.
+ cv.click2(a,'e11');assert.deepEqual(ids(),['band','source','x','y','size','ecc','delete']);assert.deepEqual([...a.$('doc2-p-ecc').options].map(o=>o.value),['L','M','Q','H']);chg(a,'doc2-p-ecc','H');chg(a,'doc2-p-size',20);assert.deepEqual([el2(a,'e11').ecc,el2(a,'e11').size],['H',20]);
+ chg(a,'doc2-p-size',9);assert.match(doc2status(a),/^e11：/);assert.equal(a.$('doc2-p-size').value,'20');
+ // A text becomes the issue number from its source select, and a 2.0 template with one is 2.1 (a template that is 2.1 stays 2.1).
+ const text=banded();cv.load(a,text);cv.click2(a,'e4');chg(a,'doc2-p-source','issue_number');assert.deepEqual([el2(a,'e4').source,el2(a,'e4').field,el2(a,'e4').text,el2(a,'e4').wrap],['issue_number','','',false]);assert.equal(cv.tpl(a).schema_version,'2.1');
+ a.click('doc-undo');assert.equal(cv.tpl(a).schema_version,'2.0','one undo step brings the 2.0 form back');assert.equal(el2(a,'e4').source,'field');
+ // Every addition was one undo step: back to the 2.0 template.
+ cv.load(a,banded());a.$('doc2-add-band').value='document_header';chg(a,'doc2-band-height-document_header',60);a.$('doc2-code-source').value='literal';clickId(a,'doc2-add-barcode');clickId(a,'doc2-add-qrcode');clickId(a,'doc2-add-number');assert.equal(undoAll(a),4);assert.deepEqual(cv.tpl(a),banded());
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-M M4/M5: images are uploaded through the real server, listed, drawn on the canvas from the owner-only content route and used by an image element',async()=>{const a=await designer();try{
+ cv.load(a,banded());
+ // Refused before anything is read: over 512 KiB. Refused by the server: bytes that are no image.
+ let read=false;Object.defineProperty(a.$('doc-image-file'),'files',{configurable:true,value:[{size:524289,arrayBuffer:async()=>{read=true;return new ArrayBuffer(1);}}]});a.click('doc-image-upload');assert.match(doc2status(a),/512KiB/);assert.equal(read,false);
+ setFile(a,'doc-image-file',Buffer.from('GIF89a this is not a PNG or a JPEG'));a.click('doc-image-upload');await until(()=>a.$('notice').textContent.includes('图片无效')&&ready(a),'refused upload');
+ assert.equal(a.$('doc2-image-listing').options.length,0);
+ // A PNG of 60 x 30 pixels: kept, listed with its size and format, and offered to the element to add.
+ const png=pngOf(60,30);setFile(a,'doc-image-file',png);a.click('doc-image-upload');await until(()=>doc2status(a).includes('图片已上传')&&ready(a),'upload');
+ assert.equal(a.$('doc2-image-listing').options.length,1);assert.match(a.$('doc2-image-listing').options[0].textContent,/^[a-f0-9]{8} · 60 × 30 · PNG$/);assert.match(a.$('doc-image-status').textContent,/当前数据集可用图片 1 张/);
+ const id=a.$('doc2-image-listing').value;a.$('doc2-add-band').value='document_footer';clickId(a,'doc2-add-image');assert.equal(doc2status(a),READY);
+ const t=cv.tpl(a),image=el2(a,'e10');assert.equal(t.schema_version,'2.1');assert.equal(image.type,'image');assert.equal(image.image.id,id);assert.match(image.image.sha256,/^[a-f0-9]{64}$/);assert.deepEqual([image.x,image.y,image.width,image.height],[0,0,40,20],'contained 40 mm wide at the aspect of 2:1');
+ // The canvas reads the picture from the content route, with the session's token, and draws it as a data URL: the bytes the server kept, whose digest the template names.
+ await until(()=>cv.item(a,'e10').querySelector('.cv-picture'),'picture');
+ const picture=cv.item(a,'e10').querySelector('.cv-picture'),href=picture.getAttribute('href');assert.match(href,/^data:image\/png;base64,/);assert.equal(picture.getAttribute('preserveAspectRatio'),'xMidYMid meet');
+ assert.equal(createHash('sha256').update(Buffer.from(href.slice('data:image/png;base64,'.length),'base64')).digest('hex'),image.image.sha256);
+ assert.ok(a.trace.some(v=>v.method==='GET'&&v.path.endsWith('/document-images/'+id+'/content')),'the content route was read');assert.equal(cv.item(a,'e10').querySelectorAll('.cv-codelabel').length,1);
+ // The image's panel: one of the listed images, its box.
+ cv.click2(a,'e10');assert.equal(a.$('doc2-p-title').textContent,'e10 · 单据尾带 · 图片');assert.deepEqual([...a.$('doc2-props').querySelectorAll('[id^="doc2-p-"]')].map(e=>e.id.slice(7)).filter(k=>k!=='title'),['band','x','y','width','height','image','delete']);assert.equal(a.$('doc2-p-image').value,id);
+ chg(a,'doc2-p-width',44);assert.deepEqual(cv.rel(a,'e10'),[0,0,44,20]);chg(a,'doc2-p-width',4);assert.match(doc2status(a),/^e10：/);assert.equal(a.$('doc2-p-width').value,'44');
+ // The list reads again on request; a new query forgets what was listed, and so does a logout.
+ a.click('doc-image-list');await until(()=>a.$('doc-image-status').textContent.includes('当前数据集可用图片 1 张'),'list');
+ a.input('query-companies','company_other');assert.equal(a.$('doc2-image-listing').options.length,0);
+ a.click('logout');assert.equal(a.$('doc2-image-listing').options.length,0);assert.match(a.$('doc-image-status').textContent,/尚无当前授权模板/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-M M5: the image routes are the owner\'s: another identity\'s image is not found, and the console shows an image it cannot verify as a box',async()=>{const a=await designer(async(path,options)=>{
+  if(path.includes('/document-images/')&&path.endsWith('/content'))return new Response(pngOf(8,8),{headers:{'Content-Type':'image/png','X-Content-SHA256':'0'.repeat(64)}});
+ });try{
+ cv.load(a,banded());
+ setFile(a,'doc-image-file',pngOf(40,40));a.click('doc-image-upload');await until(()=>doc2status(a).includes('图片已上传')&&ready(a),'upload');
+ a.$('doc2-add-band').value='document_footer';clickId(a,'doc2-add-image');await sleep(150);
+ // The route answered with a digest that is not the bytes': nothing is drawn, the element stays a labelled box.
+ assert.equal(cv.item(a,'e10').querySelector('.cv-picture'),null);assert.ok([...cv.item(a,'e10').querySelectorAll('.cv-codelabel')].some(t=>t.textContent.includes('未读取')));
+ // Over the real server, the content of an id the caller does not own is not found, and without a token there is none.
+ const get=(path,headers)=>fetch(url+'/api/reporting/v1'+path,{headers});
+ const own=cv.tpl(a).bands.document_footer.elements.find(e=>e.type==='image').image.id;
+ assert.equal((await get('/document-images/'+own+'/content',{Authorization:'Bearer '+token})).status,200);assert.equal((await get('/document-images/'+own+'/content')).status,401);
+ assert.equal((await get('/document-images/'+'0'.repeat(32)+'/content',{Authorization:'Bearer '+token})).status,404);
+ const response=await get('/document-images/'+own+'/content',{Authorization:'Bearer '+token});assert.equal(response.headers.get('content-type'),'image/png');assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('x-content-type-options'),'nosniff');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+// A 2.1 template whose layout the real renderer accepts for every number (the worst case is proved before the product is asked): the issue number as
+// text, Code 128 and QR code in the page header, a picture and a literal Code 128 in the document footer.
+function publishable(image){
+  const t=banded();t.schema_version='2.1';
+  t.bands.page_header={height:36,elements:[
+   {id:'e20',type:'text',source:'literal',text:'Coded 文档',field:'',wrap:false,x:0,y:0,width:60,height:9,font_size:14,align:'left',bold:true},
+   {id:'e21',type:'text',source:'issue_number',text:'',field:'',wrap:false,x:65,y:1,width:125,height:7,font_size:10,align:'right',bold:false},
+   {id:'e22',type:'barcode',source:'issue_number',text:'',field:'',x:0,y:10,width:112,height:24,symbology:'code128',human_readable:true,font_size:9},
+   {id:'e23',type:'qrcode',source:'issue_number',text:'',field:'',x:150,y:8,size:28,ecc:'M'}]};
+  t.bands.document_footer.elements.push({id:'e24',type:'image',x:0,y:0,width:40,height:18,image:{...image}},{id:'e25',type:'barcode',source:'literal',text:'SHIPPED',field:'',x:45,y:0,width:52,height:18,symbology:'code128',human_readable:false});
+  return t;
+}
+let sharedCoded=null;
+async function codedPublishedOpen(a,image){
+  a.w.document.querySelector('[data-page="documents"]').click();
+  if(sharedCoded){
+   a.click('doc-server-list');await until(()=>[...a.$('doc-server-listing').options].some(o=>o.value===sharedCoded)&&ready(a),'list');
+   a.$('doc-server-listing').value=sharedCoded;a.$('doc-server-version').value='1';a.click('doc-server-open');await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板')&&ready(a),'open version');
+  }else{
+   a.$('doc-json').value=JSON.stringify(publishable(image));a.click('doc-json-open');assert.equal(doc2status(a),READY);
+   a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&ready(a),'save');
+   a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&ready(a),'release');
+   a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&ready(a),'publish');
+  }
+  a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&ready(a),'open');
+  const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];sharedCoded??=id;assert.equal(id,sharedCoded);return id;
+}
+// The image the shared 2.1 template names: uploaded once, through the console, and shared by the tests that need it.
+let sharedImage=null;
+async function uploadedImage(a){
+  if(sharedImage)return sharedImage;
+  setFile(a,'doc-image-file',pngOf(88,36,[200,60,30,255]));a.click('doc-image-upload');await until(()=>doc2status(a).includes('图片已上传')&&ready(a),'upload');
+  const id=a.$('doc2-image-listing').value;a.$('doc2-add-band').value='document_footer';
+  a.click('doc-json-save');const before=JSON.parse(a.$('doc-json').value);clickId(a,'doc2-add-image');a.click('doc-json-save');
+  const added=JSON.parse(a.$('doc-json').value);const element=Object.values(added.bands).flatMap(b=>b.elements).find(e=>e.type==='image');
+  sharedImage={id,sha256:element.image.sha256};assert.equal(Object.values(before.bands).flatMap(b=>b.elements).some(e=>e.type==='image'),false);return sharedImage;
+}
+
+test('S03-M M5: a 2.1 template is saved, opened, published and read back like any template, and its issue request carries the preview row and nothing else',async()=>{const bodies=[];const a=app(offeringIssuance({bodies}));try{
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&ready(a),'frozen');
+ a.w.document.querySelector('[data-page="documents"]').click();cv.load(a,banded());
+ const image=await uploadedImage(a);const id=await codedPublishedOpen(a,image);
+ // What the server kept is the 2.1 template as it was saved; the canvas draws every element of it, the picture read from the content route.
+ assert.deepEqual(cv.tpl(a),publishable(image));assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-band').length,5);
+ for(const key of ['e20','e21','e22','e23','e24','e25'])assert.ok(cv.item(a,key),key);
+ await until(()=>cv.item(a,'e24').querySelector('.cv-picture'),'the picture of the opened template');
+ assert.match(cv.item(a,'e22').getAttribute('aria-label'),/条码 Code 128，值 出具编号，印出值，字号 9 点/);
+ // The issue request is the published version, the snapshot and the preview row; the group is the server's to find (S03-K), as for 2.0.
+ a.input('doc-row','3');a.click('doc-issue');await until(()=>a.$('notice').textContent.includes('已发布的模板版本')&&ready(a),'issue request');
+ assert.equal(bodies.length,1);assert.deepEqual(Object.keys(bodies[0]).sort(),['row_index','snapshot_id','template_id','version']);assert.equal(bodies[0].template_id,id);assert.equal(bodies[0].row_index,2);
+ // A 2.1 template saved with an image of another binding or identity is the server's to refuse; here the console's own validator refuses what it can see.
+ const wrong=publishable(image);wrong.bands.document_footer.elements.at(-2).image={id:'not an id',sha256:image.sha256};a.$('doc-json').value=JSON.stringify(wrong);a.click('doc-json-open');assert.notEqual(doc2status(a),READY);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-M M5: a 2.1 template previews and is issued through the real server and pinned Typst renderer: the placeholder in the preview, the product\'s number in the issue',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&ready(a),'frozen');
+ a.w.document.querySelector('[data-page="documents"]').click();cv.load(a,banded());
+ const image=await uploadedImage(a);const id=await codedPublishedOpen(a,image);
+ // The sample check proves the layout for every number the product may assign, without rendering.
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length>=1&&ready(a),'check');assert.match(a.$('doc-check-body').rows[0].cells[1].textContent,/^通过$/);
+ // The preview of the saved version, for the group of row 2.
+ a.input('doc-row','2');a.click('doc-saved-pdf');await until(()=>a.downloads.length===1&&ready(a),'preview',30000);
+ const preview=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(preview.subarray(0,5).toString(),'%PDF-');
+ // The issue of the group of row 3: numbered by the product, with its number in every element that shows it.
+ a.input('doc-row','3');a.click('doc-issue');await until(()=>a.downloads.length===2&&ready(a),'issued PDF',30000);
+ const name=a.downloads[1].name,number=/^issued-(AR-\d{6})\.pdf$/.exec(name)?.[1];assert.ok(number,name);
+ const issued=Buffer.from(await a.downloads[1].blob.arrayBuffer());assert.equal(issued.subarray(0,5).toString(),'%PDF-');assert.notDeepEqual(issued,preview);
+ // The glyphs of the number: the issued page header carries the number text, as many glyphs as the number has characters, more than the placeholder's.
+ const glyphsAt=(bytes,size)=>pdfGlyphs(bytes)[0].filter(g=>g[2]===size).length;
+ assert.equal(glyphsAt(issued,10)-glyphsAt(preview,10),number.length-'PREVIEW-NUMBER'.length,'the text of the number at 10 pt: the number, not the placeholder');
+ const dir=process.env.REPORTING_DOCUMENT_EVIDENCE_DIR;if(dir){await mkdir(dir,{recursive:true});await writeFile(join(dir,'console_coded_preview.pdf'),preview);await writeFile(join(dir,'console_coded_issued.pdf'),issued);}
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-M M5: what the 2.1 canvas and panels draw is DOM nodes and CSSOM only: no style attribute, no inline handler, hostile text stays text',async()=>{const a=await designer();try{
+ const hostile='<img src=x onerror=alert(1)>',t=coded();t.bands.document_footer.elements.push({id:'e30',type:'barcode',source:'literal',text:hostile,field:'',x:0,y:12,width:60,height:8,symbology:'code128',human_readable:false});cv.load(a,t);
+ cv.click2(a,'e30');cv.drag2(a,'e30',1,0);cv.click2(a,'e20');cv.click2(a,'e23');cv.key(a,cv.item(a,'e23'),'k',{ctrlKey:true});typeInto(a,'图片');press(a,'Escape');
+ for(const root of [a.$('doc-canvas-panel'),a.$('doc2-panel'),palette(a)].filter(Boolean)){assert.equal(root.querySelectorAll('[style]').length,0,'no style attribute in '+(root.id||root.className));for(const e of root.querySelectorAll('*'))assert.equal([...e.attributes].some(x=>/^on/i.test(x.name)),false,'no inline handler');}
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('img,script').length,0);assert.ok([...cv.item(a,'e30').querySelectorAll('.cv-codelabel')].some(x=>x.textContent.includes(hostile)),'the value is drawn as text');assert.ok(cv.item(a,'e30').getAttribute('aria-label').includes(hostile));
+ cv.click2(a,'e30');assert.equal(a.$('doc2-p-text').value,hostile);assert.equal(a.$('doc2-panel').querySelectorAll('img,script').length,0);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('S03-M M5: the console\'s validator refuses a 2.1 template that a 2.0 one never had: the shared cases of the version run in both validators',async()=>{
+ assert.ok(schema2.cases.length>=300,'the shared table has the 2.1 cases');
+ const coded21=schema2.cases.filter(c=>JSON.stringify(c.edit).includes('"2.1"')||/barcode|QR code|image|issue number/i.test(c.name));assert.ok(coded21.length>=100,coded21.length+' cases of 2.1');
+ const kinds={valid:0,invalid:0,unauthorized:0};for(const c of coded21)kinds[c.expect]++;assert.ok(kinds.valid>=20&&kinds.invalid>=70&&kinds.unauthorized>=2,JSON.stringify(kinds));
+ // The shared cases themselves are run by the test of every 2.0 case above, which takes the whole table; here the 2.1 ones are run on their own, so that a table that loses them fails here.
+ const a=await designer();try{let accepted=0;
+  for(const c of coded21){const doc=editedCase(schema2.base,c.edit);a.$('doc-status').textContent='';a.$('doc-json').value=JSON.stringify(doc);a.click('doc-json-open');const ok=a.$('doc-status').textContent===READY;assert.equal(ok,c.expect==='valid',c.name+': '+a.$('doc-status').textContent);if(ok)accepted++;}
+  assert.equal(accepted,kinds.valid);assert.equal(a.errors.length,0);
  }finally{a.close();}});

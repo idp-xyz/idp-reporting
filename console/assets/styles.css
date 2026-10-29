@@ -37,3 +37,9 @@
 .cv2-panel>h2{padding:14px 12px 0}.cv2-panel h3{padding:14px 12px 0}.cv2-panel p,.cv2-panel #doc2-props>p{padding:4px 12px;font-size:12px}.cv2-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 12px;border-bottom:1px solid var(--line)}.cv2-row .cv2-name{font-size:12px;color:var(--ink);font-weight:600;flex:1 1 140px}.cv2-row label{flex:1 1 130px;max-width:230px;font-size:12px;color:var(--text)}.cv2-row label>input,.cv2-row label>select{display:block;width:100%;margin-top:4px}.cv2-actions{display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px}
 .cv2-notes{margin:6px 12px;padding-left:22px;font-size:12px}.cv2-notes li{margin:3px 0}
 
+
+/* Schema 2.1 (S03-M): barcodes and QR codes as labelled placeholders (the symbol inside its quiet zone), images as they are, the issue number's text. */
+.cv-barcode .cv-box,.cv-qrcode .cv-box{fill:var(--cv-paper);stroke:var(--cv-literal-line)}.cv-image:not(.cv-refused) .cv-box{fill:transparent;stroke:var(--cv-literal-line);stroke-dasharray:3 3}.cv-number .cv-box{fill:var(--cv-row);stroke:var(--cv-row-line)}
+.cv-quiet{fill:none;stroke:var(--cv-muted);stroke-width:1;stroke-dasharray:2 2;pointer-events:none}.cv-finder{fill:none;stroke:var(--cv-ink);stroke-width:2;pointer-events:none}.cv-bars{fill:none;stroke:var(--cv-ink);opacity:.5;pointer-events:none}
+.cv-codelabel{font-size:9px;fill:var(--cv-ink);paint-order:stroke;stroke:var(--cv-paper);stroke-width:3px;pointer-events:none}.cv-quiet-note{fill:var(--cv-muted)}.cv-picture{pointer-events:none}
+@media (forced-colors:active){.cv-quiet,.cv-finder,.cv-bars{stroke:CanvasText}.cv-codelabel,.cv-quiet-note{fill:CanvasText}}

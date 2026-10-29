@@ -1,3 +1,7 @@
 # PDF evidence checker (scripts/check_pdf_export.py); CI installs it with --require-hashes.
 pymupdf==1.27.2.3 \
     --hash=sha256:857842b4888827bd6155a1131341b2822a7ebe9a8c15a975fd7d490d7a64a30c
+# The decoder of the codes (ADR 0005, decision 7): an independent implementation (zxing-cpp, Apache-2.0), which shares nothing with the
+# encoder in the render path. The wheel is the one pip takes for CPython 3.12 on x86-64 Linux (ubuntu-24.04); it needs no other package.
+zxing-cpp==3.1.1 \
+    --hash=sha256:9cf67341949946307d086b302cefd453fb47bc6d6ddc7d088839e9481982757b

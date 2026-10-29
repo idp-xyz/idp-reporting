@@ -128,6 +128,26 @@ yet). A job that failed for another reason shows its own code, and its number, i
 voided there. A job claimed again never asks the product for a new number: the product answers the same job id with
 the same reservation.
 
+## Barcodes, images and the checker (S03-M)
+
+Schema 2.1 (docs/API.md, ADR 0005) adds a third-party library to the formal render path and a decoder to the checker.
+
+- `github.com/boombuler/barcode` v1.1.0 (MIT) encodes Code 128 and QR symbols behind `export/barcode`, the only package that imports it. It is
+  pinned by go.mod and go.sum (CI runs `go mod verify`) and is reviewed at every upgrade: `export/barcode`'s tests pin what the wrapper relies on
+  (the encoder accepts control characters, function codes and an empty QR payload, which the platform refuses before calling it; it quotes the value
+  in its own errors, so its errors are never passed on; its Code 128 output is checked against the standard's patterns, and QR against the standard's
+  capacities and format words). An upgrade that changes what these tests record must be reviewed before it is merged. The encoders keep no state between
+  calls and are safe to share.
+- Images live in the `images` directory of the background directory (`-background-directory`, mode 0700, one writer, as the backgrounds): there is no
+  deletion, as for backgrounds, and no new flag. A directory that held only backgrounds gains the subdirectory when the binary starts. The directory is
+  per identity, up to 16 images per dataset and, as the shared store, 8 MiB per identity; images are content of the templates that name them, so back
+  up the directory with the template directory. The service draws a probe page with every upload when it has the renderer.
+- The PDF checker (`scripts/check_pdf_export.py`, CI's pdf job) decodes every code with zxing-cpp 3.1.1 (Apache-2.0), pinned with its hash in
+  `scripts/requirements-pdfcheck.txt` (the wheel for CPython 3.12 on x86-64 Linux; no other package is needed). A host that runs the checker
+  needs it: `pip install --require-hashes --only-binary :all: --no-deps -r scripts/requirements-pdfcheck.txt`.
+- Rolling: a schema 2.1 template needs the binary of this slice to be previewed, checked and issued (an older binary cannot read the template);
+  1.x and 2.0 templates and their files are unchanged. No SQL migration.
+
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the

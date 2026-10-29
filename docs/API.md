@@ -64,6 +64,8 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET /document-templates/{id}/published | The published version |
 | POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
 | GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
+| GET, POST /document-images | Private images of schema 2.1 templates (S03-M, ADR 0005): list the caller's images of the datasets the caller may still read; upload `{binding, image}` (PNG or JPEG in base64, at most 512 KiB, 2000 x 2000 pixels, the format read from the content) and get `201 {id, sha256, binding, format, width, height}`; mounted with the backgrounds; the answers of the three image routes are `no-store` and `nosniff` |
+| GET /document-images/{id}/content | The bytes of one image to its owner only (another identity's id is 404), while the caller may read its dataset (else 403): `Content-Type` `image/png` or `image/jpeg`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `X-Content-SHA256` (the digest the template names) |
 | POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` (a schema 2.0 template: `row_index` or `group`, see "Issue by group" below) with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}` (a group issue: `group` in place of `row_index`), and the product's `number` once the job succeeded (read from its record), wherever the job is shown: the 202 of a request repeated with the key of a job that has succeeded (a client whose answer was lost asks again), `GET /jobs/{id}` and the 200 of `POST /jobs/{id}/cancel` |
 | GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
 | GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's, so once the snapshot expired it is refused (403 with the contract simulators, whose adapter denies an expired read; 409 for the download), while `GET /issues/{id}` still answers; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
@@ -214,8 +216,8 @@ stamp's. The heights of the page header, document header and page footer plus th
 header, brought-forward, one body and carry-forward row, one line each at the table's type size) must fit the safe
 region. Element positions are in millimetres on the 0.1 mm grid, relative to the band (which starts at x 10 mm); ids
 `e1`-`e64` are unique in the template, at most 64 elements and 24 per band, a template at most 64 KiB, at most 12 table
-columns. Elements, each with exactly the keys of its `type` (unknown keys, unknown types and the reserved `barcode`,
-`qrcode` and `image` are refused):
+columns. Elements, each with exactly the keys of its `type` (unknown keys and unknown types are refused; `barcode`,
+`qrcode`, `image` and the text source `issue_number` are schema 2.1, below, and refused in a 2.0 document):
 
 - `text`: `id type source text field wrap x y width height font_size align bold`. `source` is `literal` (`text`, at most
   256 characters, no control; with `wrap` up to 1024 and line breaks), `field` (`field` of the dataset; the value of
@@ -303,6 +305,60 @@ The views show the group where they showed the row: `issue.group` of a job view 
 `GET /issues/{id}` are `{fields, key, row_count, rows_sha256}` (the template's group fields, the key values in their order, how many rows, the
 digest of those rows), and a group issue has no `row_index`; a row issue has no `group`. The row indices stay in the record, which the
 views check but do not repeat.
+
+Schema 2.1 (S03-M, docs/S03M_SCOPE.md, ADR 0005): `schema_version: "2.1"` is 2.0 plus three element types and one text
+source; everything else, grouping, bands, the table, the issue by group and the refusal `detail`, is 2.0's, and 2.0 and 1.x
+documents are unchanged and render byte for byte as before (the evidence PDFs of every earlier schema are compared). The new
+elements are allowed in every band but `detail`; a text, a barcode, a QR code and an image each own a box of their band, and no two of
+them overlap (lines and rectangles may lie under them). Closed like 2.0, with exactly these keys:
+
+- `barcode`: `id type source text field x y width height symbology human_readable` and, only when `human_readable` is true,
+  `font_size` (8-28; a barcode that does not print its value has no `font_size` key). `symbology` is `code128`. The box is at
+  least 10 x 5 mm.
+- `qrcode`: `id type source text field x y size ecc`: a square box of `size` mm (10-190) and `ecc` `L`, `M`, `Q` or `H`.
+- `image`: `id type x y width height image`, a box of at least 5 x 5 mm and `image: {id, sha256}`, a private image of the template's
+  binding and identity (below). The picture is drawn contained in the box, centred, its aspect ratio kept.
+- `text` gains the source `issue_number` (`text` and `field` empty, no `wrap`): the number the source product assigned.
+
+`source` of a barcode and a QR code is `literal` (`text`: 1-64 characters for Code 128, 1-256 bytes for QR), `field` (`field` of the
+dataset, bound as a text's field is: a group field or the same value in every row of the group, else INCONSISTENT_GROUP) or
+`issue_number`; the key of the other two is empty. The alphabet is the symbology's: Code 128 takes printable ASCII (32-126) with
+the code set chosen automatically, QR takes UTF-8 text in byte mode without control characters; a value outside it, or empty, is
+refused with NOT_COVERED and one longer than the limit with DOES_NOT_FIT, naming the band and the element, never altered. The
+encoders are `github.com/boombuler/barcode` v1.1.0 (MIT), pinned by go.mod and go.sum behind `export/barcode`; Go turns the modules
+into rectangles at exact positions and Typst draws them: no raster code, no browser library and no Typst plugin in the formal path.
+Scanability is a layout rule, never shrunk: the quiet zone lies inside the element's box (Code 128: ten modules on each side; QR: four);
+the module is the box's width divided by the modules of the symbol and its quiet zones (the side for QR), equal everywhere, and at least
+0.25 mm (Code 128) or 0.4 mm (QR); a Code 128 bar, the box's height less the line of the value when `human_readable` (1 pt and 1.46 type
+sizes), is at least the larger of 5 mm and 15 % of the symbol's width. A value that would need narrower modules or lower bars is
+refused with DOES_NOT_FIT and the element's name.
+
+The issue number. A preview (`POST /document-previews`, the previews of a saved version) prints the placeholder `PREVIEW-NUMBER` in a text
+and encodes it in a code, so that no preview carries a number-like value. The sample check (`POST /document-checks`) and the issue worker's
+check, which run before the source product is asked for a number, take no number and prove the fit for every legal one (1-32 characters of
+`A-Z a-z 0-9 . _ -`): a text with the widest number at its size and weight (a letter or digit first, then the widest characters of the
+alphabet), a Code 128 with the most modules 32 such characters can need (32 symbols: the encoder's code sets never need more symbols than
+characters), a QR code with 32 bytes at its level. A number the product assigns therefore cannot make the render fail after the reservation:
+the proof is tested through Typst for the widest and the longest numbers at the tightest boxes the check accepts. The issue passes the number
+the product reserved (`IssueRequest.Number`, which the issuer requires to be the stamp's) to the renderer, and the issued file shows it in every
+such element; the checker decodes every code of the issued file and compares it with the record's number.
+
+Images. An image is a private, immutable asset of the caller's identity and the template's binding (integration and dataset), kept beside the
+backgrounds (the `images` directory of `-background-directory`) and named by an id and the SHA-256 of the bytes the platform keeps. An
+upload is decoded completely and normalized: a PNG is written again by the standard encoder (chunks the renderer has no use for are
+dropped), a JPEG (baseline or progressive, grey or YCbCr, not CMYK) keeps its entropy-coded data untouched and loses its metadata segments
+(EXIF, XMP, ICC profiles, comments), because an issued document would carry them; the result must be at most 512 KiB and 2000 x 2000 pixels.
+When the service has the renderer it draws the image on a probe page before storing it, so that one Typst cannot embed or whose PDF would
+exceed the artifact limit is refused at upload with the renderer's code. At most 16 images are kept for an identity and a dataset (413 beyond),
+and the shared store holds at most 16 records and 8 MiB per identity. A template, a preview, a check and an issue resolve the image with the
+caller's identity and the template's binding: another identity's image is 404, another binding's 403, a digest other than the stored one 409; a
+deployment without the store cannot draw one (422). An image of a seal or a signature is only a picture: the platform does not sign documents. The
+PDF stays PDF/A-2b (veraPDF), including PNGs with an alpha channel, 16-bit and palette PNGs and JPEGs.
+
+Authorization adds to 2.0's: the `field` of a barcode or QR code must be a column of the dataset the caller may read (403), as a text's.
+`POST /document-checks` and `samples: "boundary"` also pick the groups with the longest field value of each code. A renderer that cannot draw
+2.1 (an implementation of neither `RenderWith` nor `CheckIssueWith`/`IssueWith`) refuses such a template with 422 UNSUPPORTED_COMBINATION; the
+PDF writer implements all three.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile

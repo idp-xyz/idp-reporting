@@ -89,6 +89,19 @@ type pageData struct {
 	Rules []rule  `json:"rules"`
 	// Boxes are the rectangle elements of a 2.0 document; a 1.x page has none and does not write the key.
 	Boxes []frame `json:"boxes,omitempty"`
+	// Bars are the filled rectangles of the codes of a 2.1 document (the modules of a QR code, the bars of a Code 128), in black,
+	// and Images the pictures, each at the rectangle Go computed; a page without them does not write the keys.
+	Bars   []rect        `json:"bars,omitempty"`
+	Images []placedImage `json:"images,omitempty"`
+}
+
+// placedImage is a picture of Media drawn at a rectangle, in points.
+type placedImage struct {
+	File string  `json:"file"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	W    float64 `json:"w"`
+	H    float64 `json:"h"`
 }
 
 func newPage(texts []glyph) pageData {
@@ -121,6 +134,8 @@ type page struct {
 	// Footer is where a 2.0 document's footer band was put, for the tests that record what the checker
 	// verifies; it is not part of data.json.
 	Footer *footerPlace `json:"-"`
+	// Media are the files the pictures of a 2.1 document are read from, by name, written next to data.json.
+	Media map[string][]byte `json:"-"`
 }
 
 // footerPlace is the page (from 1) and top (points) of the document footer band of a 2.0 document.
@@ -216,11 +231,16 @@ func validIssueTime(at time.Time) bool {
 // stampSize. A stamp is any one line the fonts cover that fits the strip and is not the banner;
 // the width check is a guard, for stamps the contract does not produce.
 func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string) (*page, error) {
+	return w.issuePageWith(d, values, background, table, stamp, coded{mode: numberIssue})
+}
+
+// issuePageWith is issuePage for a document that may be of schema 2.1: c says what the issue number is and what the images are.
+func (w *Writer) issuePageWith(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string, c coded) (*page, error) {
 	if stamp == "" || hasControl(stamp) || utf8.RuneCountInString(stamp) > 128 || strings.Contains(stamp, bannerText) {
 		return nil, r.ErrInvalid
 	}
 	m := newPlainMeasurer(w.fonts)
-	p, err := issueLayout(d, values, background, table, m)
+	p, err := issueLayoutWith(d, values, background, table, m, c)
 	if err != nil {
 		return nil, err
 	}
@@ -242,6 +262,12 @@ func (w *Writer) issuePage(d doctemplates.Document, values map[string]string, ba
 // text, which is never printed on an issued document, not even as data (the literals that
 // variables mode does not print are not data). The stamp is set by the caller.
 func issueLayout(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer) (*page, error) {
+	return issueLayoutWith(d, values, background, table, m, coded{mode: numberWorst})
+}
+
+// issueLayoutWith is issueLayout for a document that may be of schema 2.1: c says what the issue number is (the check proves the
+// worst case) and what the images are. A code that encodes the preview's banner text is refused as a text that shows it is.
+func issueLayoutWith(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer, c coded) (*page, error) {
 	full := d.Print == nil || d.Print.Mode == "full"
 	for _, e := range d.Elements {
 		if (full || e.Source != "literal") && strings.Contains(values[e.ID], bannerText) {
@@ -249,7 +275,7 @@ func issueLayout(d doctemplates.Document, values map[string]string, background [
 		}
 	}
 	for _, bi := range d.Items() {
-		if bi.Item.Type == doctemplates.TypeText && strings.Contains(values[bi.Item.ID], bannerText) {
+		if (bi.Item.Type == doctemplates.TypeText || bi.Item.Type == doctemplates.TypeBarcode || bi.Item.Type == doctemplates.TypeQRCode) && strings.Contains(values[bi.Item.ID], bannerText) {
 			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Band: bi.Band, Element: bi.Item.ID}, "pdf: a value of an issued document holds the preview banner text")
 		}
 	}
@@ -269,7 +295,7 @@ func issueLayout(d doctemplates.Document, values map[string]string, background [
 			}
 		}
 	}
-	return layOut(d, values, background, table, m)
+	return layOutWith(d, values, background, table, m, c)
 }
 
 // renderDocument runs Typst on a laid-out page, recording created as the document's creation
@@ -302,6 +328,10 @@ func (w *Writer) renderDocument(ctx context.Context, p *page, background []byte,
 	files := map[string][]byte{"main.typ": documentTemplate, "data.json": data}
 	if p.Background {
 		files["background.png"] = background
+	}
+	// The pictures of a 2.1 document, under names the layout chose (a digest and an extension), never a caller's.
+	for name, b := range p.Media {
+		files[name] = b
 	}
 	for name, b := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
@@ -351,15 +381,20 @@ var pngSignature = []byte("\x89PNG\r\n\x1a\n")
 // top of the box. Trailing white space is not drawn, as the previews never drew it. A table
 // adds its pages after the boxes are placed; the boxes repeat on every page.
 func layOut(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer) (*page, error) {
+	return layOutWith(d, values, background, table, m, coded{mode: numberPreview})
+}
+
+// layOutWith is layOut for a document that may be of schema 2.1: c says what the issue number is and what the images are.
+func layOutWith(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer, c coded) (*page, error) {
 	if err := doctemplates.Validate(d); err != nil {
 		return nil, err
 	}
-	// A 2.0 document is laid out by bands and has no background (layout2.go).
-	if d.Schema == doctemplates.SchemaBanded {
+	// A 2.x document is laid out by bands and has no background (layout2.go).
+	if d.Banded() {
 		if len(background) > 0 {
 			return nil, r.ErrInvalid
 		}
-		return layOutBanded(d, values, table, m)
+		return layOutBanded(d, values, table, m, c)
 	}
 	profile := doctemplates.PrintProfile{Mode: "full"}
 	if d.Print != nil {
