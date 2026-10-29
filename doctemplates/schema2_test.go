@@ -277,7 +277,7 @@ func TestSchema2DocumentIsClosedAndStrict(t *testing.T) {
 		"an empty type":      func(d *doctemplates.Document) { d.Bands.PageHeader.Elements[0].Type = "" },
 		"a missing table":    func(d *doctemplates.Document) { d.Bands.Detail.Elements = nil },
 		"a table in a band":  func(d *doctemplates.Document) { d.Bands.PageHeader.Elements[0] = d.Bands.Detail.Elements[0] },
-		"another schema":     func(d *doctemplates.Document) { d.Schema = "2.1" },
+		"another schema":     func(d *doctemplates.Document) { d.Schema = "2.2" },
 		"a table with no id": func(d *doctemplates.Document) { d.Bands.Detail.Elements[0].ID = "" },
 	} {
 		c := cloneDocument(t, d)
@@ -386,7 +386,7 @@ func TestSchema2WritesOnlyTheKeysOfItsTypes(t *testing.T) {
 		t.Errorf("an aligned column: %s", raw)
 	}
 	// A type with no form cannot be written, so that it cannot be stored.
-	if _, err := json.Marshal(doctemplates.Item{ID: "e1", Type: "barcode"}); err == nil {
+	if _, err := json.Marshal(doctemplates.Item{ID: "e1", Type: "circle"}); err == nil {
 		t.Error("a reserved type was written")
 	}
 	// A 1.x document is written as it always was.

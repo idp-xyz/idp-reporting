@@ -194,7 +194,9 @@ jobs:
           # console_banded_preview.pdf is the console's preview of a 2.0 template (S03-J) through the real server: veraPDF checks it too.
           # console_banded_issued.pdf is the group of a 2.0 template issued through the console and the real server (S03-K): veraPDF checks it;
           # the checker verifies the issued 2.0 documents the Go tests write (banded_issue_*), with the records the service kept.
-          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.json" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_banded_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_banded_issued.pdf" "$RUNNER_TEMP/pdf-evidence/"
+          # console_coded_preview.pdf and console_coded_issued.pdf are a 2.1 template (codes, an image, the issue number; S03-M) previewed and issued
+          # through the console and the real server: veraPDF checks them; the checker decodes the codes of the documents the Go tests write (coded_*).
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.json" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_banded_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_banded_issued.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_coded_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_coded_issued.pdf" "$RUNNER_TEMP/pdf-evidence/"
       - name: Check the documents, the negative controls and PDF/A-2b
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"

@@ -50,7 +50,7 @@ type Document struct {
 // MarshalJSON writes a 1.x document exactly as its fields have always been written and a 2.0 document
 // in its own form, without the keys of 1.x.
 func (d Document) MarshalJSON() ([]byte, error) {
-	if d.Schema == SchemaBanded {
+	if d.Banded() {
 		return json.Marshal(struct {
 			Schema  string     `json:"schema_version"`
 			Kind    string     `json:"kind"`
@@ -73,7 +73,7 @@ func Canonical(d Document) ([]byte, error) {
 }
 
 func Validate(d Document) error {
-	if d.Schema == SchemaBanded {
+	if d.Banded() {
 		return validateBanded(d)
 	}
 	if d.Group != nil || d.Bands != nil {
@@ -154,8 +154,8 @@ func Bind(d Document, s r.Snapshot, index int) (map[string]string, error) {
 	if e := Validate(d); e != nil {
 		return nil, e
 	}
-	if d.Schema == SchemaBanded {
-		return nil, fmt.Errorf("doctemplates: a 2.0 document is bound by row group, not by row: %w", r.ErrUnsupported)
+	if d.Banded() {
+		return nil, fmt.Errorf("doctemplates: a 2.x document is bound by row group, not by row: %w", r.ErrUnsupported)
 	}
 	if d.Binding.Integration != s.Owner.Integration || d.Binding.Dataset != s.Query.Dataset {
 		return nil, r.ErrDenied
@@ -229,8 +229,8 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 	if (value.Schema == "1.0" && fields["print"] != nil) || (value.Schema != "1.2" && value.Schema != "1.3" && fields["background"] != nil) || (value.Schema != "1.3" && fields["table"] != nil) {
 		return r.ErrInvalid
 	}
-	// Schema 2.0 has none of the keys of 1.x, and 1.x none of 2.0's.
-	if value.Schema == SchemaBanded {
+	// Schema 2.x has none of the keys of 1.x, and 1.x none of 2.x's.
+	if value.Schema == SchemaBanded || value.Schema == SchemaCoded {
 		for _, k := range []string{"elements", "print", "background", "table"} {
 			if fields[k] != nil {
 				return r.ErrInvalid

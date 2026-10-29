@@ -17,6 +17,12 @@ type DocumentChecker interface {
 	CheckIssue(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData) error
 }
 
+// ResolvedChecker is the check of a schema 2.1 template (ADR 0005): the PDF writer's CheckIssueWith, with the bytes of the template's
+// images, which proves the layout for every number the source product may assign. A checker without it cannot check a 2.1 template, which is then unsupported.
+type ResolvedChecker interface {
+	CheckIssueWith(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData, doctemplates.Resolved) error
+}
+
 // MaxDocumentCheckRows is the most rows one check answers: the first and the last row and, for
 // each of the 24 boxes, the longest and the shortest value.
 const MaxDocumentCheckRows = 50
@@ -88,7 +94,7 @@ func checkDocumentRows(w http.ResponseWriter, req *http.Request, s *r.Service, p
 	if config.Binding.Integration != snap.Owner.Integration || config.Binding.Dataset != snap.Query.Dataset {
 		return r.ErrDenied
 	}
-	if config.Schema == doctemplates.SchemaBanded {
+	if config.Banded() {
 		return checkGroupRows(w, req, s, p, checker, config, snap, snapshotID, explicit, boundary, assets)
 	}
 	var picks []checkRowPick

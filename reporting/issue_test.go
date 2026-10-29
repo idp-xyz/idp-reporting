@@ -607,6 +607,10 @@ func TestIssueTimesFromTheProductAreJudgedByValueAndKeptInUTC(t *testing.T) {
 	if !v.issuer.last.At.Equal(issuedAt) || v.issuer.last.At.Location() != time.UTC || v.issuer.last.Stamp != "ISSUED No. AR-000001 - 2026-10-28T06:13:33Z - "+j.ID {
 		t.Fatalf("the issuer was asked for %v in %v with the stamp %q", v.issuer.last.At, v.issuer.last.At.Location(), v.issuer.last.Stamp)
 	}
+	// The number the product reserved goes to the issuer as it is, the one of the stamp (a schema 2.1 template prints it where it shows its number).
+	if v.issuer.last.Number != "AR-000001" {
+		t.Fatalf("the issuer was given the number %q", v.issuer.last.Number)
+	}
 	rec, e := v.repo.Issue(ctx, v.p.Identity, j.ID)
 	if e != nil || rec.IssuedAt.Location() != time.UTC || rec.ConfirmedAt.Location() != time.UTC || !rec.IssuedAt.Equal(issuedAt) || !rec.ConfirmedAt.Equal(issuedAt.Add(3*time.Second)) {
 		t.Fatalf("%+v %v", rec, e)

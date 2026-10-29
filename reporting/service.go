@@ -868,7 +868,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		}
 		issuedAt := res.IssuedAt.UTC()
 		stamp := IssueStamp(res.Number, issuedAt, j.ID)
-		result, e := s.issuer.Issue(ctx, IssueRequest{Job: j, Snapshot: snap, Stamp: stamp, At: issuedAt})
+		result, e := s.issuer.Issue(ctx, IssueRequest{Job: j, Snapshot: snap, Stamp: stamp, Number: res.Number, At: issuedAt})
 		if e != nil {
 			return e
 		}

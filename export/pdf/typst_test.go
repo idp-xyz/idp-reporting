@@ -764,6 +764,8 @@ func TestTypstRendersDocuments(t *testing.T) {
 	}
 	// Schema 2.0 documents: bands over row groups (typst_banded_test.go).
 	t.Run("banded", func(t *testing.T) { testTypstRendersBandedDocuments(t, w) })
+	// Schema 2.1 documents: codes, images and the issue number (typst_coded_test.go).
+	t.Run("coded", func(t *testing.T) { testTypstRendersCodedDocuments(t, w) })
 	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.
 	results := make([][]byte, 6)
 	errs := make([]error, 6)
@@ -1065,6 +1067,8 @@ func TestTypstIssuesDocuments(t *testing.T) {
 	release(w.previews)
 	// A schema 2.0 document is issued by group (S03-K).
 	t.Run("banded", func(t *testing.T) { testTypstIssuesBandedDocuments(t, w, later) })
+	// A schema 2.1 document is issued with the product's number in every element that shows it (typst_coded_test.go).
+	t.Run("coded", func(t *testing.T) { testTypstIssuesCodedDocuments(t, w, later) })
 }
 
 // TestTypstIssuesTheWidestLegalStamp: the worker must never void a number the product reserved
@@ -1123,6 +1127,8 @@ func TestTypstIssuesTheWidestLegalStamp(t *testing.T) {
 	if err != nil || pages != 1 || !bytes.Contains(out, infoCreation(latest)) {
 		t.Errorf("the widest legal stamp does not render: %v", err)
 	}
+	// The widest and the longest legal numbers in the elements of a schema 2.1 document, at the tightest boxes its check accepts.
+	t.Run("coded", func(t *testing.T) { testTypstIssuesTheWidestLegalNumbers(t, w) })
 }
 
 // issueExpectation is the record the checker verifies an issued document against: the stamp

@@ -25,8 +25,16 @@ type Renderer interface {
 	CheckIssue(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData) error
 }
 
+// ResolvedRenderer is the part of the renderer that draws a schema 2.1 template (ADR 0005, S03-M), which needs the bytes of its
+// images and, when issued, the product's number: export/pdf.Writer.IssueWith and CheckIssueWith. A renderer without it cannot issue
+// a 2.1 template, which is then unsupported. CheckIssueWith proves the layout for every number the product may assign.
+type ResolvedRenderer interface {
+	IssueWith(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData, doctemplates.Resolved, string, time.Time) ([]byte, int, error)
+	CheckIssueWith(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData, doctemplates.Resolved) error
+}
+
 // Issuer renders issue jobs against the template store they were admitted from. Assets may be
-// nil on a deployment without backgrounds: a template naming one is then unsupported.
+// nil on a deployment without backgrounds and images: a template naming one is then unsupported.
 type Issuer struct {
 	store    *doctemplates.Store
 	assets   *doctemplates.Assets
@@ -47,6 +55,7 @@ type document struct {
 	values     map[string]string
 	table      *doctemplates.TableData
 	background []byte
+	images     map[string][]byte // a 2.1 template's images by element id
 }
 
 // prepare makes the document of a job and its verified snapshot, and is the whole of what can be
@@ -68,7 +77,7 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	}
 	// A 2.0 template is issued by row group (S03-K), a 1.x template by row: a job that names a 2.0 template
 	// without a group could only be bound by row, and a 1.x template with a group has none to bind.
-	banded := d.Schema == doctemplates.SchemaBanded
+	banded := d.Banded()
 	switch {
 	case banded && j.Group == nil:
 		return document{}, r.ErrUnsupported
@@ -93,7 +102,16 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 		return document{}, r.ErrUnpublished
 	}
 	if banded {
-		return bindGroup(d, j, snap)
+		doc, e := bindGroup(d, j, snap)
+		if e != nil || !d.Coded() {
+			return doc, e
+		}
+		// The images a 2.1 template draws are resolved with the same authorization as a background: the owner's, of the
+		// template's binding, with the digest the template names.
+		if doc.images, e = i.resolveImages(j.Owner.Identity, d); e != nil {
+			return document{}, e
+		}
+		return doc, nil
 	}
 	values, e := doctemplates.Bind(d, snap, j.RowIndex)
 	if e != nil {
@@ -116,6 +134,25 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 		background = nil
 	}
 	return document{d: d, values: values, table: table, background: background}, nil
+}
+
+// resolveImages returns the bytes of each image element of d by element id.
+func (i *Issuer) resolveImages(owner r.Identity, d doctemplates.Document) (map[string][]byte, error) {
+	images := map[string][]byte{}
+	for _, bi := range d.Items() {
+		if bi.Item.Type != doctemplates.TypeImage {
+			continue
+		}
+		if i.assets == nil || i.assets.Images == nil {
+			return nil, r.ErrUnsupported
+		}
+		data, e := i.assets.Images.Resolve(owner, d.Binding, *bi.Item.Image)
+		if e != nil {
+			return nil, e
+		}
+		images[bi.Item.ID] = data
+	}
+	return images, nil
 }
 
 // bindGroup makes the document of a group job: the frozen group must be the verified snapshot's, whole, under
@@ -152,6 +189,13 @@ func (i *Issuer) Check(ctx context.Context, j r.Job, snap r.Snapshot) error {
 	if e != nil {
 		return e
 	}
+	if doc.d.Coded() {
+		rr, ok := i.renderer.(ResolvedRenderer)
+		if !ok {
+			return r.ErrUnsupported
+		}
+		return rr.CheckIssueWith(ctx, doc.d, doc.values, doc.background, doc.table, doctemplates.Resolved{Images: doc.images})
+	}
 	return i.renderer.CheckIssue(ctx, doc.d, doc.values, doc.background, doc.table)
 }
 
@@ -169,7 +213,21 @@ func (i *Issuer) Issue(ctx context.Context, req r.IssueRequest) (r.IssueResult, 
 	if e != nil {
 		return r.IssueResult{}, e
 	}
-	pdf, pages, e := i.renderer.Issue(ctx, doc.d, doc.values, doc.background, doc.table, req.Stamp, req.At)
+	var pdf []byte
+	var pages int
+	if doc.d.Coded() {
+		rr, ok := i.renderer.(ResolvedRenderer)
+		if !ok {
+			return r.IssueResult{}, r.ErrUnsupported
+		}
+		// The number the worker passes is the one in the stamp: a document that shows it must show the product's.
+		if !r.ValidIssueNumber(req.Number) || !strings.HasPrefix(req.Stamp, "ISSUED No. "+req.Number+" - ") {
+			return r.IssueResult{}, r.ErrInvalid
+		}
+		pdf, pages, e = rr.IssueWith(ctx, doc.d, doc.values, doc.background, doc.table, doctemplates.Resolved{Images: doc.images, Number: req.Number}, req.Stamp, req.At)
+	} else {
+		pdf, pages, e = i.renderer.Issue(ctx, doc.d, doc.values, doc.background, doc.table, req.Stamp, req.At)
+	}
 	if e != nil {
 		return r.IssueResult{}, e
 	}

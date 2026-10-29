@@ -24,12 +24,12 @@ window.createReportingCanvas=function(ports){
  const U=mm=>Math.round(mm*10),M=u=>u/10,clone=v=>JSON.parse(JSON.stringify(v)),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
  const svgEl=(tag,attrs,text)=>{const e=document.createElementNS(NS,tag);for(const k of Object.keys(attrs||{}))e.setAttribute(k,String(attrs[k]));if(text!==undefined)e.textContent=text;return e;};
  const node=(tag,text,className)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;};
- const sources={literal:'固定文字',row:'行字段',total:'合计'},sources2={literal:'固定文字',field:'字段',group_sum:'分组合计',page:'页码文字'};
+ const sources={literal:'固定文字',row:'行字段',total:'合计'},sources2={literal:'固定文字',field:'字段',group_sum:'分组合计',page:'页码文字',issue_number:'出具编号'};
  const bandNames=['page_header','document_header','detail','document_footer','page_footer'],FIXED=['page_header','document_header','document_footer','page_footer'],bandLabels=window.reportingRefusal.bandLabels;
  const SAFE_T=250,SAFE_B=2700,BAND_X=100,BAND_W=1900;
 
  // ---- the model: pure operations on a configuration, in 0.1 mm units ------------------------------
- const banded=d=>!!d&&d.schema_version==='2.0';
+ const banded=d=>!!d&&(d.schema_version==='2.0'||d.schema_version==='2.1');
  const tableOf=d=>banded(d)?d.bands.detail.elements[0]:d.table,tableKey=d=>banded(d)?tableOf(d).id:'table';
  const items=d=>banded(d)?items2(d):[...d.elements.map(e=>({key:e.id,table:false,ref:e})),...(d.table?[{key:'table',table:true,ref:d.table}]:[])];
  const rectOf=i=>i.band!==undefined?rect2(i):({x:U(i.ref.x),y:U(i.ref.y),w:U(i.ref.width),h:U(i.ref.height)});
@@ -55,6 +55,7 @@ window.createReportingCanvas=function(ports){
   const e=i.ref;
   if(e.type==='line'){const x=Math.min(U(e.x1),U(e.x2)),y=Math.min(U(e.y1),U(e.y2));return {x:BAND_X+x,y:i.top+y,w:Math.abs(U(e.x2)-U(e.x1)),h:Math.abs(U(e.y2)-U(e.y1))};}
   if(e.type==='table')return {x:BAND_X+U(e.x),y:i.top,w:U(e.width),h:i.bh};
+  if(e.type==='qrcode')return {x:BAND_X+U(e.x),y:i.top+U(e.y),w:U(e.size),h:U(e.size)};
   return {x:BAND_X+U(e.x),y:i.top+U(e.y),w:U(e.width),h:U(e.height)};
  }
  // Writes a page rectangle back as band positions, relative to the band whose top is T. A line keeps its shape and moves; the table
@@ -63,6 +64,8 @@ window.createReportingCanvas=function(ports){
   const e=i.ref;
   if(e.type==='line'){const o=rect2(i),dx=r.x-o.x,dy=r.y-o.y+i.top-T;e.x1=M(U(e.x1)+dx);e.x2=M(U(e.x2)+dx);e.y1=M(U(e.y1)+dy);e.y2=M(U(e.y2)+dy);return;}
   if(e.type==='table'){if(r.w!==U(e.width))scaleColumns(e,r.w);e.x=M(r.x-BAND_X);e.width=M(r.w);return;}
+  // A QR code is square: the side takes the dimension that changed (the larger when both did).
+  if(e.type==='qrcode'){const o=U(e.size);e.x=M(r.x-BAND_X);e.y=M(r.y-T);e.size=M(r.w!==o&&r.h!==o?Math.max(r.w,r.h):r.w!==o?r.w:r.h);return;}
   e.x=M(r.x-BAND_X);e.y=M(r.y-T);e.width=M(r.w);e.height=M(r.h);
  }
  // Puts an element of d (an item of items(d)) at a page rectangle inside band `to`, taking it out of its own band when that differs.
@@ -123,11 +126,11 @@ window.createReportingCanvas=function(ports){
   for(const src of items(d).filter(i=>keys.includes(i.key)&&!i.table)){
    const used=new Set(items(d).map(i=>i.key));let n=1;while(used.has('e'+n))n++;
    if(n>64)throw Error('最多64个元素。');
-   const band=d.bands[src.band],H=U(band.height),e=src.ref,r=rect2(src),top=r.y-src.top,step=Math.max(r.h,10),texts=band.elements.filter(o=>o.type==='text'&&o!==e).map(o=>({x:U(o.x),y:U(o.y),w:U(o.width),h:U(o.height)}));
+   const band=d.bands[src.band],H=U(band.height),e=src.ref,r=rect2(src),top=r.y-src.top,step=Math.max(r.h,10),texts=band.elements.filter(o=>boxed(o.type)&&o!==e).map(boxOf);
    let failure='',placed=false,tries=0,copy;
    for(let dy=step;top+dy+r.h<=H&&tries<20;dy++){
     copy=clone(e);copy.id='e'+n;if(e.type==='line'){copy.y1=M(U(e.y1)+dy);copy.y2=M(U(e.y2)+dy);}else copy.y=M(U(e.y)+dy);
-    if(e.type==='text'&&texts.some(o=>overlap({x:U(copy.x),y:U(copy.y),w:U(copy.width),h:U(copy.height)},o)))continue;
+    if(boxed(e.type)&&texts.some(o=>overlap(boxOf(copy),o)))continue;
     const probe=clone(d);probe.bands[src.band].elements.push(copy);failure=fits?fits(probe):'';
     if(!failure){placed=true;break;}tries++;
    }
@@ -136,6 +139,8 @@ window.createReportingCanvas=function(ports){
   }
   return {d,made};
  }
+ // A text, a code and an image own a box of their band that nothing else of that kind may overlap (a QR code's is a square).
+ const boxed=type=>type==='text'||type==='barcode'||type==='qrcode'||type==='image',boxOf=o=>({x:U(o.x),y:U(o.y),w:U(o.type==='qrcode'?o.size:o.width),h:U(o.type==='qrcode'?o.size:o.height)});
  const columnMinimum=(d,i)=>U(ports.columnMinimum(tableOf(d).font_size,i,banded(d)));
  // Moves the boundary after column index so that the column to its left is `left` wide, giving
  // to or taking from the column to the right; each column keeps its minimum. Returns the width used.
@@ -235,10 +240,15 @@ window.createReportingCanvas=function(ports){
   const e=i.ref,band='，'+bandLabels[i.band];
   if(e.type==='table')return '明细表 '+e.id+'，列 '+e.columns.map(c=>c.label||lab[c.field]||c.field).join('、')+'，字号 '+e.font_size+' 点，x '+fmt(e.x)+' 毫米，宽 '+fmt(e.width)+' 毫米'+band;
   if(e.type==='line')return e.id+'，线，从 x '+fmt(e.x1)+' y '+fmt(e.y1)+' 到 x '+fmt(e.x2)+' y '+fmt(e.y2)+' 毫米，线宽 '+fmt(e.stroke)+' 点'+band;
+  if(e.type==='qrcode')return e.id+'，二维码，纠错 '+e.ecc+'，值 '+codeValue(e,lab)+'，x '+fmt(e.x)+' 毫米，y '+fmt(e.y)+' 毫米，边长 '+fmt(e.size)+' 毫米'+band;
   const pos='，x '+fmt(e.x)+' 毫米，y '+fmt(e.y)+' 毫米，宽 '+fmt(e.width)+' 毫米，高 '+fmt(e.height)+' 毫米'+band;
+  if(e.type==='barcode')return e.id+'，条码 Code 128，值 '+codeValue(e,lab)+(e.human_readable?'，印出值，字号 '+e.font_size+' 点':'，不印出值')+pos;
+  if(e.type==='image')return e.id+'，图片 '+e.image.id+pos;
   if(e.type==='rect')return e.id+'，矩形，线宽 '+fmt(e.stroke)+' 点，填充 '+(e.fill==='none'?'无':e.fill)+pos;
-  return e.id+'，'+sources2[e.source]+(e.source==='literal'||e.source==='page'?' “'+e.text+'”':' '+(lab[e.field]||e.field))+'，字号 '+e.font_size+' 点'+(e.bold?'，粗体':'')+(e.wrap?'，自动换行':'')+pos;
+  return e.id+'，'+sources2[e.source]+(e.source==='literal'||e.source==='page'?' “'+e.text+'”':e.source==='issue_number'?'':' '+(lab[e.field]||e.field))+'，字号 '+e.font_size+' 点'+(e.bold?'，粗体':'')+(e.wrap?'，自动换行':'')+pos;
  }
+ // Where a code gets its value, in words.
+ const codeValue=(e,lab)=>e.source==='literal'?'固定 “'+e.text+'”':e.source==='issue_number'?'出具编号':'字段 '+(lab[e.field]||e.field);
  const idle='先查询当前授权数据，画布随模板显示。',blank='画布显示版面，不显示底稿与数据，PDF 预览为准。';
  const status=text=>{if(statusLine)statusLine.textContent=text;};
  const announce=text=>{if(live)live.textContent=text;};
@@ -293,6 +303,37 @@ window.createReportingCanvas=function(ports){
  // The 2.0 bands (a labelled region each, the fixed ones with a grabbable bottom edge; the edges the keyboard reaches are returned, to go last in the tab order) and their elements, in reading order. The filled rectangles are drawn
  // in a layer of their own under every element, so that a text on a grey box shows whatever the order of the two.
  const greys={grey1:245,grey2:232,grey3:215,grey4:190};
+ // The modules a code takes, estimated for the placeholder's quiet zone: a literal's own length, 16 characters for a field and the longest
+ // issue number (32) for the number; the platform's layout (not this estimate) decides what fits. Code 128: a start symbol, the characters, the
+ // check symbol and the stop, 11 modules each but the stop's 13, and ten modules of quiet zone on each side; QR: byte mode, the least version
+ // that holds the bytes at the level (the data codewords of versions 1 to 17 at L, M, Q, H), four modules of quiet zone on each side.
+ const QR_WORDS=[[19,16,13,9],[34,28,22,16],[55,44,34,26],[80,64,48,36],[108,86,62,46],[136,108,76,60],[156,124,88,66],[194,154,110,86],[232,182,132,100],[274,216,154,122],[324,254,180,140],[370,290,206,158],[428,334,244,180],[461,365,261,197],[523,415,295,223],[589,453,325,253],[647,507,367,283]];
+ const valueSize=(e,bytes)=>e.source==='literal'?(bytes?new TextEncoder().encode(e.text).length:[...e.text].length):e.source==='issue_number'?32:16;
+ const code128Modules=e=>11*(Math.min(64,Math.max(1,valueSize(e)))+2)+13+20;
+ const qrModules=e=>{const n=valueSize(e,true),level='LMQH'.indexOf(e.ecc);for(let v=1;v<=QR_WORDS.length;v++)if(QR_WORDS[v-1][level]-(v<10?2:3)>=n)return 17+4*v+8;return 85+8;};
+ // A code as a labelled placeholder: its box, the symbol inside the quiet zone (bars; three finder patterns), the value it takes.
+ function drawCode(g,e,x,y,w,h,p,lab){
+  const qr=e.type==='qrcode',total=qr?qrModules(e):code128Modules(e),quiet=(qr?4:10)/total,line=(qr?'二维码 QR '+e.ecc:'条码 Code 128')+' · '+codeValue(e,lab);
+  // The line of the value is under the bars of a barcode that prints it: 1 pt and 1.46 type sizes.
+  const zone=!qr&&e.human_readable?(1+1.46*e.font_size)*25.4/72*p:0,sx=x+w*quiet,sy=qr?y+h*quiet:y,sw=w*(1-2*quiet),sh=qr?h*(1-2*quiet):Math.max(0,h-zone);
+  g.append(svgEl('rect',{class:'cv-quiet',x:sx,y:sy,width:sw,height:sh}));
+  if(qr){
+   const f=sw*7/(total-8);
+   for(const [fx,fy] of [[sx,sy],[sx+sw-f,sy],[sx,sy+sh-f]])g.append(svgEl('rect',{class:'cv-finder',x:fx+0.5,y:fy+0.5,width:Math.max(1,f-1),height:Math.max(1,f-1)}));
+  }else{
+   let bars='';for(let k=0;k*4<sw-2;k++)bars+='M'+(sx+1+k*4)+' '+sy+'v'+sh;
+   g.append(svgEl('path',{class:'cv-bars','stroke-width':2,d:bars}));
+  }
+  const clip=svgEl('svg',{x,y,width:w,height:h});
+  clip.append(svgEl('text',{class:'cv-codelabel',x:3,y:11},line),svgEl('text',{class:'cv-codelabel cv-quiet-note',x:3,y:h-3},'静区 '+(qr?'4':'10')+' 模块（约 '+Math.round(total)+' 模块估算）'));
+  g.append(clip);
+ }
+ // An image from the content route when the console has it, else a labelled box.
+ function drawImage(g,e,x,y,w,h){
+  const url=ports.image?ports.image(e.image):'',clip=svgEl('svg',{x,y,width:w,height:h});
+  if(url)g.append(svgEl('image',{class:'cv-picture',href:url,x,y,width:w,height:h,preserveAspectRatio:'xMidYMid meet'}));
+  clip.append(svgEl('text',{class:'cv-codelabel',x:3,y:11},'图片 '+e.image.id.slice(0,8)+(url?'':' · 未读取')));g.append(clip);
+ }
  function drawBands(d,extra,p,X,L,order,bad,lab){
   const g=geo(d),metrics=ports.metrics?ports.metrics():new Set(),edges=[];
   for(const name of bandNames){
@@ -312,7 +353,7 @@ window.createReportingCanvas=function(ports){
   }
   for(const i of order){
    const e=i.ref,r=rectOf(i),x=X(r.x),y=X(r.y),w=L(r.w),h=L(r.h),sel=selection.includes(i.key),refused=!!marked&&!!marked.element&&marked.element===i.key;
-   const kind=e.type==='text'?{literal:'literal',field:'row',group_sum:'total',page:'page'}[e.source]:e.type;
+   const kind=e.type==='text'?{literal:'literal',field:'row',group_sum:'total',page:'page',issue_number:'number'}[e.source]:e.type;
    const g2=svgEl('g',{class:'cv-item cv-'+kind+(sel?' cv-selected':'')+(bad.has(i.key)?' cv-bad':'')+(refused?' cv-refused':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf2(i,lab)+(refused?'，预览或检查指出此处放不下或无法打印':'')});
    let tag=e.id+' · ';
    if(e.type==='line'){
@@ -333,8 +374,14 @@ window.createReportingCanvas=function(ports){
     });
     if(head+row*2.2<=h){const more=svgEl('svg',{x,y:y+head+row,width:w,height:h-head-row});more.append(svgEl('text',{class:'cv-text cv-sample',x:6,y:row*0.7,'font-size':Math.max(8,fs*0.85)},'…… 明细行向下延续，超过一页续页并承前过次，末页合计'));g2.append(more);}
     tag+='明细表';
+   }else if(e.type==='barcode'||e.type==='qrcode'){
+    g2.append(svgEl('rect',{class:'cv-box',x,y,width:w,height:h}));drawCode(g2,e,x,y,w,h,p,lab);
+    tag+=e.type==='qrcode'?'二维码':'条码';
+   }else if(e.type==='image'){
+    g2.append(svgEl('rect',{class:'cv-box',x,y,width:w,height:h}));drawImage(g2,e,x,y,w,h);
+    tag+='图片';
    }else{
-    const fs=e.font_size*25.4/72*p,clip=svgEl('svg',{x,y,width:w,height:h}),text=e.source==='literal'||e.source==='page'?e.text:(e.source==='group_sum'?'〔合计〕':'〔')+(lab[e.field]||e.field)+(e.source==='group_sum'?'':'〕');
+    const fs=e.font_size*25.4/72*p,clip=svgEl('svg',{x,y,width:w,height:h}),text=e.source==='literal'||e.source==='page'?e.text:e.source==='issue_number'?'〔出具编号〕':(e.source==='group_sum'?'〔合计〕':'〔')+(lab[e.field]||e.field)+(e.source==='group_sum'?'':'〕');
     g2.append(svgEl('rect',{class:'cv-box',x,y,width:w,height:h}));
     clip.append(svgEl('text',{class:'cv-text','font-weight':e.bold?'700':'400',x:e.align==='left'?0:e.align==='center'?w/2:w,y:1.16*fs,'font-size':fs,'text-anchor':e.align==='left'?'start':e.align==='center'?'middle':'end'},text));
     if(e.wrap)clip.append(svgEl('text',{class:'cv-wrap',x:w-2,y:Math.max(10,h-3),'text-anchor':'end'},'↵'));
@@ -391,7 +438,7 @@ window.createReportingCanvas=function(ports){
   for(const u of (extra.guides&&extra.guides.x)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:X(u),x2:X(u),y1:RULER,y2:RULER+297*p}));
   for(const u of (extra.guides&&extra.guides.y)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:RULER,x2:RULER+210*p,y1:X(u),y2:X(u)}));
   if(extra.readout)layers.readout.append(svgEl('text',{class:'cv-readout'+(extra.message?' cv-bad':''),x:X(extra.readout.u),y:Math.max(X(extra.readout.v)-16,RULER+10)},extra.readout.text+(extra.message?'（将被拒绝）':'')));
-  if(modeLine)modeLine.textContent=two?'2.0 分带模板：各带自上而下叠放在安全区内，明细带随页面伸展，元素位置相对于所在带 · '+(d.group?'分组 '+d.group.fields.join('、'):'无分组（整个快照一份文档）')+' · 画布显示版面，不显示数据，PDF 预览为准':(print.mode==='variables'?'变量层：只打印行字段、合计与明细表，固定文字灰显且不打印':'完整文本：打印全部文本框与明细表')+' · 整体偏移 '+fmt(print.offset_x)+' / '+fmt(print.offset_y)+' 毫米'+(ox||oy?'（虚线为偏移后的打印位置）':'')+' · 画布显示版面，不显示底稿与数据，PDF 预览为准';
+  if(modeLine)modeLine.textContent=two?d.schema_version+' 分带模板：各带自上而下叠放在安全区内，明细带随页面伸展，元素位置相对于所在带 · '+(d.group?'分组 '+d.group.fields.join('、'):'无分组（整个快照一份文档）')+' · 画布显示版面，不显示数据，PDF 预览为准':(print.mode==='variables'?'变量层：只打印行字段、合计与明细表，固定文字灰显且不打印':'完整文本：打印全部文本框与明细表')+' · 整体偏移 '+fmt(print.offset_x)+' / '+fmt(print.offset_y)+' 毫米'+(ox||oy?'（虚线为偏移后的打印位置）':'')+' · 画布显示版面，不显示底稿与数据，PDF 预览为准';
   if(focusKey&&host){const target=focusKey.startsWith('col:')?svg.querySelector('[data-col="'+focusKey.slice(4)+'"]'):focusKey.startsWith('band:')?svg.querySelector('.cv-bk[data-band="'+focusKey.slice(5)+'"]'):focusKey.startsWith('end:')?svg.querySelector('[data-end="'+focusKey.slice(4)+'"]'):svg.querySelector('[data-key="'+focusKey+'"]');if(target&&target!==document.activeElement&&target.focus)target.focus({preventScroll:true});}
  }
 
@@ -545,7 +592,7 @@ window.createReportingCanvas=function(ports){
   ['添加固定文字','doc-add-text','add literal text 固定文字 文本'],['添加行字段','doc-add-row','add row field 行字段 字段'],['添加原范围合计','doc-add-total','add total 合计'],
   ['添加或替换明细表','doc-table-add','add table detail 明细表'],['移除明细表','doc-table-remove','remove table 明细表'],
   ['转换为 2.0 分带模板','doc-convert','convert schema 2.0 转换 分带'],
-  ['在所选带加固定文字','doc2-add-literal','band add literal text 固定文字 文本 带'],['在所选带加字段文本','doc2-add-field','band add field text 字段 带'],['在所选带加分组合计','doc2-add-sum','band add group sum 分组合计 合计 带'],['在所选带加页码文字','doc2-add-page','band add page text 页码 带'],['在所选带加线','doc2-add-line','band add line 线 带'],['在所选带加矩形','doc2-add-rect','band add rectangle rect 矩形 带'],['添加明细表列','doc2-col-add','add table column 明细表 列'],
+  ['在所选带加固定文字','doc2-add-literal','band add literal text 固定文字 文本 带'],['添加条码到所选带','doc2-add-barcode','band add barcode code 128 条码 带'],['添加二维码到所选带','doc2-add-qrcode','band add qr code 二维码 带'],['添加图片到所选带','doc2-add-image','band add image picture logo 图片 带'],['添加出具编号文字到所选带','doc2-add-number','band add issue number 出具编号 带'],['在所选带加字段文本','doc2-add-field','band add field text 字段 带'],['在所选带加分组合计','doc2-add-sum','band add group sum 分组合计 合计 带'],['在所选带加页码文字','doc2-add-page','band add page text 页码 带'],['在所选带加线','doc2-add-line','band add line 线 带'],['在所选带加矩形','doc2-add-rect','band add rectangle rect 矩形 带'],['添加明细表列','doc2-col-add','add table column 明细表 列'],
   ['左对齐','doc-align-left','align left'],['水平居中对齐','doc-align-center','align center'],['右对齐','doc-align-right','align right'],['顶对齐','doc-align-top','align top'],['垂直居中对齐','doc-align-middle','align middle'],['底对齐','doc-align-bottom','align bottom'],
   ['水平等距分布','doc-distribute-h','distribute horizontally 等距'],['垂直等距分布','doc-distribute-v','distribute vertically 等距'],
   ['复制所选文本框','doc-dup','duplicate copy'],['删除所选项目','doc-del','delete remove'],
@@ -607,6 +654,8 @@ window.createReportingCanvas=function(ports){
    draw();syncToolbar();if(before!==selection.join(','))announce(selectionText());notify();
   },
   clear(){config=null;selection=[];drag=null;marked=null;closePalette();draw(null);syncToolbar();status(idle);announce('未选择任何项目。');notify();},
+  // The picture of an image has arrived: drawn again, with the selection and the focus where they were.
+  refresh(){if(config&&!drag)draw();},
   // The band, element or column a refusal names, outlined until the template changes; null clears it.
   mark(detail){
    const next=detail&&(detail.element||detail.column||detail.band)?{element:detail.element||'',column:detail.column||'',band:detail.band||''}:null;

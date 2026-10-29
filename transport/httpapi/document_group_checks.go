@@ -69,6 +69,19 @@ func checkGroupRows(w http.ResponseWriter, req *http.Request, s *r.Service, p r.
 	if e = authorizeDocument(req, s, p, config, assets); e != nil {
 		return e
 	}
+	// A 2.1 template draws images and may show the issue number: the check takes the images the caller owns and proves the layout for
+	// every number the product may assign.
+	var with doctemplates.Resolved
+	var resolved ResolvedChecker
+	if config.Coded() {
+		var ok bool
+		if resolved, ok = checker.(ResolvedChecker); !ok {
+			return r.ErrUnsupported
+		}
+		if with.Images, e = resolveDocumentImages(p, config, assets); e != nil {
+			return e
+		}
+	}
 	results := map[int]*groupResult{}
 	answer := make([]checkRow, 0, len(picks))
 	for _, v := range picks {
@@ -80,7 +93,9 @@ func checkGroupRows(w http.ResponseWriter, req *http.Request, s *r.Service, p r.
 		if result == nil {
 			b := binds[gi]
 			result = &groupResult{err: b.refused}
-			if result.err == nil {
+			if result.err == nil && resolved != nil {
+				result.err = resolved.CheckIssueWith(ctx, config, b.values, nil, b.table, with)
+			} else if result.err == nil {
 				result.err = checker.CheckIssue(ctx, config, b.values, nil, b.table)
 			}
 			results[gi] = result
@@ -148,7 +163,8 @@ func boundaryGroups(config doctemplates.Document, snap r.Snapshot, groups []doct
 	for _, bi := range config.Items() {
 		it := bi.Item
 		switch {
-		case it.Type == doctemplates.TypeText && (it.Source == doctemplates.SourceField || it.Source == doctemplates.SourceGroupSum):
+		case (it.Type == doctemplates.TypeText && (it.Source == doctemplates.SourceField || it.Source == doctemplates.SourceGroupSum)) ||
+			((it.Type == doctemplates.TypeBarcode || it.Type == doctemplates.TypeQRCode) && it.Source == doctemplates.SourceField):
 			column, ok := columns[it.Field]
 			if !ok {
 				return nil, r.ErrDenied

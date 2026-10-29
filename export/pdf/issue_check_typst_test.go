@@ -49,6 +49,8 @@ func TestTypstChecksIssuesBeforeTheProductIsAsked(t *testing.T) {
 	t.Run("the_real_issuer_and_writer_issue_the_same_bytes", func(t *testing.T) { realIssuerIsDeterministic(t, w) })
 	// A schema 2.0 template issued by group through the whole stack (S03-K).
 	t.Run("a_2x_template_is_issued_by_group_through_the_service", func(t *testing.T) { serviceIssuesGroups(t, w) })
+	// A schema 2.1 template with codes, an image and the issue number, through the service and the image store (S03-M).
+	t.Run("a_21_template_is_issued_with_the_products_number_through_the_service", func(t *testing.T) { serviceIssuesCodedTemplates(t, w) })
 }
 
 // checkRefusesWhatIssueRefuses: a table of documents, each given to CheckIssue and to Issue with a good

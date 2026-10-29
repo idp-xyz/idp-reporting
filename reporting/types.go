@@ -313,7 +313,10 @@ type IssueRequest struct {
 	Job      Job
 	Snapshot Snapshot
 	Stamp    string
-	At       time.Time // the product's issue time: printed in the stamp and the PDF's creation date (S03-H)
+	// Number is the product's document number, the one in the stamp (ValidIssueNumber). A schema 2.1 template prints it
+	// wherever it shows the issue number (ADR 0005, S03-M); the issuer passes it to the render and nothing else changes.
+	Number string
+	At     time.Time // the product's issue time: printed in the stamp and the PDF's creation date (S03-H)
 }
 type IssueResult struct {
 	PDF   []byte

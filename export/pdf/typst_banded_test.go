@@ -141,12 +141,18 @@ type footerExpect struct {
 	Top  float64 `json:"top"` // points from the top of the page
 }
 
-func bandedElement(it doctemplates.Item, values map[string]string) map[string]any {
+func bandedElement(it doctemplates.Item, values map[string]string, extras evidenceExtras) map[string]any {
 	out := map[string]any{"id": it.ID, "type": it.Type}
 	switch it.Type {
 	case doctemplates.TypeText:
 		out["source"], out["text"], out["wrap"], out["bold"], out["align"], out["size"] = it.Source, values[it.ID], it.Wrap, it.Bold, it.Align, it.FontSize
+		if it.Source == doctemplates.SourceIssueNumber {
+			// What the document shows for the number: the placeholder of a preview, the product's number of an issue.
+			out["text"] = extras.shown()
+		}
 		out["x"], out["y"], out["width"], out["height"] = it.X, it.Y, it.Width, it.Height
+	case doctemplates.TypeBarcode, doctemplates.TypeQRCode, doctemplates.TypeImage:
+		return codedElement(it, values, extras)
 	case doctemplates.TypeLine:
 		out["x1"], out["y1"], out["x2"], out["y2"], out["stroke"] = it.X1, it.Y1, it.X2, it.Y2, it.Stroke
 	case doctemplates.TypeRect:
@@ -155,13 +161,17 @@ func bandedElement(it doctemplates.Item, values map[string]string) map[string]an
 	return out
 }
 
-func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, table *doctemplates.TableData, sums map[string]sumInput, w *Writer) {
+func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Document, values map[string]string, table *doctemplates.TableData, sums map[string]sumInput, w *Writer, with ...evidenceExtras) {
 	t.Helper()
 	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
 	if dir == "" {
 		return
 	}
-	p, err := layOut(d, values, nil, table, newPlainMeasurer(w.fonts))
+	var extras evidenceExtras
+	if len(with) > 0 {
+		extras = with[0]
+	}
+	p, err := layOutWith(d, values, nil, table, newPlainMeasurer(w.fonts), coded{mode: extras.mode(), number: extras.Number, images: extras.Images})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +192,7 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 		}
 		items := []map[string]any{}
 		for _, it := range band.b.Elements {
-			el := bandedElement(it, values)
+			el := bandedElement(it, values, extras)
 			if in, ok := sums[it.ID]; ok {
 				// The checker sums these itself and prints the sum as the table prints its totals.
 				el["sum_values"], el["scale"] = in.Values, in.Scale

@@ -40,24 +40,30 @@ type frame struct {
 	Fill   int     `json:"fill"`
 }
 
-// bandedLayout is the state of laying out one 2.0 document.
+// bandedLayout is the state of laying out one 2.x document: its values, and for a 2.1 document (coded.go) how the issue
+// number is set, the images by element id and the page whose media the layout adds to.
 type bandedLayout struct {
 	m      *measurer
 	values map[string]string
+	c      coded
+	page   *page
 }
 
 // layOutBanded lays out a validated 2.0 document for the values bound by doctemplates.BindGroup and
 // the rows of that group: the pages with their texts, rules and rectangles in points. The table
 // paginates as in 1.3 (header on every page, carried-forward and carry-over rows, the total row,
 // exact sums) between the bands above and below it.
-func layOutBanded(d doctemplates.Document, values map[string]string, table *doctemplates.TableData, m *measurer) (*page, error) {
+func layOutBanded(d doctemplates.Document, values map[string]string, table *doctemplates.TableData, m *measurer, c coded) (*page, error) {
 	t := d.TableItem()
 	if t == nil || table == nil || len(table.Columns) != len(t.Columns) || len(table.Metric) != len(t.Columns) {
 		return nil, r.ErrInvalid
 	}
-	b := &bandedLayout{m: m, values: values}
 	p := &page{Title: "Document preview", Fonts: m.families, Pages: []pageData{newPage(nil)},
 		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText, Fill: bannerFill}}
+	b := &bandedLayout{m: m, values: values, c: c, page: p}
+	if d.Coded() {
+		p.Media = map[string][]byte{}
+	}
 	if _, err := m.width(bannerText, bannerSize, false); err != nil {
 		return nil, err
 	}
@@ -142,9 +148,19 @@ func (b *bandedLayout) place(pg *pageData, name string, band *doctemplates.Band,
 	for _, it := range band.Elements {
 		switch it.Type {
 		case doctemplates.TypeText:
-			v, ok := b.values[it.ID]
-			if !ok || !utf8.ValidString(v) {
-				return r.ErrInvalid
+			var v string
+			if it.Source == doctemplates.SourceIssueNumber {
+				// The number is the layout's, not a value bound from the snapshot (coded.go).
+				n, err := b.number(doctemplates.Detail{Band: name, Element: it.ID}, float64(it.FontSize), it.Bold)
+				if err != nil {
+					return err
+				}
+				v = n
+			} else {
+				var ok bool
+				if v, ok = b.values[it.ID]; !ok || !utf8.ValidString(v) {
+					return r.ErrInvalid
+				}
 			}
 			switch it.Source {
 			case doctemplates.SourcePage:
@@ -164,6 +180,18 @@ func (b *bandedLayout) place(pg *pageData, name string, band *doctemplates.Band,
 			for _, g := range glyphs {
 				g.Baseline += top
 				pg.Texts = append(pg.Texts, g)
+			}
+		case doctemplates.TypeBarcode:
+			if err := b.barcode(pg, name, it, top); err != nil {
+				return err
+			}
+		case doctemplates.TypeQRCode:
+			if err := b.qrcode(pg, name, it, top); err != nil {
+				return err
+			}
+		case doctemplates.TypeImage:
+			if err := b.image(pg, name, it, top); err != nil {
+				return err
 			}
 		case doctemplates.TypeLine:
 			pg.Rules = append(pg.Rules, rule{X0: (bandX + it.X1) * mm, Y0: top + it.Y1*mm, X1: (bandX + it.X2) * mm, Y1: top + it.Y2*mm, Stroke: it.Stroke})

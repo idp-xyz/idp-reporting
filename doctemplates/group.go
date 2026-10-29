@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"idp.local/reporting/export/barcode"
 	r "idp.local/reporting/reporting"
 )
 
@@ -25,7 +26,7 @@ func groupable(d Document, s r.Snapshot) error {
 	if e := Validate(d); e != nil {
 		return e
 	}
-	if d.Schema != SchemaBanded {
+	if !d.Banded() {
 		return r.ErrInvalid
 	}
 	if d.Binding.Integration != s.Owner.Integration || d.Binding.Dataset != s.Query.Dataset {
@@ -197,7 +198,9 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 	values := map[string]string{}
 	for _, bi := range d.Items() {
 		it := bi.Item
-		if it.Type != TypeText {
+		// A text, and the value a barcode or a QR code encodes (schema 2.1): bound the same way. The issue number is no value of the
+		// snapshot: the renderer supplies it (a placeholder in a preview, the worst case in the check, the product's in the issue).
+		if (it.Type != TypeText && it.Type != TypeBarcode && it.Type != TypeQRCode) || it.Source == SourceIssueNumber {
 			continue
 		}
 		text := it.Text
@@ -249,6 +252,14 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 			}
 			text = sum.String()
 		}
+		// A value a code cannot encode as it is: outside the symbology's alphabet or empty, or longer than it takes.
+		if it.Type != TypeText {
+			if reason := CodeValueReason(it, text); reason != "" {
+				return nil, nil, Refuse(r.ErrUnsupported, Detail{Reason: reason, Band: bi.Band, Element: it.ID})
+			}
+			values[it.ID] = text
+			continue
+		}
 		// A value the box cannot print as it is: one line takes no control and at most 256
 		// characters, a wrapped value up to 1024 and its line breaks.
 		limit := MaxTextRunes
@@ -269,6 +280,28 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 		return nil, nil, e
 	}
 	return values, table, nil
+}
+
+// CodeValueReason says why a barcode or QR code cannot encode a value as it is: ReasonNotCovered for a value outside the
+// symbology's alphabet (a character it lacks, a control, invalid UTF-8) or empty, ReasonDoesNotFit for one longer than it takes
+// (64 characters, 256 bytes); empty when it can. It names the rule, never the value.
+func CodeValueReason(it Item, value string) string {
+	var err error
+	switch it.Type {
+	case TypeBarcode:
+		err = barcode.CheckCode128(value)
+	case TypeQRCode:
+		err = barcode.CheckQR(value)
+	default:
+		return ReasonNotCovered
+	}
+	switch err {
+	case nil:
+		return ""
+	case barcode.ErrTooLong:
+		return ReasonDoesNotFit
+	}
+	return ReasonNotCovered
 }
 
 // printableBound reports whether a bound value can be printed in a text element: valid UTF-8,

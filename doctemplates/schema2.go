@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"idp.local/reporting/export/barcode"
 	r "idp.local/reporting/reporting"
 )
 
@@ -17,14 +18,18 @@ import (
 // is bound to one row group of the frozen snapshot instead of one row. Positions are in
 // millimetres on the 0.1 mm grid, relative to the band, which starts at x 10 mm inside the safe
 // region (x 10-200, y 25-270). Templates 1.x do not use any of it.
+//
+// Schema 2.1 (ADR 0005, S03-M) is 2.0 plus the element types barcode, qrcode and image and the text
+// source issue_number; a 2.0 document has none of them and renders as it always did.
 
 // Schema 2.0 limits.
 const (
 	SchemaBanded   = "2.0"
-	MaxItems       = 64  // elements in a template, the table included
-	MaxBandItems   = 24  // elements in one band
-	MaxGroupFields = 3   // group fields
-	BandWidth      = 190 // millimetres: the safe region's width, which every band spans
+	SchemaCoded    = "2.1" // 2.0 plus barcode, qrcode, image and the issue_number source (ADR 0005)
+	MaxItems       = 64    // elements in a template, the table included
+	MaxBandItems   = 24    // elements in one band
+	MaxGroupFields = 3     // group fields
+	BandWidth      = 190   // millimetres: the safe region's width, which every band spans
 	MinBandHeight  = 5.0
 	// MaxTextRunes bounds the text of a literal or a bound value: one line, or wrapped.
 	MaxTextRunes     = 256
@@ -47,16 +52,36 @@ const (
 
 // Element types, text sources, fills.
 const (
-	TypeText  = "text"
-	TypeLine  = "line"
-	TypeRect  = "rect"
-	TypeTable = "table"
+	TypeText    = "text"
+	TypeLine    = "line"
+	TypeRect    = "rect"
+	TypeTable   = "table"
+	TypeBarcode = "barcode" // schema 2.1
+	TypeQRCode  = "qrcode"  // schema 2.1
+	TypeImage   = "image"   // schema 2.1
 
 	SourceLiteral  = "literal"
 	SourceField    = "field"
 	SourceGroupSum = "group_sum"
 	SourcePage     = "page"
+	// SourceIssueNumber (schema 2.1): the number the source product assigned to the document. A preview prints the
+	// placeholder barcode.PreviewNumber; the pre-issue check proves the fit for every legal number; the issue prints the record's.
+	SourceIssueNumber = "issue_number"
+
+	// SymbologyCode128 is the one symbology of a barcode element in 2.1.
+	SymbologyCode128 = "code128"
+
+	// Bounds of a code or image box, in millimetres.
+	MinCodeBox   = 10.0
+	MinImageBox  = 5.0
+	MinBarHeight = 5.0
 )
+
+// Banded reports a document of the banded family: schema 2.0 or 2.1.
+func (d Document) Banded() bool { return d.Schema == SchemaBanded || d.Schema == SchemaCoded }
+
+// Coded reports a schema 2.1 document, which may hold barcodes, QR codes, images and the issue number.
+func (d Document) Coded() bool { return d.Schema == SchemaCoded }
 
 // fillLuma are the greys a rectangle may be filled with, as the luma (0 black, 255 white) the
 // page program draws.
@@ -93,10 +118,13 @@ type Bands struct {
 
 // Item is an element of a band. Its JSON has the keys of its Type and no others:
 //
-//	text   id type source text field wrap x y width height font_size align bold
-//	line   id type x1 y1 x2 y2 stroke
-//	rect   id type x y width height stroke fill
-//	table  id type x width font_size columns            (detail band only)
+//	text    id type source text field wrap x y width height font_size align bold
+//	line    id type x1 y1 x2 y2 stroke
+//	rect    id type x y width height stroke fill
+//	table   id type x width font_size columns            (detail band only)
+//	barcode id type source text field x y width height symbology human_readable [font_size]   (2.1; font_size iff human_readable)
+//	qrcode  id type source text field x y size ecc                                           (2.1)
+//	image   id type x y width height image                                                   (2.1)
 //
 // The struct is the union; Marshal and Unmarshal keep to the keys of the type.
 type Item struct {
@@ -120,6 +148,13 @@ type Item struct {
 	Stroke   float64      `json:"stroke"`
 	Fill     string       `json:"fill"`
 	Columns  []ItemColumn `json:"columns"`
+	// Schema 2.1: the symbology and the printed value of a barcode, the side and the error correction level of a QR code
+	// (Size is its side in millimetres), and the private image an image element draws.
+	Symbology     string    `json:"symbology"`
+	HumanReadable bool      `json:"human_readable"`
+	Size          float64   `json:"size"`
+	ECC           string    `json:"ecc"`
+	Image         *ImageRef `json:"image"`
 }
 
 // ItemColumn is a column of the 2.0 table. Align and Label are optional: without them a metric
@@ -136,6 +171,10 @@ var itemKeys = map[string][]string{
 	TypeLine:  {"id", "type", "x1", "y1", "x2", "y2", "stroke"},
 	TypeRect:  {"id", "type", "x", "y", "width", "height", "stroke", "fill"},
 	TypeTable: {"id", "type", "x", "width", "font_size", "columns"},
+	// font_size of a barcode is written, and required, only when it prints its value.
+	TypeBarcode: {"id", "type", "source", "text", "field", "x", "y", "width", "height", "symbology", "human_readable"},
+	TypeQRCode:  {"id", "type", "source", "text", "field", "x", "y", "size", "ecc"},
+	TypeImage:   {"id", "type", "x", "y", "width", "height", "image"},
 }
 
 func (i Item) MarshalJSON() ([]byte, error) {
@@ -190,8 +229,64 @@ func (i Item) MarshalJSON() ([]byte, error) {
 			FontSize int          `json:"font_size"`
 			Columns  []ItemColumn `json:"columns"`
 		}{i.ID, i.Type, i.X, i.Width, i.FontSize, columns})
+	case TypeBarcode:
+		head := struct {
+			ID            string  `json:"id"`
+			Type          string  `json:"type"`
+			Source        string  `json:"source"`
+			Text          string  `json:"text"`
+			Field         string  `json:"field"`
+			X             float64 `json:"x"`
+			Y             float64 `json:"y"`
+			Width         float64 `json:"width"`
+			Height        float64 `json:"height"`
+			Symbology     string  `json:"symbology"`
+			HumanReadable bool    `json:"human_readable"`
+		}{i.ID, i.Type, i.Source, i.Text, i.Field, i.X, i.Y, i.Width, i.Height, i.Symbology, i.HumanReadable}
+		if !i.HumanReadable {
+			return json.Marshal(head)
+		}
+		return json.Marshal(struct {
+			ID            string  `json:"id"`
+			Type          string  `json:"type"`
+			Source        string  `json:"source"`
+			Text          string  `json:"text"`
+			Field         string  `json:"field"`
+			X             float64 `json:"x"`
+			Y             float64 `json:"y"`
+			Width         float64 `json:"width"`
+			Height        float64 `json:"height"`
+			Symbology     string  `json:"symbology"`
+			HumanReadable bool    `json:"human_readable"`
+			FontSize      int     `json:"font_size"`
+		}{head.ID, head.Type, head.Source, head.Text, head.Field, head.X, head.Y, head.Width, head.Height, head.Symbology, head.HumanReadable, i.FontSize})
+	case TypeQRCode:
+		return json.Marshal(struct {
+			ID     string  `json:"id"`
+			Type   string  `json:"type"`
+			Source string  `json:"source"`
+			Text   string  `json:"text"`
+			Field  string  `json:"field"`
+			X      float64 `json:"x"`
+			Y      float64 `json:"y"`
+			Size   float64 `json:"size"`
+			ECC    string  `json:"ecc"`
+		}{i.ID, i.Type, i.Source, i.Text, i.Field, i.X, i.Y, i.Size, i.ECC})
+	case TypeImage:
+		if i.Image == nil {
+			return nil, r.ErrInvalid
+		}
+		return json.Marshal(struct {
+			ID     string   `json:"id"`
+			Type   string   `json:"type"`
+			X      float64  `json:"x"`
+			Y      float64  `json:"y"`
+			Width  float64  `json:"width"`
+			Height float64  `json:"height"`
+			Image  ImageRef `json:"image"`
+		}{i.ID, i.Type, i.X, i.Y, i.Width, i.Height, *i.Image})
 	}
-	// An unknown or reserved type (barcode, qrcode, image) has no form to write.
+	// An unknown type has no form to write.
 	return nil, r.ErrInvalid
 }
 
@@ -205,7 +300,12 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 		return r.ErrInvalid
 	}
 	want, ok := itemKeys[kind]
-	if !ok || len(fields) != len(want) {
+	// A barcode that prints its value has one key more, font_size, which a barcode that does not has no place for.
+	extra := 0
+	if kind == TypeBarcode && fields["font_size"] != nil {
+		extra = 1
+	}
+	if !ok || len(fields) != len(want)+extra {
 		return r.ErrInvalid
 	}
 	for _, k := range want {
@@ -217,6 +317,9 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	var value wire
 	if e := r.DecodeStrict(bytes.NewReader(data), &value); e != nil {
 		return e
+	}
+	if kind == TypeBarcode && (extra == 1) != value.HumanReadable {
+		return r.ErrInvalid
 	}
 	*i = Item(value)
 	return nil
@@ -397,7 +500,7 @@ func printableText(text string, wrap bool, limit int) bool {
 // validateBanded checks a schema 2.0 document: every rule of the closed form, in the order of
 // ADR 0004. It never looks at data; the snapshot's fields are checked where the document is bound.
 func validateBanded(d Document) error {
-	if d.Schema != SchemaBanded || d.Kind != "document" || !validBinding(d.Binding) || len(d.Elements) != 0 || d.Print != nil || d.Background != nil || d.Table != nil || d.Bands == nil || d.Bands.Detail == nil {
+	if !d.Banded() || d.Kind != "document" || !validBinding(d.Binding) || len(d.Elements) != 0 || d.Print != nil || d.Background != nil || d.Table != nil || d.Bands == nil || d.Bands.Detail == nil {
 		return r.ErrInvalid
 	}
 	if d.Group != nil {
@@ -443,12 +546,14 @@ func validateBanded(d Document) error {
 				return r.ErrInvalid
 			}
 			ids[it.ID] = true
-			if it.Type == TypeTable || !validItem(it, tenths(band.Band.Height)) {
+			if it.Type == TypeTable || !validItem(it, tenths(band.Band.Height), d.Coded()) {
 				return r.ErrInvalid
 			}
-			if it.Type == TypeText {
+			// A text, a code and an image each own their box: the quiet zone of a code and the picture of an image are not
+			// printed over. Lines and rectangles are decoration and may lie under or around them.
+			if boxed(it.Type) {
 				for _, prior := range band.Band.Elements[:i] {
-					if prior.Type == TypeText && overlaps(it, prior) {
+					if boxed(prior.Type) && overlaps(it, prior) {
 						return r.ErrInvalid
 					}
 				}
@@ -470,8 +575,23 @@ func validateBanded(d Document) error {
 	return nil
 }
 
+// boxed reports the element types that own a rectangle of the band.
+func boxed(kind string) bool {
+	return kind == TypeText || kind == TypeBarcode || kind == TypeQRCode || kind == TypeImage
+}
+
+// extent is the width and height of an element's box in millimetres: a QR code is square.
+func extent(it Item) (w, h float64) {
+	if it.Type == TypeQRCode {
+		return it.Size, it.Size
+	}
+	return it.Width, it.Height
+}
+
 func overlaps(a, b Item) bool {
-	return tenths(a.X) < tenths(b.X)+tenths(b.Width) && tenths(b.X) < tenths(a.X)+tenths(a.Width) && tenths(a.Y) < tenths(b.Y)+tenths(b.Height) && tenths(b.Y) < tenths(a.Y)+tenths(a.Height)
+	aw, ah := extent(a)
+	bw, bh := extent(b)
+	return tenths(a.X) < tenths(b.X)+tenths(bw) && tenths(b.X) < tenths(a.X)+tenths(aw) && tenths(a.Y) < tenths(b.Y)+tenths(bh) && tenths(b.Y) < tenths(a.Y)+tenths(ah)
 }
 
 // validItemID: e1 to e64, without leading zeros.
@@ -480,11 +600,18 @@ func validItemID(id string) bool {
 	return e == nil && strings.HasPrefix(id, "e") && id == "e"+strconv.Itoa(number) && number >= 1 && number <= MaxItems
 }
 
-// validItem checks a text, line or rectangle inside a band of the given height (tenths).
-func validItem(it Item, bandHeight int) bool {
+// validItem checks a text, line, rectangle or, in a 2.1 document (coded), a barcode, QR code or image inside a band of the given
+// height (tenths).
+func validItem(it Item, bandHeight int, coded bool) bool {
 	switch it.Type {
 	case TypeText:
-		return validText(it, bandHeight)
+		return validText(it, bandHeight, coded)
+	case TypeBarcode:
+		return coded && validBarcode(it, bandHeight)
+	case TypeQRCode:
+		return coded && validQRCode(it, bandHeight)
+	case TypeImage:
+		return coded && validImage(it, bandHeight)
 	case TypeLine:
 		pts := []float64{it.X1, it.Y1, it.X2, it.Y2}
 		for _, n := range pts {
@@ -510,7 +637,7 @@ func validItem(it Item, bandHeight int) bool {
 	return false
 }
 
-func validText(it Item, bandHeight int) bool {
+func validText(it Item, bandHeight int, coded bool) bool {
 	for _, n := range []float64{it.X, it.Y, it.Width, it.Height} {
 		if !onGrid(n) {
 			return false
@@ -533,8 +660,61 @@ func validText(it Item, bandHeight int) bool {
 		return it.Field == "" && !it.Wrap && ok && n >= 1 && printableText(it.Text, false, MaxTextRunes)
 	case SourceField, SourceGroupSum:
 		return it.Text == "" && it.Field != "" && len(it.Field) <= 128 && utf8.ValidString(it.Field)
+	case SourceIssueNumber:
+		// The number is one line of at most 32 characters, and the layout proves it fits for every legal number.
+		return coded && it.Text == "" && it.Field == "" && !it.Wrap
 	}
 	return false
+}
+
+// inBand reports a box whose position and size are on the grid and lie inside a band of the given height (tenths) and width.
+func inBand(x, y, w, h float64, bandHeight int) bool {
+	for _, n := range []float64{x, y, w, h} {
+		if !onGrid(n) {
+			return false
+		}
+	}
+	return inRange(x, 0, BandWidth) && inRange(y, 0, float64(bandHeight)/10) && tenths(x)+tenths(w) <= bandWidthTenths && tenths(y)+tenths(h) <= bandHeight
+}
+
+// validCodeValue checks where the value of a barcode or QR code comes from: a literal of at most max characters (a QR
+// code's limit is in bytes, which also bounds the characters), a field of the group, or the issue number. The symbology's
+// own alphabet is the layout's to check, as the fonts' coverage is for a text.
+func validCodeValue(it Item, maxRunes, maxBytes int) bool {
+	switch it.Source {
+	case SourceLiteral:
+		return it.Field == "" && it.Text != "" && len(it.Text) <= maxBytes && printableText(it.Text, false, maxRunes)
+	case SourceField:
+		return it.Text == "" && it.Field != "" && len(it.Field) <= 128 && utf8.ValidString(it.Field)
+	case SourceIssueNumber:
+		return it.Text == "" && it.Field == ""
+	}
+	return false
+}
+
+// validBarcode: a Code 128 box in the band, its value, and, when it prints its value under the bars, the type size of that
+// line (the key is written only then). Whether the symbol fits the box at the least module width is the layout's.
+func validBarcode(it Item, bandHeight int) bool {
+	if !inBand(it.X, it.Y, it.Width, it.Height, bandHeight) || !inRange(it.Width, MinCodeBox, BandWidth) || !inRange(it.Height, MinBarHeight, float64(bandHeight)/10) || it.Symbology != SymbologyCode128 {
+		return false
+	}
+	if it.HumanReadable != (it.FontSize != 0) || (it.HumanReadable && (it.FontSize < 8 || it.FontSize > 28)) {
+		return false
+	}
+	return validCodeValue(it, barcode.Code128MaxRunes, 4*barcode.Code128MaxRunes)
+}
+
+// validQRCode: a square box in the band, an error correction level and a value.
+func validQRCode(it Item, bandHeight int) bool {
+	return inBand(it.X, it.Y, it.Size, it.Size, bandHeight) && inRange(it.Size, MinCodeBox, BandWidth) && barcode.ValidECC(it.ECC) &&
+		validCodeValue(it, barcode.QRMaxBytes, barcode.QRMaxBytes)
+}
+
+// validImage: a box in the band and the reference of a private image; that the image exists, is the caller's and belongs to
+// the template's binding is checked where the template is authorized.
+func validImage(it Item, bandHeight int) bool {
+	return inBand(it.X, it.Y, it.Width, it.Height, bandHeight) && inRange(it.Width, MinImageBox, BandWidth) && inRange(it.Height, MinImageBox, float64(bandHeight)/10) &&
+		it.Image != nil && validImageRef(*it.Image)
 }
 
 // validTable checks the detail table: a position and width in the band, a type size, and 1 to 12

@@ -9,6 +9,7 @@ import (
 	r "idp.local/reporting/reporting"
 	"image/png"
 	"math"
+	"path/filepath"
 	"sync"
 )
 
@@ -32,10 +33,14 @@ type backgroundAsset struct {
 	Height  int     `json:"height"`
 }
 
-// Assets exposes immutable, private PNGs over the existing single-writer store.
+// Assets exposes immutable, private PNGs over the existing single-writer store. Beside the backgrounds it holds the private
+// images of schema 2.1 templates (Images, ADR 0005), in the directory "images" of its own: a deployment that keeps backgrounds
+// keeps images, owned, authorized and immutable in the same way.
 type Assets struct {
 	mu    sync.Mutex
 	store *privatedocs.Store[backgroundAsset]
+	// Images is the image store; never nil for Assets from OpenAssets.
+	Images *Images
 	// Fits, when set, checks a normalized background with the renderer before it is stored,
 	// so that one the previews could not use (for instance, one whose PDF would exceed the
 	// artifact limit) is refused at upload with the renderer's error. It runs outside the
@@ -92,9 +97,24 @@ func OpenAssets(dir string) (*Assets, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Assets{store: store}, nil
+	images, e := OpenImages(filepath.Join(dir, "images"))
+	if e != nil {
+		store.Close()
+		return nil, e
+	}
+	return &Assets{store: store, Images: images}, nil
 }
-func (a *Assets) Close() error { a.mu.Lock(); defer a.mu.Unlock(); return a.store.Close() }
+func (a *Assets) Close() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	e := a.store.Close()
+	if a.Images != nil {
+		if ie := a.Images.Close(); e == nil {
+			e = ie
+		}
+	}
+	return e
+}
 func (a *Assets) Put(ctx context.Context, owner r.Identity, binding Binding, data []byte) (BackgroundRef, error) {
 	if !owner.Valid() {
 		return BackgroundRef{}, r.ErrDenied

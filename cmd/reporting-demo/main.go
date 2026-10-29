@@ -63,7 +63,7 @@ func run() error {
 	typstSum := flag.String("pdf-typst-sha256", "", "SHA-256 of the -pdf-typst binary in lowercase hex")
 	pdfFonts := flag.String("pdf-fonts", "", "directory holding the only fonts PDF export may use")
 	templateDir := flag.String("template-directory", "", "optional private single-process document template directory (0700)")
-	assetDir := flag.String("background-directory", "", "optional private immutable PNG background directory (0700)")
+	assetDir := flag.String("background-directory", "", "optional private immutable PNG background directory (0700); it also holds the private images of schema 2.1 templates, in its images subdirectory")
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -148,6 +148,7 @@ func run() error {
 		defer assets.Close()
 		if renderer != nil {
 			assets.Fits = renderer.BackgroundFits
+			assets.Images.Fits = renderer.ImageFits
 		}
 	}
 	var templates *doctemplates.Store
