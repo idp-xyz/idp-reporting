@@ -70,5 +70,5 @@ func WithDashboards(fallback http.Handler, service *r.Service, authenticate Auth
 		_, e := describeBinding(req, p, d.Binding)
 		return e
 	}, func(d dashboards.Document) any { return d.Binding })
-	return mux, nil
+	return secured(mux), nil
 }

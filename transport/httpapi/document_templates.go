@@ -134,7 +134,7 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			return send(w, 202, v)
 		}))
 	}
-	return mux, nil
+	return secured(mux), nil
 }
 
 // resolveIssueGroup finds the group of a 2.0 template that an issue request names, by its key values or by a row it

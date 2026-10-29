@@ -117,6 +117,20 @@ func ValidateAdmission(j Job) error {
 	}
 	return nil
 }
+
+// UnreadableJobCode is the failure code of a job that a store claimed and cannot decode (its payload is corrupt, or was written by a
+// binary this one cannot read). Such a job is failed terminally in the transaction of its claim, never handed to a worker and never left
+// running for the next claim to take again: INTEGRITY_FAILURE, except for an issue job that had been claimed before (priorGeneration, the
+// generation the job had before this claim, is at least 1): an earlier attempt may have reserved a number at the source product, which
+// cannot be voided because the job cannot be read, so the job is ISSUE_UNRECONCILED and the product finds the reservation by the job id.
+// A job that was never claimed (generation 0) cannot have reached the product. kind and priorGeneration are the store's own plain
+// fields (columns), never read from the payload that cannot be decoded.
+func UnreadableJobCode(kind string, priorGeneration int64) string {
+	if kind == "issue" && priorGeneration >= 1 {
+		return ErrUnreconciled.Error()
+	}
+	return ErrIntegrity.Error()
+}
 func ClaimValid(actual Job, claim Claim, now time.Time) bool {
 	return actual.ID == claim.Job.ID && actual.Owner == claim.Job.Owner && actual.State == "running" && actual.Generation == claim.Job.Generation && actual.LeaseUntil.After(now)
 }

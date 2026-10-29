@@ -64,7 +64,7 @@ func WithDocumentAssets(fallback http.Handler, s *r.Service, auth Authenticate, 
 		}
 		return send(w, 200, out)
 	}))
-	return mux, nil
+	return secured(mux), nil
 }
 
 func resolveDocumentBackground(p r.Principal, d doctemplates.Document, assets *doctemplates.Assets) ([]byte, error) {
@@ -106,14 +106,7 @@ func resolveDocumentImages(p r.Principal, d doctemplates.Document, assets *docte
 // format read from the content), the caller's listing and the content of one image, to its owner only.
 func mountDocumentImages(mux *http.ServeMux, s *r.Service, auth Authenticate, images *doctemplates.Images) {
 	const base = "/api/reporting/v1/document-images"
-	// The routes of this package that sit outside Handler's wrapper do not get its headers; the image routes answer private content (or metadata
-	// of it) and set them themselves: never cached, never sniffed.
-	private := func(w http.ResponseWriter) {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-	}
 	mux.HandleFunc("POST "+base, authenticated(auth, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		private(w)
 		var input struct {
 			Binding doctemplates.Binding `json:"binding"`
 			Image   string               `json:"image"`
@@ -138,7 +131,6 @@ func mountDocumentImages(mux *http.ServeMux, s *r.Service, auth Authenticate, im
 		return send(w, 201, summary)
 	}))
 	mux.HandleFunc("GET "+base, authenticated(auth, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		private(w)
 		all, e := images.List(p.Identity)
 		if e != nil {
 			return e
@@ -156,9 +148,8 @@ func mountDocumentImages(mux *http.ServeMux, s *r.Service, auth Authenticate, im
 		return send(w, 200, out)
 	}))
 	// The bytes of one image, for the console's canvas: the caller's own image only (another caller's is not found), and only while
-	// the caller may still read its dataset. It is served as the image it is, with its digest, never cached.
+	// the caller may still read its dataset. It is served as the image it is, with its digest (never cached or sniffed: the wrapper's).
 	mux.HandleFunc("GET "+base+"/{id}/content", authenticated(auth, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		private(w)
 		summary, data, e := images.Content(p.Identity, req.PathValue("id"))
 		if e != nil {
 			return e

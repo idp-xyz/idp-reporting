@@ -22,6 +22,10 @@ it does not change the simulator data classification or qualify a real issuer.
 The standalone HTML/CSS/JS console is served at /console/. Static assets contain
 no credentials or private rows; they do not bypass protected API routes.
 
+Every answer of every route below, success or refusal, whichever optional mounts a deployment composes,
+carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `X-Reporting-Data-Class: contract-simulator`
+(one wrapper, applied by the core API and by each optional mount; a route adds only its own headers).
+
 JSON POST bodies require application/json. Unknown/case-mismatched fields,
 duplicate keys, null, extra roots, excessive nesting and >1 MiB bodies are rejected.
 QuerySpec accepts only the dataset/version, metrics, dimensions, timezone and

@@ -352,12 +352,20 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		return send(w, 200, v)
 	})
+	return secured(mux), nil
+}
+
+// secured is the one wrapper of every answer of this API, a success and a refusal alike: never cached, never sniffed, and marked
+// with the class of the data it carries. Handler applies it to the core API and each With* mount applies it to the routes it adds,
+// so that no route answers without these headers whichever mounts a deployment composes; a route sets only what is its own
+// (a content type, a disposition, a digest, a policy of its own) and never repeats these.
+func secured(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Reporting-Data-Class", "contract-simulator")
-		mux.ServeHTTP(w, req)
-	}), nil
+		next.ServeHTTP(w, req)
+	})
 }
 func decode(req *http.Request, out any) error {
 	kind, _, e := mime.ParseMediaType(req.Header.Get("Content-Type"))
