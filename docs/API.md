@@ -57,7 +57,7 @@ demo has the matching directories, and previews when it has the PDF flags:
 | Method and path | Request / response |
 |---|---|
 | POST /document-previews | `{config, snapshot_id, row_index}`; one A4 PDF/A-2b preview of the template bound to that frozen row and the whole-scope totals; `application/pdf`, `no-store`, `X-Content-SHA256` |
-| POST /document-checks | Sample check (S03-I, docs/S03I_SCOPE.md): `{config, snapshot_id, rows}` (1–50 distinct row indices) or `{config, snapshot_id, samples: "boundary"}`, never both; answers `200 {"rows": [{row_index, ok, code?, reasons?}]}` in row order, `no-store`, without rendering. Mounted with the previews when the renderer can check (the PDF writer can) |
+| POST /document-checks | Sample check (S03-I, docs/S03I_SCOPE.md): `{config, snapshot_id, rows}` (1–50 distinct row indices) or `{config, snapshot_id, samples: "boundary"}`, never both; answers `200 {"rows": [{row_index, ok, code?, detail?, reasons?}]}` in row order, `no-store`, without rendering (`detail`: S03-J, below). Mounted with the previews when the renderer can check (the PDF writer can) |
 | GET, POST /document-templates | List authorized templates; save `{id, expected_version, config}` as a new immutable version |
 | GET /document-templates/{id}?version=N | One saved version, after current field authorization |
 | GET, POST /document-templates/{id}/release | Release history; `{action: publish|withdraw, version, expected_revision}` |
@@ -184,6 +184,72 @@ and the 合计 row on the last, with the metric columns' sums computed exactly o
 dataset does not have is 403; a row taller than the table's pages can hold, an amount, a printed carried sum or a
 carried row's label (measured for page 100) wider than its column, a header and total row taller than the region,
 or a document of more than 100 pages, is 422; a snapshot whose whole-scope total differs from the sum of its rows is 409 INTEGRITY_FAILURE.
+
+Refusal details (S03-J, ADR 0004 decision 8). A layout or binding refusal of either template family, a 422
+UNSUPPORTED_COMBINATION as ever, may add `detail` to the problem answer, `{"error": "UNSUPPORTED_COMBINATION", "detail":
+{reason, band?, element?, row?, column?}}`, and to a refused row of a check (the same detail a preview of that row answers).
+`reason` is one of `DOES_NOT_FIT` (a value wider or taller than its box or column, a carried label or sum that does
+not fit its column, a table row taller than a page), `NOT_COVERED` (a character the fonts lack, a control character, a
+leading combining mark, the preview banner's text in an issued document), `INCONSISTENT_GROUP` (a field that is not a
+group field differs between the rows of a group), `TOO_MANY_PAGES` (over 100) and `BAND_OVERFLOW` (a band, or the
+table's header and total row, taller than the space its page leaves). The place is names and indices, never a value:
+`band` (a 2.0 band), `element` (a 1.x box id `n1`-`n24`, a 2.0 element id `e1`-`e64`), `row` (the snapshot's global
+row index, 0-based: a table row's, or the first row that differs in a group) and `column` (the table column's field id).
+For 1.x the place is the box or the table column; for 2.0 also the band. A client that ignores `detail` works as
+before; the console shows it and, for 1.x, outlines the box or column on the canvas. Codes and statuses do not change.
+
+Schema 2.0 (S03-J, ADR 0004): a closed JSON form beside 1.x, `schema_version: "2.0"`, with `binding`, an optional
+`group: {fields}` (1-3 distinct dimension fields of the dataset, never metrics) and `bands`; it has no `elements`,
+`print`, `background` or `table` key and no 1.x template is converted by the server. One document is made per row group:
+the frozen rows are partitioned by the exact strings of the group fields (the empty string is a key like any other),
+groups ordered by their first row, each keeping the snapshot's row order; without `group` the whole snapshot is one
+document (of no rows if the snapshot has none, with a header, an empty table and a zero total). `bands` has
+`page_header` (every page), `document_header` (the first page, under the page header), `detail` (required: exactly one
+`table` and nothing else, the only band that grows and continues over pages), `document_footer` (once, directly under
+the table's total row, whole; it moves to a new page, below the page header, when it does not fit under the table, and
+is refused with BAND_OVERFLOW when it fits no empty page) and `page_footer` (every page, at the bottom of the safe
+region); each but `detail` is `{height, elements}` with `height` of 5 to 245 mm on the 0.1 mm grid, `detail` is
+`{elements}`. Bands lie inside the safe region (x 10-200, y 25-270 mm) and the strip 10-18 mm stays the banner's or the
+stamp's. The heights of the page header, document header and page footer plus the least detail band (the table's
+header, brought-forward, one body and carry-forward row, one line each at the table's type size) must fit the safe
+region. Element positions are in millimetres on the 0.1 mm grid, relative to the band (which starts at x 10 mm); ids
+`e1`-`e64` are unique in the template, at most 64 elements and 24 per band, a template at most 64 KiB, at most 12 table
+columns. Elements, each with exactly the keys of its `type` (unknown keys, unknown types and the reserved `barcode`,
+`qrcode` and `image` are refused):
+
+- `text`: `id type source text field wrap x y width height font_size align bold`. `source` is `literal` (`text`, at most
+  256 characters, no control; with `wrap` up to 1024 and line breaks), `field` (`field` of the dataset; the value of
+  the group: a group field, or any field that has the same value in every row of the group, else INCONSISTENT_GROUP),
+  `group_sum` (`field` a metric, whether or not it is a column of the table: the exact decimal sum of the group's
+  frozen values, kept at the longest fraction or the column's scale, bound exactly and printed as the table prints its
+  totals, with thousands separators; unlike a 1.x `total`, which is the source's own value and prints as it is, this
+  number is the platform's, so one amount never has two formats on a page; the grouped text is the one that must fit
+  the box) or `page` (`text` with `{page}` and/or `{pages}` and no other
+  brace, never wrapped, filled once the pages are known; the widest is checked on every page). `font_size` 8-28, the
+  box at least 10 x 5 mm and 0.556 mm per point of type size high, `align` left, centre or right, `bold` boolean. Without
+  `wrap` a value is one line as in 1.x (it must be 2 pt narrower than its box); with `wrap` it breaks into lines at the
+  places the table cells break within the box width less 2 pt, 1.5 font sizes apart, and more lines than the box's
+  height holds are refused (DOES_NOT_FIT); its value may hold line breaks and tabs. No two text boxes of a band overlap.
+- `line`: `id type x1 y1 x2 y2 stroke`, two different points inside the band, `stroke` 0.25-2 pt in quarters.
+- `rect`: `id type x y width height stroke fill`, `stroke` 0-2 pt in quarters, `fill` `none` or one of four greys
+  (`grey1` to `grey4`, luma 245, 232, 215, 190); never both none and 0. Lines and rectangles are drawn under the texts.
+- `table` (detail band only): `id type x width font_size columns`, `font_size` 8-12, `columns` of `{field, width}`
+  (at least 8 mm, adding up to `width`) with an optional `align` (left, centre, right: the default is right for a
+  metric, else left) and an optional literal `label` in place of the dataset's header (with no currency or unit
+  suffix). The table keeps the 1.3 behaviour over the group's rows: header on every page, wrapped cells, brought-forward
+  and carry-forward rows, a total row, exact sums; a group's table has no snapshot-wide total to check.
+
+Amounts stay the product's: the platform sums printed metric values for presentation only (carries, table totals and
+`group_sum`, all printed with thousands separators); tax, rounding, document totals and amounts in words are fields the product supplies. A 2.0 preview
+(`POST /document-previews`) renders the group that contains `row_index`; `POST /document-checks` binds and checks the
+group of each row asked for (a group once, every one of its rows with its result), and `samples: "boundary"` picks groups:
+the first and last, the one with the most and the one with the fewest rows (`first`, `last`, `most_rows`,
+`fewest_rows`), for each `field` and `group_sum` text the groups with the longest and the shortest value
+(`longest:<id>`, `shortest:<id>`) and for each table column the group with the longest cell (`cell:<field>`), each
+by its first row, at most 50. Authorization checks every field the template names (a group field a dimension: 422 for a
+metric; a group sum a metric; a table column or text field a column the caller may read: 403). Issuing a 2.0 template
+is not available until S03-K: `POST /issues` answers 422 UNSUPPORTED_COMBINATION at admission, and the issuer and the
+PDF writer refuse one too.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile

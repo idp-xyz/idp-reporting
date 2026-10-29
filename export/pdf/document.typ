@@ -31,6 +31,8 @@
   }
   for f in pg.fills { place(top + left, dx: f.x * 1pt, dy: f.y * 1pt, rect(width: f.w * 1pt, height: f.h * 1pt, fill: luma(232), stroke: none)) }
   for c in pg.cells { place(top + left, dx: c.x * 1pt, dy: c.y * 1pt, rect(width: c.w * 1pt, height: c.h * 1pt, fill: none, stroke: 0.5pt + luma(150))) }
+  // The rectangle elements of a 2.0 document: a fill of one of the template's greys, an outline or both.
+  for x in pg.at("boxes", default: ()) { place(top + left, dx: x.x * 1pt, dy: x.y * 1pt, rect(width: x.w * 1pt, height: x.h * 1pt, fill: if x.fill >= 0 { luma(x.fill) } else { none }, stroke: if x.stroke > 0 { x.stroke * 1pt + luma(60) } else { none })) }
   for l in pg.rules { place(top + left, dx: l.x0 * 1pt, dy: l.y0 * 1pt, line(end: ((l.x1 - l.x0) * 1pt, (l.y1 - l.y0) * 1pt), stroke: l.stroke * 1pt + luma(60))) }
   for g in pg.texts { glyph(g) }
   place(top + left, dx: b.left * 1pt, dy: b.top * 1pt, rect(width: b.width * 1pt, height: b.height * 1pt, fill: white, stroke: none))

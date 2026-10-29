@@ -1,4 +1,57 @@
 {
+ "banded_elements.pdf": {
+  "first_rows": [
+   0,
+   11
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "banded_empty.pdf": {
+  "first_rows": [
+   null
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "banded_footer_moved.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "banded_invoice_1.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "banded_invoice_2.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "banded_invoice_3.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "banded_multipage.pdf": {
+  "first_rows": [
+   0,
+   23,
+   51,
+   79
+  ],
+  "footer_page": 4,
+  "pages": 4
+ },
  "console_issued.pdf": {
   "pages": 1
  },

@@ -89,6 +89,11 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			if e != nil {
 				return e
 			}
+			// A schema 2.0 template is issued by row group (ADR 0004, decision 7), which the source
+			// contract does not carry yet (S03-K): admission refuses it before anything is frozen.
+			if entry.Layout.Schema == doctemplates.SchemaBanded {
+				return r.ErrUnsupported
+			}
 			if e = authorize(req, p, entry.Layout); e != nil {
 				return e
 			}

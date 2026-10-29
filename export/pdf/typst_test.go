@@ -762,6 +762,8 @@ func TestTypstRendersDocuments(t *testing.T) {
 	if _, err := w.renderDocument(t.Context(), p, nil, nil, created); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a glyph wider than declared: %v; want unsupported", err)
 	}
+	// Schema 2.0 documents: bands over row groups (typst_banded_test.go).
+	t.Run("banded", func(t *testing.T) { testTypstRendersBandedDocuments(t, w) })
 	// Renders share the Writer's slots: six at once all succeed, byte for byte alike.
 	results := make([][]byte, 6)
 	errs := make([]error, 6)

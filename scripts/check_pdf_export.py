@@ -41,6 +41,17 @@ the XMP packet's CreateDate, ModifyDate, MetadataDate and every stEvt:when of it
 when present (the packet is parsed as XML and its dates are found by namespace, not by prefix;
 one create date, at least, is required). Times, numbers and ids are matched as ASCII only.
 
+An expectation with "kind": "document2" describes a schema 2.0 preview (S03-J): the bands of the template (page header,
+document header, document footer, page footer) in millimetres with the values bound to their texts, the table with its
+raw rows, the number of pages that carry the table and where the layout put the document footer. Every page must carry the
+banner, the page header and the page footer, the first page the document header; each text is drawn in its box in the
+weight it says, on one line or, wrapped, on lines 1.5 font sizes apart that hold its value with nothing lost, added or
+reordered, every character at its plain-advance position; {page} and {pages} are filled with the page's own numbers; each
+line and rectangle is drawn as the template says (end points, stroke and colour, fill and outline) and nothing else is;
+the table is checked as above over the region each page leaves it (the first page's starts under the document header)
+with the columns aligned as the template says; and the document footer is directly under the table's total row, whole,
+on that page when it fits above the page footer and on a page of its own, under the page header, when it does not.
+
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
@@ -714,16 +725,21 @@ def exact_sum(values, scale):
     return format(total.quantize(decimal.Decimal(1).scaleb(-frac)) if frac else total, "f")
 
 
-def check_table(exp, pages, metrics, layout):
+def check_table(exp, pages, metrics, layout, region_of=None, ends=None, drawings_of=None):
     """Checks the table over the pages: the header on every page (full mode), every row's
     cells complete, in order, on one page, each line inside its column at its plain-advance
     position and at the baseline its row and line give it, the brought-forward, carry-forward
     and total rows with exactly recomputed sums, the snapshot's totals equal to the sums, and
     in full mode the fills, cell rules and the rule above the total row. Records the first row
-    of each page."""
+    of each page.
+
+    A schema 2.0 table (S03-J) has a region of its own on each page, given by region_of(number),
+    columns that may be aligned as the template says, the drawings the page's other elements
+    left out in drawings_of(number), and records in ends the y at which it ends on each page."""
     problems = []
     t = exp["table"]
-    region = table_region(exp)
+    region_of = region_of or (lambda number: table_region(exp))
+    region = region_of(1)
     size = t["size"]
     edges, x = [], region.x0
     for col in t["columns"]:
@@ -731,6 +747,7 @@ def check_table(exp, pages, metrics, layout):
         x += col["width"] * MM
     full = exp.get("mode", "full") == "full"
     metric = [c["metric"] for c in t["columns"]]
+    align = [c.get("align") or ("right" if c["metric"] else "left") for c in t["columns"]]
     rows = t["rows"] or []
     expected = [[squash(group_digits(v) if metric[j] else v) for j, v in enumerate(row)] for row in rows]
     blank = [all(cell == "" for cell in row) for row in expected]
@@ -743,6 +760,7 @@ def check_table(exp, pages, metrics, layout):
     first_rows, row_page = [], {}
     total_seen = False
     for number, (page, chars, _) in enumerate(pages, 1):
+        region = region_of(number)
         inside = [c for c in chars if region.x0 - 1 <= (c["x0"] + c["x1"]) / 2 <= region.x1 + 1 and region.y0 - 1 <= c["base"] <= region.y1 + 1]
         for c in inside:
             if c["x0"] < region.x0 - 0.3 or c["x1"] > region.x1 + 0.3 or c["y0"] < region.y0 - 0.3 or c["y1"] > region.y1 + 0.3:
@@ -773,7 +791,7 @@ def check_table(exp, pages, metrics, layout):
                 text = "".join(c["c"] for c in cs)
                 if text.strip():
                     left, right = edges[j][0] + TABLE_INSET, edges[j][1] - TABLE_INSET
-                    problems += [f"page {number}: {p}" for p in check_line(cs, text.rstrip(), size, left, right, "right" if metric[j] else "left", metrics, bold)]
+                    problems += [f"page {number}: {p}" for p in check_line(cs, text.rstrip(), size, left, right, align[j], metrics, bold)]
         text_of = lambda cells, j: "".join(c["c"] for c in cells.get(j, []))
         label_of = lambda line: text_of(line[2], 0).replace("\xa0", " ")  # a no-break space reads as a space
         is_tail = lambda line: label_of(line) == TOTAL or label_of(line).startswith(CARRY)
@@ -890,6 +908,8 @@ def check_table(exp, pages, metrics, layout):
                 first_rows[-1] = k
         if abs(tail_top - top) > 0.1:
             problems.append(f"page {number}: the {'total' if last else 'carry-forward'} row starts at {tail_top:.2f}, expected {top:.2f}")
+        if ends is not None:
+            ends.append(top + line_h(1))
         label = label_of(trailing)
         want = sums(k + 1)
         if last:
@@ -902,7 +922,7 @@ def check_table(exp, pages, metrics, layout):
             if text_of(trailing[2], j).strip() != want[j]:
                 problems.append(f"page {number}: {'total' if last else 'carried'} {text_of(trailing[2], j)!r} in column {j + 1}, expected {want[j]!r}")
         if full:
-            problems += [f"page {number}: {p}" for p in check_table_drawings(page, region, edges, size, leading, forward, drawn_rows, trailing, tail_top, last)]
+            problems += [f"page {number}: {p}" for p in check_table_drawings(page, region, edges, size, leading, forward, drawn_rows, trailing, tail_top, last, drawings_of(number) if drawings_of else None)]
         else:
             if drawings_inside(page, region):
                 problems.append(f"page {number}: a drawing in the table of the variable layer")
@@ -918,14 +938,16 @@ def check_table(exp, pages, metrics, layout):
     return problems
 
 
-def check_table_drawings(page, region, edges, size, leading, forward, drawn_rows, trailing, tail_top, last):
+def check_table_drawings(page, region, edges, size, leading, forward, drawn_rows, trailing, tail_top, last, page_drawings=None):
     """Full mode: one stroked cell per column of every drawn row (0.5 pt), a fill per column of
     the header rows, a 1 pt rule above the total row on the last page and nowhere else, and no
-    other drawing in the region."""
+    other drawing in the region. The drawings are the page's, or those given (a 2.0 page's, less the
+    ones of its other elements)."""
     problems = []
     inside = lambda r: r.x1 >= region.x0 - 1 and r.x0 <= region.x1 + 1 and r.y1 >= region.y0 - 1 and r.y0 <= region.y1 + 1
-    drawings = [d for d in page.get_drawings() if inside(d["rect"]) and d["rect"].width > 0.01 and d["rect"].height > 0.01]
-    rules = [d for d in page.get_drawings() if inside(d["rect"]) and (d["rect"].height <= 0.01 or d["rect"].width <= 0.01)]
+    every = page.get_drawings() if page_drawings is None else page_drawings
+    drawings = [d for d in every if inside(d["rect"]) and d["rect"].width > 0.01 and d["rect"].height > 0.01]
+    rules = [d for d in every if inside(d["rect"]) and (d["rect"].height <= 0.01 or d["rect"].width <= 0.01)]
     line_h = lambda n: 2 * TABLE_INSET_Y + (ASCENT + DESCENT) * size + (n - 1) * LINE_STEP * size
     # The rows in page order with their heights.
     rows = []
@@ -1407,6 +1429,527 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
                 yield "the header of page 2 covered", "no ink", copy_with("header2", cover_header)
 
 
+# ---- schema 2.0 documents (S03-J) ------------------------------------------------------------------
+
+# The greys a rectangle may be filled with, as the luma the page program draws; the rule colour of lines
+# and outlines is luma 60. Written here, not read from the platform, so that the contract the checker
+# verifies is stated where the documents are checked.
+FILL_LUMA = {"grey1": 245, "grey2": 232, "grey3": 215, "grey4": 190}
+RULE_LUMA = 60
+FIT_MARGIN = 2.0  # a line of a text is narrower than its box by this much, in points
+SAFE_TOP, SAFE_BOTTOM = 25, 270  # millimetres: the safe region's vertical extent
+BAND_X = 10  # millimetres: where every band starts
+
+
+def bands2(exp):
+    return {b["name"]: b for b in exp["bands"]}
+
+
+def heights2(exp):
+    """The heights, in millimetres, of the page header, the document header, the document footer and the page footer."""
+    bands = bands2(exp)
+    return tuple(bands[n]["height"] if n in bands else 0 for n in ("page_header", "document_header", "document_footer", "page_footer"))
+
+
+def region2(exp, number):
+    """The table's region on a page: from the bottom of the bands above it to the top of the page footer or,
+    on the page that holds the document footer under the table, to the top of that footer."""
+    ph, dh, df, pf = heights2(exp)
+    t = exp["table"]
+    x0 = (BAND_X + t["x"]) * MM
+    bottom = (SAFE_BOTTOM - pf) * MM
+    footer = exp.get("footer")
+    if footer and footer["page"] == number and number <= exp["table_pages"]:
+        bottom = footer["top"]
+    return pymupdf.Rect(x0, (SAFE_TOP + ph + (dh if number == 1 else 0)) * MM, x0 + t["width"] * MM, bottom)
+
+
+def bands_on_page2(exp, number):
+    """The bands a page carries with the y of their top edge in points: the page header, the document header
+    on the first page, the document footer where the expectation puts it, and the page footer."""
+    ph, dh, df, pf = heights2(exp)
+    bands, footer = bands2(exp), exp.get("footer")
+    if "page_header" in bands:
+        yield bands["page_header"], SAFE_TOP * MM
+    if "document_header" in bands and number == 1:
+        yield bands["document_header"], (SAFE_TOP + ph) * MM
+    if "document_footer" in bands and footer and footer["page"] == number:
+        yield bands["document_footer"], footer["top"]
+    if "page_footer" in bands:
+        yield bands["page_footer"], (SAFE_BOTTOM - pf) * MM
+
+
+def page_value(el, number, pages):
+    """What a text shows on a page: its value, with {page} and {pages} filled for a page text; the line breaks
+    and tabs a wrapped value may hold read as the layout reads them."""
+    value = el["text"]
+    if el["source"] == "page":
+        value = value.replace("{page}", str(number)).replace("{pages}", str(pages))
+    elif el["source"] == "group_sum":
+        # The platform's own sum prints as the table prints its totals: the exact sum of the group's values at the
+        # longest fraction or the column's scale, with thousands separators; the checker computes it itself.
+        value = group_digits(exact_sum(el["sum_values"], el["scale"]))
+    return value.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+
+
+def check_text2(chars, used, el, top, metrics, number, pages):
+    """Checks one text element of a band whose top edge is at top (points): its value drawn in its box, on one
+    line or, with wrap, on lines 1.5 font sizes apart that hold the value with nothing lost, added or reordered,
+    each line aligned and inside the box less the 2 pt margin, in the weight the element says, the plain-advance
+    position of every character with the font. Marks the characters it accounts for."""
+    problems = []
+    value = page_value(el, number, pages)
+    size, bold, align = el["size"], el["bold"], el["align"]
+    left, right = (BAND_X + el["x"]) * MM, (BAND_X + el["x"] + el["width"]) * MM
+    base0 = top + el["y"] * MM + ASCENT * size
+    free = [c for c in chars if c["n"] not in used and abs(c["size"] - size) < 0.05 and left - 1 <= (c["x0"] + c["x1"]) / 2 <= right + 1]
+    if not el["wrap"]:
+        text = value.rstrip()
+        if not text.strip():
+            return problems  # nothing is drawn for white space alone
+        line = [c for c in free if abs(c["base"] - base0) <= 0.1]
+        if "".join(c["c"] for c in line).rstrip() != text:
+            return [f"{text!r} is not drawn on one line with its baseline at {base0:.2f} pt in its box"]
+        used.update(c["n"] for c in line)
+        if any(c["bold"] != bold for c in line if c["c"].strip()):
+            problems.append(f"{text!r} is not drawn {'bold' if bold else 'regular'}")
+        return problems + check_line(line, text, size, left, right, align, metrics, bold)
+    # A wrapped value: the lines are the layout's choice; what is checked is that they hold the value and sit as lines.
+    capacity = max(1, 1 + int((el["height"] * MM / size - (ASCENT + DESCENT)) / LINE_STEP + 1e-9))
+    reach = base0 + (capacity - 1) * LINE_STEP * size + 0.1
+    lines = {}
+    for c in free:
+        if base0 - 0.1 <= c["base"] <= reach:
+            lines.setdefault(round((c["base"] - base0) / (LINE_STEP * size)), []).append(c)
+    drawn = ""
+    for k in sorted(lines):
+        cs = sorted(lines[k], key=lambda c: c["x"])
+        base = base0 + k * LINE_STEP * size
+        if any(abs(c["base"] - base) > 0.1 for c in cs):
+            problems.append(f"{value[:30]!r}: a line is not at a baseline of the box ({base:.2f} pt expected)")
+            continue
+        used.update(c["n"] for c in cs)
+        text = "".join(c["c"] for c in cs).rstrip()
+        drawn += squash(text)
+        if not text.strip():
+            continue
+        solid = [c for c in cs if c["c"].strip()]
+        if any(c["bold"] != bold for c in solid):
+            problems.append(f"{text!r} is not drawn {'bold' if bold else 'regular'}")
+        if solid[-1]["x1"] - cs[0]["x"] > (right - left) - FIT_MARGIN + 0.3:
+            problems.append(f"{text!r} is wider than its box less the margin")
+        problems += check_line(cs, text, size, left, right, align, metrics, bold)
+    if drawn != squash(value):
+        problems.append(f"{value[:30]!r} is not drawn in its box ({drawn[:30]!r} found)")
+    return problems
+
+
+def close(a, b, tolerance=0.3):
+    return abs(a - b) <= tolerance
+
+
+def line_matches(d, ends):
+    """Whether a drawing is one straight line between the two points, in either direction."""
+    if len(d["items"]) != 1 or d["items"][0][0] != "l":
+        return False
+    p, q = d["items"][0][1], d["items"][0][2]
+    (ax, ay), (bx, by) = ends
+    return (close(p.x, ax) and close(p.y, ay) and close(q.x, bx) and close(q.y, by)) or (close(p.x, bx) and close(p.y, by) and close(q.x, ax) and close(q.y, ay))
+
+
+def claim_drawings(page, claims, drawings):
+    """Matches the rectangles and lines the expectation names with the page's drawings, which it takes out of
+    drawings: a line by its end points, 1 stroke of the width and rule colour it says; a rectangle by its edges,
+    the fill and the outline it says and no other. Returns the problems and the drawings left."""
+    problems, left = [], list(drawings)
+    for el, top in claims:
+        if el["type"] == "line":
+            ends = [((BAND_X + el["x1"]) * MM, top + el["y1"] * MM), ((BAND_X + el["x2"]) * MM, top + el["y2"] * MM)]
+            hits = [d for d in left if line_matches(d, ends)]
+            if len(hits) != 1:
+                problems.append(f"line {el['id']}: {len(hits)} drawings at its end points, expected one")
+                continue
+            d = hits[0]
+            left.remove(d)
+            if d["width"] is None or abs(d["width"] - el["stroke"]) > 0.05:
+                problems.append(f"line {el['id']}: stroke width {d['width']}, expected {el['stroke']}")
+            if d["color"] is None or max(abs(v - RULE_LUMA / 255) for v in d["color"][:3]) > 0.02:
+                problems.append(f"line {el['id']}: rule colour {None if d['color'] is None else tuple(round(v, 2) for v in d['color'][:3])}")
+        else:
+            x0, y0 = (BAND_X + el["x"]) * MM, top + el["y"] * MM
+            rect = pymupdf.Rect(x0, y0, x0 + el["width"] * MM, y0 + el["height"] * MM)
+            hits = [d for d in left if max(abs(d["rect"].x0 - rect.x0), abs(d["rect"].x1 - rect.x1), abs(d["rect"].y0 - rect.y0), abs(d["rect"].y1 - rect.y1)) <= 0.3]
+            fills = [d["fill"] for d in hits if d["fill"] is not None]
+            strokes = [(d["width"], d["color"]) for d in hits if d["width"] is not None and d["color"] is not None]
+            for d in hits:
+                left.remove(d)
+            want = FILL_LUMA.get(el["fill"])
+            if want is None and fills:
+                problems.append(f"rectangle {el['id']}: a fill where it has none")
+            if want is not None and not fills:
+                problems.append(f"rectangle {el['id']}: no fill")
+            for fill in fills if want is not None else []:
+                if max(abs(v - want / 255) for v in fill[:3]) > 0.02:
+                    problems.append(f"rectangle {el['id']}: fill {tuple(round(v, 2) for v in fill[:3])}, expected luma {want}")
+            if el["stroke"] > 0 and not strokes:
+                problems.append(f"rectangle {el['id']}: no outline")
+            if el["stroke"] == 0 and strokes:
+                problems.append(f"rectangle {el['id']}: an outline where it has none")
+            for width, color in strokes if el["stroke"] > 0 else []:
+                if abs(width - el["stroke"]) > 0.05:
+                    problems.append(f"rectangle {el['id']}: stroke width {width}, expected {el['stroke']}")
+                if max(abs(v - RULE_LUMA / 255) for v in color[:3]) > 0.02:
+                    problems.append(f"rectangle {el['id']}: outline colour {tuple(round(v, 2) for v in color[:3])}")
+    return problems, left
+
+
+def check_document2(directory, exp, font=None):
+    """Checks a schema 2.0 document preview (S03-J) against its expectation: the bands of the template in
+    millimetres with the values of their texts, the table with its raw rows, and where the layout put the
+    document footer. Every page carries the banner, the page header and the page footer, the first the document
+    header; the table is checked over its pages in the region each leaves it (the first page's starts under the
+    document header); the document footer is under the table's total row, whole, on that page when it fits
+    under it and on a page of its own, under the page header, when it does not. Lines and rectangles are
+    drawn as the template says, and nothing else is drawn. Returns problems and the layout summary."""
+    problems = []
+    metrics = faces(font)
+    doc = pymupdf.open(os.path.join(directory, exp["file"]))
+    xmp = doc.get_xml_metadata()
+    if not re.search(r"pdfaid:part[^0-9]{0,4}2\b", xmp) or not re.search(r"pdfaid:conformance[^A-Z]{0,4}B\b", xmp):
+        problems.append("no PDF/A-2b identification in the XMP metadata")
+    # A group sum is bound exactly: the expectation's value must be the exact sum of the group's values.
+    for band in exp["bands"]:
+        for el in band["elements"]:
+            if el["type"] == "text" and el["source"] == "group_sum" and el["text"] != exact_sum(el["sum_values"], el["scale"]):
+                problems.append(f"group sum {el['id']}: the bound sum is not the exact sum of the group's values")
+    pages, footer, table_pages = doc.page_count, exp.get("footer"), exp["table_pages"]
+    want_pages = footer["page"] if footer else table_pages
+    if pages != want_pages or table_pages < 1 or table_pages > pages:
+        return problems + [f"{pages} pages, expected {want_pages} ({table_pages} of them with the table)"], {"pages": pages}
+    shim = {"elements": [], "offset_x": 0, "offset_y": 0, "background": False}
+    ph, dh, df, pf = heights2(exp)
+    strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
+    table_pages_data, per_page = [], []
+    for i, page in enumerate(doc):
+        number = i + 1
+        page_problems, chars, used = check_page(directory, page, i, shim, metrics, None)
+        problems += [f"page {number}: {p}" for p in page_problems]
+        claims, allowed = [], [strip]
+        for band, top in bands_on_page2(exp, number):
+            for el in band["elements"]:
+                if el["type"] == "text":
+                    found = check_text2(chars, used, el, top, metrics, number, pages)
+                    problems += [f"page {number}: {p}" for p in found]
+                    allowed.append(pymupdf.Rect((BAND_X + el["x"]) * MM, top + el["y"] * MM, (BAND_X + el["x"] + el["width"]) * MM, top + (el["y"] + el["height"]) * MM))
+                else:
+                    claims.append((el, top))
+                    if el["type"] == "line":
+                        allowed.append(pymupdf.Rect(min(el["x1"], el["x2"]) * MM + BAND_X * MM, top + min(el["y1"], el["y2"]) * MM, max(el["x1"], el["x2"]) * MM + BAND_X * MM, top + max(el["y1"], el["y2"]) * MM))
+                    else:
+                        allowed.append(pymupdf.Rect((BAND_X + el["x"]) * MM, top + el["y"] * MM, (BAND_X + el["x"] + el["width"]) * MM, top + (el["y"] + el["height"]) * MM))
+        # The banner's white background is the page program's own: it is the strip, filled.
+        banner_box = lambda d: d["fill"] is not None and max(abs(d["rect"].x0 - strip.x0), abs(d["rect"].x1 - strip.x1), abs(d["rect"].y0 - strip.y0), abs(d["rect"].y1 - strip.y1)) <= 0.1
+        found, rest = claim_drawings(page, claims, [d for d in page.get_drawings() if not banner_box(d)])
+        problems += [f"page {number}: {p}" for p in found]
+        if number <= table_pages:
+            region = region2(exp, number)
+            allowed.append(region)
+            table_pages_data.append((page, [c for c in chars if c["n"] not in used], None))
+            per_page.append(rest)
+            used.update(c["n"] for c in chars if region.x0 - 1 <= (c["x0"] + c["x1"]) / 2 <= region.x1 + 1 and region.y0 - 1 <= c["base"] <= region.y1 + 1 and c["n"] not in used)
+        else:
+            other = [d for d in rest]
+            if other:
+                problems.append(f"page {number}: {len(other)} drawings that no element draws")
+        leftover = [c for c in chars if c["n"] not in used and c["c"].strip()]
+        if leftover:
+            problems.append(f"page {number}: unexpected text {''.join(c['c'] for c in leftover)[:40]!r}")
+        if ink_outside(page, allowed):
+            problems.append(f"page {number}: ink outside the elements, the table and the banner")
+    layout = {"pages": pages}
+    ends = []
+    problems += check_table(exp, table_pages_data, metrics, layout, region_of=lambda number: region2(exp, number), ends=ends, drawings_of=lambda number: per_page[number - 1])
+    for number, rest in enumerate(per_page, 1):
+        region = region2(exp, number)
+        inside = lambda r: r.x1 >= region.x0 - 1 and r.x0 <= region.x1 + 1 and r.y1 >= region.y0 - 1 and r.y0 <= region.y1 + 1
+        stray = [d for d in rest if not inside(d["rect"])]
+        if stray:
+            problems.append(f"page {number}: {len(stray)} drawings that no element draws")
+    # The document footer follows the table's end, whole: on the last table page when it fits above the page
+    # footer, else on a page of its own below the page header.
+    if footer and len(ends) == table_pages:
+        bottom = (SAFE_BOTTOM - pf) * MM
+        fits = ends[-1] + df * MM <= bottom + 0.01
+        want_page, want_top = (table_pages, ends[-1]) if fits else (table_pages + 1, (SAFE_TOP + ph) * MM)
+        if footer["page"] != want_page:
+            problems.append(f"the document footer is on page {footer['page']}, expected {want_page}" + ("" if fits else " (it does not fit under the table)"))
+        elif abs(footer["top"] - want_top) > 0.1:
+            problems.append(f"the document footer starts at {footer['top']:.2f}, expected {want_top:.2f}")
+        layout["footer_page"] = footer["page"]
+    return problems, layout
+
+
+def exp_sum_has_separators(el):
+    """Whether the printed sum of a group_sum element has thousands separators, so that leaving them out is a difference."""
+    return "," in group_digits(exact_sum(el["sum_values"], el["scale"]))
+
+
+def document2_corruptions(exp):
+    """Yields (what, corrupted expectation, what a problem must say) for each corruption of a 2.0 expectation that applies."""
+    def changed(name, change, expected=""):
+        e = copy.deepcopy(exp)
+        change(e)
+        return name, e, expected
+
+    def elements(kind=None):
+        for b, band in enumerate(exp["bands"]):
+            for k, el in enumerate(band["elements"]):
+                if kind is None or el["type"] == kind:
+                    yield b, k, el
+    single = next(((b, k) for b, k, el in elements("text") if not el["wrap"] and el["source"] != "page" and len(el["text"].rstrip()) >= 2), None)
+    if single:
+        b, k = single
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a text value changed", lambda e: e["bands"][b]["elements"][k].__setitem__("text", el["text"] + "X"), "is not drawn on one line")
+        yield changed("a text moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("x", el["x"] + 0.5), "is not")
+        yield changed("a text moved down by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("y", el["y"] + 0.5), "is not drawn on one line")
+        yield changed("a text's weight changed", lambda e: e["bands"][b]["elements"][k].__setitem__("bold", not el["bold"]), "drawn")
+        yield changed("a text's type size changed", lambda e: e["bands"][b]["elements"][k].__setitem__("size", el["size"] + 1), "is not drawn on one line")
+        flip = {"left": "right", "right": "center", "center": "left"}
+        yield changed("a text's alignment changed", lambda e: e["bands"][b]["elements"][k].__setitem__("align", flip[el["align"]]), "is not aligned")
+        yield changed("a text removed", lambda e: e["bands"][b]["elements"].pop(k), "unexpected text")
+    summed_text = next(((b, k) for b, k, el in elements("text") if el["source"] == "group_sum"), None)
+    if summed_text:
+        b, k = summed_text
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a group sum's values changed", lambda e: e["bands"][b]["elements"][k].__setitem__("sum_values", el["sum_values"] + ["0.01"]), "is not the exact sum")
+        yield changed("a group sum's scale changed", lambda e: e["bands"][b]["elements"][k].__setitem__("scale", el["scale"] + 1), "is not the exact sum")
+        yield changed("a group sum's value and values changed together", lambda e: (e["bands"][b]["elements"][k].__setitem__("sum_values", el["sum_values"] + ["0.01"]), e["bands"][b]["elements"][k].__setitem__("text", exact_sum(el["sum_values"] + ["0.01"], el["scale"]))), "is not drawn on one line")
+    yield changed("a text added", lambda e: e["bands"][0]["elements"].append({"id": "e99", "type": "text", "source": "literal", "text": "ADDED", "wrap": False, "bold": False, "align": "left", "size": 10, "x": 0, "y": 0, "width": 40, "height": 6}), "is not drawn on one line")
+    wrap = next(((b, k) for b, k, el in elements("text") if el["wrap"] and squash(el["text"])), None)
+    if wrap:
+        b, k = wrap
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a wrapped value changed", lambda e: e["bands"][b]["elements"][k].__setitem__("text", el["text"] + "X"), "is not drawn in its box")
+        yield changed("a wrapped box narrowed to 10 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("width", 10), "")
+        yield changed("a wrapped value moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("y", el["y"] + 0.5), "")
+    paged = next(((b, k) for b, k, el in elements("text") if el["source"] == "page"), None)
+    if paged:
+        b, k = paged
+        el = exp["bands"][b]["elements"][k]
+        # With one page {page} and {pages} are the same number: the swap is then a digit more.
+        pages = exp["footer"]["page"] if exp.get("footer") else exp["table_pages"]
+        yield changed("a page text's placeholder swapped", lambda e: e["bands"][b]["elements"][k].__setitem__("text", el["text"].replace("{page}", "{pages}", 1) if "{page}" in el["text"] and pages > 1 else el["text"] + "9"), "is not drawn on one line")
+    for b, band in enumerate(exp["bands"]):
+        if band["name"] != "document_footer":
+            yield changed(f"the {band['name']} made 0.5 mm taller", lambda e: e["bands"][b].__setitem__("height", band["height"] + 0.5))
+    if exp.get("footer"):
+        # The footer's height decides whether it fits under the table: made so tall that it cannot, or, when it was moved to
+        # a page of its own, so short that it can, the footer is on the wrong page.
+        index = next(i for i, band in enumerate(exp["bands"]) if band["name"] == "document_footer")
+        ph, dh, df, pf = heights2(exp)
+        moved = exp["footer"]["page"] > exp["table_pages"]
+        yield changed("the document footer made " + ("short enough to fit under the table" if moved else "too tall to fit under the table"),
+                      lambda e: e["bands"][index].__setitem__("height", 5 if moved else SAFE_BOTTOM - SAFE_TOP - ph - pf), "the document footer is on page")
+    line = next(((b, k) for b, k, el in elements("line")), None)
+    if line:
+        b, k = line
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a line moved by 0.5 mm", lambda e: (e["bands"][b]["elements"][k].__setitem__("y1", el["y1"] + 0.5), e["bands"][b]["elements"][k].__setitem__("y2", el["y2"] + 0.5)), "drawings at its end points")
+        yield changed("a line's stroke changed", lambda e: e["bands"][b]["elements"][k].__setitem__("stroke", el["stroke"] + 0.25), "stroke width")
+        yield changed("a line removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no element draws")
+    rect = next(((b, k) for b, k, el in elements("rect") if el["fill"] != "none"), None)
+    if rect:
+        b, k = rect
+        el = exp["bands"][b]["elements"][k]
+        yield changed("a rectangle's fill changed", lambda e: e["bands"][b]["elements"][k].__setitem__("fill", "grey4" if el["fill"] != "grey4" else "grey1"), "fill")
+        yield changed("a rectangle's fill removed", lambda e: e["bands"][b]["elements"][k].__setitem__("fill", "none") or e["bands"][b]["elements"][k].__setitem__("stroke", el["stroke"] or 0.5), "")
+        yield changed("a rectangle moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("x", el["x"] + 0.5), "")
+        yield changed("a rectangle's outline widened", lambda e: e["bands"][b]["elements"][k].__setitem__("stroke", el["stroke"] + 0.25), "")
+        yield changed("a rectangle removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no element draws")
+    t = exp["table"]
+    rows, columns = t["rows"] or [], t["columns"]
+    solid = next((i for i, row in enumerate(rows) if any(squash(v) for v in row)), None)
+    if solid is not None:
+        cell = next(j for j, v in enumerate(rows[solid]) if squash(v))
+        yield changed("a table cell changed", lambda e: e["table"]["rows"][solid].__setitem__(cell, e["table"]["rows"][solid][cell] + "X"))
+        yield changed("a table row removed", lambda e: e["table"]["rows"].pop(solid))
+        yield changed("a table row added", lambda e: e["table"]["rows"].insert(solid, list(e["table"]["rows"][solid])))
+    summed = next((j for j, c in enumerate(columns) if j > 0 and c["metric"]), None)
+    if summed is not None and rows:
+        yield changed("a table amount changed", lambda e: e["table"]["rows"][0].__setitem__(summed, "0.01"))
+    yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", columns[0]["label"] + "X"))
+    yield changed("the table moved by 0.5 mm", lambda e: e["table"].__setitem__("x", t["x"] + 0.5))
+    if len(columns) > 1:
+        yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", columns[0]["width"] - 5), e["table"]["columns"][-1].__setitem__("width", columns[-1]["width"] + 5)))
+        flip_column = {"left": "right", "right": "center", "center": "left"}
+        current = columns[0].get("align") or ("right" if columns[0]["metric"] else "left")
+        yield changed("a column's alignment changed", lambda e: e["table"]["columns"][0].__setitem__("align", flip_column[current]), "is not aligned")
+    footer = exp.get("footer")
+    if footer:
+        yield changed("the document footer moved by 1 mm", lambda e: e["footer"].__setitem__("top", footer["top"] + MM), "")
+        yield changed("the document footer on another page", lambda e: e["footer"].__setitem__("page", footer["page"] + 1 if footer["page"] == exp["table_pages"] else footer["page"] - 1), "")
+        yield changed("the document footer removed from the expectation", lambda e: (e.pop("footer"), e["bands"].__delitem__(next(i for i, b in enumerate(e["bands"]) if b["name"] == "document_footer"))), "")
+    yield changed("a table page more", lambda e: e.__setitem__("table_pages", exp["table_pages"] + 1), "")
+    if exp["table_pages"] > 1:
+        yield changed("a table page less", lambda e: e.__setitem__("table_pages", exp["table_pages"] - 1), "")
+
+
+def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
+    """Yields (what, what a problem must say, directory of the corrupted copy) for the PDF-level corruptions of a 2.0 document."""
+    font = pymupdf.Font("cjk")
+
+    def copy_with(name, change):
+        doc = pymupdf.open(os.path.join(directory, exp["file"]))
+        change(doc)
+        target = os.path.join(scratch, name)
+        os.makedirs(target, exist_ok=True)
+        doc.save(os.path.join(target, exp["file"]))
+        return target
+
+    def text(t, at, color=(0, 0, 0), embedded=True, size=10):
+        def change(doc):
+            p = doc[0]
+            if embedded:
+                p.insert_font(fontname="Fx", fontbuffer=font.buffer)
+                p.insert_text(at, t, fontname="Fx", fontsize=size, color=color)
+            else:
+                p.insert_text(at, t, fontname="helv", fontsize=size, color=color)
+        return change
+
+    def move_glyphs(doc, moves, number=0):
+        page = doc[number]
+        page.clean_contents()
+        xref = page.get_contents()[0]
+        raw = doc.xref_stream(xref).decode("latin1")
+
+        def move(m):
+            x, y = float(m.group(1)), float(m.group(2))
+            for (wx, wy), (nx, ny) in moves:
+                if abs(x - wx) < 0.01 and abs(y - wy) < 0.01:
+                    return f"1 0 0 -1 {nx:.6f} {ny:.6f} cm"
+            return m.group(0)
+        moved = re.sub(r"1 0 0 -1 (\S+) (\S+) cm", move, raw)
+        assert moved != raw, "the glyphs' transformations were not found"
+        doc.update_stream(xref, moved.encode("latin1"))
+
+    def rewrite(doc, old, new, number=0):
+        hit = False
+        for xref in doc[number].get_contents():
+            raw = doc.xref_stream(xref).decode("latin1")
+            if old in raw:
+                hit = True
+                doc.update_stream(xref, raw.replace(old, new).encode("latin1"))
+        assert hit, f"{old!r} not in the content stream"
+
+    pdf_point = lambda c, page: (c["x"], page.rect.height - c["base"])
+    free = (105 * MM, 285 * MM)
+    yield "extra text", "unexpected text", copy_with("extra", text("X", free))
+    yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", free, embedded=False))
+    yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
+    yield "an extra page", "pages, expected", copy_with("pages", lambda doc: doc.new_page())
+    if doc_pages(directory, exp) > 1:
+        yield "the last page removed", "pages, expected", copy_with("lastpage", lambda doc: doc.delete_page(doc.page_count - 1))
+    yield "a smaller page", "not A4", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
+    yield "a value in a light colour", "light colour", copy_with("light", text("X", free, color=(0.9, 0.9, 0.9)))
+    yield "a replacement character", "replacement character", copy_with("fffd", text("�", free))
+    yield "a shape outside the elements", "ink outside", copy_with("outside", lambda doc: doc[0].draw_circle((105 * MM, 285 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
+    yield "text of another size in the table", "pt in the table", copy_with("tablesize", text("X", (region2(exp, 1).x0 + 20, region2(exp, 1).y1 - 3), size=14))
+
+    def line_of(page, el, top):
+        base = top + el["y"] * MM + ASCENT * el["size"]
+        left, right = (BAND_X + el["x"]) * MM, (BAND_X + el["x"] + el["width"]) * MM
+        return sorted([c for c in characters(page, 0) if abs(c["base"] - base) <= 0.1 and left - 1 <= c["x"] <= right + 1 and c["c"].strip() and not c["mark"]], key=lambda c: c["x"])
+    header = [(el, top) for band, top in bands_on_page2(exp, 1) for el in band["elements"] if el["type"] == "text" and not el["wrap"] and el["source"] != "page" and len(el["text"].rstrip()) >= 2 and not el["bold"]]
+    if header:
+        el, top = header[0]
+
+        def swap(doc):
+            page = doc[0]
+            line = line_of(page, el, top)
+            a, b = line[0], line[1]
+            move_glyphs(doc, [(pdf_point(a, page), (b["x"], pdf_point(a, page)[1])), (pdf_point(b, page), (a["x"], pdf_point(b, page)[1]))])
+        yield "two glyphs swapped", "left to right", copy_with("swap", swap)
+
+        def shift(doc):
+            page = doc[0]
+            c = line_of(page, el, top)[1]
+            move_glyphs(doc, [(pdf_point(c, page), (c["x"] + 1, pdf_point(c, page)[1]))])
+        if font_file:
+            yield "a glyph moved by 1 pt", "plain-advance position", copy_with("shift", shift)
+
+        def cover(doc):
+            base = top + el["y"] * MM + ASCENT * el["size"]
+            doc[0].draw_rect(pymupdf.Rect(0, base - ASCENT * el["size"], 210 * MM, base + 0.3 * el["size"]), color=None, fill=(1, 1, 1), overlay=True)
+        yield "a text covered by a white box", "no ink", copy_with("cover", cover)
+
+        def down(doc):
+            page = doc[0]
+            line = line_of(page, el, top)
+            move_glyphs(doc, [(pdf_point(c, page), (c["x"], pdf_point(c, page)[1] - 3)) for c in line])
+        yield "a text moved 3 pt down", "baseline", copy_with("down", down)
+    right_aligned = [(el, top) for band, top in bands_on_page2(exp, 1) for el in band["elements"] if el["type"] == "text" and not el["wrap"] and el["align"] == "right" and el["text"].rstrip() and el["source"] != "page"]
+    if right_aligned:
+        el, top = right_aligned[0]
+
+        def past_edge(doc):
+            page = doc[0]
+            c = line_of(page, el, top)[-1]
+            move_glyphs(doc, [(pdf_point(c, page), (c["x"] + 0.6, pdf_point(c, page)[1]))])
+        yield "the last glyph of a right-aligned text 0.6 pt past the edge", "leaves its box", copy_with("edge", past_edge)
+    if any(el["type"] == "line" for band in exp["bands"] for el in band["elements"]):
+        yield "the rules turned white", "colour", copy_with("whiterules", lambda doc: rewrite(doc, ".23529412 SCN", "1 SCN"))
+        yield "the rules thinned", "stroke width", copy_with("thinrules", lambda doc: rewrite(doc, ".25 w", ".1 w") if any(el["type"] == "line" and el["stroke"] == 0.25 for band in exp["bands"] for el in band["elements"]) else rewrite(doc, ".5 w", ".1 w"))
+    fills = [el["fill"] for band in exp["bands"] for el in band["elements"] if el["type"] == "rect" and el["fill"] != "none"]
+    if fills:
+        want = {"grey1": ".9607843 scn", "grey2": ".9098039 scn", "grey3": ".84313729 scn", "grey4": ".74509808 scn"}[fills[0]]
+        yield "a rectangle's fill turned white", "fill", copy_with("whitefill", lambda doc: rewrite(doc, want, "1 scn"))
+
+        def cover_rect(doc):
+            band, top = next((b, t) for b, t in bands_on_page2(exp, 1) for el in b["elements"] if el["type"] == "rect" and el["fill"] != "none")
+            el = next(e for e in band["elements"] if e["type"] == "rect" and e["fill"] != "none")
+            x0, y0 = (BAND_X + el["x"]) * MM, top + el["y"] * MM
+            doc[0].draw_rect(pymupdf.Rect(x0 + 1, y0 + 1, x0 + el["width"] * MM - 1, y0 + el["height"] * MM - 1), color=None, fill=(1, 1, 1), overlay=True)
+        if any(el["type"] == "rect" and el["fill"] != "none" for band, top in bands_on_page2(exp, 1) for el in band["elements"]):
+            yield "a rectangle covered by a white box", "no element draws", copy_with("coverrect", cover_rect)
+    footer = exp.get("footer")
+    if footer:
+        band = bands2(exp)["document_footer"]
+        texts = [el for el in band["elements"] if el["type"] == "text" and not el["wrap"] and el["text"].rstrip() and el["source"] != "page"]
+        if texts:
+            el = texts[0]
+
+            def footer_down(doc):
+                page = doc[footer["page"] - 1]
+                base = footer["top"] + el["y"] * MM + ASCENT * el["size"]
+                left, right = (BAND_X + el["x"]) * MM, (BAND_X + el["x"] + el["width"]) * MM
+                line = [c for c in characters(page, 0) if abs(c["base"] - base) <= 0.1 and left - 1 <= c["x"] <= right + 1 and c["c"].strip()]
+                move_glyphs(doc, [(pdf_point(c, page), (c["x"], pdf_point(c, page)[1] - 3)) for c in line], footer["page"] - 1)
+            yield "the document footer's text 3 pt lower", "baseline", copy_with("footerdown", footer_down)
+    # A group sum drawn as the exact digits without the table's separators: the sum is covered by a redaction and the
+    # same digits are set in its place.
+    all_pages = exp["footer"]["page"] if exp.get("footer") else exp["table_pages"]
+    summed = next(((number, el, top) for number in range(1, all_pages + 1) for band, top in bands_on_page2(exp, number) for el in band["elements"]
+                   if el["type"] == "text" and el["source"] == "group_sum" and not el["wrap"] and exp_sum_has_separators(el)), None)
+    if summed:
+        number, el, top = summed
+
+        def ungroup(doc):
+            page = doc[number - 1]
+            base = top + el["y"] * MM + ASCENT * el["size"]
+            left, right = (BAND_X + el["x"]) * MM, (BAND_X + el["x"] + el["width"]) * MM
+            page.add_redact_annot(pymupdf.Rect(left - 0.5, base - ASCENT * el["size"], right + 0.5, base + 0.3 * el["size"]))
+            page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE)
+            page.insert_font(fontname="Fx", fontbuffer=font.buffer)
+            page.insert_text((left + 1, base), exact_sum(el["sum_values"], el["scale"]), fontname="Fx", fontsize=el["size"], color=(0.07, 0.13, 0.22))
+        yield "the group sum drawn without its separators", "is not drawn on one line", copy_with("ungrouped", ungroup)
+    total_rows = exp["table"]["rows"]
+    if total_rows and exp["table_pages"] > 1:
+        yield "the last table page removed", "pages, expected", copy_with("lasttable", lambda doc: doc.delete_page(exp["table_pages"] - 1))
+
+
+
+
 def descent_of(size):
     return 0.3 * size + 2
 
@@ -1588,13 +2131,26 @@ def main():
     for name in names:
         with open(os.path.join(args.directory, name), encoding="utf-8") as f:
             exp = json.load(f)
-        document = exp.get("kind") == "document"
-        problems, layouts[exp["file"]] = check_document(args.directory, exp, args.font) if document else check(args.directory, exp)
+        document, banded = exp.get("kind") == "document", exp.get("kind") == "document2"
+        if banded:
+            problems, layouts[exp["file"]] = check_document2(args.directory, exp, args.font)
+        else:
+            problems, layouts[exp["file"]] = check_document(args.directory, exp, args.font) if document else check(args.directory, exp)
         print(f"{exp['file']}: {'ok' if not problems else 'FAILED'}")
         for p in problems[:20]:
             print("  " + p)
         failed |= bool(problems)
-        if args.negative and document:
+        if args.negative and banded:
+            for what, corrupted, expected in document2_corruptions(exp):
+                caught = any(expected in p for p in check_document2(args.directory, corrupted, args.font)[0])
+                print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")
+                failed |= not caught
+            with tempfile.TemporaryDirectory() as scratch:
+                for what, expected, directory in document2_pdf_corruptions(args.directory, exp, scratch, args.font):
+                    caught = any(expected in p for p in check_document2(directory, exp, args.font)[0])
+                    print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
+                    failed |= not caught
+        elif args.negative and document:
             for what, corrupted, expected in document_corruptions(exp):
                 caught = any(expected in p for p in check_document(args.directory, corrupted, args.font)[0])
                 print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")

@@ -87,6 +87,8 @@ type pageData struct {
 	Fills []rect  `json:"fills"`
 	Cells []rect  `json:"cells"`
 	Rules []rule  `json:"rules"`
+	// Boxes are the rectangle elements of a 2.0 document; a 1.x page has none and does not write the key.
+	Boxes []frame `json:"boxes,omitempty"`
 }
 
 func newPage(texts []glyph) pageData {
@@ -116,6 +118,15 @@ type page struct {
 	Pages       []pageData `json:"pages"`
 	Banner      banner     `json:"banner"`                 // on every page
 	HeaderLines int        `json:"header_lines,omitempty"` // the table header's height in lines, for the checker
+	// Footer is where a 2.0 document's footer band was put, for the tests that record what the checker
+	// verifies; it is not part of data.json.
+	Footer *footerPlace `json:"-"`
+}
+
+// footerPlace is the page (from 1) and top (points) of the document footer band of a 2.0 document.
+type footerPlace struct {
+	Page int
+	Top  float64
 }
 
 // Render draws one document template preview: an A4 page with the template's background in
@@ -123,7 +134,9 @@ type page struct {
 // implements httpapi.DocumentRenderer. A value is never shrunk, clipped or wrapped: one that
 // does not fit its box, or holds a character the fonts lack, is unsupported. A document with a
 // table (schema 1.3) takes as many pages as its rows need; table is then the rows bound by
-// doctemplates.BindTable. Previews hold at most all but one of the Config.Concurrency Typst
+// doctemplates.BindTable. A schema 2.0 document (S03-J) is laid out by bands (layout2.go): values
+// and table are those doctemplates.BindGroup bound for one row group, and there is no background.
+// Previews hold at most all but one of the Config.Concurrency Typst
 // processes, so that they never keep the export worker waiting for more than one render; a
 // preview whose wait and render together take longer than the render timeout is a budget
 // error.
@@ -150,6 +163,10 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, 0, err
+	}
+	// A schema 2.0 document is issued by group (S03-K); until then nothing issues one.
+	if d.Schema == doctemplates.SchemaBanded {
+		return nil, 0, fmt.Errorf("pdf: a schema 2.0 document is not issued yet: %w", r.ErrUnsupported)
 	}
 	if !validIssueTime(at) {
 		return nil, 0, fmt.Errorf("pdf: the issue time is not a UTC whole second between 1970 and 9999: %w", r.ErrInvalid)
@@ -230,14 +247,26 @@ func issueLayout(d doctemplates.Document, values map[string]string, background [
 	full := d.Print == nil || d.Print.Mode == "full"
 	for _, e := range d.Elements {
 		if (full || e.Source != "literal") && strings.Contains(values[e.ID], bannerText) {
-			return nil, fmt.Errorf("pdf: a value of an issued document holds the preview banner text: %w", r.ErrUnsupported)
+			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Element: e.ID}, "pdf: a value of an issued document holds the preview banner text")
+		}
+	}
+	for _, bi := range d.Items() {
+		if bi.Item.Type == doctemplates.TypeText && strings.Contains(values[bi.Item.ID], bannerText) {
+			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Band: bi.Band, Element: bi.Item.ID}, "pdf: a value of an issued document holds the preview banner text")
 		}
 	}
 	if table != nil {
-		for _, row := range table.Rows {
-			for _, cell := range row {
+		for i, row := range table.Rows {
+			for j, cell := range row {
 				if strings.Contains(cell, bannerText) {
-					return nil, fmt.Errorf("pdf: a cell of an issued document holds the preview banner text: %w", r.ErrUnsupported)
+					place := doctemplates.Detail{Row: ptr(table.SnapshotRow(i))}
+					if j < len(table.Columns) {
+						place.Column = table.Columns[j].ID
+					}
+					if t := d.TableItem(); t != nil {
+						place.Band, place.Element = doctemplates.BandDetail, t.ID
+					}
+					return nil, refuse(doctemplates.ReasonNotCovered, place, "pdf: a cell of an issued document holds the preview banner text")
 				}
 			}
 		}
@@ -327,6 +356,13 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 	if err := doctemplates.Validate(d); err != nil {
 		return nil, err
 	}
+	// A 2.0 document is laid out by bands and has no background (layout2.go).
+	if d.Schema == doctemplates.SchemaBanded {
+		if len(background) > 0 {
+			return nil, r.ErrInvalid
+		}
+		return layOutBanded(d, values, table, m)
+	}
 	profile := doctemplates.PrintProfile{Mode: "full"}
 	if d.Print != nil {
 		profile = *d.Print
@@ -361,26 +397,29 @@ func layOut(d doctemplates.Document, values map[string]string, background []byte
 		// What the single-line preview cannot print: controls, over 256 characters (as Bind
 		// refuses them) and a value starting with a combining mark, which Typst and pdfme
 		// would draw over the next character.
-		if utf8.RuneCountInString(v) > 256 || hasControl(v) {
-			return nil, fmt.Errorf("pdf: a value the preview cannot print: %w", r.ErrUnsupported)
+		if utf8.RuneCountInString(v) > 256 {
+			return nil, refuse(doctemplates.ReasonDoesNotFit, doctemplates.Detail{Element: e.ID}, "pdf: a value the preview cannot print")
+		}
+		if hasControl(v) {
+			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Element: e.ID}, "pdf: a value the preview cannot print")
 		}
 		size := float64(e.FontSize)
 		pieces := clusters(strings.TrimRightFunc(v, unicode.IsSpace))
 		if len(pieces) > 0 && unicode.Is(unicode.M, []rune(pieces[0])[0]) {
-			return nil, fmt.Errorf("pdf: a value starts with a combining mark: %w", r.ErrUnsupported)
+			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Element: e.ID}, "pdf: a value starts with a combining mark")
 		}
 		widths := make([]float64, len(pieces))
 		total := 0.0
 		for i, c := range pieces {
 			w, err := m.width(c, size, false)
 			if err != nil {
-				return nil, err
+				return nil, placed(err, doctemplates.Detail{Element: e.ID})
 			}
 			widths[i], total = w, total+w
 		}
 		left, right := (e.X+profile.OffsetX)*mm, (e.X+profile.OffsetX+e.Width)*mm
 		if total > e.Width*mm-fitMargin {
-			return nil, fmt.Errorf("pdf: a value does not fit its box on one line: %w", r.ErrUnsupported)
+			return nil, refuse(doctemplates.ReasonDoesNotFit, doctemplates.Detail{Element: e.ID}, "pdf: a value does not fit its box on one line")
 		}
 		x := left
 		switch e.Align {

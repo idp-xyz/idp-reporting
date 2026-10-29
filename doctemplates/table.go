@@ -3,6 +3,7 @@ package doctemplates
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"unicode/utf8"
 
 	r "idp.local/reporting/reporting"
@@ -115,12 +116,27 @@ type TableData struct {
 	Metric  []bool // whether the column is one of the query's metrics
 	Rows    [][]string
 	Totals  map[string]string
+	// Index is the snapshot row index of each row of Rows, for the refusal details of a layout. A
+	// 1.x table lists every row of the snapshot, and then it is nil: row i is snapshot row i. The
+	// rows of a 2.0 document's group are not consecutive, and their indices are here.
+	Index []int
+}
+
+// SnapshotRow returns the snapshot row index of row i of the table.
+func (t *TableData) SnapshotRow(i int) int {
+	if i >= 0 && i < len(t.Index) {
+		return t.Index[i]
+	}
+	return i
 }
 
 // BindTable takes the table's columns and rows from an already authorized frozen snapshot,
 // never caller values. A field the snapshot lacks is a denial, as in Bind; a cell the
 // single-line preview could not print is accepted here, as cells wrap.
 func BindTable(d Document, s r.Snapshot) (*TableData, error) {
+	if d.Schema == SchemaBanded {
+		return nil, fmt.Errorf("doctemplates: the table of a 2.0 document is bound by row group: %w", r.ErrUnsupported)
+	}
 	if d.Table == nil {
 		return nil, nil
 	}
