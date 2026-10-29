@@ -342,6 +342,23 @@ func TestSplitShapedPunctuation(t *testing.T) {
 		"……——":               "…|…|—|—",
 		"a, b. c":            "a, b. c",
 		"":                   "",
+		// An ellipsis is a piece of its own whatever stands next to it: a letter the font kerns into it,
+		// a digit, a space, an ideograph, a mark or another ellipsis.
+		"Total…":     "Total|…",
+		"A…B":        "A|…|B",
+		"x ⋯ y":      "x |⋯| y",
+		"…":          "…",
+		"⋯":          "⋯",
+		"a……b":       "a|…|…|b",
+		"⋯⋯":         "⋯|⋯",
+		"a⋯b…c":      "a|⋯|b|…|c",
+		"甲…乙":        "甲|…|乙",
+		"1…2":        "1|…|2",
+		"l…":         "l|…",
+		"…。":         "…|。",
+		"。⋯":         "。|⋯",
+		"（…）":        "（|…|）",
+		"Total… 100": "Total|…| 100",
 	} {
 		if got := strings.Join(splitShaped(line), "|"); got != want {
 			t.Errorf("%q: %q, want %q", line, got, want)

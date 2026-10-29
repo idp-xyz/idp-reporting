@@ -1,5 +1,12 @@
 # S03-G official issue records
 
+> **Superseded in part.** This slice's numbering and issuing rules (the platform assigns consecutive numbers
+> per tenant and integration, and a published template, a frozen snapshot and a row are enough to issue) are
+> superseded by docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md and docs/S03H_SCOPE.md: the source product
+> authorizes, numbers and confirms every formal document, and the platform never numbers. What S03-H does not
+> name stays as written here (the issue job and its admission rules, the page model and the stamp's strip, the
+> record, the listing and download routes, the console flow and the checker). Read S03-H first.
+
 2026-10-28. Turns the document templates of S03-E/F (docs/S03E_SCOPE.md, docs/S03F_SCOPE.md, ADR 0002) into
 official documents: a published template version, bound to one row of a frozen snapshot, rendered once by the
 durable job machinery of S01/S02 into an immutable PDF/A-2b artifact with a numbered, permanent issue record.

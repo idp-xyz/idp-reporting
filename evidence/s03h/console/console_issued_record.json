@@ -1,0 +1,26 @@
+{
+  "template_id": "ff87901173aaf8772abf684f1d9955d9",
+  "version": 1,
+  "row_index": 2,
+  "sha256": "924f92642a27b01875fc6b02c417552498326a2ebbda081bd58ab8da8b313586",
+  "record": {
+    "issue_id": "b787e510997fd40580a4db8a8ac0be69",
+    "state": "succeeded",
+    "snapshot_id": "6e03cd5358cfa9702979640a3e6a0dc7",
+    "number": "AR-000001",
+    "template_id": "ff87901173aaf8772abf684f1d9955d9",
+    "template_version": 1,
+    "template_sha256": "f0663d7506b23d72b0ccad15154265215e36b9ab806a6b7d7c476c4f5772ab05",
+    "row_index": 2,
+    "artifact_id": "8a4409511017225210c714ba032054ab",
+    "snapshot_sha256": "b8acf4de5ae44cbf71f6916213b5eb2b9a7117abd5bdf3ade19f88452883a7d8",
+    "sha256": "924f92642a27b01875fc6b02c417552498326a2ebbda081bd58ab8da8b313586",
+    "pages": 1,
+    "stamp": "ISSUED No. AR-000001 - 2026-10-28T16:05:09Z - b787e510997fd40580a4db8a8ac0be69",
+    "issued_at": "2026-10-28T16:05:09Z",
+    "reservation_ref": "d9f69de6b2a6b012f440e72839a045c9",
+    "confirmation_ref": "55f4c03aee11582caa87a37afafa549b",
+    "confirmed_at": "2026-10-28T16:05:09Z"
+  },
+  "source": "real Go issue job through the console; the PDF is the artifact the record names"
+}

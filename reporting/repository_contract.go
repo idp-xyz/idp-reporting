@@ -42,12 +42,41 @@ func issueFields(j Job) bool {
 	return validID(j.TemplateID) && j.TemplateVersion >= 1 && len(j.Template) >= 2 && len(j.Template) <= MaxTemplateBytes && json.Valid([]byte(j.Template)) && j.TemplateSHA256 == bytesDigest([]byte(j.Template)) && j.RowIndex >= 0 && j.RowIndex < MaxRows
 }
 
-// validRef: a reference the source product gave (its reservation or its confirmation), 1..128 bytes.
-func validRef(s string) bool { return len(s) >= 1 && len(s) <= 128 }
+// ValidProductRef: a reference the source product gave (its reservation or its confirmation) is 1..128
+// printable ASCII characters (0x21..0x7E): no space, control character, NUL, DEL, byte outside ASCII or
+// bidirectional mark. The platform keeps it in the record, prints it in the console and gives it back to
+// the product, so it must be the same string in every encoding, store and screen.
+func ValidProductRef(s string) bool {
+	if len(s) < 1 || len(s) > 128 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x21 || s[i] > 0x7E {
+			return false
+		}
+	}
+	return true
+}
 
-// wholeSecond: a time that is set and has no fraction of a second. It is judged by value, never by
-// zone or representation: a time read back from a database may carry another location.
-func wholeSecond(t time.Time) bool { return !t.IsZero() && t.Equal(t.Truncate(time.Second)) }
+var (
+	// The years a product's time may name: what a PDF can carry as its creation date (export/pdf:
+	// the writer's issue-time range) and what JSON can encode. The renderer refuses any other time
+	// after the product has reserved the number, so the worker refuses it first.
+	earliestProductTime = time.Unix(0, 0)
+	latestProductTime   = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+)
+
+// inProductYears: the instant lies between 1970-01-01T00:00:00Z and 9999-12-31T23:59:59Z.
+func inProductYears(t time.Time) bool {
+	return !t.Before(earliestProductTime) && !t.After(latestProductTime)
+}
+
+// ValidProductTime: a time the source product gave (the issue time, the confirmation time) is a whole
+// second between 1970-01-01T00:00:00Z and 9999-12-31T23:59:59Z. It is judged by value, never by zone or
+// representation (a time read back from a database may carry another location); the platform keeps it
+// as the same instant in UTC.
+func ValidProductTime(t time.Time) bool { return inProductYears(t) && t.Equal(t.Truncate(time.Second)) }
+
 func ValidateAdmission(j Job) error {
 	if !validID(j.ID) || !j.Owner.Identity.Valid() || j.Owner.Integration == "" || !validKey(j.Key) || j.State != "queued" || j.Generation != 0 || j.RequestHash == "" || j.Prepared.Context.Owner != j.Owner || j.Prepared.QueryHash != QueryHash(j.Query) {
 		return ErrInvalid
@@ -104,9 +133,10 @@ func ValidatePublication(j Job, p Publication) error {
 			return ErrIntegrity
 		}
 		// What the source product gave (S03-H): its number, the two references of its reservation
-		// and confirmation, the issue time and the confirmation time (never before it); the stamp
-		// is the one the number, the issue time and the record id make.
-		if !ValidIssueNumber(rec.Number) || !validRef(rec.ReservationRef) || !validRef(rec.ConfirmationRef) || !wholeSecond(rec.IssuedAt) || !wholeSecond(rec.ConfirmedAt) || rec.ConfirmedAt.Before(rec.IssuedAt) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
+		// and confirmation (printable ASCII), the issue time and the confirmation time (never before
+		// it), each a whole second between 1970 and 9999; the stamp is the one the number, the issue
+		// time and the record id make.
+		if !ValidIssueNumber(rec.Number) || !ValidProductRef(rec.ReservationRef) || !ValidProductRef(rec.ConfirmationRef) || !ValidProductTime(rec.IssuedAt) || !ValidProductTime(rec.ConfirmedAt) || rec.ConfirmedAt.Before(rec.IssuedAt) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
 			return ErrIntegrity
 		}
 	default:

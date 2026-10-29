@@ -31,8 +31,14 @@ it. No production store exists yet, so the correction costs a migration on test 
 4. Cross-system atomicity is not promised (README: no cross-system commit atomicity). Instead every
    outcome is reconcilable: a job that fails after reserving or confirming voids the product's reservation
    by job id; if the void cannot be delivered the job fails with `ISSUE_UNRECONCILED`, and the product can
-   find the reservation by the job id. A running issue job cannot be cancelled (it finishes, or fails and
-   voids); a queued one can.
+   find the reservation by the job id. The order is: the failure is recorded first, fenced by the worker's
+   claim (as `ISSUE_UNRECONCILED`, which is true until the void is done), then the void, then the job's own
+   code replaces it (docs/API.md; docs/S03H_SCOPE.md H2). A running issue job cannot be cancelled (it
+   finishes, or fails and voids); a queued one can. This deviates from the cancel row of docs/s00/INTERFACES.md
+   ("幂等取消；取消后不能发布"), which takes any job to be cancellable at any time: the product may already hold
+   a reservation for a running issue job, so cancelling it would orphan that reservation. The row's other
+   guarantees stand (a cancelled job cannot publish; cancelling twice is not an error), and the cancel route
+   answers a running issue job with the job unchanged.
 5. Platform numbering is withdrawn: migration 004 drops `issue_numbers`; it refuses to run while
    platform-numbered (S03-G) issue jobs or records exist, because they were never confirmed by a product.
 

@@ -2,6 +2,8 @@ package integration_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"idp.local/reporting/adapters/contractsim"
@@ -10,6 +12,7 @@ import (
 	"idp.local/reporting/storage/memory"
 	"idp.local/reporting/storage/postgres"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -397,6 +400,136 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 		if _, e = v.repo.Snapshot(ctx, v.p.Identity, good.Snapshot.ID); e != nil {
 			t.Fatal(e)
+		}
+	})
+	// Fail is fenced by the claim: the job must be running, at the claim's generation, with a lease that has
+	// not run out by the store's clock. Whatever else is ErrLease and changes nothing.
+	t.Run("fail_is_fenced_by_the_claim_and_the_lease", func(t *testing.T) {
+		v := env(t, factory(t))
+		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
+		if e != nil {
+			t.Fatal(e)
+		}
+		old, e := v.repo.Claim(ctx, time.Second)
+		if e != nil || old == nil {
+			t.Fatal(old, e)
+		}
+		time.Sleep(1100 * time.Millisecond)
+		// The lease ran out: the claim cannot fail the job, which stays as it was.
+		mustError(t, v.repo.Fail(ctx, *old, "EXECUTION_FAILED"), r.ErrLease)
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "running" || st.ErrorCode != "" || st.Generation != 1 {
+			t.Fatalf("a failure whose lease had run out changed the job: %+v %v", st, e)
+		}
+		next, e := v.repo.Claim(ctx, time.Minute)
+		if e != nil || next == nil || next.Job.Generation != 2 {
+			t.Fatal(next, e)
+		}
+		// The old claim is of another generation, and the new one has the lease.
+		mustError(t, v.repo.Fail(ctx, *old, "EXECUTION_FAILED"), r.ErrLease)
+		forged := *next
+		forged.Job.Owner.Subject = "someone-else"
+		mustError(t, v.repo.Fail(ctx, forged, "EXECUTION_FAILED"), r.ErrLease)
+		if e = v.repo.Fail(ctx, *next, "BUDGET_EXCEEDED"); e != nil {
+			t.Fatal(e)
+		}
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "failed" || st.ErrorCode != "BUDGET_EXCEEDED" || !st.LeaseUntil.IsZero() {
+			t.Fatalf("%+v %v", st, e)
+		}
+		// A failed job is not failed again.
+		mustError(t, v.repo.Fail(ctx, *next, "EXECUTION_FAILED"), r.ErrLease)
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.ErrorCode != "BUDGET_EXCEEDED" {
+			t.Fatalf("%+v %v", st, e)
+		}
+	})
+	// ResolveFailure replaces ISSUE_UNRECONCILED, and nothing else, with the job's own code (S03-H): only for
+	// an issue job that is failed, at the claim's generation, with that code; no lease is needed.
+	t.Run("resolve_failure_is_fenced_by_the_claim_the_state_and_the_code", func(t *testing.T) {
+		v := env(t, factory(t))
+		snap := freeze(t, v, contractsim.FinancialQuery(), "snap")
+		claimed := func(key string) r.Claim {
+			t.Helper()
+			stored, e := v.repo.Snapshot(ctx, v.p.Identity, snap.SnapshotID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			sum := sha256.Sum256([]byte(frozenTemplate))
+			templateID, digest := strings.Repeat("a", 32), hex.EncodeToString(sum[:])
+			if _, e = v.repo.Admit(ctx, r.Job{ID: r.NewID(), Owner: stored.Owner, Kind: "issue", State: "queued", Key: key, RequestHash: r.IssueRequestHash(templateID, 1, digest, stored.ID, 0), Query: stored.Query, Prepared: stored.Prepared,
+				SnapshotID: stored.ID, Format: "pdf", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, Template: frozenTemplate}); e != nil {
+				t.Fatal(e)
+			}
+			c, e := v.repo.Claim(ctx, time.Minute)
+			if e != nil || c == nil || c.Job.Kind != "issue" || c.Job.Generation != 1 {
+				t.Fatal(c, e)
+			}
+			return *c
+		}
+		code := func(c r.Claim) (string, string) {
+			t.Helper()
+			st, e := v.repo.Job(ctx, v.p.Identity, c.Job.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			return st.State, st.ErrorCode
+		}
+		// A job that is running is not resolved; a code that is none, or the unreconciled one, is invalid.
+		first := claimed("first")
+		mustError(t, v.repo.ResolveFailure(ctx, first, "TEMPLATE_NOT_PUBLISHED"), r.ErrLease)
+		mustError(t, v.repo.ResolveFailure(ctx, first, ""), r.ErrInvalid)
+		mustError(t, v.repo.ResolveFailure(ctx, first, "ISSUE_UNRECONCILED"), r.ErrInvalid)
+		if st, c := code(first); st != "running" || c != "" {
+			t.Fatalf("%s %q", st, c)
+		}
+		// Failed as unreconciled, it is resolved once, under the claim's generation, without a lease.
+		if e := v.repo.Fail(ctx, first, "ISSUE_UNRECONCILED"); e != nil {
+			t.Fatal(e)
+		}
+		wrongGeneration, wrongOwner := first, first
+		wrongGeneration.Job.Generation = 2
+		wrongOwner.Job.Owner.Subject = "someone-else"
+		mustError(t, v.repo.ResolveFailure(ctx, wrongGeneration, "TEMPLATE_NOT_PUBLISHED"), r.ErrLease)
+		mustError(t, v.repo.ResolveFailure(ctx, wrongOwner, "TEMPLATE_NOT_PUBLISHED"), r.ErrLease)
+		if st, c := code(first); st != "failed" || c != "ISSUE_UNRECONCILED" {
+			t.Fatalf("a refused resolution changed the job: %s %q", st, c)
+		}
+		if e := v.repo.ResolveFailure(ctx, first, "TEMPLATE_NOT_PUBLISHED"); e != nil {
+			t.Fatal(e)
+		}
+		if st, c := code(first); st != "failed" || c != "TEMPLATE_NOT_PUBLISHED" {
+			t.Fatalf("%s %q", st, c)
+		}
+		if got, e := v.repo.Job(ctx, v.p.Identity, first.Job.ID); e != nil || got.Generation != 1 || !got.LeaseUntil.IsZero() {
+			t.Fatalf("%+v %v", got, e)
+		}
+		// Resolved once: the code is no longer the unreconciled one.
+		mustError(t, v.repo.ResolveFailure(ctx, first, "EXECUTION_FAILED"), r.ErrLease)
+		if st, c := code(first); st != "failed" || c != "TEMPLATE_NOT_PUBLISHED" {
+			t.Fatalf("%s %q", st, c)
+		}
+		// A job that failed with a code of its own is not touched.
+		second := claimed("second")
+		if e := v.repo.Fail(ctx, second, "INTEGRITY_FAILURE"); e != nil {
+			t.Fatal(e)
+		}
+		mustError(t, v.repo.ResolveFailure(ctx, second, "TEMPLATE_NOT_PUBLISHED"), r.ErrLease)
+		if st, c := code(second); st != "failed" || c != "INTEGRITY_FAILURE" {
+			t.Fatalf("%s %q", st, c)
+		}
+		// Only an issue job is resolved: a snapshot job failed with that code is not.
+		other, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.ShipmentQuery(), "other")
+		if e != nil {
+			t.Fatal(e)
+		}
+		c, e := v.repo.Claim(ctx, time.Minute)
+		if e != nil || c == nil || c.Job.ID != other.ID {
+			t.Fatal(c, e)
+		}
+		if e = v.repo.Fail(ctx, *c, "ISSUE_UNRECONCILED"); e != nil {
+			t.Fatal(e)
+		}
+		mustError(t, v.repo.ResolveFailure(ctx, *c, "EXECUTION_FAILED"), r.ErrLease)
+		if st, e := v.repo.Job(ctx, v.p.Identity, other.ID); e != nil || st.ErrorCode != "ISSUE_UNRECONCILED" {
+			t.Fatalf("%+v %v", st, e)
 		}
 	})
 }

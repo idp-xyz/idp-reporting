@@ -16,6 +16,9 @@ import (
 	"time"
 )
 
+// productSkew is how far the finance product's clock is ahead of the service's, the test clock.
+const productSkew = 90 * time.Second
+
 // testClock is the one clock of a test: the service, the store and the simulators follow it, so
 // that a test can let a lease or a reservation run out without waiting.
 type testClock struct {
@@ -51,6 +54,8 @@ type fakeIssuer struct {
 	checkedOn r.Snapshot //
 	checkErr  error
 	checkHook func() // runs inside Check
+	panics    bool   // Issue panics, after the product reserved a number
+	checkPans bool   // Check panics, before the product is asked
 }
 
 func (f *fakeIssuer) Check(_ context.Context, j r.Job, s r.Snapshot) error {
@@ -58,6 +63,9 @@ func (f *fakeIssuer) Check(_ context.Context, j r.Job, s r.Snapshot) error {
 	f.checkedAs, f.checkedOn = j, s
 	if f.checkHook != nil {
 		f.checkHook()
+	}
+	if f.checkPans {
+		panic("the check broke: secret-row-value")
 	}
 	return f.checkErr
 }
@@ -67,6 +75,9 @@ func (f *fakeIssuer) Issue(_ context.Context, req r.IssueRequest) (r.IssueResult
 	f.last = req
 	if f.hook != nil {
 		f.hook()
+	}
+	if f.panics {
+		panic("the renderer broke: secret-row-value")
 	}
 	if f.err != nil {
 		return r.IssueResult{}, f.err
@@ -108,11 +119,18 @@ type product struct {
 	confirmAs func(*r.IssueReceipt)     // changes the receipt
 	prepareE  error                     // the answer to PrepareDocument is lost after the product reserved
 	confirmE  error                     // ConfirmIssue is refused before it reaches the simulator
+	confirmL  error                     // the answer to ConfirmIssue is lost after the product confirmed
 	voidE     error                     // VoidIssue never reaches the simulator
+	voidHook  func()                    // runs when VoidIssue is called, before the product voids
+	preparePn bool                      // PrepareDocument panics
+	voidPn    bool                      // VoidIssue panics
 }
 
 func (p *product) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.IssueIntent) (r.IssueReservation, error) {
 	p.intents = append(p.intents, in)
+	if p.preparePn {
+		panic("the adapter broke: secret-row-value")
+	}
 	res, e := p.Simulator.PrepareDocument(ctx, sc, in)
 	if e != nil {
 		return res, e
@@ -136,6 +154,9 @@ func (p *product) ConfirmIssue(ctx context.Context, sc r.SourceContext, c r.Issu
 		return rc, e
 	}
 	p.receipts = append(p.receipts, rc)
+	if p.confirmL != nil {
+		return r.IssueReceipt{}, p.confirmL
+	}
 	if p.confirmAs != nil {
 		p.confirmAs(&rc)
 	}
@@ -145,6 +166,12 @@ func (p *product) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, reas
 	p.voids = append(p.voids, voidCall{jobID, reason})
 	deadline, ok := ctx.Deadline()
 	p.voidCtx = voidContext{err: ctx.Err(), hasDeadline: ok, remaining: time.Until(deadline)}
+	if p.voidHook != nil {
+		p.voidHook()
+	}
+	if p.voidPn {
+		panic("the adapter broke: secret-row-value")
+	}
 	if p.voidE != nil {
 		return p.voidE
 	}
@@ -178,6 +205,39 @@ type loseLease struct {
 	spurious int
 	refuse   error
 	jobErr   error
+	failHook func()         // runs when Fail is called, before the store sees it: time passes
+	failE    error          // Fail never reaches the store (it cannot be reached)
+	resolveE error          // ResolveFailure never reaches the store
+	fails    []string       // the codes Fail was called with
+	resolves []string       // the codes ResolveFailure was called with
+	recordAs func(*r.Issue) // changes the record the store answers with
+}
+
+func (l *loseLease) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, error) {
+	rec, e := l.Repository.Issue(ctx, i, id)
+	if e == nil && l.recordAs != nil {
+		l.recordAs(&rec)
+	}
+	return rec, e
+}
+
+func (l *loseLease) Fail(ctx context.Context, c r.Claim, code string) error {
+	l.fails = append(l.fails, code)
+	if l.failHook != nil {
+		l.failHook()
+	}
+	if l.failE != nil {
+		return l.failE
+	}
+	return l.Repository.Fail(ctx, c, code)
+}
+
+func (l *loseLease) ResolveFailure(ctx context.Context, c r.Claim, code string) error {
+	l.resolves = append(l.resolves, code)
+	if l.resolveE != nil {
+		return l.resolveE
+	}
+	return l.Repository.ResolveFailure(ctx, c, code)
 }
 
 func (l *loseLease) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
@@ -246,7 +306,9 @@ func newIssueEnv(t *testing.T, o envOpts) *issueEnv {
 	v.owner = contractsim.DemoOwner(v.p, contractsim.FinanceIntegration)
 	v.finance = &product{Simulator: contractsim.Financial()}
 	v.finance.Grant(v.owner, contractsim.DefaultGrant())
-	v.finance.SetClock(v.clock.Now)
+	// The finance product's clock is not the service's: it is ahead by productSkew. The issue time, and so the
+	// stamp, the record and the request to render, must be the product's.
+	v.finance.SetClock(func() time.Time { return v.clock.Now().Add(productSkew) })
 	v.shipment = &product{Simulator: contractsim.Shipment()}
 	grant := contractsim.DefaultGrant()
 	grant.CurrencyPolicy = nil
@@ -374,8 +436,8 @@ func TestIssueJobsNumberRenderStampAndRecord(t *testing.T) {
 	if ran, e := v.run(); !ran || e != nil {
 		t.Fatal(ran, e)
 	}
-	issuedAt := time.Date(2026, 10, 28, 6, 12, 3, 0, time.UTC)
-	stamp := "ISSUED No. AR-000001 - 2026-10-28T06:12:03Z - " + j.ID
+	issuedAt := time.Date(2026, 10, 28, 6, 13, 33, 0, time.UTC)
+	stamp := "ISSUED No. AR-000001 - 2026-10-28T06:13:33Z - " + j.ID
 	if v.issuer.calls != 1 || v.issuer.last.Job.ID != j.ID || v.issuer.last.Snapshot.ID != v.snapshot || v.issuer.last.Job.Template != template || v.issuer.last.Stamp != stamp || !v.issuer.last.At.Equal(issuedAt) || v.issuer.last.At.Location() != time.UTC {
 		t.Fatalf("issuer call: %+v", v.issuer.last)
 	}
@@ -396,7 +458,7 @@ func TestIssueJobsNumberRenderStampAndRecord(t *testing.T) {
 		t.Fatalf("job view: %+v %+v", done, done.Issue)
 	}
 	a, e := v.s.Download(ctx, v.p, done.ArtifactID)
-	if e != nil || a.Format != "pdf" || a.Issue != j.ID || !bytes.Equal(a.Content, []byte("%PDF-1.7\n"+stamp+"\n2026-10-28T06:12:03Z")) {
+	if e != nil || a.Format != "pdf" || a.Issue != j.ID || !bytes.Equal(a.Content, []byte("%PDF-1.7\n"+stamp+"\n2026-10-28T06:13:33Z")) {
 		t.Fatal(a.Format, a.Issue, e)
 	}
 	// The record is the product's: its number, issue time and the references of its reservation
@@ -410,9 +472,18 @@ func TestIssueJobsNumberRenderStampAndRecord(t *testing.T) {
 		rec.ReservationRef != theirs.Ref || rec.ConfirmationRef != theirs.ConfirmationRef || !rec.ConfirmedAt.Equal(theirs.ConfirmedAt) || rec.ConfirmedAt.Location() != time.UTC || rec.TemplateSHA256 != stored.TemplateSHA256 || rec.RowIndex != 1 || len(rec.SnapshotSHA256) != 64 || rec.ID != j.ID || rec.Owner != stored.Owner {
 		t.Fatalf("record: %+v", rec)
 	}
+	// The time is the product's, 90 s ahead of the service's clock: the request to render, the stamp, the
+	// record's issue time and the product's own record all have it, and none the service's second.
+	serviceSecond := v.clock.Now().UTC().Truncate(time.Second)
+	if serviceSecond.Equal(issuedAt) || !issuedAt.Equal(serviceSecond.Add(productSkew)) {
+		t.Fatalf("the test's skew is lost: the service's second is %v, the product's %v", serviceSecond, issuedAt)
+	}
+	if v.issuer.last.At.Equal(serviceSecond) || strings.Contains(v.issuer.last.Stamp, serviceSecond.Format(time.RFC3339)) || rec.IssuedAt.Equal(serviceSecond) || strings.Contains(rec.Stamp, serviceSecond.Format(time.RFC3339)) || !theirs.IssuedAt.Equal(issuedAt) || !rec.IssuedAt.Equal(theirs.IssuedAt) || !v.issuer.last.At.Equal(rec.IssuedAt) {
+		t.Fatalf("the service's time leaked into the issue: request %v stamp %q, record %v %q, the product's %v", v.issuer.last.At, v.issuer.last.Stamp, rec.IssuedAt, rec.Stamp, theirs.IssuedAt)
+	}
 	view, e := v.s.Issue(ctx, v.p, j.ID)
-	if e != nil || view.ID != j.ID || view.State != "succeeded" || view.Number != "AR-000001" || view.SHA256 != a.SHA256 || view.Pages != 2 || view.Stamp != stamp || view.IssuedAt != "2026-10-28T06:12:03Z" || view.ArtifactID != a.ID ||
-		view.ReservationRef != theirs.Ref || view.ConfirmationRef != theirs.ConfirmationRef || view.ConfirmedAt != "2026-10-28T06:12:03Z" {
+	if e != nil || view.ID != j.ID || view.State != "succeeded" || view.Number != "AR-000001" || view.SHA256 != a.SHA256 || view.Pages != 2 || view.Stamp != stamp || view.IssuedAt != "2026-10-28T06:13:33Z" || view.ArtifactID != a.ID ||
+		view.ReservationRef != theirs.Ref || view.ConfirmationRef != theirs.ConfirmationRef || view.ConfirmedAt != "2026-10-28T06:13:33Z" {
 		t.Fatalf("issue view: %+v %v", view, e)
 	}
 	// The second job is refused at rendering: the product voided what it had reserved, the job
@@ -517,16 +588,66 @@ func TestIssueTimesFromTheProductAreJudgedByValueAndKeptInUTC(t *testing.T) {
 	if _, e := v.run(); e != nil {
 		t.Fatal(e)
 	}
-	issuedAt := time.Date(2026, 10, 28, 6, 12, 3, 0, time.UTC)
-	if !v.issuer.last.At.Equal(issuedAt) || v.issuer.last.At.Location() != time.UTC || v.issuer.last.Stamp != "ISSUED No. AR-000001 - 2026-10-28T06:12:03Z - "+j.ID {
+	issuedAt := time.Date(2026, 10, 28, 6, 13, 33, 0, time.UTC)
+	if !v.issuer.last.At.Equal(issuedAt) || v.issuer.last.At.Location() != time.UTC || v.issuer.last.Stamp != "ISSUED No. AR-000001 - 2026-10-28T06:13:33Z - "+j.ID {
 		t.Fatalf("the issuer was asked for %v in %v with the stamp %q", v.issuer.last.At, v.issuer.last.At.Location(), v.issuer.last.Stamp)
 	}
 	rec, e := v.repo.Issue(ctx, v.p.Identity, j.ID)
 	if e != nil || rec.IssuedAt.Location() != time.UTC || rec.ConfirmedAt.Location() != time.UTC || !rec.IssuedAt.Equal(issuedAt) || !rec.ConfirmedAt.Equal(issuedAt.Add(3*time.Second)) {
 		t.Fatalf("%+v %v", rec, e)
 	}
-	if view, e := v.s.Issue(ctx, v.p, j.ID); e != nil || view.IssuedAt != "2026-10-28T06:12:03Z" || view.ConfirmedAt != "2026-10-28T06:12:06Z" {
+	if view, e := v.s.Issue(ctx, v.p, j.ID); e != nil || view.IssuedAt != "2026-10-28T06:13:33Z" || view.ConfirmedAt != "2026-10-28T06:13:36Z" {
 		t.Fatalf("%+v %v", view, e)
+	}
+}
+
+// What the contract allows at its limits is accepted: references of one printable character and of 128,
+// every printable ASCII character, the first second of 1970 and the last of 9999 as the product's times
+// (an issue time at the last second would leave no expiry after it, so it is the one before), an expiry
+// with a fraction of a second (a source read's expiry can have one) and times in another zone.
+func TestIssueProductReferencesAndTimesAtTheirLimitsAreAccepted(t *testing.T) {
+	printable := ""
+	for c := 0x21; c <= 0x7e; c++ {
+		printable += string(rune(c))
+	}
+	first := time.Unix(0, 0).UTC()
+	last := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	for name, c := range map[string]struct {
+		prepare func(*r.IssueReservation)
+		confirm func(*r.IssueReceipt)
+		issued  string // the issue time the record and the stamp have
+	}{
+		"receipt references of one printable character":    {confirm: func(rc *r.IssueReceipt) { rc.Ref = "!" }, issued: "2026-10-28T06:13:33Z"},
+		"a receipt reference of 128 characters":            {confirm: func(rc *r.IssueReceipt) { rc.Ref = strings.Repeat("~", 128) }, issued: "2026-10-28T06:13:33Z"},
+		"every printable ASCII character in a reference":   {confirm: func(rc *r.IssueReceipt) { rc.Ref = printable }, issued: "2026-10-28T06:13:33Z"},
+		"the first second of 1970 as the issue time":       {prepare: func(res *r.IssueReservation) { res.IssuedAt = first }, issued: "1970-01-01T00:00:00Z"},
+		"the last second of 9999 as the confirmation time": {confirm: func(rc *r.IssueReceipt) { rc.ConfirmedAt = last }, issued: "2026-10-28T06:13:33Z"},
+		"the last second as the expiry, one before as the issue time": {prepare: func(res *r.IssueReservation) {
+			res.IssuedAt, res.ExpiresAt = last.Add(-time.Second), last
+		}, confirm: func(rc *r.IssueReceipt) { rc.ConfirmedAt = last }, issued: "9999-12-31T23:59:58Z"},
+		"an expiry with a fraction of a second": {prepare: func(res *r.IssueReservation) {
+			res.ExpiresAt = res.IssuedAt.Add(10*time.Minute + 123456*time.Microsecond)
+		}, issued: "2026-10-28T06:13:33Z"},
+		"times in another zone": {prepare: func(res *r.IssueReservation) {
+			z := time.FixedZone("far", 14*3600)
+			res.IssuedAt, res.ExpiresAt = res.IssuedAt.In(z), res.ExpiresAt.In(z)
+		}, confirm: func(rc *r.IssueReceipt) { rc.ConfirmedAt = rc.ConfirmedAt.In(time.FixedZone("far", 14*3600)) }, issued: "2026-10-28T06:13:33Z"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := newIssueEnv(t, envOpts{})
+			v.finance.prepareAs, v.finance.confirmAs = c.prepare, c.confirm
+			j := v.submit(1, "k")
+			if _, e := v.run(); e != nil {
+				t.Fatal(e)
+			}
+			view, e := v.s.Issue(context.Background(), v.p, j.ID)
+			if e != nil || view.State != "succeeded" || view.IssuedAt != c.issued || view.Stamp != "ISSUED No. AR-000001 - "+c.issued+" - "+j.ID {
+				t.Fatalf("%+v %v", view, e)
+			}
+			if len(v.finance.voids) != 0 {
+				t.Fatalf("voids: %+v", v.finance.voids)
+			}
+		})
 	}
 }
 
@@ -793,8 +914,25 @@ func TestIssueFailuresVoidAtTheProduct(t *testing.T) {
 		"the publication fails for the database":    {code: "EXECUTION_FAILED", asked: true, confirmed: true, publish: errors.New("the database is down")},
 	}
 	for name, change := range map[string]func(*r.IssueReservation){
-		"a reservation without a reference":          func(res *r.IssueReservation) { res.Ref = "" },
-		"a reservation reference of 129 bytes":       func(res *r.IssueReservation) { res.Ref = strings.Repeat("r", 129) },
+		"a reservation without a reference":        func(res *r.IssueReservation) { res.Ref = "" },
+		"a reservation reference of 129 bytes":     func(res *r.IssueReservation) { res.Ref = strings.Repeat("r", 129) },
+		"a reservation reference with a space":     func(res *r.IssueReservation) { res.Ref = "res 1" },
+		"a reservation reference of one space":     func(res *r.IssueReservation) { res.Ref = " " },
+		"a reservation reference with a tab":       func(res *r.IssueReservation) { res.Ref = "res\t1" },
+		"a reservation reference with a newline":   func(res *r.IssueReservation) { res.Ref = "res1\n" },
+		"a reservation reference with a DEL":       func(res *r.IssueReservation) { res.Ref = "res\x7f1" },
+		"a reservation reference with a NUL":       func(res *r.IssueReservation) { res.Ref = "res\x001" },
+		"a reservation reference with an accent":   func(res *r.IssueReservation) { res.Ref = "r\u00e9s1" },
+		"a reservation reference with a bidi mark": func(res *r.IssueReservation) { res.Ref = "res\u202e1" },
+		"a reservation reference of invalid UTF-8": func(res *r.IssueReservation) { res.Ref = "res\xff1" },
+		"an issue time in the year 10000": func(res *r.IssueReservation) {
+			res.IssuedAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+			res.ExpiresAt = res.IssuedAt.Add(time.Hour)
+		},
+		"an issue time before 1970":                  func(res *r.IssueReservation) { res.IssuedAt = time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC) },
+		"the latest second as the issue time":        func(res *r.IssueReservation) { res.IssuedAt = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC) },
+		"an expiry in the year 10000":                func(res *r.IssueReservation) { res.ExpiresAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) },
+		"an expiry that is the zero time":            func(res *r.IssueReservation) { res.ExpiresAt = time.Time{} },
 		"a reservation of another job":               func(res *r.IssueReservation) { res.JobID = strings.Repeat("9", 32) },
 		"a number with a space":                      func(res *r.IssueReservation) { res.Number = "AR 000001" },
 		"a number of 33 characters":                  func(res *r.IssueReservation) { res.Number = strings.Repeat("N", 33) },
@@ -810,6 +948,17 @@ func TestIssueFailuresVoidAtTheProduct(t *testing.T) {
 	for name, change := range map[string]func(*r.IssueReceipt){
 		"a receipt without a reference":        func(rc *r.IssueReceipt) { rc.Ref = "" },
 		"a receipt reference of 129 bytes":     func(rc *r.IssueReceipt) { rc.Ref = strings.Repeat("c", 129) },
+		"a receipt reference with a space":     func(rc *r.IssueReceipt) { rc.Ref = "c 1" },
+		"a receipt reference with a NUL":       func(rc *r.IssueReceipt) { rc.Ref = "c\x001" },
+		"a receipt reference with a DEL":       func(rc *r.IssueReceipt) { rc.Ref = "c\x7f" },
+		"a receipt reference with a control":   func(rc *r.IssueReceipt) { rc.Ref = "c\u00851" },
+		"a receipt reference with an accent":   func(rc *r.IssueReceipt) { rc.Ref = "caf\u00e9" },
+		"a receipt reference with a bidi mark": func(rc *r.IssueReceipt) { rc.Ref = "c\u202e1" },
+		"a receipt reference of invalid UTF-8": func(rc *r.IssueReceipt) { rc.Ref = "c\xff" },
+		"a confirmation in the year 10000":     func(rc *r.IssueReceipt) { rc.ConfirmedAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) },
+		"a confirmation after the latest second": func(rc *r.IssueReceipt) {
+			rc.ConfirmedAt = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).Add(time.Second)
+		},
 		"a confirmation time with a fraction":  func(rc *r.IssueReceipt) { rc.ConfirmedAt = rc.ConfirmedAt.Add(time.Millisecond) },
 		"no confirmation time":                 func(rc *r.IssueReceipt) { rc.ConfirmedAt = time.Time{} },
 		"a confirmation before the issue time": func(rc *r.IssueReceipt) { rc.ConfirmedAt = rc.ConfirmedAt.Add(-time.Second) },
@@ -1259,7 +1408,7 @@ func TestIssueJobsCancelOnlyWhileQueued(t *testing.T) {
 	if st := v.stored(running.ID); st.State != "running" || st.LeaseUntil.IsZero() || st.Generation != 1 {
 		t.Fatalf("the cancel changed the running issue job: %+v", st)
 	}
-	// The claim is still good: the job publishes. A running snapshot job is cancelled, as before.
+	// A running snapshot job is cancelled, as before.
 	snap, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.ShipmentQuery(), "snap2")
 	if e != nil {
 		t.Fatal(e)
@@ -1270,6 +1419,29 @@ func TestIssueJobsCancelOnlyWhileQueued(t *testing.T) {
 	}
 	if c, e = v.s.Cancel(ctx, v.p, snap.ID); e != nil || c.State != "cancelled" {
 		t.Fatal("a running snapshot job was not cancelled", c, e)
+	}
+	// And the claim of a running issue job is still good after the cancel: a worker that is rendering when
+	// the cancel arrives goes on, and publishes. (The job claimed by hand above is left to its lease.)
+	w := newIssueEnv(t, envOpts{})
+	issued := w.submit(2, "issued")
+	var during r.JobView
+	w.issuer.hook = func() {
+		var e error
+		if during, e = w.s.Cancel(ctx, w.p, issued.ID); e != nil {
+			t.Error(e)
+		}
+	}
+	if ran, e := w.run(); !ran || e != nil {
+		t.Fatal(ran, e)
+	}
+	if during.State != "running" || during.Kind != "issue" {
+		t.Fatalf("a cancel while the worker rendered answered %+v", during)
+	}
+	if st := w.stored(issued.ID); st.State != "succeeded" || st.Generation != 1 || st.ArtifactID == "" {
+		t.Fatalf("the cancel stopped the worker that held the job: %+v", st)
+	}
+	if got := w.job(issued.ID); got.Issue == nil || got.Issue.Number != "AR-000001" {
+		t.Fatalf("%+v", got)
 	}
 }
 
@@ -1325,6 +1497,17 @@ func TestIssueContractRefusesInconsistentJobsAndPublications(t *testing.T) {
 		"a number with every character":     func(a *r.Artifact, i *r.Issue) { i.Number = "a.B_c-9"; restamp(i) },
 		"references of 1 and 128 bytes":     func(a *r.Artifact, i *r.Issue) { i.ReservationRef, i.ConfirmationRef = "x", strings.Repeat("y", 128) },
 		"a confirmation in the same second": func(a *r.Artifact, i *r.Issue) { i.ConfirmedAt = i.IssuedAt },
+		"references of every printable character": func(a *r.Artifact, i *r.Issue) {
+			i.ReservationRef, i.ConfirmationRef = "!\"#$%&'()*+,-./0123456789:;<=>?@AZ[\\]^_`az{|}~", "~!"
+		},
+		"the first second of 1970": func(a *r.Artifact, i *r.Issue) {
+			i.IssuedAt, i.ConfirmedAt = time.Unix(0, 0).UTC(), time.Unix(0, 0).UTC()
+			restamp(i)
+		},
+		"the last second of 9999": func(a *r.Artifact, i *r.Issue) {
+			i.IssuedAt, i.ConfirmedAt = time.Date(9999, 12, 31, 23, 59, 58, 0, time.UTC), time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+			restamp(i)
+		},
 		"times in another zone": func(a *r.Artifact, i *r.Issue) {
 			z := time.FixedZone("CST", 8*3600)
 			i.IssuedAt, i.ConfirmedAt = i.IssuedAt.In(z), i.ConfirmedAt.In(z)
@@ -1337,9 +1520,34 @@ func TestIssueContractRefusesInconsistentJobsAndPublications(t *testing.T) {
 		}
 	}
 	for name, change := range map[string]func(a *r.Artifact, i *r.Issue){
-		"no record":                           func(a *r.Artifact, i *r.Issue) { *i = r.Issue{} },
-		"artifact without issue":              func(a *r.Artifact, i *r.Issue) { a.Issue = "" },
-		"record of another job":               func(a *r.Artifact, i *r.Issue) { i.ID = r.NewID() },
+		"no record":              func(a *r.Artifact, i *r.Issue) { *i = r.Issue{} },
+		"artifact without issue": func(a *r.Artifact, i *r.Issue) { a.Issue = "" },
+		"record of another job":  func(a *r.Artifact, i *r.Issue) { i.ID = r.NewID() },
+		"record of another job, its stamp recomputed for that id": func(a *r.Artifact, i *r.Issue) { i.ID = r.NewID(); restamp(i) },
+		"record of another integration":                           func(a *r.Artifact, i *r.Issue) { i.Owner.Integration = "other" },
+		"record of another subject":                               func(a *r.Artifact, i *r.Issue) { i.Owner.Subject = "other" },
+		"record of another template":                              func(a *r.Artifact, i *r.Issue) { i.TemplateID = strings.Repeat("b", 32) },
+		"record of another template digest":                       func(a *r.Artifact, i *r.Issue) { i.TemplateSHA256 = strings.Repeat("1", 64) },
+		"record of another snapshot":                              func(a *r.Artifact, i *r.Issue) { i.SnapshotID = r.NewID() },
+		"artifact of another integration":                         func(a *r.Artifact, i *r.Issue) { a.Owner.Integration = "other" },
+		"artifact of another snapshot":                            func(a *r.Artifact, i *r.Issue) { a.SnapshotID = r.NewID() },
+		"artifact claiming another record":                        func(a *r.Artifact, i *r.Issue) { a.Issue = r.NewID() },
+		"reservation reference with a space":                      func(a *r.Artifact, i *r.Issue) { i.ReservationRef = "reservation 7" },
+		"reservation reference with a NUL":                        func(a *r.Artifact, i *r.Issue) { i.ReservationRef = "reservation\x007" },
+		"reservation reference with a DEL":                        func(a *r.Artifact, i *r.Issue) { i.ReservationRef = "reservation\x7f" },
+		"reservation reference with an accent":                    func(a *r.Artifact, i *r.Issue) { i.ReservationRef = "r\u00e9servation" },
+		"reservation reference of invalid UTF-8":                  func(a *r.Artifact, i *r.Issue) { i.ReservationRef = "reservation\xff" },
+		"confirmation reference with a bidi mark":                 func(a *r.Artifact, i *r.Issue) { i.ConfirmationRef = "confirmation\u202e7" },
+		"confirmation reference with a tab":                       func(a *r.Artifact, i *r.Issue) { i.ConfirmationRef = "confirmation\t7" },
+		"issue time before 1970": func(a *r.Artifact, i *r.Issue) {
+			i.IssuedAt = time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC)
+			restamp(i)
+		},
+		"issue time in the year 10000": func(a *r.Artifact, i *r.Issue) {
+			i.IssuedAt, i.ConfirmedAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(10000, 1, 1, 0, 0, 1, 0, time.UTC)
+			restamp(i)
+		},
+		"confirmation in the year 10000":      func(a *r.Artifact, i *r.Issue) { i.ConfirmedAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) },
 		"number changed":                      func(a *r.Artifact, i *r.Issue) { i.Number = "AR-000008" },
 		"no number":                           func(a *r.Artifact, i *r.Issue) { i.Number = ""; restamp(i) },
 		"number with a space":                 func(a *r.Artifact, i *r.Issue) { i.Number = "AR 7"; restamp(i) },

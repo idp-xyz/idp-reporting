@@ -46,6 +46,7 @@ func TestTypstChecksIssuesBeforeTheProductIsAsked(t *testing.T) {
 	w := typstWriter(t, nil)
 	t.Run("check_refuses_what_issue_refuses_for_the_layout", func(t *testing.T) { checkRefusesWhatIssueRefuses(t, w) })
 	t.Run("the_service_asks_the_product_only_after_the_check", func(t *testing.T) { serviceChecksBeforeTheProduct(t, w) })
+	t.Run("the_real_issuer_and_writer_issue_the_same_bytes", func(t *testing.T) { realIssuerIsDeterministic(t, w) })
 }
 
 // checkRefusesWhatIssueRefuses: a table of documents, each given to CheckIssue and to Issue with a good
@@ -114,6 +115,15 @@ func checkRefusesWhatIssueRefuses(t *testing.T, w *Writer) {
 		{"a missing value", single(nil), map[string]string{}, nil, nil, r.ErrInvalid},
 		{"the banner text as a value", single(nil), oneValue("x " + bannerText), nil, nil, r.ErrUnsupported},
 		{"the banner text as a table cell", statement("full", nil), values, nil, rows(3, func(d *doctemplates.TableData) { d.Rows[1][1] = bannerText }), r.ErrUnsupported},
+		// An ellipsis next to a Latin letter: the font kerns the letter into it, so Typst drew "Total…" 0.59 pt
+		// wider than measured and the render refused a document the check had passed, after the product had
+		// reserved a number. Every ellipsis is a piece of its own now, whatever stands next to it.
+		{"a table cell with a letter before an ellipsis", statement("full", nil), values, nil, rows(3, func(d *doctemplates.TableData) { d.Rows[1][1] = "Total…" }), nil},
+		{"a table cell with an ellipsis between letters", statement("full", nil), values, nil, rows(3, func(d *doctemplates.TableData) { d.Rows[1][1] = "A…B" }), nil},
+		{"a table cell with a midline ellipsis between spaces", statement("full", nil), values, nil, rows(3, func(d *doctemplates.TableData) { d.Rows[1][1] = "x ⋯ y" }), nil},
+		{"a table cell of ellipses next to letters, digits and ideographs", statement("full", nil), values, nil, rows(4, func(d *doctemplates.TableData) {
+			d.Rows[0][1], d.Rows[1][1], d.Rows[2][1], d.Rows[3][1] = "Total… 100", "l…l ⋯Wi…", "1…2甲…乙", "Subtotal…\nTotal…"
+		}), nil},
 		{"an amount wider than its column", statement("full", func(d *doctemplates.Document) {
 			d.Table.Columns = []doctemplates.TableColumn{{Field: "customer", Width: 40}, {Field: "note", Width: 128}, {Field: "amount", Width: 12}}
 		}), values, nil, rows(60, nil), r.ErrUnsupported},
@@ -290,5 +300,99 @@ func serviceChecksBeforeTheProduct(t *testing.T, w *Writer) {
 	}
 	if got, e := s.Job(ctx, p, next.ID); e != nil || got.State != "succeeded" || got.Issue.Number != "AR-000002" {
 		t.Fatalf("%+v %v", got, e)
+	}
+}
+
+// realIssuerIsDeterministic: the platform's promise that a job issued again, after a crash or a lost lease,
+// gives the same bytes, so that the product confirms them idempotently, is made by the real issuance.Issuer
+// and the real Typst writer together, not by either alone. The same job issued twice, and by a writer whose
+// clock differs, gives identical bytes; another issue time gives other bytes (the creation date alone).
+func realIssuerIsDeterministic(t *testing.T, w *Writer) {
+	ctx := t.Context()
+	p := contractsim.DemoPrincipal()
+	finance := contractsim.Financial()
+	finance.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
+	store, err := doctemplates.Open(filepath.Join(t.TempDir(), "templates"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s, err := r.NewService(r.Config{Repository: memory.New(time.Now), Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}}, CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozen, err := s.SubmitSnapshot(ctx, p, contractsim.FinancialQuery(), "snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RunOne(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if frozen, err = s.Job(ctx, p, frozen.ID); err != nil || frozen.SnapshotID == "" {
+		t.Fatal(frozen, err)
+	}
+	snap, err := s.AuthorizedSnapshot(ctx, p, frozen.SnapshotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A template with boxes and a table over the frozen rows, published.
+	d := doctemplates.Document{Schema: "1.3", Kind: "document", Binding: doctemplates.Binding{Integration: contractsim.FinanceIntegration, Dataset: contractsim.FinancialQuery().Dataset},
+		Elements: []doctemplates.Element{
+			{ID: "n1", Source: "literal", Text: "对账单 Statement…", X: 20, Y: 30, Width: 120, Height: 12, FontSize: 14, Align: "left"},
+			{ID: "n2", Source: "row", Field: "customer.id", X: 20, Y: 46, Width: 80, Height: 8, FontSize: 10, Align: "left"},
+			{ID: "n3", Source: "total", Field: "ar.open_balance", X: 110.5, Y: 46, Width: 80, Height: 8, FontSize: 10, Align: "right"},
+		},
+		Print: &doctemplates.PrintProfile{Mode: "full", OffsetX: 0.5, OffsetY: -0.3},
+		Table: &doctemplates.Table{X: 15, Y: 60, Width: 180, Height: 200, FontSize: 9, Columns: []doctemplates.TableColumn{{Field: "customer.id", Width: 90}, {Field: "ar.open_balance", Width: 90}}}}
+	v, err := store.Save(p.Identity, "", 0, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Publish(p.Identity, v.ID, "publish", 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := doctemplates.Canonical(v.Layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := r.Job{ID: strings.Repeat("7", 32), Owner: snap.Owner, Kind: "issue", TemplateID: v.ID, TemplateVersion: 1, Template: string(canonical), SnapshotID: snap.ID, RowIndex: 1}
+	at := time.Date(2026, 10, 28, 6, 13, 33, 0, time.UTC)
+	request := func(at time.Time) r.IssueRequest {
+		return r.IssueRequest{Job: job, Snapshot: snap, Stamp: r.IssueStamp("AR-000001", at, job.ID), At: at}
+	}
+	issuer, err := issuance.New(store, nil, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A writer whose clock is a day and a half ahead, behind its own issuer.
+	later := typstWriter(t, func(c *Config) { c.Now = func() time.Time { return created.Add(36 * time.Hour) } })
+	laterIssuer, err := issuance.New(store, nil, later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := issuer.Issue(ctx, request(at))
+	if err != nil || first.Pages < 1 || !bytes.HasPrefix(first.PDF, []byte("%PDF-")) {
+		t.Fatalf("%+v %v", first, err)
+	}
+	again, err := issuer.Issue(ctx, request(at))
+	if err != nil || !bytes.Equal(first.PDF, again.PDF) || first.Pages != again.Pages {
+		t.Fatalf("the same job issued twice gives different bytes (%v)", err)
+	}
+	fromLater, err := laterIssuer.Issue(ctx, request(at))
+	if err != nil || !bytes.Equal(first.PDF, fromLater.PDF) {
+		t.Fatalf("a writer whose clock differs issues different bytes (%v)", err)
+	}
+	other, err := issuer.Issue(ctx, request(at.Add(time.Second)))
+	if err != nil || bytes.Equal(first.PDF, other.PDF) {
+		t.Fatalf("another issue time gives the same bytes (%v)", err)
+	}
+	if !bytes.Contains(first.PDF, infoCreation(at)) || bytes.Contains(first.PDF, infoCreation(created)) {
+		t.Error("the issue is not dated with the issue time the request carries")
+	}
+	// What the checker and the product are given is what a second claim would have produced: its digest.
+	sum := sha256.Sum256(first.PDF)
+	sumAgain := sha256.Sum256(again.PDF)
+	if sum != sumAgain {
+		t.Error("the digests differ")
 	}
 }

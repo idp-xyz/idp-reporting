@@ -321,7 +321,7 @@ func blocked(ctx context.Context, tx pgx.Tx, m Migration, up bool) (string, erro
 			return "", err
 		}
 		if n > 0 {
-			return fmt.Sprintf("%d issue jobs and records exist, numbered by the platform (S03-G) and never confirmed by a source product, so they cannot be carried over; run reporting-migrate down --to 2 --accept-data-loss first, which deletes them (their issued PDFs stay as plain artifacts)", n), nil
+			return fmt.Sprintf("%d issue jobs and records exist, numbered by the platform (S03-G) and never confirmed by a source product, so they cannot be carried over; run reporting-migrate down --to 2 --accept-data-loss first, which deletes them (the issued PDFs stay in the store but can no longer be downloaded, their records being gone; they expire with their snapshots)", n), nil
 		}
 	}
 	return "", nil
@@ -346,7 +346,7 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 			return "", err
 		}
 		if n > 0 || counters > 0 || issued > 0 {
-			return fmt.Sprintf("%d issue jobs and records and %d issue counters (the numbering of every tenant and integration would restart at 1, reusing numbers already printed); %d issued PDFs would lose their records and stay as plain artifacts", n, counters, issued), nil
+			return fmt.Sprintf("%d issue jobs and records and %d issue counters (the numbering of every tenant and integration would restart at 1, reusing numbers already printed); %d issued PDFs would lose their records: they would stay in the store but could no longer be downloaded, and would expire with their snapshots", n, counters, issued), nil
 		}
 	case 4:
 		var issued int64
@@ -355,7 +355,7 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 			return "", err
 		}
 		if n > 0 || issued > 0 {
-			return fmt.Sprintf("%d issue jobs and records (an S03-G binary could not read them: the numbers are the source product's strings, not platform counters); %d issued PDFs would lose their records and stay as plain artifacts", n, issued), nil
+			return fmt.Sprintf("%d issue jobs and records (an S03-G binary could not read them: the numbers are the source product's strings, not platform counters); %d issued PDFs would lose their records: they would stay in the store but could no longer be downloaded, and would expire with their snapshots", n, issued), nil
 		}
 	}
 	return "", nil

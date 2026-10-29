@@ -215,10 +215,11 @@ func TestPostgresMigrations(t *testing.T) {
 			t.Fatal(e)
 		}
 		// Down over 004 would discard the issue job and its record (an S03-G binary could not read
-		// them: the number is the product's string) and leave the issued PDF as a plain artifact:
-		// refused with all three named; down to 2 meets that refusal first and stays at 4.
+		// them: the number is the product's string) and leave the issued PDF in the store without its
+		// record, which makes it undownloadable: refused with all three named; down to 2 meets that
+		// refusal first and stays at 4.
 		e := postgres.Down(ctx, admin, 3, "test", false)
-		if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "2 issue jobs and records") || !strings.Contains(e.Error(), "S03-G binary could not read them") || !strings.Contains(e.Error(), "1 issued PDFs would lose their records and stay as plain artifacts") {
+		if !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "2 issue jobs and records") || !strings.Contains(e.Error(), "S03-G binary could not read them") || !strings.Contains(e.Error(), "1 issued PDFs would lose their records: they would stay in the store but could no longer be downloaded, and would expire with their snapshots") || strings.Contains(e.Error(), "plain artifact") {
 			t.Fatal("down with issue rows accepted or counted wrongly", e)
 		}
 		if e := postgres.Down(ctx, admin, 2, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "migration 004 down") {

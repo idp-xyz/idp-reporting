@@ -1,0 +1,37 @@
+{
+ "kind": "document",
+ "file": "console_issued.pdf",
+ "background": false,
+ "mode": "full",
+ "offset_x": 0,
+ "offset_y": 0,
+ "elements": [
+  {
+   "text": "Document preview",
+   "x": 10,
+   "y": 25,
+   "width": 190,
+   "height": 12,
+   "size": 18,
+   "align": "left"
+  },
+  {
+   "text": "9007199254740893.00",
+   "x": 10,
+   "y": 40,
+   "width": 190,
+   "height": 10,
+   "size": 12,
+   "align": "left"
+  }
+ ],
+ "issue": {
+  "number": "AR-000001",
+  "issue_id": "b787e510997fd40580a4db8a8ac0be69",
+  "issued_at": "2026-10-28T16:05:09Z",
+  "stamp": "ISSUED No. AR-000001 - 2026-10-28T16:05:09Z - b787e510997fd40580a4db8a8ac0be69",
+  "sha256": "924f92642a27b01875fc6b02c417552498326a2ebbda081bd58ab8da8b313586",
+  "pages": 1,
+  "preview_file": "console_issued.preview.pdf"
+ }
+}

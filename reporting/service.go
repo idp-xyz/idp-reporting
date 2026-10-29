@@ -320,11 +320,29 @@ func (s *Service) SubmitExportFormat(ctx context.Context, p Principal, id, forma
 func view(j Job) JobView {
 	v := JobView{ID: j.ID, Kind: j.Kind, State: j.State, SnapshotID: j.SnapshotID, Format: j.Format, ArtifactID: j.ArtifactID, ErrorCode: j.ErrorCode}
 	if j.Kind == "issue" {
-		// The number is the source product's and is known once the job succeeded: Job reads it
+		// The number is the source product's and is known once the job succeeded: jobView reads it
 		// from the record. An issue job itself carries none.
 		v.Issue = &IssueSummary{TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, RowIndex: j.RowIndex}
 	}
 	return v
+}
+
+// jobView is how an issue job is shown wherever it is shown: the admission and its replay, the
+// poll and the answer to a cancel. A job that succeeded carries the product's number, read from
+// its record through the cross-checks issueView makes (the record must be the job's, the stamp
+// the number's); any other state carries none. The record's view is returned for callers that
+// check more of it. For another kind of job it is view.
+func (s *Service) jobView(ctx context.Context, p Principal, j Job) (JobView, IssueView, error) {
+	v := view(j)
+	if j.Kind != "issue" || j.State != "succeeded" {
+		return v, IssueView{}, nil
+	}
+	rec, e := s.issueView(ctx, p, j)
+	if e != nil {
+		return JobView{}, IssueView{}, e
+	}
+	v.Issue.Number = rec.Number
+	return v, rec, nil
 }
 
 // CanIssue reports whether the service renders issue jobs. Whether an integration can issue
@@ -375,7 +393,9 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 	if e != nil {
 		return JobView{}, e
 	}
-	return view(j), nil
+	// A replay of the key of a job that has succeeded shows it as the poll does, with its number.
+	v, _, e := s.jobView(ctx, p, j)
+	return v, e
 }
 
 // Issues lists the caller's issue jobs under the integrations the caller holds, newest first,
@@ -477,11 +497,8 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 				// The artifact must claim the record and the record must name the artifact; the
 				// number the job view shows is the record's.
 				var v IssueView
-				if v, e = s.issueView(ctx, p, j); e == nil && (a.Issue != j.ID || v.ArtifactID != a.ID || v.SHA256 != a.SHA256) {
+				if out, v, e = s.jobView(ctx, p, j); e == nil && (a.Issue != j.ID || v.ArtifactID != a.ID || v.SHA256 != a.SHA256) {
 					e = ErrIntegrity
-				}
-				if e == nil {
-					out.Issue.Number = v.Number
 				}
 			}
 		}
@@ -506,8 +523,13 @@ func (s *Service) Cancel(ctx context.Context, p Principal, id string) (JobView, 
 	if e != nil {
 		return JobView{}, e
 	}
-	// Cleanup remains possible after source revocation; never return output refs.
-	v := view(j)
+	// Cleanup remains possible after source revocation; never return output refs. An issue job
+	// that had succeeded already (the cancel changed nothing) still shows its number, as in every
+	// other answer: the number is the record's, never a reference to the output.
+	v, _, e := s.jobView(ctx, p, j)
+	if e != nil {
+		return JobView{}, e
+	}
 	v.SnapshotID = ""
 	v.ArtifactID = ""
 	return v, nil
@@ -562,9 +584,13 @@ func errorCode(e error) string {
 // returned (an answer can be lost on its way back).
 type issueAttempt struct{ prepared bool }
 
-// leaseCheckTimeout bounds the read with which RunOne confirms a lost lease; with it a worker is
-// still done within its lease (WorkTimeout + leaseCheckTimeout + VoidTimeout + 2 s < LeaseDuration).
-const leaseCheckTimeout = time.Second
+// leaseCheckTimeout bounds the read with which RunOne confirms a lost lease, and failTimeout the
+// writes that record or resolve a failure. With them a worker has recorded its failure within its
+// lease: WorkTimeout + leaseCheckTimeout + failTimeout < LeaseDuration (TestFailureIsRecordedWithinTheLease).
+const (
+	leaseCheckTimeout = time.Second
+	failTimeout       = 2 * time.Second
+)
 
 // fromProduct: the platform's lease error is its own, and a source product cannot speak it. An
 // adapter that answers with it (a product that mistook it for a retry hint, or a wrapper that
@@ -577,18 +603,28 @@ func fromProduct(e error) error {
 	return e
 }
 
-// RunOne claims one job and executes it. A job that fails is failed with the code of its error.
-// An issue job (S03-H) that fails other than by losing its lease is first voided at the source
-// product when this attempt called PrepareDocument, or when the claim is of a later generation
-// than the first (an earlier attempt may have reserved or confirmed): the product is told to void
-// whatever it holds for the job id, with the code as the reason. A void that cannot be delivered
-// fails the job with ISSUE_UNRECONCILED instead of its own code, and the product can find the
-// reservation by the job id. A first attempt that fails before it reached the product calls
-// nothing there. Losing the lease never voids: the worker that holds the job reuses the same
-// reservation, which the product answers again by the job id. An answer of ErrLease counts as the
-// loss of the lease only when the store confirms it (holdsJob says otherwise, or cannot say): while
-// the store still has the claim running with a lease that has not run out, the answer is
-// INTEGRITY_FAILURE and the job is voided and failed like any other.
+// RunOne claims one job and executes it. A job that fails is failed with the code of its error; a
+// panic anywhere in its execution, the adapters' calls included, is an error with the code
+// EXECUTION_FAILED (the panic's value is not kept: it may carry data), not the end of the worker.
+//
+// An issue job (S03-H) that fails other than by losing its lease is voided at the source product
+// when this attempt called PrepareDocument, or when the claim is of a later generation than the
+// first (an earlier attempt may have reserved or confirmed): the product is told to void whatever
+// it holds for the job id, with the code as the reason. The order is what keeps a late void from
+// voiding a number that another worker confirmed and published: the failure is recorded first,
+// fenced by the claim (Fail: running, this generation, lease not run out), as ISSUE_UNRECONCILED,
+// which is true until the void is done; only then is the void delivered, in a context of its own;
+// when it succeeded the failure is resolved to the job's own code (ResolveFailure, fenced on the
+// same generation and on that code). If the failure is not recorded (the lease is lost, the store
+// cannot be reached) nothing is voided and the lease decides: the next claim, of a later
+// generation, voids. A void that cannot be delivered leaves the job ISSUE_UNRECONCILED, and the
+// product can find the reservation by the job id; so does a crash between the steps. A first
+// attempt that fails before it reached the product calls nothing there. Losing the lease never
+// voids: the worker that holds the job reuses the same reservation, which the product answers
+// again by the job id. An answer of ErrLease counts as the loss of the lease only when the store
+// confirms it (holdsJob says otherwise, or cannot say): while the store still has the claim
+// running with a lease that has not run out, the answer is INTEGRITY_FAILURE and the job is
+// failed (and voided) like any other.
 func (s *Service) RunOne(ctx context.Context) (bool, error) {
 	claim, e := s.repo.Claim(ctx, LeaseDuration)
 	if e != nil || claim == nil {
@@ -597,32 +633,68 @@ func (s *Service) RunOne(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, WorkTimeout)
 	defer cancel()
 	var attempt issueAttempt
-	e = s.execute(ctx, *claim, &attempt)
-	if e != nil {
-		// ErrLease is believed only when the store confirms it: an answer of lost lease while the
-		// store still has this claim running with a lease that has not run out is not a lost lease,
-		// and the job fails (and voids) like any other.
-		lost := errors.Is(e, ErrLease)
-		if lost && s.holdsJob(ctx, claim.Job) {
-			lost = false
-			e = fmt.Errorf("%w: answered %w although the store still holds the job for this claim", ErrIntegrity, e)
-		}
-		code := errorCode(e)
-		if j := claim.Job; j.Kind == "issue" && !lost && (attempt.prepared || j.Generation > 1) {
-			holds, voidErr := s.voidIssue(ctx, j, code)
-			if !holds {
-				return true, e
-			}
-			if voidErr != nil {
-				code = ErrUnreconciled.Error()
-				e = fmt.Errorf("%w: the source product could not void the job: %w; the job's own failure: %w", ErrUnreconciled, voidErr, e)
-			}
-		}
-		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-		defer stop()
-		_ = s.repo.Fail(cleanup, *claim, code)
+	e = s.executeRecovered(ctx, *claim, &attempt)
+	if e == nil {
+		return true, nil
 	}
+	// ErrLease is believed only when the store confirms it: an answer of lost lease while the
+	// store still has this claim running with a lease that has not run out is not a lost lease,
+	// and the job fails (and voids) like any other.
+	lost := errors.Is(e, ErrLease)
+	if lost && s.holdsJob(ctx, claim.Job) {
+		lost = false
+		e = fmt.Errorf("%w: answered %w although the store still holds the job for this claim", ErrIntegrity, e)
+	}
+	code := errorCode(e)
+	if j := claim.Job; j.Kind == "issue" && !lost && (attempt.prepared || j.Generation > 1) {
+		return true, s.failAndVoid(ctx, *claim, e, code)
+	}
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), failTimeout)
+	defer stop()
+	_ = s.repo.Fail(cleanup, *claim, code)
 	return true, e
+}
+
+// executeRecovered is execute, with a panic turned into an error that carries no value.
+func (s *Service) executeRecovered(ctx context.Context, claim Claim, attempt *issueAttempt) (e error) {
+	defer func() {
+		if recover() != nil {
+			e = errExecutionPanicked
+		}
+	}()
+	return s.execute(ctx, claim, attempt)
+}
+
+// errExecutionPanicked is what a panic during a job's execution becomes: an error of no known
+// kind, so EXECUTION_FAILED.
+var errExecutionPanicked = errors.New("the job's execution panicked")
+
+// failAndVoid fails an issue job whose attempt may have left a reservation or a confirmation at
+// the source product, and voids it there, in the order RunOne describes. It returns the error
+// RunOne returns: e, or ErrUnreconciled with the causes when the job stays so.
+func (s *Service) failAndVoid(ctx context.Context, claim Claim, e error, code string) error {
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), failTimeout)
+	defer stop()
+	// 1. The failure is recorded first, as unreconciled, fenced by the claim. If it does not take,
+	// the job is not this claim's any more (or the store cannot be reached): the lease decides.
+	if s.repo.Fail(cleanup, claim, ErrUnreconciled.Error()) != nil {
+		return e
+	}
+	// 2. Then the void. The job is failed, so no other worker can claim it: whatever the product
+	// holds for it stays this job's, however late the void arrives.
+	if voidErr := s.voidIssue(ctx, claim.Job, code); voidErr != nil {
+		return fmt.Errorf("%w: the source product could not void the job: %w; the job's own failure: %w", ErrUnreconciled, voidErr, e)
+	}
+	// 3. The void is done: the job's own code replaces the unreconciled one.
+	if code == ErrUnreconciled.Error() {
+		return e
+	}
+	resolve, stopResolve := context.WithTimeout(context.WithoutCancel(ctx), failTimeout)
+	defer stopResolve()
+	if resolveErr := s.repo.ResolveFailure(resolve, claim, code); resolveErr != nil {
+		return fmt.Errorf("%w: the source product voided the job but the platform could not record it: %w; the job's own failure: %w", ErrUnreconciled, resolveErr, e)
+	}
+	return e
 }
 
 // holdsJob: the store says that this claim still holds the job, running at the claim's generation
@@ -638,35 +710,38 @@ func (s *Service) holdsJob(ctx context.Context, j Job) bool {
 
 // voidIssue voids at the source product whatever it holds for a failed issue job, in a context of
 // its own (the job's may have run out) bounded by VoidTimeout. An adapter without the capability
-// was never asked and holds nothing. holds is false, and nothing is voided, when the store does
-// not say that this attempt still holds the job: the publication may have committed although it
-// reported an error, or another worker may have claimed the job and reuse its reservation; the
-// job is then not failed either (a store that cannot be read leaves the job to its lease).
-func (s *Service) voidIssue(ctx context.Context, j Job, reason string) (holds bool, err error) {
+// was never asked and holds nothing. The platform has recorded the failure before it asks (see
+// failAndVoid), and a panic in the adapter is a void that failed.
+func (s *Service) voidIssue(ctx context.Context, j Job, reason string) (err error) {
 	ctx, stop := context.WithTimeout(context.WithoutCancel(ctx), VoidTimeout)
 	defer stop()
-	if now, e := s.repo.Job(ctx, j.Owner.Identity, j.ID); e != nil || now.State != "running" || now.Generation != j.Generation {
-		return false, nil
-	}
 	c, sc, e := s.sourceOwner(j.Owner)
 	if e != nil {
-		return true, e
+		return e
 	}
 	authority, ok := c.Adapter.(DocumentAuthority)
 	if !ok {
-		return true, nil
+		return nil
 	}
-	return true, authority.VoidIssue(ctx, sc, j.ID, reason)
+	defer func() {
+		if recover() != nil {
+			err = errExecutionPanicked
+		}
+	}()
+	return authority.VoidIssue(ctx, sc, j.ID, reason)
 }
 
-// validReservation: what the worker requires of the product's answer to PrepareDocument.
+// validReservation: what the worker requires of the product's answer to PrepareDocument: its
+// reference, this job's id, a valid number, an issue time that is a whole second between 1970 and
+// 9999 and an expiry within those years and after it. The times are judged by value.
 func validReservation(j Job, res IssueReservation) bool {
-	return validRef(res.Ref) && res.JobID == j.ID && ValidIssueNumber(res.Number) && wholeSecond(res.IssuedAt) && res.ExpiresAt.After(res.IssuedAt)
+	return ValidProductRef(res.Ref) && res.JobID == j.ID && ValidIssueNumber(res.Number) && ValidProductTime(res.IssuedAt) && inProductYears(res.ExpiresAt) && res.ExpiresAt.After(res.IssuedAt)
 }
 
-// validReceipt: what the worker requires of the product's answer to ConfirmIssue.
+// validReceipt: what the worker requires of the product's answer to ConfirmIssue: its reference and a
+// confirmation time that is a whole second between the issue time and 9999.
 func validReceipt(res IssueReservation, receipt IssueReceipt) bool {
-	return validRef(receipt.Ref) && wholeSecond(receipt.ConfirmedAt) && !receipt.ConfirmedAt.Before(res.IssuedAt)
+	return ValidProductRef(receipt.Ref) && ValidProductTime(receipt.ConfirmedAt) && !receipt.ConfirmedAt.Before(res.IssuedAt)
 }
 
 func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttempt) error {

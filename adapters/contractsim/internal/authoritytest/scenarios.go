@@ -84,7 +84,10 @@ var ruleScenarios = []ruleScenario{
 	{"reservation_describes_the_job", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance())
 		res := g.Reserve(1)
-		if len(res.Ref) < 1 || len(res.Ref) > 128 || res.JobID != Job(1) || res.Number != "AR-000001" {
+		// The platform refuses a reference that is not 1..128 printable ASCII characters, and a time that is not a
+		// whole second between 1970 and 9999 (reporting.ValidProductRef, ValidProductTime): a simulator must give
+		// what the worker accepts.
+		if !r.ValidProductRef(res.Ref) || !r.ValidProductTime(res.IssuedAt) || res.JobID != Job(1) || res.Number != "AR-000001" {
 			t.Fatalf("%+v", res)
 		}
 		utcSecond(t, res.IssuedAt, "issue time")
@@ -505,7 +508,7 @@ var ruleScenarios = []ruleScenario{
 		g := NewRig(t, newEnv, Finance())
 		res := g.Reserve(1)
 		rc := g.Confirm(res)
-		if len(rc.Ref) < 1 || len(rc.Ref) > 128 || rc.Ref == res.Ref {
+		if !r.ValidProductRef(rc.Ref) || !r.ValidProductTime(rc.ConfirmedAt) || rc.Ref == res.Ref {
 			t.Fatalf("%+v", rc)
 		}
 		utcSecond(t, rc.ConfirmedAt, "confirmation time")

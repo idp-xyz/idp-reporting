@@ -30,6 +30,8 @@ type stampingRenderer struct {
 	stamp  string
 	at     time.Time
 	checks int
+	// hook runs inside Issue: the world changes while the document renders.
+	hook func()
 	// refuse is the layout's refusal of some values, which the real renderer makes in CheckIssue and
 	// again in Issue.
 	refuse func(values map[string]string) error
@@ -46,6 +48,9 @@ func (f *stampingRenderer) CheckIssue(_ context.Context, _ doctemplates.Document
 func (f *stampingRenderer) Issue(_ context.Context, d doctemplates.Document, values map[string]string, _ []byte, _ *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
 	f.calls++
 	f.doc, f.values, f.stamp, f.at = d, values, stamp, at
+	if f.hook != nil {
+		f.hook()
+	}
 	if f.refuse != nil {
 		if e := f.refuse(values); e != nil {
 			return nil, 0, e
@@ -131,16 +136,21 @@ func newIssueHTTP(t *testing.T, wrap func(r.Adapter) r.Adapter) *issueHTTP {
 	return v
 }
 
-// post asks for an official issue; a key of "" is the default one of the test requests.
-func (v *issueHTTP) post(body map[string]any, key string) (int, map[string]any) {
+// postRaw asks for an official issue and returns the whole answer; a key of "" is the default one of the
+// test requests.
+func (v *issueHTTP) postRaw(body map[string]any, key string) *httptest.ResponseRecorder {
 	v.t.Helper()
 	b, _ := json.Marshal(body)
-	var q *httptest.ResponseRecorder
 	if key == "" {
-		q = request(v.h, "POST", "/api/reporting/v1/issues", b, true)
-	} else {
-		q = requestWithKey(v.h, "POST", "/api/reporting/v1/issues", b, key)
+		return request(v.h, "POST", "/api/reporting/v1/issues", b, true)
 	}
+	return requestWithKey(v.h, "POST", "/api/reporting/v1/issues", b, key)
+}
+
+// post is postRaw's status and decoded body.
+func (v *issueHTTP) post(body map[string]any, key string) (int, map[string]any) {
+	v.t.Helper()
+	q := v.postRaw(body, key)
 	var out map[string]any
 	_ = json.Unmarshal(q.Body.Bytes(), &out)
 	return q.Code, out
@@ -217,10 +227,19 @@ func TestIssueRoutesFreezeThePublishedVersionAndListRecords(t *testing.T) {
 	}
 	absent(t, "the admitted job's issue summary", issue, "number")
 	id := out["job_id"].(string)
-	// The same key replays; another key is another job. Admission asked nothing of the product.
-	if code, again := post(input, ""); code != 202 || again["job_id"] != id {
-		t.Fatal("replay", code, again)
+	// The answer says where the job is, for the admission and for its replay.
+	for _, label := range []string{"admission", "replay"} {
+		if label == "replay" {
+			if code, again := post(input, ""); code != 202 || again["job_id"] != id {
+				t.Fatal("replay", code, again)
+			}
+		}
+		w := v.postRaw(input, "")
+		if w.Code != 202 || w.Header().Get("Location") != "/api/reporting/v1/jobs/"+id || w.Header().Get("Content-Type") != "application/json; charset=utf-8" {
+			t.Fatalf("%s: %d %v", label, w.Code, w.Header())
+		}
 	}
+	// Another key is another job. Admission asked nothing of the product.
 	code, second := post(input, "another")
 	if code != 202 || second["job_id"] == id {
 		t.Fatal(code, second)
@@ -471,10 +490,167 @@ func TestCancelRouteReturnsARunningIssueJobUnchanged(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"running"`) {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	// Its claim is intact: the worker that holds it publishes.
+	// Its claim is untouched by the cancel.
 	stored, e := v.repo.Job(ctx, v.p.Identity, id)
 	if e != nil || stored.State != "running" || stored.Generation != 1 || stored.LeaseUntil.IsZero() {
 		t.Fatalf("%+v %v", stored, e)
+	}
+	// And a worker that is rendering when the cancel arrives goes on and publishes: the cancel is sent
+	// through the route from inside the render of another job.
+	code, other := v.post(v.input(2), "rendering")
+	if code != 202 {
+		t.Fatal(code, other)
+	}
+	otherID := other["job_id"].(string)
+	var during map[string]any
+	v.drawn.hook = func() {
+		w := request(v.h, "POST", "/api/reporting/v1/jobs/"+otherID+"/cancel", nil, true)
+		if w.Code != 200 {
+			t.Error("cancel route", w.Code, w.Body.String())
+		}
+		json.Unmarshal(w.Body.Bytes(), &during)
+	}
+	// The job claimed by hand above is running with its lease: the worker takes the next one only after
+	// that lease has run out, so the lease is let go by failing it as its own worker would.
+	if e := v.repo.Fail(ctx, *claim, "EXECUTION_FAILED"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := v.service.RunOne(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if during["state"] != "running" || during["kind"] != "issue" {
+		t.Fatal("the cancel during the render answered", during)
+	}
+	w = request(v.h, "GET", "/api/reporting/v1/jobs/"+otherID, nil, true)
+	var done r.JobView
+	json.Unmarshal(w.Body.Bytes(), &done)
+	if w.Code != 200 || done.State != "succeeded" || done.Issue == nil || done.Issue.Number != "AR-000001" {
+		t.Fatal("the worker that rendered while the cancel arrived did not publish", w.Code, w.Body.String())
+	}
+}
+
+// F4: a succeeded issue job is shown with its number wherever the job is shown: by the replay of the request
+// that admitted it (a client whose answer was lost asks again with the same key) and by the cancel route
+// (a cancel that came after the job had succeeded), as GET /jobs/{id} shows it. The cancel gives no
+// references to the output, as for every job.
+func TestSucceededIssueJobCarriesItsNumberOverHTTPInEveryAnswer(t *testing.T) {
+	v := newIssueHTTP(t, nil)
+	v.publish()
+	code, out := v.post(v.input(2), "lost-answer")
+	if code != 202 || out["state"] != "queued" {
+		t.Fatal(code, out)
+	}
+	id := out["job_id"].(string)
+	absent(t, "the admitted job's issue summary", out["issue"].(map[string]any), "number")
+	if _, e := v.service.RunOne(t.Context()); e != nil {
+		t.Fatal(e)
+	}
+	// The retry of the lost answer, with the same key.
+	w := v.postRaw(v.input(2), "lost-answer")
+	var replay r.JobView
+	json.Unmarshal(w.Body.Bytes(), &replay)
+	if w.Code != 202 || w.Header().Get("Location") != "/api/reporting/v1/jobs/"+id || replay.ID != id || replay.State != "succeeded" || replay.ArtifactID == "" || replay.Issue == nil || replay.Issue.Number != "AR-000001" {
+		t.Fatalf("the replay of a succeeded job: %d %s", w.Code, w.Body.String())
+	}
+	// The same job as the poll shows it, and as the cancel shows it.
+	w = request(v.h, "GET", "/api/reporting/v1/jobs/"+id, nil, true)
+	var polled r.JobView
+	json.Unmarshal(w.Body.Bytes(), &polled)
+	if w.Code != 200 || polled.Issue == nil || polled.Issue.Number != "AR-000001" || *polled.Issue != *replay.Issue || polled.ArtifactID != replay.ArtifactID {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request(v.h, "POST", "/api/reporting/v1/jobs/"+id+"/cancel", nil, true)
+	var cancelled map[string]any
+	json.Unmarshal(w.Body.Bytes(), &cancelled)
+	summary, _ := cancelled["issue"].(map[string]any)
+	if w.Code != 200 || cancelled["state"] != "succeeded" || cancelled["kind"] != "issue" || summary["number"] != "AR-000001" || summary["template_id"] != v.template {
+		t.Fatalf("the cancel of a succeeded job: %d %s", w.Code, w.Body.String())
+	}
+	absent(t, "a cancel answer", cancelled, "artifact_id", "snapshot_id")
+	// A job that did not succeed shows none in any of them: a queued one, replayed and cancelled.
+	code, queued := v.post(v.input(1), "queued")
+	if code != 202 {
+		t.Fatal(code, queued)
+	}
+	if code, again := v.post(v.input(1), "queued"); code != 202 || again["job_id"] != queued["job_id"] {
+		t.Fatal(code, again)
+	} else {
+		absent(t, "a replayed queued job's summary", again["issue"].(map[string]any), "number")
+	}
+	w = request(v.h, "POST", "/api/reporting/v1/jobs/"+queued["job_id"].(string)+"/cancel", nil, true)
+	var gone map[string]any
+	json.Unmarshal(w.Body.Bytes(), &gone)
+	if w.Code != 200 || gone["state"] != "cancelled" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	absent(t, "a cancelled job's summary", gone["issue"].(map[string]any), "number")
+}
+
+// Platform ids are the 32 lowercase hexadecimal characters the platform makes and no other spelling of the
+// same bytes (docs/API.md): an uppercase id is 400 as a request body's template id, and 404 as the snapshot
+// of a request or the job of a path; the lowercase one it spells is accepted.
+func TestIssueRoutesTakeOnlyCanonicalIDs(t *testing.T) {
+	v := newIssueHTTP(t, nil)
+	v.publish()
+	if code, out := v.post(map[string]any{"template_id": strings.ToUpper(v.template), "version": 1, "snapshot_id": v.snapshot, "row_index": 1}, "upper-template"); code != 400 || out["error"] != "INVALID_REQUEST" {
+		t.Fatal("an uppercase template id", code, out)
+	}
+	if code, out := v.post(map[string]any{"template_id": v.template, "version": 1, "snapshot_id": strings.ToUpper(v.snapshot), "row_index": 1}, "upper-snapshot"); code != 404 || out["error"] != "NOT_FOUND" {
+		t.Fatal("an uppercase snapshot id", code, out)
+	}
+	code, out := v.post(v.input(1), "lower")
+	if code != 202 {
+		t.Fatal(code, out)
+	}
+	id := out["job_id"].(string)
+	for _, path := range []string{"/api/reporting/v1/jobs/" + strings.ToUpper(id), "/api/reporting/v1/issues/" + strings.ToUpper(id)} {
+		if w := request(v.h, "GET", path, nil, true); w.Code != 404 {
+			t.Fatal(path, w.Code, w.Body.String())
+		}
+	}
+	if w := request(v.h, "POST", "/api/reporting/v1/jobs/"+strings.ToUpper(id)+"/cancel", nil, true); w.Code != 404 {
+		t.Fatal("cancel by an uppercase id", w.Code, w.Body.String())
+	}
+	if w := request(v.h, "GET", "/api/reporting/v1/jobs/"+id, nil, true); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+// Admission binds the template to the snapshot once (S03-G): a field the template reads that the frozen
+// snapshot does not have is refused, with the code the preview gives it (403), though the catalog lists
+// the field; nothing is admitted and the product is not asked.
+func TestIssueRefusesATemplateFieldTheSnapshotLacks(t *testing.T) {
+	changing := &changingLayoutCatalog{}
+	v := newIssueHTTP(t, func(a r.Adapter) r.Adapter { changing.Adapter = a; return changing })
+	// The catalog now lists a column that the snapshot, frozen before, has not.
+	changing.extra = "ar.ghost"
+	ghost, e := v.store.Save(v.p.Identity, "", 0, savedTemplate("ar.ghost"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = v.store.Publish(v.p.Identity, ghost.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	code, out := v.post(map[string]any{"template_id": ghost.ID, "version": 1, "snapshot_id": v.snapshot, "row_index": 1}, "")
+	if code != 403 || out["error"] != "AUTH_SCOPE_DENIED" {
+		t.Fatal("a field the snapshot lacks", code, out)
+	}
+	if w := request(v.h, "GET", "/api/reporting/v1/issues", nil, true); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatal("a job was admitted", w.Code, w.Body.String())
+	}
+	if ran, e := v.service.RunOne(t.Context()); ran || e != nil {
+		t.Fatal("something was queued", ran, e)
+	}
+	// The preview route says the same for the same template and row.
+	b, _ := json.Marshal(map[string]any{"version": 1, "snapshot_id": v.snapshot, "row_index": 1})
+	if w := request(v.h, "POST", "/api/reporting/v1/document-templates/"+ghost.ID+"/previews", b, true); w.Code != 403 {
+		t.Fatal("the preview of a field the snapshot lacks", w.Code, w.Body.String())
+	}
+	// With the field out of the catalog again nothing changes for a template of a column the snapshot has.
+	changing.extra = ""
+	v.publish()
+	if code, out := v.post(v.input(1), "good"); code != 202 {
+		t.Fatal(code, out)
 	}
 }
 

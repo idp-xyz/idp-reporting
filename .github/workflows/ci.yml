@@ -101,7 +101,8 @@ jobs:
             docker exec "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db"
           done
       # One package at a time: the migrate command's test and the integration tests share the
-      # fixture database.
+      # fixture database, and the source database is shared too: TestDurableDocumentAuthority
+      # recreates its schema, which another package's test would find gone.
       - name: Test against PostgreSQL
         env:
           REPORTING_S01_TEST_DSN: postgresql://postgres@127.0.0.1:55432/reporting_test_s01?sslmode=disable
@@ -186,7 +187,10 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test console/dom.test.mjs
-          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$RUNNER_TEMP/pdf-evidence/"
+          # console_issued.json is the checker's expectation of the issued PDF of the real stack (the product's record,
+          # the template's boxes and values) and console_issued.preview.pdf the preview of the same document, so that
+          # the checker, not only veraPDF, checks it; console_issued_record.json is the record as it was read, kept out.
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.json" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
       - name: Check the documents, the negative controls and PDF/A-2b
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"

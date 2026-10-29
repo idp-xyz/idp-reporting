@@ -35,8 +35,11 @@ banner; with the same font, colour, ink and PDF/A checks as tables.
 An expectation with an "issue" record describes an issued document (S03-G, S03-H): it is checked
 as a preview, except that the strip holds the record's stamp "ISSUED No. <number> - <issue time>
 - <record id>" in the text colour at 8 pt in place of the banner, the number is the source
-product's string, the PDF is the one the record names by digest, and its creation date (the
-information dictionary's and the XMP create date, each when present) is the record's issue time.
+product's string, the PDF is the one the record names by digest, and every date the file
+carries is the record's issue time: the information dictionary's CreationDate and ModDate and
+the XMP packet's CreateDate, ModifyDate, MetadataDate and every stEvt:when of its history, each
+when present (the packet is parsed as XML and its dates are found by namespace, not by prefix;
+one create date, at least, is required). Times, numbers and ids are matched as ASCII only.
 
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
@@ -60,6 +63,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+import xml.etree.ElementTree as ET
 
 import pymupdf
 
@@ -465,8 +469,10 @@ PRODUCT_NUMBER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 
 # Dates as a PDF's information dictionary (D:20261028061203Z, or +08'00') and its XMP metadata
 # (2026-10-28T06:12:03+00:00, or Z) write them: only with a zone are they an instant.
-PDF_DATE = re.compile(r"D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:(Z)|([+-])(\d{2})'?(\d{2})'?)")
-XMP_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:(Z)|([+-])(\d{2}):(\d{2}))")
+# ASCII digits only (re.ASCII): \d alone would take the digits of every script, such as full-width ones,
+# which int() then reads as numbers.
+PDF_DATE = re.compile(r"D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:(Z)|([+-])(\d{2})'?(\d{2})'?)", re.ASCII)
+XMP_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:(Z)|([+-])(\d{2}):(\d{2}))", re.ASCII)
 
 
 def utc_instant(match):
@@ -486,6 +492,15 @@ def utc_second(text):
     """The UTC time of a record's issued_at (YYYY-MM-DDTHH:MM:SSZ); None when it is not one."""
     match = XMP_DATE.fullmatch(text) if isinstance(text, str) else None
     return utc_instant(match) if match and match.group(7) else None
+
+
+def record_instant(text):
+    """The instant a record's issued_at denotes in any zone (the contract says UTC with a Z, and
+    check_issue_record reports anything else); None when it is no date with a time zone. The dates
+    of the file are compared with it even when the record's form is wrong, so that a wrong form
+    never switches the comparison off."""
+    match = XMP_DATE.fullmatch(text) if isinstance(text, str) else None
+    return utc_instant(match) if match else None
 
 
 def issue_stamp(number, issued_at, issue_id):
@@ -520,26 +535,58 @@ def check_issue_record(directory, exp, issue):
     return problems
 
 
+XMP_BASIC = "http://ns.adobe.com/xap/1.0/"
+XMP_EVENT = "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#"
+# The dates an XMP packet can carry, by namespace and local name: (label, is a create date).
+XMP_DATES = {(XMP_BASIC, "CreateDate"): ("XMP create date", True), (XMP_BASIC, "ModifyDate"): ("XMP modify date", False),
+             (XMP_BASIC, "MetadataDate"): ("XMP metadata date", False), (XMP_EVENT, "when"): ("XMP history time", False)}
+
+
+def xmp_dates(xmp):
+    """Every date an XMP packet carries, as (label, is a create date, text), and the problems in
+    reading it. The packet is parsed as XML and a date is found by its namespace and name, as an
+    element or as an attribute, whatever prefix the packet binds the namespace to."""
+    if re.search(r"<!(DOCTYPE|ENTITY)", xmp):
+        return [], ["the XMP packet declares a document type or entities"]
+    try:
+        root = ET.fromstring(xmp)
+    except ET.ParseError as e:
+        return [], [f"the XMP packet is not well-formed XML ({e})"]
+    found = []
+    for el in root.iter():
+        for name, text in [(el.tag, el.text or "")] + list(el.attrib.items()):
+            namespace, _, local = name[1:].partition("}") if name.startswith("{") else ("", "", name)
+            if (namespace, local) in XMP_DATES:
+                label, create = XMP_DATES[(namespace, local)]
+                found.append((label, create, text.strip()))
+    return found, []
+
+
 def check_creation_date(doc, xmp, issue):
-    """The PDF's creation date is the record's issue time (S03-H): the product's time, not the
-    renderer's clock. The information dictionary's CreationDate and the XMP create date, each
-    when the file carries it (it must carry one), name that second."""
-    issued = utc_second(issue.get("issued_at"))
+    """Every date the PDF carries is the record's issue time (S03-H): the product's time, not the
+    renderer's clock. That is the information dictionary's CreationDate and ModDate and the XMP
+    packet's CreateDate, ModifyDate, MetadataDate and every time of its history, each when the file
+    carries it; it must carry a creation date. Each is a date with a time zone, and an instant, as
+    the record's time is."""
+    issued = record_instant(issue.get("issued_at"))
     if issued is None:
-        return []  # check_issue_record says so
-    dates = []
-    if (doc.metadata or {}).get("creationDate"):
-        dates.append(("the information dictionary", PDF_DATE, doc.metadata["creationDate"]))
-    for text in re.findall(r"<xmp:CreateDate>\s*([^<]*?)\s*</xmp:CreateDate>", xmp) + re.findall(r'xmp:CreateDate="([^"]*)"', xmp):
-        dates.append(("the XMP metadata", XMP_DATE, text))
-    problems = [] if dates else ["the PDF carries no creation date"]
-    for where, pattern, text in dates:
+        return ["the PDF's creation date cannot be compared: the record's issue time is not a date with a time zone"]
+    info = doc.metadata or {}
+    dates = [(label, label == "creation date", "the information dictionary", PDF_DATE, info[key])
+             for key, label in (("creationDate", "creation date"), ("modDate", "modification date")) if info.get(key)]
+    in_xmp, problems = xmp_dates(xmp)
+    dates += [(label, create, "the XMP metadata", XMP_DATE, text) for label, create, text in in_xmp]
+    if not any(create for _, create, *_ in dates):
+        problems.append("the PDF carries no creation date")
+    for label, create, where, pattern, text in dates:
         match = pattern.fullmatch(text)
         found = utc_instant(match) if match else None
         if found is None:
-            problems.append(f"the PDF's creation date in {where} ({text!r}) is not a date with a time zone")
-        elif found != issued:
+            problems.append(f"the PDF's {label} in {where} ({text!r}) is not a date with a time zone (every date of the file is its creation date)")
+        elif found != issued and create:
             problems.append(f"the PDF's creation date in {where} is {found:%Y-%m-%dT%H:%M:%SZ}, not the record's issue time {issue['issued_at']}")
+        elif found != issued:
+            problems.append(f"the PDF's {label} in {where} is {found:%Y-%m-%dT%H:%M:%SZ}, not the record's issue time {issue['issued_at']}: every date of the file is its creation date")
     return problems
 
 
@@ -973,11 +1020,12 @@ def document_corruptions(exp):
         yield changed("the record's digest changed", lambda e: e["issue"].__setitem__("sha256", "0" * 64))
         yield changed("the record's page count changed", lambda e: e["issue"].__setitem__("pages", e["issue"]["pages"] + 1))
         # Self-consistent records that disagree with the drawn stamp alone.
-        def restamped(number=None, issue_id=None):
+        def restamped(number=None, issue_id=None, issued_at=None):
             def change(e):
                 i = e["issue"]
                 i["number"] = number if number is not None else i["number"]
                 i["issue_id"] = issue_id if issue_id is not None else i["issue_id"]
+                i["issued_at"] = issued_at if issued_at is not None else i["issued_at"]
                 i["stamp"] = issue_stamp(i["number"], i["issued_at"], i["issue_id"])
             return change
         yield changed("the record's number and stamp changed together", restamped(number=another_number(exp["issue"]["number"])))
@@ -993,6 +1041,26 @@ def document_corruptions(exp):
             i["number"] = int(re.sub(r"\D", "", i["number"]) or "1")
             i["stamp"] = issue_stamp(i["number"], i["issued_at"], i["issue_id"])
         yield changed("the record's number is an integer", integer_number, expected="is not a product number")
+        # What the contract's number, id and time do not allow, each with the stamp recomputed so that the
+        # record is consistent with itself and only the check of the field says so: a number that starts
+        # with a dash or a dot (it names a file and prints on one line), one of 33 characters, one in
+        # full-width letters and digits; an id that is not lowercase hexadecimal, or is in full-width digits;
+        # a time in another zone (the same instant, which the file's dates do match, or another one, which
+        # they must still be compared with), in full-width digits, or no date at all.
+        number, issue_id, issued_at = exp["issue"]["number"], exp["issue"]["issue_id"], exp["issue"]["issued_at"]
+        wide = lambda text: "".join(chr(ord(c) + 0xFEE0) if c.isascii() and c.isalnum() else c for c in text)
+        wide_digits = lambda text: "".join(chr(ord(c) + 0xFEE0) if "0" <= c <= "9" else c for c in text)
+        same_instant = (utc_second(issued_at) + datetime.timedelta(hours=8)).strftime("%Y-%m-%dT%H:%M:%S+08:00")
+        for what, number_to in (("starts with a dash", "-" + number[1:]), ("starts with a dot", "." + number[1:]), ("has 33 characters", "A" * 33), ("is in full-width characters", wide(number)), ("has full-width digits", wide_digits(number))):
+            yield changed(f"the record's number {what}", restamped(number=number_to), expected="is not a product number")
+        for what, id_to in (("is not hexadecimal", issue_id[:-1] + "g"), ("is in upper case", "ABCDEF" + "0" * 26), ("is in full-width digits", wide("7" * 32))):
+            yield changed(f"the record's id {what}", restamped(issue_id=id_to), expected="has no id")
+        yield changed("the record's time is in full-width digits", restamped(issued_at=wide_digits(issued_at)), expected="is not a UTC second")
+        yield changed("the record's time is no date", restamped(issued_at="yesterday"), expected="is not a UTC second")
+        yield changed("the record's time is UTC+8, the same instant", restamped(issued_at=same_instant), expected="is not a UTC second")
+        # The comparison with the file's dates goes on when the form is wrong: another instant is caught there too.
+        yield changed("the record's time is UTC+8, another instant", restamped(issued_at="2001-01-01T08:00:00+08:00"), expected="creation date in")
+        yield changed("the record's time is no date, so no date is compared", restamped(issued_at="yesterday"), expected="creation date cannot be compared")
     if exp.get("table"):
         rows = exp["table"]["rows"] or []
         columns = exp["table"]["columns"]
@@ -1088,6 +1156,30 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
                     assert new != old, "the XMP create date was not found"
                     doc.set_xml_metadata(new)
             return change
+        # The other dates the file carries are the creation date too: a forged ModDate, a forged time in the
+        # XMP history, another modify or metadata date, and a create date written under another prefix bound
+        # to the same namespace, which a search for the literal xmp: prefix would never see.
+        earlier = utc_second(exp["issue"]["issued_at"]) - datetime.timedelta(seconds=1)
+        xmp_time = earlier.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+
+        def forge_xmp(change):
+            def forge(doc):
+                old = doc.get_xml_metadata()
+                new = change(old)
+                assert new != old, "the XMP packet was not changed"
+                doc.set_xml_metadata(new)
+            return forge
+
+        def forge_info(**fields):
+            return lambda doc: doc.set_metadata(fields)
+        yield "a forged modification date in the information dictionary", "creation date", copy_with("moddate", forge_info(modDate=earlier.strftime("D:%Y%m%d%H%M%SZ")))
+        yield "a forged time in the XMP history", "creation date", copy_with("history", forge_xmp(lambda x: re.sub(r"(<stEvt:when>)[^<]*(</stEvt:when>)", lambda m: m.group(1) + xmp_time + m.group(2), x, count=1)))
+        yield "a forged XMP modify date", "creation date", copy_with("modify", forge_xmp(lambda x: re.sub(r"(<xmp:ModifyDate>)[^<]*(</xmp:ModifyDate>)", lambda m: m.group(1) + xmp_time + m.group(2), x)))
+        yield "an XMP metadata date of another time", "creation date", copy_with("metadata", forge_xmp(lambda x: x.replace("<xmp:ModifyDate>", "<xmp:MetadataDate>" + xmp_time + "</xmp:MetadataDate><xmp:ModifyDate>", 1)))
+        yield "an XMP create date under another prefix of the same namespace", "creation date", copy_with("prefix", forge_xmp(lambda x: re.sub(r"(<)xmp:(CreateDate>)[^<]*(</)xmp:(CreateDate>)", lambda m: m.group(1) + "xap:" + m.group(2) + xmp_time + m.group(3) + "xap:" + m.group(4), x).replace('xmlns:xmp="http://ns.adobe.com/xap/1.0/"', 'xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:xap="http://ns.adobe.com/xap/1.0/"', 1)))
+        yield "an XMP create date without a time zone", "is not a date with a time zone", copy_with("xmp_nozone", forge_xmp(lambda x: re.sub(r"(<xmp:CreateDate>)[^<]*(</xmp:CreateDate>)", lambda m: m.group(1) + exp["issue"]["issued_at"][:-1] + m.group(2), x)))
+        yield "a creation date without a time zone in the information dictionary", "is not a date with a time zone", copy_with("info_nozone", forge_info(creationDate=utc_second(exp["issue"]["issued_at"]).strftime("D:%Y%m%d%H%M%S")))
+        yield "an XMP packet that is not XML", "not well-formed", copy_with("notxml", forge_xmp(lambda x: x.replace("</rdf:RDF>", "", 1)))
         yield "another creation date", "creation date", copy_with("created", redate())
         yield "another creation date in the information dictionary alone", "creation date", copy_with("created_info", redate(xmp=False))
         yield "another creation date in the XMP metadata alone", "creation date", copy_with("created_xmp", redate(info=False))
