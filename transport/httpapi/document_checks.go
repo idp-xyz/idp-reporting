@@ -24,10 +24,11 @@ const MaxDocumentCheckRows = 50
 // checkRow is one answered row: never a value, only its index, whether it passed, the code a
 // preview of it would answer and, for a boundary sample, why it was picked.
 type checkRow struct {
-	RowIndex int      `json:"row_index"`
-	OK       bool     `json:"ok"`
-	Code     string   `json:"code,omitempty"`
-	Reasons  []string `json:"reasons,omitempty"`
+	RowIndex int                  `json:"row_index"`
+	OK       bool                 `json:"ok"`
+	Code     string               `json:"code,omitempty"`
+	Detail   *doctemplates.Detail `json:"detail,omitempty"` // why and where a refused row is refused, as a preview's answer says it
+	Reasons  []string             `json:"reasons,omitempty"`
 }
 
 // mountDocumentChecks mounts POST /document-checks: the current template against rows of a frozen
@@ -87,6 +88,9 @@ func checkDocumentRows(w http.ResponseWriter, req *http.Request, s *r.Service, p
 	if config.Binding.Integration != snap.Owner.Integration || config.Binding.Dataset != snap.Query.Dataset {
 		return r.ErrDenied
 	}
+	if config.Schema == doctemplates.SchemaBanded {
+		return checkGroupRows(w, req, s, p, checker, config, snap, snapshotID, explicit, boundary, assets)
+	}
 	var picks []checkRowPick
 	if boundary {
 		if picks, e = boundaryRows(config, snap); e != nil {
@@ -144,6 +148,9 @@ func checkDocumentRows(w http.ResponseWriter, req *http.Request, s *r.Service, p
 				return e
 			}
 			row.Code, _, _ = classify(e)
+			if detail, found := doctemplates.DetailOf(e); found {
+				row.Detail = &detail
+			}
 		}
 		answer = append(answer, row)
 	}

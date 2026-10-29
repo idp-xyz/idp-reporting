@@ -10,7 +10,9 @@ import (
 )
 
 // DocumentRenderer renders a document bound to a frozen row: the box values, the background
-// and, for a schema 1.3 document, the rows of its table.
+// and, for a schema 1.3 document, the rows of its table. For a schema 2.0 document (S03-J) it is
+// bound to the row group that holds the row: the values of its text elements by element id, no
+// background, and the group's rows as the table.
 type DocumentRenderer interface {
 	Render(context.Context, doctemplates.Document, map[string]string, []byte, *doctemplates.TableData) ([]byte, error)
 }
@@ -78,6 +80,9 @@ func authorizeDocument(req *http.Request, s *r.Service, p r.Principal, config do
 	for _, m := range d.Metrics {
 		metrics[m.ID] = true
 	}
+	if config.Schema == doctemplates.SchemaBanded {
+		return authorizeBanded(config, d, columns, metrics)
+	}
 	for _, v := range config.Elements {
 		if v.Source != "literal" && (!columns[v.Field] || (v.Source == "total" && !metrics[v.Field])) {
 			return r.ErrDenied
@@ -92,16 +97,66 @@ func authorizeDocument(req *http.Request, s *r.Service, p r.Principal, config do
 	}
 	return nil
 }
+
+// authorizeBanded is authorizeDocument for a 2.0 template: every field it names must be a column of the
+// dataset the caller may read, a group field a dimension (a metric cannot partition rows) and a group
+// sum a metric.
+func authorizeBanded(config doctemplates.Document, d r.Dataset, columns, metrics map[string]bool) error {
+	if config.Group != nil {
+		dimensions := map[string]bool{}
+		for _, f := range d.Dimensions {
+			dimensions[f] = true
+		}
+		for _, f := range config.Group.Fields {
+			if !columns[f] {
+				return r.ErrDenied
+			}
+			if !dimensions[f] {
+				return r.ErrUnsupported
+			}
+		}
+	}
+	for _, bi := range config.Items() {
+		switch it := bi.Item; {
+		case it.Type == doctemplates.TypeText && it.Source == doctemplates.SourceField && !columns[it.Field]:
+			return r.ErrDenied
+		case it.Type == doctemplates.TypeText && it.Source == doctemplates.SourceGroupSum && (!columns[it.Field] || !metrics[it.Field]):
+			return r.ErrDenied
+		case it.Type == doctemplates.TypeTable:
+			for _, c := range it.Columns {
+				if !columns[c.Field] {
+					return r.ErrDenied
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// bindPreview binds the document of the snapshot that holds the row: for 1.x the row's box values
+// and the table of every row, for 2.0 the row's group, whole.
+func bindPreview(config doctemplates.Document, snap r.Snapshot, index int) (map[string]string, *doctemplates.TableData, error) {
+	if config.Schema == doctemplates.SchemaBanded {
+		group, e := doctemplates.GroupOf(config, snap, index)
+		if e != nil {
+			return nil, nil, e
+		}
+		return doctemplates.BindGroup(config, snap, group)
+	}
+	values, e := doctemplates.Bind(config, snap, index)
+	if e != nil {
+		return nil, nil, e
+	}
+	table, e := doctemplates.BindTable(config, snap)
+	return values, table, e
+}
+
 func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Service, p r.Principal, renderer DocumentRenderer, config doctemplates.Document, snapshotID string, index int, assets *doctemplates.Assets) error {
 	snap, e := s.AuthorizedSnapshot(req.Context(), p, snapshotID)
 	if e != nil {
 		return e
 	}
-	values, e := doctemplates.Bind(config, snap, index)
-	if e != nil {
-		return e
-	}
-	table, e := doctemplates.BindTable(config, snap)
+	values, table, e := bindPreview(config, snap, index)
 	if e != nil {
 		return e
 	}

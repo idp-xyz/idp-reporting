@@ -471,7 +471,7 @@ func (m *measurer) cut(text string, size float64, bold bool, width float64) ([]s
 			return nil, err
 		}
 		if e*size*k > width {
-			return nil, fmt.Errorf("pdf: a character is wider than its cell: %w", r.ErrUnsupported)
+			return nil, fmt.Errorf("pdf: a character is wider than its cell: %w", tooWideError{})
 		}
 		adv := e * size * k
 		if !m.plain {

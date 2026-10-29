@@ -36,6 +36,18 @@ type tableColumn struct {
 	left, right float64 // the column's rule positions
 	metric      bool    // a numeric metric: grouped digits, right-aligned, summed
 	label       string
+	align       string // schema 2.0: left, center or right; empty is right for a metric, else left
+}
+
+// alignment is how the column's text sits between its insets.
+func (c tableColumn) alignment() string {
+	switch {
+	case c.align != "":
+		return c.align
+	case c.metric:
+		return "right"
+	}
+	return "left"
 }
 
 // cell is one wrapped cell: its lines and their widths.
@@ -57,6 +69,47 @@ type tableLayout struct {
 	header  []cell
 	rows    [][]cell
 	heights []float64 // row heights
+	// The place of the table, for the details of a refusal: the field id of each column, the table's
+	// band and element id (schema 2.0; empty for 1.x) and its data, which knows the snapshot row
+	// index of each row.
+	fields  []string
+	band    string
+	element string
+	data    *doctemplates.TableData
+	// top gives the top of the table on a page (from 1), in points, when it is not lay.top on every
+	// page; end is where the table ends on the last page, below the total row.
+	top1 func(number int) float64
+	end  float64
+}
+
+// at is the place of a refusal in the table: a column (or -1) and a table row (or -1).
+func (lay *tableLayout) at(column, row int) doctemplates.Detail {
+	d := doctemplates.Detail{Band: lay.band, Element: lay.element}
+	if column >= 0 && column < len(lay.fields) {
+		d.Column = lay.fields[column]
+	}
+	if row >= 0 && lay.data != nil {
+		n := lay.data.SnapshotRow(row)
+		d.Row = &n
+	}
+	return d
+}
+
+// pageTop is where the table starts on a page.
+func (lay *tableLayout) pageTop(number int) float64 {
+	if lay.top1 != nil {
+		return lay.top1(number)
+	}
+	return lay.top
+}
+
+// regionReason is the reason a table that does not fit the space it has is refused: the table's
+// region in 1.x, the detail band in 2.0.
+func (lay *tableLayout) regionReason() string {
+	if lay.band != "" {
+		return doctemplates.ReasonBandOverflow
+	}
+	return doctemplates.ReasonDoesNotFit
 }
 
 // layOutTable adds the table's pages to p: the header on every page, rows never split, a
@@ -67,18 +120,55 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 	if data == nil || len(data.Columns) != len(t.Columns) {
 		return r.ErrInvalid
 	}
-	size := float64(t.FontSize)
-	lay := &tableLayout{m: m, size: size, full: profile.Mode == "full",
-		left: (t.X + profile.OffsetX) * mm, top: (t.Y + profile.OffsetY) * mm}
-	lay.right, lay.bottom = lay.left+t.Width*mm, lay.top+t.Height*mm
+	spec := tableSpec{size: float64(t.FontSize), full: profile.Mode == "full", left: (t.X + profile.OffsetX) * mm, top: (t.Y + profile.OffsetY) * mm, width: t.Width, height: t.Height}
+	for _, c := range t.Columns {
+		spec.columns = append(spec.columns, specColumn{field: c.Field, width: c.Width})
+	}
+	lay, running, zero, err := newTableLayout(spec, data, m)
+	if err != nil {
+		return err
+	}
+	p.HeaderLines = lay.headerLines()
+	return lay.paginate(p, running, zero)
+}
+
+// tableSpec is what a table is laid out from, whichever schema it is in: its type size, the left
+// edge and top of its region in points with the print offsets, its width and height in millimetres
+// and its columns. A 2.0 table names its band and element for the details of a refusal.
+type tableSpec struct {
+	size          float64
+	full          bool
+	left, top     float64
+	width, height float64
+	columns       []specColumn
+	band, element string
+}
+
+// specColumn is a column's field, width in millimetres and, in schema 2.0, its alignment and the
+// literal label that replaces the dataset's.
+type specColumn struct {
+	field        string
+	width        float64
+	align, label string
+}
+
+// newTableLayout checks the table's labels, columns and cells and measures every row; it returns the
+// layout with the exact running sums after each row and the zero sums, ready to paginate.
+func newTableLayout(spec tableSpec, data *doctemplates.TableData, m *measurer) (*tableLayout, [][]string, []string, error) {
+	size := spec.size
+	lay := &tableLayout{m: m, size: size, full: spec.full, left: spec.left, top: spec.top, band: spec.band, element: spec.element, data: data}
+	lay.right, lay.bottom = lay.left+spec.width*mm, lay.top+spec.height*mm
+	for _, c := range spec.columns {
+		lay.fields = append(lay.fields, c.field)
+	}
 	for k, v := range tableLabels {
 		if _, err := m.width(v+"0123456789", size, true); err != nil {
-			return fmt.Errorf("pdf: label %s: %w", k, err)
+			return nil, nil, nil, fmt.Errorf("pdf: label %s: %w", k, err)
 		}
 	}
 	// Columns: edges, kind and header label, as the table export labels them.
 	x := lay.left
-	for i, c := range t.Columns {
+	for i, c := range spec.columns {
 		col := data.Columns[i]
 		label := printable(col.Label)
 		switch {
@@ -89,16 +179,18 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 		case col.Unit != "":
 			label += "（" + printable(col.Unit) + "）"
 		}
-		next := x + c.Width*mm
-		lay.columns = append(lay.columns, tableColumn{left: x, right: next, metric: data.Metric[i] && (col.Type == "decimal" || col.Type == "integer"), label: label})
+		if c.label != "" {
+			label = c.label
+		}
+		next := x + c.width*mm
+		lay.columns = append(lay.columns, tableColumn{left: x, right: next, metric: data.Metric[i] && (col.Type == "decimal" || col.Type == "integer"), label: label, align: c.align})
 		x = next
 	}
 	// The header, every row and the exact running sums.
 	var err error
-	if lay.header, err = lay.wrapRow(headerTexts(lay), true); err != nil {
-		return err
+	if lay.header, err = lay.wrapRow(headerTexts(lay), true, -1); err != nil {
+		return nil, nil, nil, err
 	}
-	p.HeaderLines = lay.headerLines()
 	sums := make([]*column, len(lay.columns))
 	for j, c := range lay.columns {
 		if c.metric && j > 0 {
@@ -109,7 +201,7 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 	// the sums they show must fit their columns, as must every amount, which is never cut.
 	for _, label := range []string{tableLabels["forward_before"] + strconv.Itoa(maxPages) + tableLabels["forward_after"], tableLabels["carry_before"] + strconv.Itoa(maxPages) + tableLabels["carry_after"], tableLabels["total"]} {
 		if err := lay.fits(label, 0, "a carried row's label"); err != nil {
-			return err
+			return nil, nil, nil, err
 		}
 	}
 	lay.rows = make([][]cell, len(data.Rows))
@@ -119,25 +211,25 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 		for j, v := range row {
 			if lay.columns[j].metric {
 				if !exactNumber.MatchString(v) {
-					return r.ErrIntegrity
+					return nil, nil, nil, r.ErrIntegrity
 				}
 				texts[j] = groupDigits(v)
 				if w, err := lay.m.width(texts[j], size, false); err != nil {
-					return err
+					return nil, nil, nil, placed(err, lay.at(j, i))
 				} else if w > lay.content(j) {
-					return fmt.Errorf("pdf: an amount does not fit its column: %w", r.ErrUnsupported)
+					return nil, nil, nil, refuse(doctemplates.ReasonDoesNotFit, lay.at(j, i), "pdf: an amount does not fit its column")
 				}
 				if sums[j] != nil {
 					if err := sums[j].add(v); err != nil {
-						return err
+						return nil, nil, nil, err
 					}
 				}
 			} else {
 				texts[j] = printable(v)
 			}
 		}
-		if lay.rows[i], err = lay.wrapRow(texts, false); err != nil {
-			return err
+		if lay.rows[i], err = lay.wrapRow(texts, false, i); err != nil {
+			return nil, nil, nil, err
 		}
 		lay.heights[i] = lay.rowHeight(lay.rows[i])
 	}
@@ -147,7 +239,7 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 			continue
 		}
 		if total, ok := data.Totals[data.Columns[j].ID]; ok && !s.equals(total) {
-			return fmt.Errorf("pdf: the rows of %s do not add up to the snapshot's total: %w", data.Columns[j].ID, r.ErrIntegrity)
+			return nil, nil, nil, fmt.Errorf("pdf: the rows of %s do not add up to the snapshot's total: %w", data.Columns[j].ID, r.ErrIntegrity)
 		}
 	}
 	// Running sums after each row, per metric column, as printed strings.
@@ -165,7 +257,7 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 				continue
 			}
 			if err := s.add(row[j]); err != nil {
-				return err
+				return nil, nil, nil, err
 			}
 			running[i][j] = groupDigits(s.String())
 		}
@@ -176,7 +268,7 @@ func layOutTable(p *page, d doctemplates.Document, profile doctemplates.PrintPro
 			zero[j] = groupDigits((&column{scale: s.scale, frac: s.frac}).String())
 		}
 	}
-	return lay.paginate(p, running, zero)
+	return lay, running, zero, nil
 }
 
 // content is a column's content width: between its rules, less the insets.
@@ -188,10 +280,10 @@ func (lay *tableLayout) content(j int) float64 {
 func (lay *tableLayout) fits(text string, j int, what string) error {
 	w, err := lay.m.width(text, lay.size, true)
 	if err != nil {
-		return err
+		return placed(err, lay.at(j, -1))
 	}
 	if w > lay.content(j) {
-		return fmt.Errorf("pdf: %s does not fit its column: %w", what, r.ErrUnsupported)
+		return refuse(doctemplates.ReasonDoesNotFit, lay.at(j, -1), "pdf: %s does not fit its column", what)
 	}
 	return nil
 }
@@ -221,15 +313,17 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 	headerH := lay.rowHeight(lay.header)
 	// The carried rows are single lines of bold text.
 	carryH := 2*tableInsetY + (ascent+descent)*lay.size
-	usable := lay.bottom - lay.top - headerH
-	if headerH+carryH > lay.bottom-lay.top {
-		return fmt.Errorf("pdf: the table's header and total row are taller than its region: %w", r.ErrUnsupported)
+	// The space a page leaves the table: from the page's top (the same on every page, unless a 2.0
+	// document's first page has more above the table) to the bottom of the region.
+	if headerH+carryH > lay.bottom-lay.pageTop(1) {
+		return refuse(lay.regionReason(), lay.at(-1, -1), "pdf: the table's header and total row are taller than its region")
 	}
 	base := *p
 	pages := []pageData{}
 	i, number := 0, 1
 	for {
-		avail := usable
+		top := lay.pageTop(number)
+		avail := lay.bottom - top - headerH
 		if number > 1 {
 			avail -= carryH
 		}
@@ -245,14 +339,14 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 			used -= lay.heights[i+k]
 		}
 		if k == 0 && i < n {
-			return fmt.Errorf("pdf: a table row is taller than the table's pages can hold: %w", r.ErrUnsupported)
+			return refuse(lay.regionReason(), lay.at(-1, i), "pdf: a table row is taller than the table's pages can hold")
 		}
 		if number > maxPages {
-			return fmt.Errorf("pdf: the document needs more than %d pages: %w", maxPages, r.ErrUnsupported)
+			return refuse(doctemplates.ReasonTooManyPages, doctemplates.Detail{}, "pdf: the document needs more than %d pages", maxPages)
 		}
 		last := i+k == n
 		pg := newPage(base.Pages[0].Texts)
-		y := lay.top
+		y := top
 		y = lay.drawRow(&pg, y, lay.header, true, true)
 		if number > 1 {
 			row, err := lay.carryRow(tableLabels["forward_before"]+strconv.Itoa(number)+tableLabels["forward_after"], running[i-1])
@@ -276,7 +370,7 @@ func (lay *tableLayout) paginate(p *page, running [][]string, zero []string) err
 			if lay.full {
 				pg.Rules = append(pg.Rules, rule{X0: lay.left, Y0: y, X1: lay.right, Y1: y, Stroke: totalStroke})
 			}
-			lay.drawRow(&pg, y, row, true, false)
+			lay.end = lay.drawRow(&pg, y, row, true, false)
 		} else {
 			row, err := lay.carryRow(tableLabels["carry_before"]+strconv.Itoa(number+1)+tableLabels["carry_after"], running[i+k-1])
 			if err != nil {
@@ -311,7 +405,7 @@ func (lay *tableLayout) carryRow(label string, sums []string) ([]cell, error) {
 		}
 		w, err := lay.m.width(text, lay.size, true)
 		if err != nil {
-			return nil, err
+			return nil, placed(err, lay.at(j, -1))
 		}
 		row[j] = cell{lines: []string{text}, widths: []float64{w}}
 	}
@@ -346,8 +440,11 @@ func (lay *tableLayout) drawRow(pg *pageData, y float64, row []cell, bold, heade
 				continue
 			}
 			x := col.left + tableInsetX
-			if col.metric {
+			switch col.alignment() {
+			case "right":
 				x = col.right - tableInsetX - c.widths[k]
+			case "center":
+				x = (col.left+col.right)/2 - c.widths[k]/2
 			}
 			baseline := y + tableInsetY + ascent*lay.size + float64(k)*lineStep*lay.size
 			// A line is drawn as one text object per piece, so that Typst shapes nothing
@@ -394,13 +491,14 @@ func shaped(ch rune) bool {
 		ch == 0x2013 || ch == 0x2014 || ch == 0x2026 || ch == 0x2E3A || ch == 0x2E3B || ch == 0x00B7 || ch == 0x2010 || ch == 0x2015
 }
 
-// wrapRow wraps every cell of a row into its column.
-func (lay *tableLayout) wrapRow(texts []string, bold bool) ([]cell, error) {
+// wrapRow wraps every cell of a row into its column; table is the row's index in the table, or -1
+// for the header, for the place of a refusal.
+func (lay *tableLayout) wrapRow(texts []string, bold bool, table int) ([]cell, error) {
 	row := make([]cell, len(texts))
 	for j, text := range texts {
 		c, err := lay.wrap(text, lay.columns[j].right-lay.columns[j].left-2*tableInsetX, bold)
 		if err != nil {
-			return nil, err
+			return nil, placed(err, lay.at(j, table))
 		}
 		row[j] = c
 	}

@@ -1537,3 +1537,162 @@ test('the canvas is built from DOM nodes and CSSOM only: no markup parsing, no s
  const hostile='<img src=x onerror=alert(1)>';cv.load(a,cv.doc(a,[['n1',10,30,100,10,'literal',hostile]]));assert.equal(a.$('doc-canvas-host').querySelectorAll('img,script').length,0);assert.equal(cv.item(a,'n1').querySelector('text').textContent,hostile);assert.ok(cv.item(a,'n1').getAttribute('aria-label').includes(hostile));
  assert.equal(a.errors.length,0);
  }finally{a.close();}});
+
+// ---- Template schema 2.0 (S03-J): bands over row groups, edited as JSON; refusals that say where ----
+const schema2=JSON.parse(await readFile(join(root,'doctemplates/testdata/schema2_cases.json'),'utf8'));
+function walkTo(root,path){const steps=path.split('.');let cur=root;for(const s of steps.slice(0,-1)){cur=Array.isArray(cur)?cur[Number(s)]:cur[s];assert.ok(cur!==undefined&&cur!==null,'path '+path+' at '+s);}return [cur,steps.at(-1)];}
+// The edits of a shared case, as the Go tests apply them: delete, set (shortest paths first), push, extend.
+function editedCase(base,edit){
+  const doc=structuredClone(base);
+  for(const p of edit.delete||[]){const [parent,last]=walkTo(doc,p);delete parent[last];}
+  const sets=Object.entries(edit.set||{}).sort((x,y)=>x[0].split('.').length-y[0].split('.').length);
+  for(const [p,value] of sets){const [parent,last]=walkTo(doc,p);parent[Array.isArray(parent)?Number(last):last]=structuredClone(value);}
+  for(const [p,value] of Object.entries(edit.push||{})){const [parent,last]=walkTo(doc,p);parent[last].push(structuredClone(value));}
+  for(const spec of edit.extend||[]){const [parent,last]=walkTo(doc,spec.path);for(let n=0;n<spec.count;n++){const item=structuredClone(spec.template);item.id=item.id.replace('{n}',String(spec.from+n));parent[last].push(item);}}
+  return doc;
+}
+const banded=()=>structuredClone(schema2.base);
+
+test('the console validates a 2.0 template as the platform does: every shared case is accepted or refused alike, and an accepted one is saved as it was read',async()=>{const a=await designer();try{
+ assert.ok(schema2.cases.length>=150);let valid=0,refused=0;
+ for(const c of schema2.cases){
+  const doc=editedCase(schema2.base,c.edit);a.$('doc-status').textContent='';a.$('doc-json').value=JSON.stringify(doc);a.click('doc-json-open');
+  const accepted=a.$('doc-status').textContent===READY;
+  if(c.expect==='valid'){valid++;assert.equal(accepted,true,c.name+': '+a.$('doc-status').textContent);a.click('doc-json-save');assert.deepEqual(JSON.parse(a.$('doc-json').value),doc,c.name+': the saved form is the one read');}
+  else{refused++;assert.equal(accepted,false,c.name+' is '+c.expect+' and must be refused here');assert.notEqual(a.$('doc-status').textContent,'',c.name+' says why');}
+ }
+ assert.ok(valid>=35&&refused>=105);
+ // A template of more than 64 KiB is refused, and a refusal leaves the open template as it was.
+ const big=banded();big.bands.document_header=undefined;delete big.bands.document_header;big.bands.page_header={height:200,elements:Array.from({length:24},(_,i)=>({id:'e'+(i+10),type:'text',source:'literal',text:'字'.repeat(1024),field:'',wrap:true,x:0,y:i*8,width:190,height:8,font_size:8,align:'left',bold:false}))};
+ a.$('doc-json').value=JSON.stringify(banded());a.click('doc-json-open');assert.equal(a.$('doc-status').textContent,READY);a.$('doc-status').textContent='';a.$('doc-json').value=JSON.stringify(big);a.click('doc-json-open');assert.notEqual(a.$('doc-status').textContent,READY);
+ a.click('doc-json-save');assert.deepEqual(JSON.parse(a.$('doc-json').value),banded(),'the open template is untouched');
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('a 2.0 template shows a note in place of the canvas, lists its bands, is edited as JSON and takes none of the 1.x edits; a 1.x template brings the canvas back',async()=>{const a=await designer();try{
+ const note=()=>a.$('doc-canvas-note'),scroll=()=>a.$('doc-canvas-scroll');
+ assert.equal(note().hidden,true);assert.equal(scroll().hidden,false);
+ cv.load(a,banded());
+ assert.equal(note().hidden,false);assert.match(note().textContent,/只显示 1\.x 模板/);assert.equal(scroll().hidden,true);assert.equal(note().getAttribute('role'),'status');assert.deepEqual(cv.keys(a),[]);
+ assert.match(a.$('doc-canvas-status').textContent,/只显示 1\.x/);assert.equal(a.$('doc-undo').disabled,true);assert.equal(a.$('doc-dup').disabled,true);assert.equal(a.$('doc-del').disabled,true);
+ // The bands are listed, read-only: no input of the 1.x rows.
+ const lines=[...a.$('doc-elements').children].map(e=>e.textContent);assert.equal(lines.length,5);assert.match(lines[0],/^页眉带 14 毫米：e1 文本（固定文字）；e2 文本（页码）；e3 线$/);assert.match(lines[1],/e5 文本（字段 aging\.bucket，自动换行）/);assert.match(lines[2],/^明细带：e6 明细表 3 列$/);assert.match(lines[3],/e8 文本（分组合计 ar\.open_balance）/);assert.equal(a.$('doc-elements').querySelectorAll('input,button').length,0);
+ assert.match(a.$('doc-print-status').textContent,/模板 2\.0 · 分带版面/);assert.match(a.$('doc-table-status').textContent,/2\.0 分带模板：明细表 3 列/);
+ // The 1.x edits refuse, naming the way: every button that edits boxes, the table, the print profile or the background.
+ const before=cv.tpl(a);
+ for(const id of ['doc-add-text','doc-add-row','doc-add-total','doc-table-add','doc-table-remove','doc-print-apply','doc-background-remove']){a.$('doc-status').textContent='';a.click(id);assert.match(a.$('doc-status').textContent,/2\.0 分带模板请用“模板元数据JSON”编辑/,id);assert.deepEqual(cv.tpl(a),before,id+' left the template as it was');}
+ // JSON edits: a band 0.5 mm taller, applied and read back; an invalid edit is refused and leaves it.
+ const taller=banded();taller.bands.page_header.height=14.5;cv.load(a,taller);assert.equal(cv.tpl(a).bands.page_header.height,14.5);
+ const wrong=banded();wrong.bands.page_header.height=4;a.$('doc-json').value=JSON.stringify(wrong);a.click('doc-json-open');assert.notEqual(a.$('doc-status').textContent,READY);assert.equal(cv.tpl(a).bands.page_header.height,14.5);
+ // A 1.x template brings the canvas back; opening 2.0 again takes it away.
+ cv.load(a,cv.four(a));assert.equal(note().hidden,true);assert.equal(scroll().hidden,false);assert.deepEqual(cv.keys(a),['n1','n2','n3','n4']);
+ cv.load(a,banded());assert.equal(note().hidden,false);assert.deepEqual(cv.keys(a),[]);
+ // "New template" (reset) is a 1.0 template, and the canvas is back.
+ a.click('doc-reset');assert.equal(note().hidden,true);assert.deepEqual(cv.keys(a),['n1']);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('a 2.0 template previews the group of the row and is checked by group: what the console sends and shows',async()=>{const bodies=[],seen=[];
+ const answer={rows:[{row_index:0,ok:true,reasons:['first','most_rows']},{row_index:2,ok:false,code:'UNSUPPORTED_COMBINATION',detail:{reason:'INCONSISTENT_GROUP',band:'document_header',element:'e5',row:1,column:'aging.bucket'},reasons:['last','longest:e5','cell:aging.bucket','fewest_rows']}]};
+ const check=offeringChecks(answer,{bodies});
+ const a=app(async(path,options)=>{if(path.endsWith('/document-previews')){seen.push(JSON.parse(options.body));return new Response(Buffer.from('%PDF-1.7 banded'),{headers:{'Content-Type':'application/pdf','X-Content-SHA256':createHash('sha256').update(Buffer.from('%PDF-1.7 banded')).digest('hex')}});}return check(path,options);});try{
+ await checkReady(a);cv.load(a,banded());
+ // The preview body is the template as it is (2.0) and the snapshot's global row number.
+ a.input('doc-row','3');a.click('doc-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'the preview');
+ assert.equal(seen.length,1);assert.deepEqual(Object.keys(seen[0]).sort(),['config','row_index','snapshot_id']);assert.equal(seen[0].row_index,2);assert.equal(seen[0].config.schema_version,'2.0');assert.deepEqual(seen[0].config.group,{fields:['customer.id']});assert.equal(JSON.stringify(seen[0]).includes('9007199254740'),false);
+ // The check sends the template and asks for the boundary samples; its rows show the reasons of a 2.0 sample and the place of a refusal.
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===2&&!a.$('preview').disabled,'checked');
+ assert.equal(bodies.length,1);assert.equal(bodies[0].config.schema_version,'2.0');assert.equal(bodies[0].samples,'boundary');
+ const rows=checkRows(a);assert.deepEqual(rows[0],['第 1 行','通过','首行、行数最多的分组']);
+ assert.equal(rows[1][0],'第 3 行');assert.match(rows[1][1],/^不通过 · UNSUPPORTED_COMBINATION（.*） · 同一分组内该字段的取值不一致 · 单据头带 · 元素 e5 · 快照第 2 行 · 列 账龄区间（aging\.bucket）$/);assert.equal(rows[1][2],'末行、e5 最长、列 账龄区间 最长的单元格、行数最少的分组');
+ // A 2.0 template has no canvas to point at: no locate button.
+ assert.equal(a.$('doc-check-body').rows[1].cells[3].querySelectorAll('button').length,1);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('a refusal says where: the notice names the reason and the place, check rows carry the same, and the canvas outlines the box or the column a 1.x refusal names',async()=>{
+ const detail={reason:'DOES_NOT_FIT',element:'n2'},columnDetail={reason:'DOES_NOT_FIT',column:'ar.open_balance',row:2};let answerWith=detail;
+ const check=offeringChecks({rows:[{row_index:0,ok:true,reasons:['first']},{row_index:1,ok:false,code:'UNSUPPORTED_COMBINATION',detail:{reason:'NOT_COVERED',element:'n1'},reasons:['longest:n1']},{row_index:2,ok:false,code:'UNSUPPORTED_COMBINATION',detail:columnDetail,reasons:['last']}]});
+ const a=app(async(path,options)=>{if(path.endsWith('/document-previews'))return new Response(JSON.stringify({error:'UNSUPPORTED_COMBINATION',detail:answerWith}),{status:422,headers:{'Content-Type':'application/json'}});return check(path,options);});try{
+ await checkReady(a);
+ cv.load(a,cv.table(a,[['n1',10,30,50,10,'row','customer.id'],['n2',80,30,50,10,'row','customer.id']]));
+ const outlined=()=>[...a.$('doc-canvas-host').querySelectorAll('.cv-refused')].map(e=>e.getAttribute('data-key'));const columns=()=>[...a.$('doc-canvas-host').querySelectorAll('.cv-refused-col')].map(e=>e.getAttribute('data-refused'));
+ assert.deepEqual(outlined(),[]);assert.deepEqual(columns(),[]);
+ // A preview that is refused for a box: the notice has the reason and the place, and n2 is outlined.
+ a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('模板无法排版')&&!a.$('preview').disabled,'refusal');
+ assert.match(a.$('notice').textContent,/位置：放不下：值比所在的框、列或页更宽或更高 · 元素 n2。/);assert.deepEqual(outlined(),['n2']);assert.deepEqual(columns(),[]);assert.equal(a.downloads.length,0);
+ assert.match(cv.item(a,'n2').getAttribute('aria-label'),/预览或检查指出此处/);assert.equal(cv.item(a,'n1').getAttribute('aria-label').includes('预览或检查'),false);assert.match(a.$('doc-canvas-status').textContent,/已描出轮廓：n2/);
+ // The outline is the canvas's, not the template's: nothing was written, and one edit takes it away.
+ assert.equal(JSON.stringify(cv.tpl(a)).includes('n2'),true);cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.deepEqual(outlined(),[]);
+ // A refusal of a column outlines the column of the table.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10]]));answerWith=columnDetail;a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('（ar.open_balance）')&&!a.$('preview').disabled,'column refusal');
+ assert.match(a.$('notice').textContent,/快照第 3 行 · 列 .*（ar\.open_balance）/);assert.deepEqual(columns(),['ar.open_balance']);assert.deepEqual(outlined(),[]);
+ const rect=a.$('doc-canvas-host').querySelector('.cv-refused-col'),table=cv.tpl(a).table,p=SCALE*Number(a.$('doc-zoom').value)/100;
+ assert.ok(Math.abs(Number(rect.getAttribute('x'))-(ORIGIN+(table.x+130)*p))<0.01&&Math.abs(Number(rect.getAttribute('width'))-60*p)<0.01&&Math.abs(Number(rect.getAttribute('height'))-table.height*p)<0.01,'the column under the table');
+ // A detail the console cannot verify is not shown, and the generic message stands.
+ for(const bad of [{reason:'ANYTHING'},{reason:'DOES_NOT_FIT',element:'x1'},{reason:'DOES_NOT_FIT',row:-1},{reason:'DOES_NOT_FIT',band:'middle'},{reason:'DOES_NOT_FIT',extra:1},'text',[]]){
+  answerWith=bad;cv.load(a,cv.table(a,[['n1',10,30,50,10]]));a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('模板无法排版')&&!a.$('preview').disabled,'unverified detail');
+  assert.equal(a.$('notice').textContent.includes('位置：'),false);assert.deepEqual(columns(),[]);assert.deepEqual(outlined(),[]);
+ }
+ // The check shows each refused row's place and lets one click outline it.
+ cv.load(a,cv.table(a,[['n1',10,30,50,10,'row','customer.id']]));
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===3&&!a.$('preview').disabled,'checked');
+ const rows=checkRows(a);assert.equal(rows[0][1],'通过');assert.match(rows[1][1],/不通过 · UNSUPPORTED_COMBINATION（.*） · 无法按原样打印.* · 元素 n1$/);assert.match(rows[2][1],/放不下.* · 快照第 3 行 · 列 .*（ar\.open_balance）$/);
+ const locate=r=>a.$('doc-check-body').rows[r].cells[3].querySelectorAll('button');
+ assert.equal(locate(0).length,1);assert.equal(locate(1).length,2);assert.equal(locate(2).length,2);
+ locate(1)[1].click();assert.deepEqual(outlined(),['n1']);assert.deepEqual(columns(),[]);locate(2)[1].click();assert.deepEqual(columns(),['ar.open_balance']);assert.deepEqual(outlined(),[]);assert.match(a.$('doc-check-status').textContent,/第 3 行：放不下/);
+ // A new result or any change of the template takes the outline away.
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===3&&!a.$('preview').disabled,'checked again');cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.deepEqual(columns(),[]);
+ // A check row with a detail that does not verify is not shown at all.
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('a check answer whose detail or reasons are not the known shapes is shown as unverifiable',async()=>{
+ for(const row of [{row_index:0,ok:false,code:'UNSUPPORTED_COMBINATION',detail:{reason:'WHATEVER'}},{row_index:0,ok:false,code:'UNSUPPORTED_COMBINATION',detail:{reason:'DOES_NOT_FIT',element:'e99'}},{row_index:0,ok:true,detail:{reason:'DOES_NOT_FIT'}},{row_index:0,ok:true,reasons:['cell:']},{row_index:0,ok:true,reasons:['longest:x1']},{row_index:0,ok:true,reasons:['most_rows ']},{row_index:0,ok:false,code:'UNSUPPORTED_COMBINATION',detail:'text'}]){
+  const a=app(offeringChecks({rows:[row]}));try{await checkReady(a);a.click('doc-check');await until(()=>/无法验证/.test(a.$('doc-check-status').textContent),'unverifiable '+JSON.stringify(row));assert.equal(a.$('doc-check-body').rows.length,0);assert.equal(a.$('doc-check-wrap').hidden,true);}finally{a.close();}
+ }
+ // The reasons of the 2.0 sample and the details are accepted.
+ const a=app(offeringChecks({rows:[{row_index:0,ok:true,reasons:['first','most_rows','fewest_rows','longest:e12','shortest:e3','cell:customer.id']},{row_index:4,ok:false,code:'UNSUPPORTED_COMBINATION',detail:{reason:'TOO_MANY_PAGES'}}]}));try{
+  await checkReady(a);a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length===2&&!a.$('preview').disabled,'known shapes');
+  assert.equal(checkRows(a)[0][2].includes('e12 最长'),true);assert.match(checkRows(a)[1][1],/超过 100 页/);
+ }finally{a.close();}});
+
+test('a 2.0 template is saved, opened, published and read back like any template, previews through the real server, and is refused at issue admission',async()=>{const a=app(offeringIssuance());try{
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');
+ a.w.document.querySelector('[data-page="documents"]').click();
+ a.$('doc-json').value=JSON.stringify(banded());a.click('doc-json-open');assert.equal(a.$('doc-status').textContent,READY);
+ a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'save v1');
+ const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+ // What the server kept is the 2.0 template as it was saved: the console checked it against the server's copy.
+ a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&!a.$('preview').disabled,'release');
+ a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'publish');
+ a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'published open');
+ assert.deepEqual(cv.tpl(a),banded());assert.equal(a.$('doc-canvas-note').hidden,false);
+ // The console does not offer to issue it: its own message says why, and nothing is sent.
+ a.click('doc-issue');assert.match(a.$('doc-status').textContent,/2\.0 分带模板暂不能正式出具/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0);
+ // The server refuses it at admission whoever asks: 422, before any snapshot is looked at.
+ const refused=await fetch(url+'/api/reporting/v1/issues',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','Idempotency-Key':'banded-admission'},body:JSON.stringify({template_id:id,version:1,snapshot_id:'0'.repeat(32),row_index:0})});
+ assert.equal(refused.status,422);assert.deepEqual(await refused.json(),{error:'UNSUPPORTED_COMBINATION'});
+ // A saved version previews by the saved version (the server's copy), by group of the row it is asked for.
+ if(pdfConfigured){
+  a.input('doc-row','3');a.click('doc-saved-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'saved preview',20000);
+  const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+  if(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR){await mkdir(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,{recursive:true});await writeFile(join(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR,'console_banded_preview.pdf'),bytes);}
+ }
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});
+
+test('a 2.0 template previews through the real server and pinned Typst renderer: the group of the row, bands on the page',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
+ await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');
+ a.w.document.querySelector('[data-page="documents"]').click();
+ // Grouped by customer, each of the demo's three rows is its own document; ungrouped, the customers differ and the preview is refused with the place.
+ a.$('doc-json').value=JSON.stringify(banded());a.click('doc-json-open');a.input('doc-row','2');a.click('doc-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'group preview',20000);
+ assert.equal(Buffer.from(await a.downloads[0].blob.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+ const whole=banded();delete whole.group;a.$('doc-json').value=JSON.stringify(whole);a.click('doc-json-open');assert.equal(a.$('doc-status').textContent,READY);
+ a.click('doc-pdf');await until(()=>a.$('notice').textContent.includes('模板无法排版')&&!a.$('preview').disabled,'inconsistent group',20000);
+ assert.match(a.$('notice').textContent,/位置：同一分组内该字段的取值不一致 · 单据头带 · 元素 e4 · 快照第 2 行 · 列 .*（customer\.id）。/);assert.equal(a.downloads.length,1);
+ // The sample check agrees with the preview without rendering: the refused group carries the same place.
+ a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length>=1&&!a.$('preview').disabled,'check');
+ assert.match(a.$('doc-check-body').rows[0].cells[1].textContent,/不通过 · UNSUPPORTED_COMBINATION.* · 同一分组内该字段的取值不一致 · 单据头带 · 元素 e4/);
+ assert.equal(a.errors.length,0);
+ }finally{a.close();}});

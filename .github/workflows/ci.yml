@@ -190,7 +190,8 @@ jobs:
           # console_issued.json is the checker's expectation of the issued PDF of the real stack (the product's record,
           # the template's boxes and values) and console_issued.preview.pdf the preview of the same document, so that
           # the checker, not only veraPDF, checks it; console_issued_record.json is the record as it was read, kept out.
-          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.json" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
+          # console_banded_preview.pdf is the console's preview of a 2.0 template (S03-J) through the real server: veraPDF checks it too.
+          cp "$REPORTING_S03A_EVIDENCE_DIR/console_finance.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_document_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_table_preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.json" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_issued.preview.pdf" "$REPORTING_DOCUMENT_EVIDENCE_DIR/console_banded_preview.pdf" "$RUNNER_TEMP/pdf-evidence/"
       - name: Check the documents, the negative controls and PDF/A-2b
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"

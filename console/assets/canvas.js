@@ -107,8 +107,10 @@ window.createReportingCanvas=function(ports){
  }
 
  // ---- state and elements ----------------------------------------------------------------------------
- let config=null,selection=[],zoom=100,drag=null,palette=null,focusAfter=null;
- const host=$('doc-canvas-host'),statusLine=$('doc-canvas-status'),live=$('doc-canvas-live'),modeLine=$('doc-canvas-mode');
+ let config=null,selection=[],zoom=100,drag=null,palette=null,focusAfter=null,marked=null;
+ const host=$('doc-canvas-host'),statusLine=$('doc-canvas-status'),live=$('doc-canvas-live'),modeLine=$('doc-canvas-mode'),scroll=$('doc-canvas-scroll'),note=$('doc-canvas-note');
+ // A template the canvas cannot show (2.0, S03-J) gets a short note in place of the page.
+ function setNote(text){if(scroll)scroll.hidden=!!text;if(note){note.hidden=!text;note.textContent=text||'';}}
  const svg=svgEl('svg',{class:'cv-svg',role:'group','aria-label':'A4 文档画布，单位毫米','aria-describedby':'doc-canvas-help',tabindex:'-1'});
  const layers={};for(const name of ['rulers','page','items','overlay','guides','tags','readout']){layers[name]=svgEl('g',{class:'cv-'+name});svg.append(layers[name]);}
  layers.tags.setAttribute('aria-hidden','true');layers.guides.setAttribute('aria-hidden','true');layers.readout.setAttribute('aria-hidden','true');layers.rulers.setAttribute('aria-hidden','true');
@@ -160,7 +162,8 @@ window.createReportingCanvas=function(ports){
   if(ox||oy)for(const i of order){if(!prints(i))continue;const r=rectOf(i);layers.page.append(svgEl('rect',{class:'cv-ghost',x:X(r.x+ox),y:X(r.y+oy),width:L(r.w),height:L(r.h)}));}
   for(const i of order){
    const r=rectOf(i),x=X(r.x),y=X(r.y),w=L(r.w),h=L(r.h),sel=selection.includes(i.key),dim=!prints(i);
-   const g=svgEl('g',{class:'cv-item '+(i.table?'cv-table':'cv-'+i.ref.source)+(sel?' cv-selected':'')+(dim?' cv-dim':'')+(bad.has(i.key)?' cv-bad':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf(i,lab)+(dim?'，变量层不打印':'')});
+   const refused=!!marked&&!!marked.element&&marked.element===i.key;
+   const g=svgEl('g',{class:'cv-item '+(i.table?'cv-table':'cv-'+i.ref.source)+(sel?' cv-selected':'')+(dim?' cv-dim':'')+(bad.has(i.key)?' cv-bad':'')+(refused?' cv-refused':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf(i,lab)+(dim?'，变量层不打印':'')+(refused?'，预览或检查指出此处放不下或无法打印':'')});
    g.append(svgEl('rect',{class:'cv-box',x,y,width:w,height:h}));
    if(i.table){
     const fs=i.ref.font_size*25.4/72*p,head=Math.min(h,fs*2.4),cols=i.ref.columns;let run=0;
@@ -177,6 +180,11 @@ window.createReportingCanvas=function(ports){
    }
    layers.items.append(g);
    layers.tags.append(svgEl('text',{class:'cv-tag',x:x+1,y:Math.max(y-3,RULER+9)},i.table?'明细表':i.ref.id+' · '+sources[i.ref.source]));
+  }
+  // The column a refusal names (S03-J): outlined over the table, whatever the pointer does.
+  if(d.table&&marked&&marked.column){
+   const t=d.table,at=t.columns.findIndex(c=>c.field===marked.column);
+   if(at>=0){const before=t.columns.slice(0,at).reduce((s,c)=>s+U(c.width),0);layers.overlay.append(svgEl('rect',{class:'cv-refused-col','data-refused':marked.column,x:X(U(t.x)+before),y:X(U(t.y)),width:L(U(t.columns[at].width)),height:L(U(t.height)),'aria-hidden':'true'}));}
   }
   // Column boundaries of the table: always grabbable with the pointer, focusable once the table is selected.
   if(d.table){
@@ -386,12 +394,22 @@ window.createReportingCanvas=function(ports){
  return {
   // Called with the designer's configuration (or null) after every change, undo, redo and open.
   show(c){
-   config=c;drag=null;const before=selection.join(',');
+   setNote('');config=c;drag=null;const before=selection.join(',');
    const known=c?items(c).map(i=>i.key):[];selection=selection.filter(k=>known.includes(k));
    if(c&&statusLine&&statusLine.textContent===idle)status('画布显示当前模板；点击项目开始编辑，Ctrl/Cmd+K 打开命令面板。');
    draw();syncToolbar();if(before!==selection.join(','))announce(selectionText());
   },
-  clear(){config=null;selection=[];drag=null;closePalette();draw(null);syncToolbar();status(idle);announce('未选择任何项目。');},
+  clear(){setNote('');config=null;selection=[];drag=null;marked=null;closePalette();draw(null);syncToolbar();status(idle);announce('未选择任何项目。');},
+  // A template of another form than the canvas draws (2.0): the canvas shows a note and nothing can be selected or edited.
+  unsupported(text){config=null;selection=[];drag=null;marked=null;closePalette();draw(null);syncToolbar();setNote(text);status(text);announce(text);},
+  // The element or column a refusal names, outlined until the template changes; null clears it.
+  mark(detail){
+   const next=detail&&(detail.element||detail.column)?{element:detail.element||'',column:detail.column||''}:null;
+   if(JSON.stringify(next)===JSON.stringify(marked))return;
+   marked=next;draw();
+   if(marked&&config){const known=items(config).some(i=>i.key===marked.element)||(config.table&&config.table.columns.some(c=>c.field===marked.column));if(known)status('预览或检查指出的位置已描出轮廓'+(marked.element?'：'+marked.element:'')+(marked.column?'，列 '+marked.column:'')+'。');}
+  },
+  marked:()=>marked?{...marked}:null,
   // A template that is opened or reset is another page: nothing stays selected.
   reset(){selection=[];drag=null;announce('未选择任何项目。');},
   selection:()=>[...selection],

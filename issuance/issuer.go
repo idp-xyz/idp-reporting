@@ -64,6 +64,11 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	if e != nil {
 		return document{}, e
 	}
+	// A 2.0 template is issued by row group (S03-K); admission refuses it, and a job that names one
+	// is refused here too, so that nothing could bind it by row.
+	if d.Schema == doctemplates.SchemaBanded {
+		return document{}, r.ErrUnsupported
+	}
 	if string(frozen) != j.Template {
 		return document{}, r.ErrIntegrity
 	}

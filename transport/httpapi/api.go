@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
+	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"io"
@@ -411,7 +412,12 @@ func problem(w http.ResponseWriter, e error, status int) {
 	if ok && status != 401 {
 		status = mapped
 	}
-	_ = send(w, status, map[string]string{"error": code})
+	body := map[string]any{"error": code}
+	// A layout or binding refusal says why and where (S03-J): a reason and names and indices, never a value.
+	if detail, found := doctemplates.DetailOf(e); found && ok {
+		body["detail"] = detail
+	}
+	_ = send(w, status, body)
 }
 
 func authenticated(authenticate Authenticate, fn func(http.ResponseWriter, *http.Request, r.Principal) error) http.HandlerFunc {

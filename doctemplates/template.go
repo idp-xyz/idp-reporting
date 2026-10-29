@@ -4,6 +4,7 @@ package doctemplates
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	r "idp.local/reporting/reporting"
 	"math"
 	"strconv"
@@ -40,6 +41,26 @@ type Document struct {
 	Print      *PrintProfile  `json:"print,omitempty"`
 	Background *BackgroundRef `json:"background,omitempty"`
 	Table      *Table         `json:"table,omitempty"` // schema 1.3: the detail table (S03-F)
+	// Schema 2.0 (S03-J) has no elements, print profile, background or table of its own: a group and bands
+	// instead. A 2.0 document is written by MarshalJSON in its own closed form.
+	Group *GroupSpec `json:"group,omitempty"`
+	Bands *Bands     `json:"bands,omitempty"`
+}
+
+// MarshalJSON writes a 1.x document exactly as its fields have always been written and a 2.0 document
+// in its own form, without the keys of 1.x.
+func (d Document) MarshalJSON() ([]byte, error) {
+	if d.Schema == SchemaBanded {
+		return json.Marshal(struct {
+			Schema  string     `json:"schema_version"`
+			Kind    string     `json:"kind"`
+			Binding Binding    `json:"binding"`
+			Group   *GroupSpec `json:"group,omitempty"`
+			Bands   *Bands     `json:"bands"`
+		}{d.Schema, d.Kind, d.Binding, d.Group, d.Bands})
+	}
+	type wire Document
+	return json.Marshal(wire(d))
 }
 
 // Canonical is the configuration an issue job freezes (S03-G): the validated document as the
@@ -52,6 +73,12 @@ func Canonical(d Document) ([]byte, error) {
 }
 
 func Validate(d Document) error {
+	if d.Schema == SchemaBanded {
+		return validateBanded(d)
+	}
+	if d.Group != nil || d.Bands != nil {
+		return r.ErrInvalid
+	}
 	b, e := json.Marshal(d)
 	if e != nil || len(b) > 65536 {
 		return r.ErrBudget
@@ -127,6 +154,9 @@ func Bind(d Document, s r.Snapshot, index int) (map[string]string, error) {
 	if e := Validate(d); e != nil {
 		return nil, e
 	}
+	if d.Schema == SchemaBanded {
+		return nil, fmt.Errorf("doctemplates: a 2.0 document is bound by row group, not by row: %w", r.ErrUnsupported)
+	}
 	if d.Binding.Integration != s.Owner.Integration || d.Binding.Dataset != s.Query.Dataset {
 		return nil, r.ErrDenied
 	}
@@ -160,7 +190,11 @@ func Bind(d Document, s r.Snapshot, index int) (map[string]string, error) {
 		}
 		// A value the preview cannot print on one line as it is.
 		if !utf8.ValidString(text) || len([]rune(text)) > 256 || hasControls(text) {
-			return nil, r.ErrUnsupported
+			reason := ReasonNotCovered
+			if utf8.ValidString(text) && len([]rune(text)) > 256 {
+				reason = ReasonDoesNotFit
+			}
+			return nil, Refuse(r.ErrUnsupported, Detail{Reason: reason, Element: v.ID})
 		}
 		out[v.ID] = text
 	}
@@ -193,6 +227,16 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 		return e
 	}
 	if (value.Schema == "1.0" && fields["print"] != nil) || (value.Schema != "1.2" && value.Schema != "1.3" && fields["background"] != nil) || (value.Schema != "1.3" && fields["table"] != nil) {
+		return r.ErrInvalid
+	}
+	// Schema 2.0 has none of the keys of 1.x, and 1.x none of 2.0's.
+	if value.Schema == SchemaBanded {
+		for _, k := range []string{"elements", "print", "background", "table"} {
+			if fields[k] != nil {
+				return r.ErrInvalid
+			}
+		}
+	} else if fields["group"] != nil || fields["bands"] != nil {
 		return r.ErrInvalid
 	}
 	*d = Document(value)

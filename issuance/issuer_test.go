@@ -370,3 +370,39 @@ func TestIssuerResolvesTheBackgroundAsThePreviewDoes(t *testing.T) {
 		}
 	}
 }
+
+// TestIssuerRefusesA2xTemplateUntilS03K: a 2.0 template is issued by row group, which the source contract does
+// not carry yet. Admission refuses it; a job that names one anyway, published and frozen as it was saved, is
+// refused by the check and by the issue before the renderer is asked or a row is bound.
+func TestIssuerRefusesA2xTemplateUntilS03K(t *testing.T) {
+	ctx := context.Background()
+	owner := snapshot().Owner
+	store, e := doctemplates.Open(filepath.Join(t.TempDir(), "templates"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	banded := doctemplates.Document{Schema: "2.0", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
+		Bands: &doctemplates.Bands{Detail: &doctemplates.DetailBand{Elements: []doctemplates.Item{{ID: "e1", Type: "table", X: 0, Width: 100, FontSize: 10, Columns: []doctemplates.ItemColumn{{Field: "customer", Width: 50}, {Field: "amount", Width: 50}}}}}}}
+	v1, e := store.Save(owner.Identity, "", 0, banded)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = store.Publish(owner.Identity, v1.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	frozen, e := doctemplates.Canonical(v1.Layout)
+	if e != nil {
+		t.Fatal(e)
+	}
+	renderer := &fakeRenderer{out: []byte("%PDF-1.7 issued"), pages: 1}
+	issuer, _ := issuance.New(store, nil, renderer)
+	job := r.Job{ID: strings.Repeat("7", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 0}
+	if e := issuer.Check(ctx, job, snapshot()); !errors.Is(e, r.ErrUnsupported) || renderer.checks != 0 {
+		t.Errorf("check of a 2.0 job: %v (%d checks)", e, renderer.checks)
+	}
+	req := r.IssueRequest{Job: job, Snapshot: snapshot(), Stamp: r.IssueStamp("AR-000004", issuedAt, job.ID), At: issuedAt}
+	if _, e := issuer.Issue(ctx, req); !errors.Is(e, r.ErrUnsupported) || renderer.calls != 0 {
+		t.Errorf("issue of a 2.0 job: %v (%d renders)", e, renderer.calls)
+	}
+}
