@@ -196,6 +196,9 @@ type Job struct {
 	TemplateSHA256  string `json:",omitempty"`
 	Template        string `json:",omitempty"` // the canonical JSON text, as a string: JSONB would reorder an object
 	RowIndex        int    `json:",omitempty"`
+	// Group is the row group a schema 2.0 template is issued for (S03-K): frozen at admission in place of the
+	// row, so that RowIndex is 0 for a group job. Nil for a 1.x job.
+	Group *IssueGroup `json:",omitempty"`
 }
 
 // Issue is the permanent record of one officially issued document: which template version,
@@ -212,7 +215,10 @@ type Issue struct {
 	TemplateSHA256  string
 	SnapshotID      string
 	SnapshotSHA256  string
-	RowIndex        int
+	RowIndex        int // 0 for a group issue
+	// Group is what the record keeps in place of the row for a schema 2.0 issue (S03-K): the group's fields,
+	// key values, snapshot row indices and the digest of those rows. Nil for a 1.x issue.
+	Group           *IssueGroup `json:",omitempty"`
 	ArtifactID      string
 	SHA256          string
 	Pages           int
@@ -235,12 +241,27 @@ type JobView struct {
 
 // IssueSummary is what an issue job says about itself before and after it ran. The number is
 // the source product's and is known once the job succeeded: it is read from the record.
+//
+// A 1.x issue names its row and a schema 2.0 issue its group (S03-K), never both: RowIndex is nil for a group
+// issue and Group nil for a row issue. The group's key values are the caller's own data, shown to the caller
+// who asked for them, as the row's values are; the rows themselves are not repeated (RowCount and RowsSHA256
+// say how many and which).
 type IssueSummary struct {
-	Number          string `json:"number,omitempty"`
-	TemplateID      string `json:"template_id"`
-	TemplateVersion int    `json:"template_version"`
-	TemplateSHA256  string `json:"template_sha256"`
-	RowIndex        int    `json:"row_index"`
+	Number          string          `json:"number,omitempty"`
+	TemplateID      string          `json:"template_id"`
+	TemplateVersion int             `json:"template_version"`
+	TemplateSHA256  string          `json:"template_sha256"`
+	RowIndex        *int            `json:"row_index,omitempty"`
+	Group           *IssueGroupView `json:"group,omitempty"`
+}
+
+// IssueGroupView is how a view shows the group of a schema 2.0 issue: the template's group fields, the key
+// values in their order, how many rows the group has and the digest of those rows.
+type IssueGroupView struct {
+	Fields     []string `json:"fields"`
+	Key        []string `json:"key"`
+	RowCount   int      `json:"row_count"`
+	RowsSHA256 string   `json:"rows_sha256"`
 }
 
 // IssueView is one entry of the issue listing: the job and, once it succeeded, its record.
@@ -401,7 +422,15 @@ type DocumentAuthority interface {
 }
 
 // IssueIntent is what the platform asks the product to authorize: one row of a frozen
-// snapshot, printed through one published template version.
+// snapshot, printed through one published template version (contract version 1), or, for a schema 2.0
+// template, one row group of it (contract version 2, S03-K, docs/ADR_0004_TEMPLATE_SCHEMA_2.md decision 7).
+//
+// A row intent has RowIndex and RowSHA256 and no Group. A group intent has Group and neither RowIndex nor
+// RowSHA256 (0 and ""): the product checks every row of the group against its own source snapshot, as it
+// checks a row, and refuses (ErrDenied) when they are not the rows its snapshot produced, when the group is not
+// whole (its snapshot has another row with the group's key) or when a group field is not a dimension of the
+// frozen read. The platform sends a group intent only to an adapter that declares contract version 2
+// (VersionedAuthority); the intent of a 1.x template is the same as it was before version 2 existed.
 type IssueIntent struct {
 	JobID           string
 	Prepared        PreparedRead // the frozen snapshot's source read
@@ -410,6 +439,9 @@ type IssueIntent struct {
 	TemplateID      string
 	TemplateVersion int
 	TemplateSHA256  string
+	// Group is the row group of a schema 2.0 issue; nil for a row issue (and then absent from the intent's
+	// digest, so that a version-1 intent digests as it always did).
+	Group *IssueGroup `json:",omitempty"`
 }
 
 // IssueReservation is the product's answer to PrepareDocument.

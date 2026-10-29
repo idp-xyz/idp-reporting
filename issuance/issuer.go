@@ -1,6 +1,7 @@
 // Package issuance renders issue jobs (S03-G): the frozen template of a job, bound to one row
-// of the job's frozen snapshot, stamped with the issue number. It is the reporting.Issuer the
-// worker calls; it never admits anything itself.
+// of the job's frozen snapshot (a 1.x template) or to the row group the job froze (a schema 2.0
+// template, S03-K), stamped with the issue number. It is the reporting.Issuer the worker calls;
+// it never admits anything itself.
 package issuance
 
 import (
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"idp.local/reporting/doctemplates"
 	r "idp.local/reporting/reporting"
+	"slices"
 	"strings"
 	"time"
 )
@@ -64,10 +66,14 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	if e != nil {
 		return document{}, e
 	}
-	// A 2.0 template is issued by row group (S03-K); admission refuses it, and a job that names one
-	// is refused here too, so that nothing could bind it by row.
-	if d.Schema == doctemplates.SchemaBanded {
+	// A 2.0 template is issued by row group (S03-K), a 1.x template by row: a job that names a 2.0 template
+	// without a group could only be bound by row, and a 1.x template with a group has none to bind.
+	banded := d.Schema == doctemplates.SchemaBanded
+	switch {
+	case banded && j.Group == nil:
 		return document{}, r.ErrUnsupported
+	case !banded && j.Group != nil:
+		return document{}, r.ErrInvalid
 	}
 	if string(frozen) != j.Template {
 		return document{}, r.ErrIntegrity
@@ -85,6 +91,9 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	}
 	if published.Version != j.TemplateVersion || !bytes.Equal(current, frozen) {
 		return document{}, r.ErrUnpublished
+	}
+	if banded {
+		return bindGroup(d, j, snap)
 	}
 	values, e := doctemplates.Bind(d, snap, j.RowIndex)
 	if e != nil {
@@ -109,9 +118,28 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	return document{d: d, values: values, table: table, background: background}, nil
 }
 
+// bindGroup makes the document of a group job: the frozen group must be the verified snapshot's, whole, under
+// the template's own group fields, and its values and table are bound from the snapshot's rows, never from the
+// request. A schema 2.0 document has no background.
+func bindGroup(d doctemplates.Document, j r.Job, snap r.Snapshot) (document, error) {
+	var fields []string
+	if d.Group != nil {
+		fields = d.Group.Fields
+	}
+	if !slices.Equal(fields, j.Group.Fields) || r.VerifyGroup(snap, *j.Group) != nil {
+		return document{}, r.ErrIntegrity
+	}
+	values, table, e := doctemplates.BindGroup(d, snap, doctemplates.RowGroup{Key: j.Group.Key, Rows: j.Group.Rows})
+	if e != nil {
+		return document{}, e
+	}
+	return document{d: d, values: values, table: table}, nil
+}
+
 // Check verifies what an issue job needs that does not depend on the product or on rendering
 // (S03-H): the frozen configuration decodes, is canonical and is still the published version,
-// the row and the table bind, the background resolves (or is unsupported) and the renderer's
+// the row and the table bind (a 2.0 template, S03-K: the frozen group is the snapshot's, whole, under
+// the template's own group fields, and binds as a preview binds it), the background resolves (or is unsupported) and the renderer's
 // layout accepts the values. The worker asks it before it asks the product for a number, so that
 // none of these refusals costs the product a reservation it must void. It takes no stamp and no
 // issue time, runs no Typst and fails exactly as Issue does for the same reasons; Issue repeats

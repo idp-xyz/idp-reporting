@@ -124,12 +124,16 @@ type product struct {
 	voidHook  func()                    // runs when VoidIssue is called, before the product voids
 	preparePn bool                      // PrepareDocument panics
 	voidPn    bool                      // VoidIssue panics
+	intentAs  func(*r.IssueIntent)      // changes the intent on its way to the product: what the product sees is not what the platform froze
 }
 
 func (p *product) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.IssueIntent) (r.IssueReservation, error) {
 	p.intents = append(p.intents, in)
 	if p.preparePn {
 		panic("the adapter broke: secret-row-value")
+	}
+	if p.intentAs != nil {
+		p.intentAs(&in)
 	}
 	res, e := p.Simulator.PrepareDocument(ctx, sc, in)
 	if e != nil {
@@ -190,6 +194,13 @@ func sameReceipt(a, b r.IssueReceipt) bool {
 // hidden is an adapter that forwards the four source calls and nothing else: a wrapper that
 // embeds only r.Adapter hides the DocumentAuthority of what it wraps.
 type hidden struct{ r.Adapter }
+
+// contractOne is an adapter that can issue and speaks contract version 1 only (S03-K): it forwards the source
+// calls and the three of the document authority, and not IssueContractVersion, which the wrapped product has.
+type contractOne struct {
+	r.Adapter
+	r.DocumentAuthority
+}
 
 // loseLease wraps the repository of a test. Its first publications lose the lease while the job
 // stays running: the clock passes the lease as the store would see it, and the publication is
@@ -277,6 +288,7 @@ var templateID = strings.Repeat("a", 32)
 type envOpts struct {
 	issuer        *fakeIssuer
 	hideAuthority bool // the finance adapter is wrapped so that it hides DocumentAuthority
+	contractOne   bool // the finance adapter is wrapped so that it declares no contract version beyond 1 (S03-K)
 }
 
 // issueEnv is a service with two integrations (finance numbers AR-, shipment SH-), a fake issuer,
@@ -319,6 +331,9 @@ func newIssueEnv(t *testing.T, o envOpts) *issueEnv {
 	var finance r.Adapter = v.finance
 	if o.hideAuthority {
 		finance = hidden{v.finance}
+	}
+	if o.contractOne {
+		finance = contractOne{v.finance, v.finance}
 	}
 	s, e := r.NewService(r.Config{Repository: v.store, Connections: []r.Connection{{Tenant: v.p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: v.p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: v.shipment}}, CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDF{}}, Issuer: v.issuer, Now: v.clock.Now})
 	if e != nil {
@@ -411,7 +426,7 @@ func TestIssueJobsNumberRenderStampAndRecord(t *testing.T) {
 	j := v.submit(1, "first")
 	// Admission asks nothing of the product and reads no source data; the job has no number, the
 	// product gives it when the worker prepares the document.
-	if j.Kind != "issue" || j.State != "queued" || j.Format != "pdf" || j.Issue == nil || j.Issue.Number != "" || j.Issue.TemplateID != templateID || j.Issue.TemplateVersion != 3 || j.Issue.RowIndex != 1 || len(j.Issue.TemplateSHA256) != 64 {
+	if j.Kind != "issue" || j.State != "queued" || j.Format != "pdf" || j.Issue == nil || j.Issue.Number != "" || j.Issue.TemplateID != templateID || j.Issue.TemplateVersion != 3 || j.Issue.RowIndex == nil || *j.Issue.RowIndex != 1 || len(j.Issue.TemplateSHA256) != 64 {
 		t.Fatalf("admitted issue job: %+v %+v", j, j.Issue)
 	}
 	if len(v.finance.intents) != 0 || v.finance.ReadCalls() != reads || v.issuer.calls != 0 {

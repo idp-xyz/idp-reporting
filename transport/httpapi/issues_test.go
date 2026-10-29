@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -556,7 +557,7 @@ func TestSucceededIssueJobCarriesItsNumberOverHTTPInEveryAnswer(t *testing.T) {
 	w = request(v.h, "GET", "/api/reporting/v1/jobs/"+id, nil, true)
 	var polled r.JobView
 	json.Unmarshal(w.Body.Bytes(), &polled)
-	if w.Code != 200 || polled.Issue == nil || polled.Issue.Number != "AR-000001" || *polled.Issue != *replay.Issue || polled.ArtifactID != replay.ArtifactID {
+	if w.Code != 200 || polled.Issue == nil || polled.Issue.Number != "AR-000001" || !reflect.DeepEqual(polled.Issue, replay.Issue) || polled.ArtifactID != replay.ArtifactID {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	w = request(v.h, "POST", "/api/reporting/v1/jobs/"+id+"/cancel", nil, true)

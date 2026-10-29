@@ -38,8 +38,23 @@ func IssueRequestHash(templateID string, version int, templateSHA256, snapshotID
 		RowIndex        int
 	}{templateID, version, templateSHA256, snapshotID, row})
 }
+
+// issueFields checks what an issue job freezes, apart from its request hash: the template and, in place of one
+// another, the row (a 1.x template) or the group (a schema 2.0 template, S03-K), which has no row.
 func issueFields(j Job) bool {
-	return validID(j.TemplateID) && j.TemplateVersion >= 1 && len(j.Template) >= 2 && len(j.Template) <= MaxTemplateBytes && json.Valid([]byte(j.Template)) && j.TemplateSHA256 == bytesDigest([]byte(j.Template)) && j.RowIndex >= 0 && j.RowIndex < MaxRows
+	template := validID(j.TemplateID) && j.TemplateVersion >= 1 && len(j.Template) >= 2 && len(j.Template) <= MaxTemplateBytes && json.Valid([]byte(j.Template)) && j.TemplateSHA256 == bytesDigest([]byte(j.Template))
+	if j.Group != nil {
+		return template && j.RowIndex == 0 && ValidGroupShape(*j.Group)
+	}
+	return template && j.RowIndex >= 0 && j.RowIndex < MaxRows
+}
+
+// issueRequestHash is the request hash an admitted issue job must carry: a row job's, or a group job's.
+func issueRequestHash(j Job) string {
+	if j.Group != nil {
+		return IssueGroupRequestHash(j.TemplateID, j.TemplateVersion, j.TemplateSHA256, j.SnapshotID, *j.Group)
+	}
+	return IssueRequestHash(j.TemplateID, j.TemplateVersion, j.TemplateSHA256, j.SnapshotID, j.RowIndex)
 }
 
 // ValidProductRef: a reference the source product gave (its reservation or its confirmation) is 1..128
@@ -91,13 +106,13 @@ func ValidateAdmission(j Job) error {
 			return ErrInvalid
 		}
 	case "issue":
-		if !validID(j.SnapshotID) || j.Format != "pdf" || !issueFields(j) || j.RequestHash != IssueRequestHash(j.TemplateID, j.TemplateVersion, j.TemplateSHA256, j.SnapshotID, j.RowIndex) {
+		if !validID(j.SnapshotID) || j.Format != "pdf" || !issueFields(j) || j.RequestHash != issueRequestHash(j) {
 			return ErrInvalid
 		}
 	default:
 		return ErrInvalid
 	}
-	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0) {
+	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0 || j.Group != nil) {
 		return ErrInvalid
 	}
 	return nil
@@ -129,7 +144,7 @@ func ValidatePublication(j Job, p Publication) error {
 		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || len(v.Content) == 0 || len(v.Content) > MaxArtifactBytes || v.SHA256 != bytesDigest(v.Content) || v.Issue != j.ID {
 			return ErrIntegrity
 		}
-		if rec.ID != j.ID || rec.Owner != j.Owner || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages {
+		if rec.ID != j.ID || rec.Owner != j.Owner || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || !rec.Group.Equal(j.Group) || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages {
 			return ErrIntegrity
 		}
 		// What the source product gave (S03-H): its number, the two references of its reservation

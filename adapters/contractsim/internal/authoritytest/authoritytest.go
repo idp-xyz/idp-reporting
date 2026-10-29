@@ -219,4 +219,71 @@ func Run(t *testing.T, newEnv NewEnv) {
 	for _, s := range ruleScenarios {
 		t.Run(s.name, func(t *testing.T) { s.run(t, newEnv) })
 	}
+	// Contract version 2 (S03-K): the intent of a row group of a schema 2.0 template.
+	for _, s := range groupScenarios {
+		t.Run(s.name, func(t *testing.T) { s.run(t, newEnv) })
+	}
+}
+
+// GroupData is the frozen read of the group scenarios (contract version 2, S03-K): five lines of three customers in
+// two buckets, interleaved, so that a customer's rows are not consecutive. customer_a is rows 0, 2 and 4,
+// customer_b row 1 and customer_c row 3; the bucket "current" is rows 0, 3 and 4 and "1_30" rows 1 and 2.
+var GroupData = [][]string{
+	{"customer_a", "current", "10.00"},
+	{"customer_b", "1_30", "20.00"},
+	{"customer_a", "1_30", "30.00"},
+	{"customer_c", "current", "40.00"},
+	{"customer_a", "current", "50.00"},
+}
+
+// NewGroupRig is a simulator whose principal may issue and whose frozen read of the finance query is GroupData.
+func NewGroupRig(t *testing.T, newEnv NewEnv, extra ...string) *Rig {
+	t.Helper()
+	g := Bare(t, newEnv, Finance(), extra...)
+	grant, records := g.P.Grant, []contractsim.Record{}
+	grant.Rows = nil
+	for i, row := range GroupData {
+		key := fmt.Sprintf("g%d", i+1)
+		grant.Rows = append(grant.Rows, key)
+		records = append(records, contractsim.Record{Company: "company_demo", Key: key, Values: row})
+	}
+	g.Env.ReplaceRecords(records)
+	g.P.Grant = grant
+	g.GrantAll()
+	g.Prep = g.Read(g.SC)
+	return g
+}
+
+// rowsOf takes the rows of the data with the given indices.
+func rowsOf(data [][]string, rows []int) [][]string {
+	out := [][]string{}
+	for _, i := range rows {
+		out = append(out, data[i])
+	}
+	return out
+}
+
+// GroupOf is the group of GroupData with the given fields, key and rows, digested as the platform digests it.
+func GroupOf(fields, key []string, rows ...int) *r.IssueGroup {
+	return &r.IssueGroup{Fields: append([]string{}, fields...), Key: append([]string{}, key...), Rows: append([]int{}, rows...), RowsSHA256: r.RowsDigest(rowsOf(GroupData, rows))}
+}
+
+// GroupIntent asks for the n-th job to print the group: no row index and no row digest.
+func (g *Rig) GroupIntent(n int, group *r.IssueGroup) r.IssueIntent {
+	return r.IssueIntent{JobID: Job(n), Prepared: g.Prep, Group: group, TemplateID: templateID, TemplateVersion: 3, TemplateSHA256: templateSHA256}
+}
+
+// PrepareGroup asks the product to authorize the n-th job on the group.
+func (g *Rig) PrepareGroup(n int, group *r.IssueGroup) (r.IssueReservation, error) {
+	return g.Src.PrepareDocument(context.Background(), g.SC, g.GroupIntent(n, group))
+}
+
+// ReserveGroup prepares the n-th job on the group and fails the scenario unless it is reserved.
+func (g *Rig) ReserveGroup(n int, group *r.IssueGroup) r.IssueReservation {
+	g.t.Helper()
+	res, e := g.PrepareGroup(n, group)
+	if e != nil {
+		g.t.Fatalf("group job %d was not reserved: %v", n, e)
+	}
+	return res
 }

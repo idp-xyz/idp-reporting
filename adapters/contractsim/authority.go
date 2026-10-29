@@ -63,11 +63,16 @@ func (s *Simulator) IssueRecord(jobID string) (IssueRecord, bool) {
 	return found, ok
 }
 
+// IssueContractVersion declares contract version 2 of the document authority (r.IssueContractGroups, S03-K): the
+// simulator takes the intent of a row and the intent of a row group of a schema 2.0 template.
+func (s *Simulator) IssueContractVersion() int { return r.IssueContractGroups }
+
 // PrepareDocument refuses, in this order: an intent that is not well formed (ErrInvalid); an
 // intent whose source read was made for another context than sc (ErrDenied); an unavailable
 // source (ErrUnavailable); and with ErrDenied a principal whose current grant may not issue
 // documents, a source read that is not the simulator's own, unexpired and still authorized (as
-// AuthorizeCurrent says), a read whose row at RowIndex lacks the digest the platform froze, and
+// AuthorizeCurrent says), a read whose row at RowIndex lacks the digest the platform froze (for a
+// group intent: whose rows, whole, do not have the group's key and the digest of its rows), and
 // an approval switch that is on. Only then does it answer from the record of the job (a void of
 // the job, a tombstone included, is ErrConflict), or reserve the next number of the source for it.
 // The checks apply to every call, so a principal revoked meanwhile is refused even for a job it
@@ -102,7 +107,7 @@ func (s *Simulator) PrepareDocument(ctx context.Context, sc r.SourceContext, in 
 	if e != nil {
 		return r.IssueReservation{}, e
 	}
-	if e = CheckRow(rows, in); e != nil {
+	if e = CheckIntent(rows, f.query.Dimensions, in); e != nil {
 		return r.IssueReservation{}, e
 	}
 	if s.issueRefused {
@@ -175,4 +180,7 @@ func (s *Simulator) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, re
 	return nil
 }
 
-var _ r.DocumentAuthority = (*Simulator)(nil)
+var (
+	_ r.DocumentAuthority  = (*Simulator)(nil)
+	_ r.VersionedAuthority = (*Simulator)(nil)
+)

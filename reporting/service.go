@@ -322,9 +322,22 @@ func view(j Job) JobView {
 	if j.Kind == "issue" {
 		// The number is the source product's and is known once the job succeeded: jobView reads it
 		// from the record. An issue job itself carries none.
-		v.Issue = &IssueSummary{TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, RowIndex: j.RowIndex}
+		v.Issue = issueSummary(j)
 	}
 	return v
+}
+
+// issueSummary is what an issue job says about itself: its template and the row it freezes, or, for a schema 2.0
+// template (S03-K), the group it freezes in place of a row.
+func issueSummary(j Job) *IssueSummary {
+	s := &IssueSummary{TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256}
+	if j.Group != nil {
+		s.Group = j.Group.View()
+		return s
+	}
+	row := j.RowIndex
+	s.RowIndex = &row
+	return s
 }
 
 // jobView is how an issue job is shown wherever it is shown: the admission and its replay, the
@@ -351,12 +364,16 @@ func (s *Service) CanIssue() bool { return s.issuer != nil }
 
 // IssueInput is what the caller freezes when it asks for an official issue: the published
 // version's canonical configuration as the template store holds it.
+//
+// A 1.x template is issued for one row of the snapshot (RowIndex). A schema 2.0 template is issued for one
+// row group (S03-K): the caller has resolved the group in the snapshot (NewIssueGroup) and RowIndex is 0.
 type IssueInput struct {
 	TemplateID      string
 	TemplateVersion int
 	Template        []byte
 	SnapshotID      string
 	RowIndex        int
+	Group           *IssueGroup
 }
 
 // SubmitIssue admits an issue job for the caller's current, unexpired snapshot. The caller
@@ -364,13 +381,14 @@ type IssueInput struct {
 // published one and that the principal may use the template; the job freezes the
 // configuration so that what was checked is what gets issued. The job has no number: the
 // source product gives it when the worker asks it to prepare the document, so the snapshot's
-// integration must have an adapter that implements DocumentAuthority (else ErrUnsupported).
-// Admission reads no source data.
+// integration must have an adapter that implements DocumentAuthority (else ErrUnsupported), and, for a
+// group, one that declares contract version 2 (GroupIssueSupported: else ErrUnsupported, whatever else is wrong).
+// A group must be the snapshot's own, whole (VerifyGroup: else ErrInvalid). Admission reads no source data.
 func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, key string) (JobView, error) {
 	if s.issuer == nil || s.writers["pdf"] == nil {
 		return JobView{}, ErrUnsupported
 	}
-	if !validKey(key) || !validID(in.TemplateID) || in.TemplateVersion < 1 || len(in.Template) < 2 || len(in.Template) > MaxTemplateBytes || !json.Valid(in.Template) || in.RowIndex < 0 {
+	if !validKey(key) || !validID(in.TemplateID) || in.TemplateVersion < 1 || len(in.Template) < 2 || len(in.Template) > MaxTemplateBytes || !json.Valid(in.Template) || in.RowIndex < 0 || (in.Group != nil && in.RowIndex != 0) {
 		return JobView{}, ErrInvalid
 	}
 	snap, e := s.snapshot(ctx, p, in.SnapshotID)
@@ -384,12 +402,26 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 	if _, ok := c.Adapter.(DocumentAuthority); !ok {
 		return JobView{}, ErrUnsupported
 	}
-	if in.RowIndex >= len(snap.Result.Rows) {
-		return JobView{}, ErrInvalid
-	}
 	sum := bytesDigest(in.Template)
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "issue", State: "queued", Key: key, RequestHash: IssueRequestHash(in.TemplateID, in.TemplateVersion, sum, in.SnapshotID, in.RowIndex), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: in.SnapshotID, Format: "pdf",
-		TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: sum, Template: string(in.Template), RowIndex: in.RowIndex})
+	job := Job{ID: NewID(), Owner: snap.Owner, Kind: "issue", State: "queued", Key: key, Query: snap.Query, Prepared: snap.Prepared, SnapshotID: in.SnapshotID, Format: "pdf",
+		TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: sum, Template: string(in.Template)}
+	if in.Group != nil {
+		// The product must speak the contract that carries a group: a version-1 adapter is never sent one.
+		if !GroupIssueSupported(c.Adapter) {
+			return JobView{}, ErrUnsupported
+		}
+		group := in.Group.Clone()
+		if e = VerifyGroup(snap, group); e != nil {
+			return JobView{}, ErrInvalid
+		}
+		job.Group, job.RequestHash = &group, IssueGroupRequestHash(in.TemplateID, in.TemplateVersion, sum, in.SnapshotID, group)
+	} else {
+		if in.RowIndex >= len(snap.Result.Rows) {
+			return JobView{}, ErrInvalid
+		}
+		job.RowIndex, job.RequestHash = in.RowIndex, IssueRequestHash(in.TemplateID, in.TemplateVersion, sum, in.SnapshotID, in.RowIndex)
+	}
+	j, e := s.repo.Admit(ctx, job)
 	if e != nil {
 		return JobView{}, e
 	}
@@ -453,7 +485,7 @@ func (s *Service) Issue(ctx context.Context, p Principal, id string) (IssueView,
 	return s.issueView(ctx, p, j)
 }
 func (s *Service) issueView(ctx context.Context, p Principal, j Job) (IssueView, error) {
-	v := IssueView{ID: j.ID, State: j.State, ErrorCode: j.ErrorCode, SnapshotID: j.SnapshotID, IssueSummary: IssueSummary{TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, RowIndex: j.RowIndex}}
+	v := IssueView{ID: j.ID, State: j.State, ErrorCode: j.ErrorCode, SnapshotID: j.SnapshotID, IssueSummary: *issueSummary(j)}
 	if j.State != "succeeded" {
 		return v, nil
 	}
@@ -464,7 +496,7 @@ func (s *Service) issueView(ctx context.Context, p Principal, j Job) (IssueView,
 	if e != nil {
 		return IssueView{}, e
 	}
-	if rec.Owner != j.Owner || rec.ArtifactID != j.ArtifactID || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || rec.RowIndex != j.RowIndex || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
+	if rec.Owner != j.Owner || rec.ArtifactID != j.ArtifactID || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || rec.RowIndex != j.RowIndex || !rec.Group.Equal(j.Group) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
 		return IssueView{}, ErrIntegrity
 	}
 	v.Number = rec.Number
@@ -790,13 +822,31 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		if s.issuer == nil || !ok {
 			return ErrUnsupported
 		}
+		// A group (S03-K) is asked only of a product that declares the contract that carries one: a job
+		// whose adapter has since lost that is refused before anything is read or asked, however it was admitted.
+		if j.Group != nil && !GroupIssueSupported(c.Adapter) {
+			return ErrUnsupported
+		}
 		p := Principal{Identity: j.Owner.Identity, Integrations: []string{j.Owner.Integration}}
 		snap, e := s.snapshot(ctx, p, j.SnapshotID)
 		if e != nil {
 			return e
 		}
-		if j.RowIndex >= len(snap.Result.Rows) {
-			return ErrIntegrity
+		// The frozen row or group must still be the verified snapshot's: the snapshot is frozen, so a mismatch is
+		// not a refusal of the caller's request but a store that does not agree with itself.
+		var intent IssueIntent
+		if j.Group != nil {
+			if VerifyGroup(snap, *j.Group) != nil {
+				return ErrIntegrity
+			}
+			intent = IssueIntent{JobID: j.ID, Prepared: snap.Prepared, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256}
+			group := j.Group.Clone()
+			intent.Group = &group
+		} else {
+			if j.RowIndex >= len(snap.Result.Rows) {
+				return ErrIntegrity
+			}
+			intent = IssueIntent{JobID: j.ID, Prepared: snap.Prepared, RowIndex: j.RowIndex, RowSHA256: Digest(snap.Result.Rows[j.RowIndex]), TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256}
 		}
 		// The product is asked only after everything that can be checked without it has passed
 		// (the template is still the published version, the row and the table bind, the
@@ -807,7 +857,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 			return e
 		}
 		attempt.prepared = true
-		res, e := authority.PrepareDocument(ctx, sc, IssueIntent{JobID: j.ID, Prepared: snap.Prepared, RowIndex: j.RowIndex, RowSHA256: Digest(snap.Result.Rows[j.RowIndex]), TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256})
+		res, e := authority.PrepareDocument(ctx, sc, intent)
 		if e != nil {
 			return fromProduct(e)
 		}
@@ -839,7 +889,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		}
 		id := NewID()
 		pub.Artifact = &Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: snap.ExpiresAt, Content: b, SHA256: sum, Issue: j.ID}
-		pub.Issue = &Issue{ID: j.ID, Owner: j.Owner, Number: res.Number, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, SnapshotID: snap.ID, SnapshotSHA256: snap.SHA256, RowIndex: j.RowIndex, ArtifactID: id, SHA256: sum, Pages: result.Pages, Stamp: stamp, IssuedAt: issuedAt,
+		pub.Issue = &Issue{ID: j.ID, Owner: j.Owner, Number: res.Number, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, SnapshotID: snap.ID, SnapshotSHA256: snap.SHA256, RowIndex: j.RowIndex, Group: j.Group.cloned(), ArtifactID: id, SHA256: sum, Pages: result.Pages, Stamp: stamp, IssuedAt: issuedAt,
 			ReservationRef: res.Ref, ConfirmationRef: receipt.Ref, ConfirmedAt: receipt.ConfirmedAt.UTC()}
 	default:
 		return ErrIntegrity

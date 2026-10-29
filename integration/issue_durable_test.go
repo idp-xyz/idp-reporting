@@ -992,4 +992,6 @@ UPDATE reporting_s01.profile SET version=2 WHERE singleton;`); e != nil {
 			}
 		}
 	})
+	// Issue by group (S03-K), in issue_group_durable_test.go.
+	t.Run("issue_by_group", durableGroupIssues)
 }

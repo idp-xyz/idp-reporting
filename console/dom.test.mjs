@@ -1657,7 +1657,7 @@ test('a check answer whose detail or reasons are not the known shapes is shown a
   assert.equal(checkRows(a)[0][2].includes('e12 最长'),true);assert.match(checkRows(a)[1][1],/超过 100 页/);
  }finally{a.close();}});
 
-test('a 2.0 template is saved, opened, published and read back like any template, previews through the real server, and is refused at issue admission',async()=>{const a=app(offeringIssuance());try{
+test('a 2.0 template is saved, opened, published and read back like any template, previews through the real server, and its issue request carries the preview row and nothing else',async()=>{const bodies=[];const a=app(offeringIssuance({bodies}));try{
  await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');
  a.w.document.querySelector('[data-page="documents"]').click();
  a.$('doc-json').value=JSON.stringify(banded());a.click('doc-json-open');assert.equal(a.$('doc-status').textContent,READY);
@@ -1668,11 +1668,18 @@ test('a 2.0 template is saved, opened, published and read back like any template
  a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'publish');
  a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'published open');
  assert.deepEqual(cv.tpl(a),banded());assert.equal(a.$('doc-canvas-note').hidden,false);
- // The console does not offer to issue it: its own message says why, and nothing is sent.
- a.click('doc-issue');assert.match(a.$('doc-status').textContent,/2\.0 分带模板暂不能正式出具/);assert.equal(a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST').length,0);
- // The server refuses it at admission whoever asks: 422, before any snapshot is looked at.
- const refused=await fetch(url+'/api/reporting/v1/issues',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','Idempotency-Key':'banded-admission'},body:JSON.stringify({template_id:id,version:1,snapshot_id:'0'.repeat(32),row_index:0})});
- assert.equal(refused.status,422);assert.deepEqual(await refused.json(),{error:'UNSUPPORTED_COMBINATION'});
+ // The console issues it (S03-K): the request is the published version, the snapshot and the preview row, which the server turns into the
+ // row's group; the stub server here refuses it as a template that is not published, which is shown as such.
+ a.input('doc-row','3');a.click('doc-issue');await until(()=>a.$('notice').textContent.includes('已发布的模板版本')&&!a.$('preview').disabled,'issue request');
+ assert.equal(bodies.length,1);assert.deepEqual(Object.keys(bodies[0]).sort(),['row_index','snapshot_id','template_id','version']);assert.equal(bodies[0].template_id,id);assert.equal(bodies[0].version,1);assert.equal(bodies[0].row_index,2);
+ // The real server takes the same request for a group in its own two forms, and refuses what is neither or both, whoever asks. With the
+ // renderer the unknown snapshot is not found; without it the deployment cannot issue.
+ const direct=async body=>{const w=await fetch(url+'/api/reporting/v1/issues',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','Idempotency-Key':'banded-'+Math.random()},body:JSON.stringify(body)});return [w.status,await w.json()];};
+ const known={template_id:id,version:1,snapshot_id:'0'.repeat(32)};
+ assert.deepEqual(await direct({...known,row_index:0,group:['customer_a']}),[400,{error:'INVALID_REQUEST'}]);
+ assert.deepEqual(await direct(known),[400,{error:'INVALID_REQUEST'}]);
+ assert.deepEqual(await direct({...known,group:['customer_a']}),pdfConfigured?[404,{error:'NOT_FOUND'}]:[422,{error:'UNSUPPORTED_COMBINATION'}]);
+ assert.deepEqual(await direct({...known,row_index:0}),pdfConfigured?[404,{error:'NOT_FOUND'}]:[422,{error:'UNSUPPORTED_COMBINATION'}]);
  // A saved version previews by the saved version (the server's copy), by group of the row it is asked for.
  if(pdfConfigured){
   a.input('doc-row','3');a.click('doc-saved-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'saved preview',20000);
@@ -1696,3 +1703,156 @@ test('a 2.0 template previews through the real server and pinned Typst renderer:
  assert.match(a.$('doc-check-body').rows[0].cells[1].textContent,/不通过 · UNSUPPORTED_COMBINATION.* · 同一分组内该字段的取值不一致 · 单据头带 · 元素 e4/);
  assert.equal(a.errors.length,0);
  }finally{a.close();}});
+
+// ---- Issue by group (S03-K): a published 2.0 template is issued for the group of the preview row ----
+// The demo server keeps at most 16 templates per identity for the whole run, so the tests of a published 2.0 template share one, as
+// publishedOpen does for 1.x: the first to ask saves and publishes it, the others open it by its id. Returns the template id.
+let sharedBanded=null;
+async function bandedPublishedOpen(a){
+  a.w.document.querySelector('[data-page="documents"]').click();
+  if(sharedBanded){
+    a.click('doc-server-list');await until(()=>[...a.$('doc-server-listing').options].some(o=>o.value===sharedBanded)&&!a.$('preview').disabled,'list');
+    a.$('doc-server-listing').value=sharedBanded;a.$('doc-server-version').value='1';a.click('doc-server-open');await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板')&&!a.$('preview').disabled,'open version');
+  }else{
+    a.$('doc-json').value=JSON.stringify(banded());a.click('doc-json-open');assert.equal(a.$('doc-status').textContent,READY);
+    a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'save');
+    a.click('doc-release-read');await until(()=>a.$('doc-release-status').textContent.includes('修订 0')&&!a.$('preview').disabled,'release');
+    a.click('doc-release-publish');await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'publish');
+  }
+  a.click('doc-published-open');await until(()=>a.$('doc-server-status').textContent.includes('已打开发布模板')&&!a.$('preview').disabled,'open');
+  const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+  sharedBanded??=id;assert.equal(id,sharedBanded);
+  return id;
+}
+// A job view of a group issue: the summary names the group, never a row.
+const groupView={fields:['customer.id'],key:['customer_c'],row_count:1,rows_sha256:'d'.repeat(64)};
+const groupText='customer.id = customer_c（1 行）';
+function groupJob(body,state,{number,code,group=groupView,issue}={}){
+  return {job_id:pdfJob,kind:'issue',state,format:'pdf',snapshot_id:body.snapshot_id,...(state==='succeeded'?{artifact_id:pdfArtifact}:{}),...(code?{error_code:code}:{}),issue:issue??{template_id:body.template_id,template_version:body.version,template_sha256:'e'.repeat(64),group,...(number===undefined?{}:{number})}};
+}
+
+test('a published 2.0 template is issued for the group of the preview row: the request is the row, and the group key values are shown in the confirmation, the task and the record',async()=>{
+  const bodies=[];
+  const record={issue_id:pdfJob,state:'succeeded',snapshot_id:'c'.repeat(32),template_id:'d'.repeat(32),template_version:1,template_sha256:'e'.repeat(64),group:groupView,number:'AR-000012',artifact_id:pdfArtifact,snapshot_sha256:'f'.repeat(64),sha256:'a'.repeat(64),pages:2,issued_at:'2026-10-28T06:12:03Z',stamp:'ISSUED No. AR-000012 - 2026-10-28T06:12:03Z - '+pdfJob,reservation_ref:'res-1',confirmation_ref:'con-1',confirmed_at:'2026-10-28T06:12:04Z'};
+  const a=app(offeringIssuance({bodies,submit:body=>json(groupJob(body,'queued'),202),job:(body,reads)=>reads<2?groupJob(body,'running'):groupJob(body,'succeeded',{number:'AR-000012'}),records:[record]}));
+  try{
+    await snapshotReady(a);const id=await bandedPublishedOpen(a);
+    a.input('doc-row','3');a.click('doc-issue');
+    // What is said before the server answers: the row, and that the server finds its group; no key value is known yet.
+    assert.match(a.$('doc-issue-status').textContent,/第 3 行所在分组/);
+    await until(()=>issueRow(a),'listed');
+    // The request is the published version, the snapshot and the preview row, exactly as for a 1.x template: no group, no key.
+    assert.equal(bodies.length,1);assert.deepEqual(bodies[0],{template_id:id,version:1,snapshot_id:bodies[0].snapshot_id,row_index:2});assert.ok(/^[a-f0-9]{32}$/.test(bodies[0].snapshot_id));
+    // The confirmation and the task name the group by its key values, not by a row, and no number before the product confirmed.
+    assert.match(a.$('notice').textContent,/正式出具任务已提交（分组 customer\.id = customer_c（1 行））/);
+    assert.equal(issueRow(a).cells[0].textContent,'正式出具（编号待来源产品确认） · 分组 '+groupText);
+    await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'issued');
+    assert.equal(a.downloads[0].name,'issued-AR-000012.pdf');
+    assert.equal(issueRow(a).cells[0].textContent,'正式出具 No. AR-000012 · 分组 '+groupText);assert.equal(issueRow(a).cells[2].textContent,'已完成');
+    assert.match(a.$('notice').textContent,/来源产品已确认编号 No\. AR-000012（分组 customer\.id = customer_c（1 行））；/);assert.ok(a.$('notice').className.includes('success'));
+    // The record shows the group in the place of the row.
+    a.click('doc-issues-refresh');await until(()=>!a.$('doc-issues-wrap').hidden&&!a.$('preview').disabled,'records');
+    const row=a.$('doc-issues-body').rows[0];assert.equal(row.cells[0].textContent,'No. AR-000012');assert.equal(row.cells[4].textContent,'c'.repeat(32)+' · 分组 '+groupText);assert.equal(row.cells[4].textContent.includes('第 '),false);
+    assert.equal(a.errors.length,0);
+  }finally{a.close();}
+  // A group of no fields is the whole snapshot, and a long key value is cut for the display only.
+  const whole={fields:[],key:[],row_count:3,rows_sha256:'1'.repeat(64)},long={fields:['customer.id','aging.bucket'],key:['客'.repeat(60),'x'],row_count:2,rows_sha256:'2'.repeat(64)};
+  const b=app(offeringIssuance({submit:body=>json(groupJob(body,'queued',{group:whole}),202),job:body=>groupJob(body,'queued',{group:whole})}));
+  try{
+    await snapshotReady(b);await bandedPublishedOpen(b);b.click('doc-issue');await until(()=>issueRow(b),'listed');
+    assert.equal(issueRow(b).cells[0].textContent,'正式出具（编号待来源产品确认） · 分组 整个快照（3 行）');
+  }finally{b.close();}
+  const c=app(offeringIssuance({submit:body=>json(groupJob(body,'queued',{group:long}),202),job:body=>groupJob(body,'queued',{group:long})}));
+  try{
+    await snapshotReady(c);await bandedPublishedOpen(c);c.click('doc-issue');await until(()=>issueRow(c),'listed');
+    assert.equal(issueRow(c).cells[0].textContent,'正式出具（编号待来源产品确认） · 分组 customer.id = '+'客'.repeat(40)+'…、aging.bucket = x（2 行）');
+  }finally{c.close();}
+});
+
+test('a view of a group issue must be a group of the template that was asked for, and a row issue a row: nothing else is believed or remembered',async()=>{
+  // Submitting the preview row of a 2.0 template: the view must carry the group and no row.
+  for(const [label,view] of [
+    ['a row in place of the group',body=>({...groupJob(body,'queued'),issue:{template_id:body.template_id,template_version:body.version,template_sha256:'e'.repeat(64),row_index:body.row_index}})],
+    ['a row as well as the group',body=>groupJob(body,'queued',{issue:{template_id:body.template_id,template_version:body.version,template_sha256:'e'.repeat(64),row_index:body.row_index,group:groupView}})],
+    ['neither a row nor a group',body=>groupJob(body,'queued',{issue:{template_id:body.template_id,template_version:body.version,template_sha256:'e'.repeat(64)}})],
+    ['another template',body=>groupJob({...body,template_id:'1'.repeat(32)},'queued')],
+    ['a group without its key',body=>groupJob(body,'queued',{group:{...groupView,key:[]}})],
+    ['a key value too many',body=>groupJob(body,'queued',{group:{...groupView,key:['a','b']}})],
+    ['a key value that is a number',body=>groupJob(body,'queued',{group:{...groupView,key:[7]}})],
+    ['a group with another member',body=>groupJob(body,'queued',{group:{...groupView,rows:[2]}})],
+    ['a group without its digest',body=>groupJob(body,'queued',{group:{fields:groupView.fields,key:groupView.key,row_count:1}})],
+    ['a digest in upper case',body=>groupJob(body,'queued',{group:{...groupView,rows_sha256:'D'.repeat(64)}})],
+    ['no row in the group',body=>groupJob(body,'queued',{group:{...groupView,row_count:0}})],
+    ['more rows than a snapshot has',body=>groupJob(body,'queued',{group:{...groupView,row_count:1001}})],
+    ['a fraction of a row',body=>groupJob(body,'queued',{group:{...groupView,row_count:1.5}})],
+    ['four fields',body=>groupJob(body,'queued',{group:{fields:['a','b','c','d'],key:['1','2','3','4'],row_count:1,rows_sha256:'d'.repeat(64)}})],
+    ['a field twice',body=>groupJob(body,'queued',{group:{fields:['a','a'],key:['1','2'],row_count:1,rows_sha256:'d'.repeat(64)}})],
+    ['an empty field name',body=>groupJob(body,'queued',{group:{fields:[''],key:['1'],row_count:1,rows_sha256:'d'.repeat(64)}})],
+    ['a group that is a list',body=>groupJob(body,'queued',{group:['customer_c']})],
+    ['a number before the product confirmed',body=>groupJob(body,'queued',{number:'AR-000012'})],
+  ]){
+    const a=app(offeringIssuance({submit:body=>json(view(body),202)}));
+    try{
+      await snapshotReady(a);await bandedPublishedOpen(a);a.click('doc-issue');
+      await until(()=>a.$('notice').textContent.includes('无法验证的响应')&&!a.$('preview').disabled,label);
+      assert.equal(a.downloads.length,0,label);assert.equal([...a.$('tasks-body').rows].filter(r=>r.cells[0].textContent.startsWith('正式出具')).length,0,label);
+      assert.equal(a.trace.filter(v=>v.path.endsWith('/jobs/'+pdfJob)).length,0,label);assert.equal(a.errors.length,0,label);
+    }finally{a.close();}
+  }
+  // A 1.x template is issued for its row: a view that names a group instead is not that job.
+  const a=app(offeringIssuance({submit:body=>json(groupJob(body,'queued'),202)}));
+  try{
+    await snapshotReady(a);await publishedOpen(a);a.click('doc-issue');
+    await until(()=>a.$('notice').textContent.includes('无法验证的响应')&&!a.$('preview').disabled,'a group for a row template');
+    assert.equal([...a.$('tasks-body').rows].filter(r=>r.cells[0].textContent.startsWith('正式出具')).length,0);assert.equal(a.errors.length,0);
+  }finally{a.close();}
+  // A task restored by its id, and the records, go through the same check: a group or a row, never both or neither.
+  const asked={template_id:'d'.repeat(32),version:1,snapshot_id:'c'.repeat(32),row_index:0};
+  let view=null;const b=app(async path=>{if(path.endsWith('/jobs/'+pdfJob))return json(view);});
+  const restore=async job=>{view=job;b.input('restore-id',pdfJob);b.click('restore-job');await until(()=>!b.$('preview').disabled,'restored');return b.$('notice').textContent;};
+  try{
+    await b.login();
+    assert.match(await restore(groupJob(asked,'succeeded',{number:'AR-000012'})),/已恢复/);assert.equal(b.$('tasks-body').rows[0].cells[0].textContent,'正式出具 No. AR-000012 · 分组 '+groupText);
+    assert.match(await restore(groupJob(asked,'failed',{code:'AUTH_SCOPE_DENIED'})),/已恢复/);assert.equal(b.$('tasks-body').rows[0].cells[0].textContent,'正式出具（未出具） · 分组 '+groupText);
+    assert.match(await restore(groupJob(asked,'succeeded',{number:'AR-000012',group:{...groupView,key:[]}})),/无法验证的响应/);assert.equal(b.$('tasks-body').rows[0].cells[2].textContent,'失败 · AUTH_SCOPE_DENIED');
+    assert.equal(b.errors.length,0);
+  }finally{b.close();}
+  const record={issue_id:pdfJob,state:'succeeded',snapshot_id:'c'.repeat(32),template_id:'d'.repeat(32),template_version:1,template_sha256:'e'.repeat(64),number:'AR-000012',artifact_id:pdfArtifact,snapshot_sha256:'f'.repeat(64),sha256:'a'.repeat(64),pages:2,issued_at:'2026-10-28T06:12:03Z',stamp:'ISSUED No. AR-000012 - 2026-10-28T06:12:03Z - '+pdfJob,reservation_ref:'res-1',confirmation_ref:'con-1',confirmed_at:'2026-10-28T06:12:04Z'};
+  for(const [label,records,shown] of [
+    ['a record of a row',[{...record,row_index:2}],true],
+    ['a record of a group',[{...record,group:groupView}],true],
+    ['a record of both',[{...record,row_index:2,group:groupView}],false],
+    ['a record of neither',[record],false],
+    ['a record of a group with a bad digest',[{...record,group:{...groupView,rows_sha256:'x'}}],false],
+    ['a failed record of a group',[{issue_id:pdfJob,state:'failed',error_code:'AUTH_SCOPE_DENIED',snapshot_id:'c'.repeat(32),template_id:'d'.repeat(32),template_version:1,template_sha256:'e'.repeat(64),group:groupView}],true],
+  ]){
+    const c=app(offeringIssuance({records}));
+    try{
+      await snapshotReady(c);c.click('doc-issues-refresh');await until(()=>/出具记录|无法验证/.test(c.$('doc-issue-status').textContent)&&!c.$('preview').disabled,label);
+      assert.equal(c.$('doc-issues-wrap').hidden,!shown,label);if(!shown)assert.match(c.$('doc-issue-status').textContent,/无法验证/,label);
+      assert.equal(c.errors.length,0,label);
+    }finally{c.close();}
+  }
+});
+
+test('official issue of a published 2.0 template through the real server and the pinned Typst renderer: the group of the preview row is issued, numbered by the product and recorded',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
+  await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'frozen');
+  const id=await bandedPublishedOpen(a);
+  // The demo's rows are three customers: the third row's group is customer_c alone.
+  a.input('doc-row','3');a.click('doc-issue');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'issued group PDF',30000);
+  const name=a.downloads[0].name,number=/^issued-(AR-\d{6})\.pdf$/.exec(name)?.[1];assert.ok(number,name);
+  const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+  const submitted=a.trace.filter(v=>v.path.endsWith('/issues')&&v.method==='POST');assert.equal(submitted.length,1);assert.ok(submitted[0].key);
+  // The task and the notice name the group the server found, by the key it holds for the row.
+  assert.equal(issueRow(a).cells[0].textContent,'正式出具 No. '+number+' · 分组 customer.id = customer_c（1 行）');assert.match(a.$('notice').textContent,new RegExp(number+'（分组 customer\\.id = customer_c（1 行））'));
+  // The record the product's number is kept in names the group and has no row.
+  const raw=(await (await fetch(url+'/api/reporting/v1/issues?limit=5',{headers:{Authorization:'Bearer '+token}})).json())[0];
+  assert.equal(raw.number,number);assert.equal(raw.row_index,undefined);assert.deepEqual(raw.group.fields,['customer.id']);assert.deepEqual(raw.group.key,['customer_c']);assert.equal(raw.group.row_count,1);assert.match(raw.group.rows_sha256,/^[a-f0-9]{64}$/);assert.ok(raw.reservation_ref&&raw.confirmation_ref&&raw.confirmed_at);
+  a.click('doc-issues-refresh');await until(()=>!a.$('doc-issues-wrap').hidden&&!a.$('preview').disabled,'records');
+  const row=a.$('doc-issues-body').rows[0];assert.equal(row.cells[0].textContent,'No. '+number);assert.equal(row.cells[1].textContent,'已出具');assert.equal(row.cells[3].textContent,id+' · 版本 1');assert.equal(row.cells[4].textContent,raw.snapshot_id+' · 分组 customer.id = customer_c（1 行）');
+  const digest=createHash('sha256').update(bytes).digest('hex');assert.equal(row.cells[5].textContent,digest+' · '+raw.pages+' 页');
+  // The record downloads the same bytes again under the same name.
+  row.cells[7].querySelector('button').click();await until(()=>a.downloads.length===2&&!a.$('preview').disabled,'record download');assert.equal(a.downloads[1].name,name);assert.deepEqual(Buffer.from(await a.downloads[1].blob.arrayBuffer()),bytes);
+  if(process.env.REPORTING_DOCUMENT_EVIDENCE_DIR){const dir=process.env.REPORTING_DOCUMENT_EVIDENCE_DIR;await mkdir(dir,{recursive:true});await writeFile(join(dir,'console_banded_issued.pdf'),bytes);await writeFile(join(dir,'console_banded_issued_record.json'),JSON.stringify({template_id:id,version:1,sha256:digest,record:raw,source:'real Go group issue job through the console; the PDF is the artifact the record names'},null,2));}
+  assert.equal(a.errors.length,0);
+  }finally{a.close();}});

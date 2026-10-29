@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	r "idp.local/reporting/reporting"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -85,7 +86,7 @@ func TestSucceededIssueJobCarriesItsNumberInEveryAnswer(t *testing.T) {
 		t.Fatalf("the cancel: %+v %+v %v", cancelled, cancelled.Issue, e)
 	}
 	// The same number, the same summary; the cancel gives no references to the output.
-	if *replayed.Issue != *polled.Issue || *cancelled.Issue != *polled.Issue || replayed.ArtifactID != polled.ArtifactID || polled.ArtifactID == "" {
+	if !reflect.DeepEqual(replayed.Issue, polled.Issue) || !reflect.DeepEqual(cancelled.Issue, polled.Issue) || replayed.ArtifactID != polled.ArtifactID || polled.ArtifactID == "" {
 		t.Fatalf("the views differ: poll %+v, replay %+v, cancel %+v", polled, replayed, cancelled)
 	}
 	if cancelled.ArtifactID != "" || cancelled.SnapshotID != "" {

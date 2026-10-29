@@ -291,3 +291,28 @@ func TestIssueRuleHelpers(t *testing.T) {
 		}
 	})
 }
+
+// The digest the simulators store for an intent (IntentSHA256) is the one it has always been for a row: the group
+// that version 2 adds is absent from a row intent, so that a record made before groups existed still matches the
+// intent that made it. The value was computed before the group existed.
+func TestIntentDigestOfARowIntentIsUnchanged(t *testing.T) {
+	in := r.IssueIntent{JobID: "00000000000000000000000000000001", Prepared: r.PreparedRead{Ref: "ref", ScopeHandle: "scope", QueryHash: "qh", Dataset: r.Ref{ID: "d", Version: "1"}, Companies: []string{"c"}, Timezone: "Asia/Shanghai", Watermark: "w", ExpiresAt: time.Date(2026, 10, 28, 6, 0, 0, 0, time.UTC)},
+		RowIndex: 2, RowSHA256: "be93f000dee340d59eabe645cf39c4b48aa5ce2f1cfffe663fe0bac279b2fec9", TemplateID: "0123456789abcdef0123456789abcdef", TemplateVersion: 3, TemplateSHA256: "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1"}
+	const want = "0306df718cecf520ab55fce6a9cedc1fd9b092455cdab9c6c5a06a5560236363"
+	if got := contractsim.IntentDigest(in); got != want {
+		t.Fatalf("the digest of a row intent is %s, it was %s before groups", got, want)
+	}
+	// A group intent digests however its empty lists are made, and differently from the row it does not carry.
+	a := in
+	a.RowIndex, a.RowSHA256 = 0, ""
+	a.Group = &r.IssueGroup{Fields: nil, Key: nil, Rows: []int{0, 1}, RowsSHA256: strings.Repeat("a", 64)}
+	b := a
+	b.Group = &r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0, 1}, RowsSHA256: strings.Repeat("a", 64)}
+	if contractsim.IntentDigest(a) != contractsim.IntentDigest(b) || contractsim.IntentDigest(a) == want {
+		t.Fatal("the digest of a group intent")
+	}
+	b.Group.Rows = []int{0, 2}
+	if contractsim.IntentDigest(a) == contractsim.IntentDigest(b) {
+		t.Fatal("two groups have one digest")
+	}
+}

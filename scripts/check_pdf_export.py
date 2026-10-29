@@ -52,6 +52,11 @@ the table is checked as above over the region each page leaves it (the first pag
 with the columns aligned as the template says; and the document footer is directly under the table's total row, whole,
 on that page when it fits above the page footer and on a page of its own, under the page header, when it does not.
 
+A "document2" expectation with an "issue" record describes an issued group document (S03-K, ADR 0004 decision 7): it is
+checked as the preview of the same 2.0 document, except that the strip of every page holds the record's stamp in the text
+colour at 8 pt in place of the banner, the PDF is the one the record names by digest and with its page count, and every date
+the file carries is the record's issue time, exactly as for a 1.x issue (above).
+
 --golden FILE compares each document's page count and the first row on each page with FILE;
 --write-golden FILE records them after a reviewed Typst or font upgrade. --negative corrupts
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
@@ -1019,21 +1024,10 @@ def same_picture(a, b):
     return (a.width, a.height) == (b.width, b.height) and a.samples == b.samples
 
 
-def document_corruptions(exp):
-    def changed(name, change, expected=""):
-        # expected: what a problem found in the corrupted expectation must say; any problem
-        # counts when it is empty.
-        e = copy.deepcopy(exp)
-        change(e)
-        return name, e, expected
-    yield changed("a value changed", lambda e: e["elements"][0].__setitem__("text", e["elements"][0]["text"] + "X"))
-    yield changed("the offset moved by 0.2 mm", lambda e: e.__setitem__("offset_y", e["offset_y"] + 0.2))
-    yield changed("a box moved by 0.2 mm", lambda e: e["elements"][0].__setitem__("x", e["elements"][0]["x"] + 0.2))
-    flip = {"left": "right", "right": "center", "center": "left"}
-    yield changed("an alignment changed", lambda e: e["elements"][0].__setitem__("align", flip[e["elements"][0]["align"]]))
-    yield changed("a value missing", lambda e: e["elements"].pop())
-    yield changed("a value added", lambda e: e["elements"].append({"text": "X", "x": 20, "y": 200, "width": 50, "height": 10, "size": 10, "align": "left"}))
-    yield changed("the background flag flipped", lambda e: e.__setitem__("background", not e["background"]))
+def issue_expectation_corruptions(exp, changed):
+    """Yields the corruptions of an issue record that apply to an expectation with an "issue" block, whichever kind of
+    document it describes (1.x, S03-G and S03-H; 2.0, S03-K): each must be caught by the check of the record or of the
+    file's dates. `changed(name, change, expected)` is the caller's own."""
     if exp.get("issue"):
         yield changed("the record's number changed", lambda e: e["issue"].__setitem__("number", another_number(e["issue"]["number"])))
         yield changed("the record's time changed", lambda e: e["issue"].__setitem__("issued_at", "2001-01-01T00:00:00Z"))
@@ -1083,6 +1077,24 @@ def document_corruptions(exp):
         # The comparison with the file's dates goes on when the form is wrong: another instant is caught there too.
         yield changed("the record's time is UTC+8, another instant", restamped(issued_at="2001-01-01T08:00:00+08:00"), expected="creation date in")
         yield changed("the record's time is no date, so no date is compared", restamped(issued_at="yesterday"), expected="creation date cannot be compared")
+
+
+def document_corruptions(exp):
+    def changed(name, change, expected=""):
+        # expected: what a problem found in the corrupted expectation must say; any problem
+        # counts when it is empty.
+        e = copy.deepcopy(exp)
+        change(e)
+        return name, e, expected
+    yield changed("a value changed", lambda e: e["elements"][0].__setitem__("text", e["elements"][0]["text"] + "X"))
+    yield changed("the offset moved by 0.2 mm", lambda e: e.__setitem__("offset_y", e["offset_y"] + 0.2))
+    yield changed("a box moved by 0.2 mm", lambda e: e["elements"][0].__setitem__("x", e["elements"][0]["x"] + 0.2))
+    flip = {"left": "right", "right": "center", "center": "left"}
+    yield changed("an alignment changed", lambda e: e["elements"][0].__setitem__("align", flip[e["elements"][0]["align"]]))
+    yield changed("a value missing", lambda e: e["elements"].pop())
+    yield changed("a value added", lambda e: e["elements"].append({"text": "X", "x": 20, "y": 200, "width": 50, "height": 10, "size": 10, "align": "left"}))
+    yield changed("the background flag flipped", lambda e: e.__setitem__("background", not e["background"]))
+    yield from issue_expectation_corruptions(exp, changed)
     if exp.get("table"):
         rows = exp["table"]["rows"] or []
         columns = exp["table"]["columns"]
@@ -1110,34 +1122,11 @@ def document_corruptions(exp):
             yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", e["table"]["columns"][0]["width"] - 5), e["table"]["columns"][-1].__setitem__("width", e["table"]["columns"][-1]["width"] + 5)))
 
 
-def document_pdf_corruptions(directory, exp, scratch, font_file=None):
-    font = pymupdf.Font("cjk")
-
-    def copy_with(name, change):
-        doc = pymupdf.open(os.path.join(directory, exp["file"]))
-        change(doc)
-        target = os.path.join(scratch, name)
-        os.makedirs(target, exist_ok=True)
-        doc.save(os.path.join(target, exp["file"]))
-        if exp.get("background_file"):
-            shutil.copy(os.path.join(directory, exp["background_file"]), target)
-        return target
-
-    def text(t, at, color=(0, 0, 0), embedded=True, size=10):
-        def change(doc):
-            p = doc[0]
-            if embedded:
-                p.insert_font(fontname="Fx", fontbuffer=font.buffer)
-                p.insert_text(at, t, fontname="Fx", fontsize=size, color=color)
-            else:
-                p.insert_text(at, t, fontname="helv", fontsize=size, color=color)
-        return change
-
-    e = exp["elements"][0] if exp["elements"] else None
-    top = (e["y"] + exp["offset_y"]) * MM if e else 0
-    # Below the safe region, outside every box and the table.
-    free = (105 * MM, 285 * MM)
-    yield "extra text", "unexpected text", copy_with("extra", text("X", free))
+def issue_pdf_corruptions(directory, exp, copy_with, text, font):
+    """Yields (what, what a problem must say, directory of the corrupted copy) for the PDF-level corruptions that apply to
+    an issued document of either kind: the preview in place of the issue, the banner text, a forged stamp or one covered
+    on the last page, every date of the file, the stamp's colour. `copy_with(name, change)` and `text(...)` are the
+    caller's own, `font` the substitute font they draw with."""
     if exp.get("issue"):
         def preview_instead(target):
             shutil.copy(os.path.join(directory, exp["issue"]["preview_file"]), os.path.join(target, exp["file"]))
@@ -1221,6 +1210,37 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
             assert new != raw, "the stamp's colour was not found"
             doc.update_stream(xref, new.encode("latin1"))
         yield "the stamp in the banner's red", "text colour", copy_with("recolour", recolour)
+
+
+def document_pdf_corruptions(directory, exp, scratch, font_file=None):
+    font = pymupdf.Font("cjk")
+
+    def copy_with(name, change):
+        doc = pymupdf.open(os.path.join(directory, exp["file"]))
+        change(doc)
+        target = os.path.join(scratch, name)
+        os.makedirs(target, exist_ok=True)
+        doc.save(os.path.join(target, exp["file"]))
+        if exp.get("background_file"):
+            shutil.copy(os.path.join(directory, exp["background_file"]), target)
+        return target
+
+    def text(t, at, color=(0, 0, 0), embedded=True, size=10):
+        def change(doc):
+            p = doc[0]
+            if embedded:
+                p.insert_font(fontname="Fx", fontbuffer=font.buffer)
+                p.insert_text(at, t, fontname="Fx", fontsize=size, color=color)
+            else:
+                p.insert_text(at, t, fontname="helv", fontsize=size, color=color)
+        return change
+
+    e = exp["elements"][0] if exp["elements"] else None
+    top = (e["y"] + exp["offset_y"]) * MM if e else 0
+    # Below the safe region, outside every box and the table.
+    free = (105 * MM, 285 * MM)
+    yield "extra text", "unexpected text", copy_with("extra", text("X", free))
+    yield from issue_pdf_corruptions(directory, exp, copy_with, text, font)
     yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", free, embedded=False))
 
     def cover(doc):
@@ -1613,10 +1633,20 @@ def check_document2(directory, exp, font=None):
     drawn as the template says, and nothing else is drawn. Returns problems and the layout summary."""
     problems = []
     metrics = faces(font)
+    # An expectation with an "issue" record describes an issued group document (S03-K): the strip holds the record's
+    # stamp on every page in place of the banner, the PDF is the one the record names, every date of the file is the
+    # record's issue time, and the page count is the record's.
+    issue = exp.get("issue")
+    if issue:
+        problems += check_issue_record(directory, exp, issue)
     doc = pymupdf.open(os.path.join(directory, exp["file"]))
     xmp = doc.get_xml_metadata()
     if not re.search(r"pdfaid:part[^0-9]{0,4}2\b", xmp) or not re.search(r"pdfaid:conformance[^A-Z]{0,4}B\b", xmp):
         problems.append("no PDF/A-2b identification in the XMP metadata")
+    if issue:
+        problems += check_creation_date(doc, xmp, issue)
+        if doc.page_count != issue["pages"]:
+            problems.append(f"{doc.page_count} pages, the record says {issue['pages']}")
     # A group sum is bound exactly: the expectation's value must be the exact sum of the group's values.
     for band in exp["bands"]:
         for el in band["elements"]:
@@ -1626,7 +1656,7 @@ def check_document2(directory, exp, font=None):
     want_pages = footer["page"] if footer else table_pages
     if pages != want_pages or table_pages < 1 or table_pages > pages:
         return problems + [f"{pages} pages, expected {want_pages} ({table_pages} of them with the table)"], {"pages": pages}
-    shim = {"elements": [], "offset_x": 0, "offset_y": 0, "background": False}
+    shim = {"elements": [], "offset_x": 0, "offset_y": 0, "background": False, "issue": issue}
     ph, dh, df, pf = heights2(exp)
     strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
     table_pages_data, per_page = [], []
@@ -1706,6 +1736,7 @@ def document2_corruptions(exp):
             for k, el in enumerate(band["elements"]):
                 if kind is None or el["type"] == kind:
                     yield b, k, el
+    yield from issue_expectation_corruptions(exp, changed)
     single = next(((b, k) for b, k, el in elements("text") if not el["wrap"] and el["source"] != "page" and len(el["text"].rstrip()) >= 2), None)
     if single:
         b, k = single
@@ -1845,6 +1876,7 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
     pdf_point = lambda c, page: (c["x"], page.rect.height - c["base"])
     free = (105 * MM, 285 * MM)
     yield "extra text", "unexpected text", copy_with("extra", text("X", free))
+    yield from issue_pdf_corruptions(directory, exp, copy_with, text, font)
     yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", free, embedded=False))
     yield "the XMP metadata removed", "PDF/A-2b identification", copy_with("xmp", lambda doc: doc.del_xml_metadata())
     yield "an extra page", "pages, expected", copy_with("pages", lambda doc: doc.new_page())
@@ -2147,7 +2179,14 @@ def main():
                 failed |= not caught
             with tempfile.TemporaryDirectory() as scratch:
                 for what, expected, directory in document2_pdf_corruptions(args.directory, exp, scratch, args.font):
-                    caught = any(expected in p for p in check_document2(directory, exp, args.font)[0])
+                    against = exp
+                    if exp.get("issue"):
+                        # The record names the corrupted file by digest, so that every other check is exercised; the
+                        # digest check has its own control among the expectations.
+                        against = copy.deepcopy(exp)
+                        with open(os.path.join(directory, exp["file"]), "rb") as f:
+                            against["issue"]["sha256"] = hashlib.sha256(f.read()).hexdigest()
+                    caught = any(expected in p for p in check_document2(directory, against, args.font)[0])
                     print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
                     failed |= not caught
         elif args.negative and document:

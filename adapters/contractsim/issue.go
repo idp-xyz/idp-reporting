@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	r "idp.local/reporting/reporting"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -85,9 +86,17 @@ func ValidNumberPrefix(p string) bool {
 
 // ValidateIntent refuses an intent that is not well formed with ErrInvalid: the job id and the
 // row digest are lowercase hexadecimal, the template id and digest hexadecimal, the row index is
-// not negative and the template version at least 1.
+// not negative and the template version at least 1. A group intent (contract version 2, S03-K) has
+// a well formed group (r.ValidGroupShape) and neither a row index nor a row digest.
 func ValidateIntent(in r.IssueIntent) error {
-	if !ValidJobID(in.JobID) || in.RowIndex < 0 || !hexOf(in.RowSHA256, 64, false) || !hexOf(in.TemplateID, 32, true) || in.TemplateVersion < 1 || !hexOf(in.TemplateSHA256, 64, true) {
+	template := ValidJobID(in.JobID) && in.TemplateVersion >= 1 && hexOf(in.TemplateID, 32, true) && hexOf(in.TemplateSHA256, 64, true)
+	if in.Group != nil {
+		if !template || in.RowIndex != 0 || in.RowSHA256 != "" || !r.ValidGroupShape(*in.Group) {
+			return r.ErrInvalid
+		}
+		return nil
+	}
+	if !template || in.RowIndex < 0 || !hexOf(in.RowSHA256, 64, false) {
 		return r.ErrInvalid
 	}
 	return nil
@@ -103,9 +112,14 @@ func ValidateConfirmation(c r.IssueConfirmation) error {
 }
 
 // IntentDigest identifies an intent: the same job asking for the same thing again has the same
-// digest, however the time of its source read is spelled.
+// digest, however the time of its source read is spelled and however an empty list of its group is made.
+// A row intent has no group and digests as it did before groups existed.
 func IntentDigest(in r.IssueIntent) string {
 	in.Prepared.ExpiresAt = in.Prepared.ExpiresAt.UTC()
+	if in.Group != nil {
+		g := in.Group.Clone()
+		in.Group = &g
+	}
 	return r.Digest(in)
 }
 
@@ -135,6 +149,77 @@ func FrozenRows(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p r.P
 // froze; otherwise it is not what the source snapshot produced (ErrDenied).
 func CheckRow(rows [][]string, in r.IssueIntent) error {
 	if in.RowIndex < 0 || in.RowIndex >= len(rows) || r.Digest(rows[in.RowIndex]) != in.RowSHA256 {
+		return r.ErrDenied
+	}
+	return nil
+}
+
+// CheckIntent is the product's check of what an intent names against the rows of its frozen read: CheckRow for a
+// row, CheckGroup for a group. dimensions are the dimensions of the read's query, which head every row.
+func CheckIntent(rows [][]string, dimensions []string, in r.IssueIntent) error {
+	if in.Group != nil {
+		return CheckGroup(rows, dimensions, in)
+	}
+	return CheckRow(rows, in)
+}
+
+// CheckGroup (contract version 2, S03-K): every row the group names must be a row of the frozen read, in the order
+// the read produced them, with the group's key in its group fields; the group must be whole (the read has no other
+// row with that key; with no group field, every row); and the digest of those rows, as the read holds them, must be
+// the one the platform froze. A group field that is not a dimension of the read, a row that is not there, a row of
+// another key, a group that leaves a row of its key out and a digest of other rows are not what the source snapshot
+// produced (ErrDenied). The errors carry no value.
+func CheckGroup(rows [][]string, dimensions []string, in r.IssueIntent) error {
+	g := in.Group
+	if g == nil {
+		return r.ErrInvalid
+	}
+	at := make([]int, len(g.Fields))
+	for k, f := range g.Fields {
+		i := slices.Index(dimensions, f)
+		if i < 0 {
+			return r.ErrDenied
+		}
+		at[k] = i
+	}
+	has := func(row []string) (bool, error) {
+		for k, i := range at {
+			if i >= len(row) {
+				return false, r.ErrIntegrity
+			}
+			if row[i] != g.Key[k] {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	count := 0
+	for _, row := range rows {
+		ok, e := has(row)
+		if e != nil {
+			return e
+		}
+		if ok {
+			count++
+		}
+	}
+	if count != len(g.Rows) {
+		return r.ErrDenied
+	}
+	picked := make([][]string, 0, len(g.Rows))
+	for _, i := range g.Rows {
+		if i < 0 || i >= len(rows) {
+			return r.ErrDenied
+		}
+		if ok, e := has(rows[i]); e != nil || !ok {
+			if e == nil {
+				e = r.ErrDenied
+			}
+			return e
+		}
+		picked = append(picked, rows[i])
+	}
+	if r.RowsDigest(picked) != g.RowsSHA256 {
 		return r.ErrDenied
 	}
 	return nil

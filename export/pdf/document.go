@@ -152,7 +152,9 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 }
 
 // Issue renders an official document (S03-G): the same pages as Render, with the issue stamp
-// in the strip the preview banner occupies, in the text colour, at stampSize. The stamp is one
+// in the strip the preview banner occupies, in the text colour, at stampSize, on every page. A schema 2.0
+// document (S03-K) is issued as it is previewed: values and table are those doctemplates.BindGroup bound for
+// the row group the issue froze. The stamp is one
 // line of ASCII the fonts cover; one that does not fit the strip is unsupported, as any value
 // (the stamp of any number, id and time the contract allows fits). at is the issue time the
 // source product reserved (S03-H): a UTC whole second between 1970 and 9999, else ErrInvalid.
@@ -163,10 +165,6 @@ func (w *Writer) Render(ctx context.Context, d doctemplates.Document, values map
 func (w *Writer) Issue(ctx context.Context, d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, stamp string, at time.Time) ([]byte, int, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, 0, err
-	}
-	// A schema 2.0 document is issued by group (S03-K); until then nothing issues one.
-	if d.Schema == doctemplates.SchemaBanded {
-		return nil, 0, fmt.Errorf("pdf: a schema 2.0 document is not issued yet: %w", r.ErrUnsupported)
 	}
 	if !validIssueTime(at) {
 		return nil, 0, fmt.Errorf("pdf: the issue time is not a UTC whole second between 1970 and 9999: %w", r.ErrInvalid)

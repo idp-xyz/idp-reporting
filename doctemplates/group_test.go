@@ -409,3 +409,58 @@ func TestGroupDigitsGroupsTheIntegerPartAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// GroupByKey finds the group an issue request names by its key values (S03-K): the exact strings in the order of the template's
+// fields; none of them for a template without a group (the whole snapshot). A key of another length is invalid, one no group has is
+// not found, and so is the whole snapshot of a snapshot without rows; nothing the refusals say names a value.
+func TestGroupByKeyFindsTheGroupByItsExactKey(t *testing.T) {
+	s := orders(
+		line("B", "乙", "n1", "1", "1.00"),
+		line("A", "甲", "n2", "1", "2.00"),
+		line("B", "乙", "n3", "1", "3.00"),
+		line("", "丙", "n4", "1", "4.00"),
+	)
+	by := func(fields []string, key ...string) (doctemplates.RowGroup, error) {
+		return doctemplates.GroupByKey(invoice(fields), s, key)
+	}
+	if g, e := by([]string{"order"}, "B"); e != nil || !reflect.DeepEqual(g, doctemplates.RowGroup{Key: []string{"B"}, Rows: []int{0, 2}}) {
+		t.Errorf("B: %+v %v", g, e)
+	}
+	// The empty string is a key like any other.
+	if g, e := by([]string{"order"}, ""); e != nil || !reflect.DeepEqual(g.Rows, []int{3}) {
+		t.Errorf("the empty key: %+v %v", g, e)
+	}
+	if g, e := by([]string{"customer", "order"}, "乙", "B"); e != nil || !reflect.DeepEqual(g.Rows, []int{0, 2}) {
+		t.Errorf("two fields: %+v %v", g, e)
+	}
+	// The whole snapshot of a template without a group is one group of every row, with no key.
+	if g, e := by(nil); e != nil || len(g.Key) != 0 || !reflect.DeepEqual(g.Rows, []int{0, 1, 2, 3}) {
+		t.Errorf("whole snapshot: %+v %v", g, e)
+	}
+	for name, c := range map[string]struct {
+		fields []string
+		key    []string
+		want   error
+	}{
+		"an unknown key":              {[]string{"order"}, []string{"Z-secret"}, r.ErrNotFound},
+		"a key of another case":       {[]string{"order"}, []string{"b"}, r.ErrNotFound},
+		"the pair in the other order": {[]string{"customer", "order"}, []string{"B", "乙"}, r.ErrNotFound},
+		"too short a key":             {[]string{"customer", "order"}, []string{"乙"}, r.ErrInvalid},
+		"too long a key":              {[]string{"order"}, []string{"B", "乙"}, r.ErrInvalid},
+		"a key for no fields":         {nil, []string{"B"}, r.ErrInvalid},
+		"no key for a field":          {[]string{"order"}, nil, r.ErrInvalid},
+	} {
+		g, e := doctemplates.GroupByKey(invoice(c.fields), s, c.key)
+		if !errors.Is(e, c.want) || len(g.Rows) != 0 || strings.Contains(e.Error(), "secret") {
+			t.Errorf("%s: %+v %v", name, g, e)
+		}
+	}
+	// A snapshot without rows has no group to issue, whole or not.
+	empty := orders()
+	if _, e := doctemplates.GroupByKey(invoice(nil), empty, nil); !errors.Is(e, r.ErrNotFound) {
+		t.Errorf("the whole snapshot of no rows: %v", e)
+	}
+	if _, e := doctemplates.GroupByKey(invoice([]string{"order"}), empty, []string{"A"}); !errors.Is(e, r.ErrNotFound) {
+		t.Errorf("a group of no rows: %v", e)
+	}
+}
