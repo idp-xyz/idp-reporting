@@ -387,22 +387,29 @@ func send(w http.ResponseWriter, status int, v any) error {
 	}
 	return nil
 }
-func problem(w http.ResponseWriter, e error, status int) {
-	code := "EXECUTION_FAILED"
-	if status == 0 {
-		status = 500
-	}
+
+// classify is the one table of error to code and status: the answer of problem, and the code of a
+// row of a document check, which is the code a preview of that row would answer. ok is false for
+// an error the table does not know (EXECUTION_FAILED, 500).
+func classify(e error) (code string, status int, ok bool) {
 	for _, candidate := range []struct {
 		err    error
 		status int
 	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
 		if errors.Is(e, candidate.err) {
-			code = candidate.err.Error()
-			if status != 401 {
-				status = candidate.status
-			}
-			break
+			return candidate.err.Error(), candidate.status, true
 		}
+	}
+	return "EXECUTION_FAILED", 500, false
+}
+
+func problem(w http.ResponseWriter, e error, status int) {
+	if status == 0 {
+		status = 500
+	}
+	code, mapped, ok := classify(e)
+	if ok && status != 401 {
+		status = mapped
 	}
 	_ = send(w, status, map[string]string{"error": code})
 }

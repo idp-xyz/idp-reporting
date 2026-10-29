@@ -137,7 +137,9 @@ jobs:
           node --check console/assets/app.js
           node --check console/assets/dashboard.js
           node --check console/assets/documents.js
+          node --check console/assets/canvas.js
           node --check scripts/browser_visual_s03c4.mjs
+          node --check scripts/browser_canvas_s03i.mjs
       - run: node --test console/dom.test.mjs
 
   pdf:
