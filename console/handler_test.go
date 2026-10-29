@@ -26,7 +26,9 @@ func TestConsoleServesOnlyBundledAssetsAndPreservesAPI(t *testing.T) {
 		content string
 	}{
 		{"/", 303, ""}, {"/console/", 200, "IDP Reporting"}, {"/console/app.js", 200, "/api/reporting/v1"}, {"/console/styles.css", 200, "--ink"}, {"/console/dashboard.js", 200, "createReportingDashboard"}, {"/console/documents.js", 200, "createReportingDocuments"}, {"/console/canvas.js", 200, "createReportingCanvas"},
-		{"/console/private.json", 404, ""}, {"/console/assets/", 404, ""}, {"/api/reporting/v1/session", 401, "private-api"},
+		{"/console/embed.js", 200, "createReportingEmbed"}, {"/console/embed.css", 200, "data-theme"},
+		// The embed page is served only through the origin-checked /embed/ routes, never as a console asset.
+		{"/console/embed.html", 404, ""}, {"/console/private.json", 404, ""}, {"/console/assets/", 404, ""}, {"/api/reporting/v1/session", 401, "private-api"},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()

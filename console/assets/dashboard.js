@@ -70,7 +70,9 @@ window.createReportingDashboard = function (ports) {
   $('board-server-save').addEventListener('click',()=>saveServer(false));$('board-server-new').addEventListener('click',()=>saveServer(true));
   $('board-server-list').addEventListener('click',()=>action(()=>ports.exchange('/dashboards',undefined,values=>{if(!Array.isArray(values)||values.length>16||!values.every(v=>validID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw Error('无法验证服务器看板列表。');$('board-server-listing').replaceChildren();for(const value of values){const option=node('option',value.id+' · 最新版本 '+value.version);option.value=value.id;option.dataset.version=String(value.version);$('board-server-listing').append(option);}$('board-server-version').value=String(values[0]?.version||1);$('board-server-status').textContent='当前身份可访问 '+values.length+' 个服务器看板。';},'看板目录')));
   $('board-server-listing').addEventListener('change',()=>{$('board-server-version').value=$('board-server-listing').selectedOptions[0]?.dataset.version||'1';});
-  $('board-server-open').addEventListener('click',()=>action(()=>{const id=$('board-server-listing').value,version=Number($('board-server-version').value);if(!validID(id)||!Number.isSafeInteger(version)||version<1||version>20)throw Error('请选择有效看板和版本。');resetRelease();ports.exchange('/dashboards/'+id+'?version='+version,undefined,value=>{entry(value,id,version);apply(value.config);saved=value;resetRelease();$('board-server-status').textContent='正在编辑看板 '+id+' · 版本 '+version+'；旧版本保存可能冲突。';},'看板打开');}));
+  // The console's button and the embed page (S03-N) open a server version the same way: through this one function and its checks.
+  function openServer(id,version){action(()=>{if(!validID(id)||!Number.isSafeInteger(version)||version<1||version>20)throw Error('请选择有效看板和版本。');resetRelease();ports.exchange('/dashboards/'+id+'?version='+version,undefined,value=>{entry(value,id,version);apply(value.config);saved=value;resetRelease();$('board-server-status').textContent='正在编辑看板 '+id+' · 版本 '+version+'；旧版本保存可能冲突。';},'看板打开');});}
+  $('board-server-open').addEventListener('click',()=>openServer($('board-server-listing').value,Number($('board-server-version').value)));
   function resetRelease(){release=null;$('board-release-status').textContent='请读取当前看板发布状态后再操作。';$('board-release-history').replaceChildren();}
   function savedBoard(){ready();if(!saved||!matches(saved.config.binding))throw Error('请先保存或打开当前数据集的服务器看板。');return saved.id;}
   function releaseState(value){
@@ -86,6 +88,7 @@ window.createReportingDashboard = function (ports) {
   $('board-release-withdraw').addEventListener('click',()=>changeRelease('withdraw'));
   $('board-published-open').addEventListener('click',()=>action(()=>{const id=savedBoard();resetRelease();ports.exchange('/dashboards/'+id+'/published',undefined,value=>{entry(value,id);apply(value.config);saved=value;resetRelease();$('board-server-status').textContent='已打开发布看板 '+id+' · 版本 '+value.version+'；数据来自当前授权查询。';},'发布看板打开');}));
   return {
+    openServer,
     clear(logout=false){resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('board-server-listing').replaceChildren();$('board-server-version').value='1';$('board-server-status').textContent='查询当前授权结果后可使用服务器看板。';$('board-widgets').replaceChildren();$('board-metric').replaceChildren();$('board-columns').replaceChildren();$('board-category').replaceChildren();$('board-value').replaceChildren();$('board-json').value='';$('board-count').textContent='0 / 12 个组件';$('board-source').textContent='尚无当前授权结果';$('board-status').textContent='请先在工作台查询或打开快照。';},
     refresh(value,q,snapshot){
       resetRelease();result=value;query=q;if(saved&&!matches(saved.config.binding))saved=null;

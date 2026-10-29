@@ -1,0 +1,53 @@
+/* The embed pages (S03-N, ADR 0006): the console's styles stay as they are; this adds what a page in a product's frame needs.
+   No script writes a style attribute and nothing here loads anything: the policy of the page allows styles from its own origin only. */
+.embed .shell{min-height:0}
+.embed main{max-width:none;padding:12px 14px 14px}
+/* There is one view and nowhere to go: the buttons that open another console page are not shown. */
+.embed [data-open]{display:none}
+.embed .page-heading{margin-bottom:14px}
+.embed .page-heading h1{font-size:20px;line-height:1.4}
+/* The frame is as tall as its content (the product page sets it from reporting:resize), so nothing may be as tall as the frame. */
+.embed .cv-scroll{max-height:none}
+/* Waiting for the product page, or signed out: a card in the flow, so that the frame has a height to report. */
+.embed .connection-overlay{position:static;background:none;backdrop-filter:none;padding:16px;display:grid;place-items:center}
+.embed .connection-card{box-shadow:none;padding:24px}
+.embed .connection-card h1{font-size:18px}
+.embed .connection-card>p{margin:8px 0 14px}
+.embed .connection-card .button.full{margin-top:14px}
+
+/* The product page may ask for a light or a dark theme (reporting:theme). Light is the console's own palette; this is the dark one. */
+html[data-theme="dark"]{color-scheme:dark;--ink:#e8eff7;--text:#bccadb;--muted:#93a4b6;--blue:#6aa7f4;--light:#1d2d40;--line:#2c3d51;--bg:#0f1824}
+html[data-theme="dark"] .panel,html[data-theme="dark"] .connection-card,html[data-theme="dark"] .metric-card,html[data-theme="dark"] .filter-bar,html[data-theme="dark"] .cv-palette{background:#162231;border-color:var(--line)}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#0f1824;border-color:#3a4d63;color:var(--ink)}
+html[data-theme="dark"] input::placeholder{color:#8798ab}
+html[data-theme="dark"] .button,html[data-theme="dark"] .button.secondary{background:#1d2d40;color:#c4d8ef;border-color:#3a4d63}
+html[data-theme="dark"] .button.quiet{background:transparent;color:#b3cbe6}
+html[data-theme="dark"] .button.primary{background:var(--blue);color:#0a1522}
+html[data-theme="dark"] .button.danger{background:transparent;color:#f0a79e;border-color:#6b3d38}
+html[data-theme="dark"] .button:hover:not(:disabled){background:#27394f}
+html[data-theme="dark"] .button.primary:hover:not(:disabled){background:#86b9f7}
+html[data-theme="dark"] thead{background:#1b2b3d}
+html[data-theme="dark"] th{color:#a7b8ca;border-color:#2c3d51}
+html[data-theme="dark"] td{color:#ccd9e7;border-color:#273850}
+html[data-theme="dark"] .query-actions{background:#132030;border-color:var(--line)}
+html[data-theme="dark"] .field label,html[data-theme="dark"] .field small,html[data-theme="dark"] .help,html[data-theme="dark"] .query-meta,html[data-theme="dark"] .query-meta b,html[data-theme="dark"] .page-heading p,html[data-theme="dark"] .eyebrow,html[data-theme="dark"] .panel-heading p,html[data-theme="dark"] .pager,html[data-theme="dark"] .evidence,html[data-theme="dark"] .empty,html[data-theme="dark"] .empty b,html[data-theme="dark"] .connection-card>p,html[data-theme="dark"] .connection-card label{color:#a7b8ca}
+html[data-theme="dark"] .empty-icon{color:#5a7090}
+html[data-theme="dark"] .summary-card{background:#1a2b40;border-color:#2f4560}
+html[data-theme="dark"] .summary-card small{color:#9fb5cc}
+html[data-theme="dark"] .summary-card strong{color:#a9cdf5}
+html[data-theme="dark"] .badge{background:#1b3a30;color:#8fd3b6}
+html[data-theme="dark"] .badge.neutral{background:#243549;color:#b3c6da}
+html[data-theme="dark"] .badge.warning{background:#3d3220;color:#e8c98a}
+html[data-theme="dark"] .badge.danger{background:#40282a;color:#f0aaa3}
+html[data-theme="dark"] .notice{background:#172a40;border-color:#2c4766;color:#b5d2f0}
+html[data-theme="dark"] .notice.error{background:#3a2326;border-color:#6b3d38;color:#f2b3aa}
+html[data-theme="dark"] .notice.success{background:#18332b;border-color:#2d5d4d;color:#a4dcc4}
+html[data-theme="dark"] .connect-error{color:#f2a99f}
+html[data-theme="dark"] .board-chart-track{background:#223347}
+html[data-theme="dark"] .board-chart-track::after{background:#9fb0c3}
+html[data-theme="dark"] .board-chart-bar{background:#6aa7f4}
+html[data-theme="dark"] .board-chart-bar.negative{background:#e59a64}
+html[data-theme="dark"] .form-panel>summary{color:var(--ink)}
+html[data-theme="dark"] .cv-commands li[aria-selected]{background:#27394f}
+html[data-theme="dark"] .cv-panel{--cv-desk:#14202e;--cv-ruler:#1d2c3f;--cv-ruler-ink:#c2d0df;--cv-ruler-line:#7d93ab}
+html[data-theme="light"] .cv-panel{--cv-desk:#e6ecf4;--cv-ruler:#f3f6fa;--cv-ruler-ink:#4d6075;--cv-ruler-line:#9aa9ba}

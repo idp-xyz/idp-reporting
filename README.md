@@ -1,3 +1,16 @@
+# IDP Reporting Platform · S03-N
+
+2026-10-29。嵌入（ADR 0006，docs/ADR_0006_EMBEDDING.md，docs/S03N_SCOPE.md，docs/EMBEDDING.md）：产品可以把平台的报表查看器、看板与文档设计器放进自己页面的 `<iframe>`，为自己已登录的用户展示，用户无需打开控制台。独立控制台的安全姿态不变。
+入口与页面：`GET /embed/report`（`dataset`）、`/embed/dashboard`（`dashboard`）、`/embed/document-designer`（`template`，可选 `version`）都返回同一个嵌入页面（`console/assets/embed.html`），查询里固定有 `integration` 与 `parent`（产品页面的精确来源），别无其他参数。页面运行控制台自己的脚本（看板、画布、文档与 app.js，增加 `embed.js`），三个视图的区段与控制台的逐字节相同（测试比较）：只显示地址所指的那一个视图，没有导航、令牌表单与退出；查询面板随看板与设计器视图显示在上方，用户仍在框架里给出公司范围与数据时点；地址所指的数据集被选中，已保存的看板或模板先读一次以得知它绑定的数据集，授权结果出现后才打开保存的版本（不属于该身份、绑定了别的 integration 或不存在，同为 `RESOURCE_UNAVAILABLE`）。其余（授权、拒绝、摘要校验下载、画布、预览、出具）与控制台完全相同。
+谁能嵌入：每个 integration 在服务端可信配置里有一份精确来源名单（demo 用可重复的 `-embed-origin integration=origin`；服务用 `embedding.New(map, Options)` 交给 `console.HandlerWithEmbedding` 与 `httpapi.WithEmbedding`）；来源只能是 `https://host[:port]` 的精确序列化形式（小写、无默认端口、无路径、查询、片段、用户信息、通配符或列表），`http://` 只限回环 IP 且仅 demo 允许；启动时校验，格式错误、重复或不存在的 integration 使启动失败。integration 未知、parent 缺失、重复、格式不对或不在名单上，一律 403；名单内来源但资源参数不对为 400；两者都带 `X-Frame-Options: DENY` 与 `frame-ancestors 'none'` 且无页面。名单内来源得到 200，策略与控制台相同，仅 `frame-ancestors` 换成那一个来源，没有 `X-Frame-Options`。控制台页面、每个静态文件、重定向、404、API 的每个路由（`secured` 现在给每个 API 答复加上 `X-Frame-Options: DENY` 与 `frame-ancestors 'none'`，图片内容路由自带的策略也含 `frame-ancestors 'none'`）一律不可嵌入；`GET /capabilities` 新增 `embedding: true|false`（调用者的任一 integration 已配置，绝不含来源）。
+令牌：框架页启动时不持有任何凭据，向 `window.parent` 发 `reporting:ready`，目标来源是服务时的 parent 来源，从不是 `"*"`；只在 `event.source === window.parent` 且 `event.origin` 恰为该来源时才收 `reporting:token`，令牌只在内存里、只作为 Bearer 头发往本站（`credentials: 'omit'`），不进 URL、Cookie、任何存储、DOM 或消息。401 时向父页面发一次 `reporting:token-request` 并等待（10 秒）一个不同的令牌，只重试一次；第二次 401 或超时即控制台的退出状态（数据清空、错误码 `UNAUTHENTICATED`），之后父页面推送令牌或点“重新请求令牌”可重新开始；新令牌先经 `/session` 核对为同一身份（租户、签发方、主体）才替换，另一身份的令牌使页面整体重来，不留前一个用户的任何内容；JWT 令牌在声明的 `exp` 前一分钟主动再要一次（至少相隔 15 秒）。未被嵌入（`window.parent === window`）或地址不是服务器会返回的形式的页面不启动、不监听。
+消息（均带 `v: 1`，其他一律忽略）：父到框架 `reporting:token`、`reporting:theme`（`light`/`dark`，深色调色板在 `embed.css`）；框架到父 `reporting:ready`、`reporting:token-request`、`reporting:resize`（`height` 整数像素，50 毫秒内合并，每次变化都发）、`reporting:event`（`saved`/`published` 带 `template_id` 与 `version`，`issued` 带 `job_id`，仅此；看板与列布局不发事件）、`reporting:error`（只有 `UNAUTHENTICATED`、`FORBIDDEN`、`NOT_FOUND`、`RESOURCE_UNAVAILABLE`、`UNAVAILABLE`、`INVALID_RESPONSE`、`INTEGRITY_FAILURE`、`REQUEST_FAILED` 之一）。任何行值、字段值、文件、文字都不会传给父页面。
+参考主机：`console/embed-host/`（平台不提供它；`index.html` 与 `host.js`，约二十行是集成本身）。文档：docs/EMBEDDING.md（协议、配置、安全规则、主机代码）、docs/API.md、docs/CONSOLE.md、docs/OPERATIONS.md。
+测试：Go 无环境 296 项顶层测试通过（改动前 281；18 个包，改动前 17），跳过清单与 CI 的一致，普通与 race 都通过；DOM 156 项（改动前 136；新增 `console/embed.dom.test.mjs` 20 项，CI 与 `npm test` 一并运行；无 Typst 137 项通过、19 项跳过，含 Typst 156 项全部通过），协议、来源与窗口检查、401 重试、身份切换、续期、尺寸、事件、主题、无令牌泄漏与嵌入页面和控制台区段逐字节相同都经真实 Go 服务；`scripts/browser_embed_s03n.mjs`（Windows Chrome 经 CDP，本地证据，不在 CI）42 项通过：主机页面与平台在不同的回环来源，三个视图在令牌交接后可用（真实鼠标与键盘、下载在框架内完成），第三个未列出的来源、冒充名单来源的主机、未列出来源的中间框架、控制台页面与格式错误的地址都被浏览器拒绝，网络日志、存储、DOM 与全部消息表明令牌只出现在发往平台本站的 Authorization 头里；S03-I 的画布浏览器脚本 76 项仍全部通过。
+不在本阶段：嵌入用户的真实身份提供方令牌签发（随真实接入）、产品页面里的 JavaScript SDK（ADR 0006 已否决）、单独嵌入出具记录列表、地址里带公司范围或数据时点（用户在框架里给出）。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S03-M
 
 2026-10-29。条码、二维码、图片与出具编号（模板 schema 2.1；ADR 0005，docs/S03M_SCOPE.md）：正式文件现在可以带 Code 128 条码、QR 二维码、图片，并把来源产品给的单据编号印在文本和码里。
@@ -11,8 +24,6 @@
 测试：Go 无环境 278 项顶层测试通过（改动前 244），数据库与 Typst 全开 294 项通过（改动前 260）、无跳过，普通与 race 的 CI 跳过清单一致；DOM 136 项（改动前 128；无 Typst 118 项通过、18 项跳过，含 Typst 136 项全部通过）；检查器 57 份文档通过（改动前 41；含 16 份 `coded_*`）、3213 项反向对照全部捕获（改动前 1962），veraPDF PDF/A-2b 85 份通过（改动前 56；含控制台的 2.1 预览与出具各 1 份；去掉 XMP 的反向对照仍为 FAIL）。
 依赖与运行：go.mod 增加 boombuler/barcode v1.1.0（go.sum 两行），检查器依赖 zxing-cpp（docs/OPERATIONS.md）；1.x 与 2.0 的模板与文件不变，无 SQL 迁移，2.1 模板需要本阶段的二进制。
 不在本阶段：其他码制（EAN-13、GS1-128、Data Matrix、PDF417）、明细表中的图片、电子印章与签名（图片只是图片）、2.x 的套打与底稿；嵌入入口与 S04 的其余部分随后。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S03-L
 

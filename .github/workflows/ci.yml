@@ -139,10 +139,14 @@ jobs:
           node --check console/assets/dashboard.js
           node --check console/assets/documents.js
           node --check console/assets/canvas.js
+          node --check console/assets/embed.js
+          node --check console/embed-host/host.js
+          node --check console/embed.dom.test.mjs
           node --check scripts/browser_visual_s03c4.mjs
           node --check scripts/browser_canvas_s03i.mjs
           node --check scripts/browser_canvas_s03l.mjs
-      - run: node --test console/dom.test.mjs
+          node --check scripts/browser_embed_s03n.mjs
+      - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:
     name: PDF export and document previews with the pinned Typst, fonts and veraPDF
@@ -187,7 +191,7 @@ jobs:
           REPORTING_DOCUMENT_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
-          node --test console/dom.test.mjs
+          node --test console/dom.test.mjs console/embed.dom.test.mjs
           # console_issued.json is the checker's expectation of the issued PDF of the real stack (the product's record,
           # the template's boxes and values) and console_issued.preview.pdf the preview of the same document, so that
           # the checker, not only veraPDF, checks it; console_issued_record.json is the record as it was read, kept out.

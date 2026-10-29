@@ -128,7 +128,7 @@ Storage、日志或任务；退出/401 清理当前页面数据。仅使用回�
 
 当前只有已发布查询组合，自定义筛选、排序、SQL、公式不开放。画布编辑器覆盖
 1.x 的文本框与明细表（S03-I）、2.0 的分带版面（S03-L）与 2.1 的条码、二维码、图片和出具编号（S03-M）；组合、其他条码制式（EAN-13、GS1-128、Data Matrix、PDF417）、明细表中的图片、电子印章与签名、
-2.0 的套打与底稿、子分组、整本快照的逐组批量出具、嵌入入口、出具 PDF 的保留策略及生产运行仍在后续范围；
+2.0 的套打与底稿、子分组、整本快照的逐组批量出具、出具 PDF 的保留策略及生产运行仍在后续范围（嵌入入口见下面的 S03-N 条目）；
 PDF 目前只有内置的通用表格版式与文档模板。
 
 ## 状态与权限
@@ -156,3 +156,12 @@ Excel 下载验收，见 BROWSER_ACCEPTANCE_S03C4.md。真机/触控、其他浏
 
 更新（S03-L）：2.0 分带模板的画布、面板与 1.x 转换见“可操作内容”中的 S03-L 条目；scripts/browser_canvas_s03l.mjs 是其真实浏览器本地证据（与 browser_canvas_s03i.mjs 一样不在 CI 中运行），
 S03-I 的脚本与 DOM 测试对 1.x 原样通过。
+
+更新（S03-N，ADR 0006，docs/EMBEDDING.md）：嵌入。同一套控制台脚本在 `/embed/report`、`/embed/dashboard`、`/embed/document-designer` 以嵌入模式运行，由产品页面放进 `<iframe>`：只显示地址所指的那一个视图
+（报表工作台、看板设计器或文档模板设计器），没有导航、令牌表单与退出；查询面板（公司范围与数据时点）随非报表视图显示在其上方，地址里的数据集、看板或模板在授权结果出现后选中或打开。
+控制台页面本身不变：仍是 `frame-ancestors 'none'` 与 `X-Frame-Options: DENY`，不加载 embed.js，也不响应任何 postMessage；
+嵌入页面只在地址的 integration 与 parent（产品页面的精确来源）出现在服务端配置的名单上时才返回（200，策略与控制台相同、仅 frame-ancestors 换成那一个来源，且无 X-Frame-Options），其余一律 403 或 400 且不可被任何页面嵌入。
+令牌由父页面经 postMessage 交给框架页（仅当 `event.source === window.parent` 且 `event.origin` 恰为服务时的 parent 来源），只保存在内存中、只作为 Bearer 头发往本站，
+401 时先向父页面再要一次并只重试一次，第二次 401 即退出状态；发给父页面的只有尺寸、`saved`/`published`/`issued` 事件的 id 和错误类别，不含任何值。
+可选的深色主题（`reporting:theme`）由 embed.css 提供。S03-I 至 S03-M 的画布、面板与出具在框架里与控制台完全相同；浏览器下载需要父页面的 iframe 带 `allow-downloads`。
+测试：console/embed.dom.test.mjs（DOM，真实 Go 服务）与 scripts/browser_embed_s03n.mjs（Windows Chrome 经 CDP，主机页面与平台在不同的回环来源，本地证据）。

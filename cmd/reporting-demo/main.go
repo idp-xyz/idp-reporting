@@ -12,6 +12,7 @@ import (
 	"idp.local/reporting/console"
 	"idp.local/reporting/dashboards"
 	"idp.local/reporting/doctemplates"
+	"idp.local/reporting/embedding"
 	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
 	"idp.local/reporting/issuance"
@@ -25,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -51,6 +53,23 @@ func openFailure(generic string, e error) error {
 	}
 	return errors.New(generic)
 }
+
+// embedConfig reads the -embed-origin flags: the origins that may frame the embed pages of an integration, exact (https://host[:port], or
+// http://127.0.0.1:port in this demo). An origin that is not one, or an integration the demo does not have, is an error, so that a typo
+// stops the start instead of silently allowing nothing, or something else.
+func embedConfig(values []string, integrations []string) (*embedding.Config, error) {
+	config, err := embedding.Parse(values, embedding.Options{LoopbackHTTP: true})
+	if err != nil {
+		return nil, fmt.Errorf("-embed-origin: %w", err)
+	}
+	for _, integration := range config.Integrations() {
+		if !slices.Contains(integrations, integration) {
+			return nil, fmt.Errorf("-embed-origin: integration %q is not one of this demo's", integration)
+		}
+	}
+	return config, nil
+}
+
 func run() error {
 	profile := flag.String("profile", "", "required: contract-simulator")
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
@@ -64,6 +83,11 @@ func run() error {
 	pdfFonts := flag.String("pdf-fonts", "", "directory holding the only fonts PDF export may use")
 	templateDir := flag.String("template-directory", "", "optional private single-process document template directory (0700)")
 	assetDir := flag.String("background-directory", "", "optional private immutable PNG background directory (0700); it also holds the private images of schema 2.1 templates, in its images subdirectory")
+	var embedOrigins []string
+	flag.Func("embed-origin", "repeatable integration=origin: a page of that origin may show the embed pages of that integration in a frame (ADR 0006); an https origin as https://host[:port], or http://127.0.0.1:port for a local product page", func(value string) error {
+		embedOrigins = append(embedOrigins, value)
+		return nil
+	})
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -81,6 +105,11 @@ func run() error {
 	var repo r.Repository
 	p := contractsim.DemoPrincipal()
 	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
+	// Read before anything is opened: a malformed origin, or an integration this demo does not have, stops the start.
+	embed, e := embedConfig(embedOrigins, p.Integrations)
+	if e != nil {
+		return e
+	}
 	var finance, shipment r.Adapter
 	if *useMemory {
 		if *initialize {
@@ -217,7 +246,12 @@ func run() error {
 			return e
 		}
 	}
-	handler, e = console.Handler(handler)
+	if len(embed.Integrations()) > 0 {
+		if handler, e = httpapi.WithEmbedding(handler, s, auth, embed); e != nil {
+			return e
+		}
+	}
+	handler, e = console.HandlerWithEmbedding(handler, embed)
 	if e != nil {
 		return e
 	}
