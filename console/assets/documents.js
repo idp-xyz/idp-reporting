@@ -135,13 +135,6 @@ window.createReportingDocuments=function(ports){
   if(d.group!==undefined)value.group={fields:[...d.group.fields]};
   value.bands=bands;return value;
  }
- // What the designer shows of a 2.0 template: its bands and elements, read-only; it is edited as JSON.
- function describe2(d){
-  const out=[];
-  for(const name of bandNames){const band=d.bands[name];if(band===undefined)continue;
-   out.push((name==='detail'?bandLabels[name]:bandLabels[name]+' '+band.height+' 毫米')+'：'+band.elements.map(e=>e.id+' '+(e.type==='text'?'文本（'+({literal:'固定文字',field:'字段 '+e.field,group_sum:'分组合计 '+e.field,page:'页码'}[e.source])+(e.wrap?'，自动换行':'')+'）':e.type==='line'?'线':e.type==='rect'?'矩形':'明细表 '+e.columns.length+' 列')).join('；'));}
-  return out;
- }
 
  const sameBinding=d=>d?.binding?.integration_id===query?.integration_id&&d.binding.dataset.id===query.dataset.id&&d.binding.dataset.version===query.dataset.version;
  const validBackground=b=>keys(b,['id','sha256'])&&typeof b.id==='string'&&/^[a-f0-9]{32}$/.test(b.id)&&typeof b.sha256==='string'&&/^[a-f0-9]{64}$/.test(b.sha256);
@@ -207,7 +200,7 @@ window.createReportingDocuments=function(ports){
  $('doc-saved-pdf').addEventListener('click',()=>action(()=>{previews();const id=cleanSaved(),row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');ports.download({version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1},'/document-templates/'+id+'/previews',refusalFor());}));
  function action(fn){try{if(!ports.active()||!result)throw Error('请先查询当前授权数据并等待操作结束。');fn();}catch(e){$('doc-status').textContent=e.message;}}
  // Every applied change passes here. An edit is one undo step (an unchanged result is none, a refused one never gets here); opening or resetting a template replaces it and clears the history.
- function install(d,label){validate(d);const next=canonical(d);if(label===undefined){past=[];future=[];canvas.reset();}else if(config&&JSON.stringify(next)!==JSON.stringify(config)){past.push({config,label});if(past.length>HISTORY)past.shift();future=[];}config=next;publishedOpen=false;showChecks(null);render();$('doc-status').textContent='模板已更新；配置不含业务数据。';}
+ function install(d,label){validate(d);const next=canonical(d);if(label===undefined){past=[];future=[];conversion=[];canvas.reset();}else if(config&&JSON.stringify(next)!==JSON.stringify(config)){past.push({config,label});if(past.length>HISTORY)past.shift();future=[];}config=next;publishedOpen=false;showChecks(null);render();$('doc-status').textContent='模板已更新；配置不含业务数据。';}
  const apply=(d,label)=>install(d,label||'修改'),replaceTemplate=d=>install(d);
  // Undo and redo never restore "opened published, unedited": publishedOpen stays false, so issuing needs the published version opened again.
  function stepBack(from,to,verb){const step=from.pop();try{validate(step.config);}catch(e){past=[];future=[];render();throw Error('历史记录与当前查询不符，已清空。');}to.push({config,label:step.label});config=step.config;publishedOpen=false;showChecks(null);render();$('doc-status').textContent=verb+'：'+step.label+'。';}
@@ -218,18 +211,222 @@ window.createReportingDocuments=function(ports){
  function edit(d,label){try{if(!ports.active()||!result)throw Error('请先查询当前授权数据并等待操作结束。');apply(d,label);return {ok:true};}catch(e){return {ok:false,message:e.message};}}
  function test(d){try{validate(d);return '';}catch(e){return e.message;}}
  function syncPrint(){$('doc-background-status').textContent=config?.background?'当前底稿 '+config.background.id+' · SHA256 '+config.background.sha256:'当前模板无底稿。';const p=config?.print||{mode:'full',offset_x:0,offset_y:0};$('doc-print-mode').value=p.mode;$('doc-offset-x').value=String(p.offset_x);$('doc-offset-y').value=String(p.offset_y);$('doc-print-status').textContent=config?.schema_version==='2.0'?'模板 2.0 · 分带版面（无套打层与底稿，预览仍含PREVIEW标记）':'模板 '+(config?.schema_version||'—')+' · '+(p.mode==='variables'?'变量层对位预览（仍含PREVIEW标记）':'完整文本预览')+' · 偏移 '+p.offset_x+' / '+p.offset_y+' mm';}
- const canvas=window.createReportingCanvas({columns:()=>result?result.columns:[],edit,test,columnMinimum:(font,i)=>i===0?Math.max(8,labelMinimum[font]||0):8,canUndo:()=>past.length>0,canRedo:()=>future.length>0});
+ const canvas=window.createReportingCanvas({columns:()=>result?result.columns:[],metrics:()=>new Set((query?.metrics||[]).map(m=>m.id)),minDetail,edit,test,columnMinimum:(font,i,band)=>band?8:i===0?Math.max(8,labelMinimum[font]||0):8,canUndo:()=>past.length>0,canRedo:()=>future.length>0,selected:()=>renderProps()});
  // The place a refused preview names (the template cannot change while a preview is being made: edits wait for the operation to end).
  const refusalFor=()=>refused;
- function refused(detail){if(!window.reportingRefusal.valid(detail)||!config)return;$('doc-status').textContent='预览指出的位置：'+window.reportingRefusal.text(detail,labelsOf())+'。';if(config.schema_version!=='2.0')canvas.mark(detail);}
- function render(){syncPrint();canvas.mark(null);const target=$('doc-elements');target.replaceChildren();if(!config){canvas.show(null);return;}
-  if(config.schema_version==='2.0'){for(const line of describe2(config)){const item=node('div');item.className='designer-row';item.append(node('span',line));target.append(item);}$('doc-table-status').textContent='2.0 分带模板：明细表 '+config.bands.detail.elements[0].columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。';canvas.unsupported('画布只显示 1.x 模板（固定文本框与明细表）。当前是 2.0 分带模板：用下方“模板元数据JSON”编辑，仍可预览、检查样本、保存与发布；带的画布编辑在后续版本提供。');return;}
+ function refused(detail){if(!window.reportingRefusal.valid(detail)||!config)return;$('doc-status').textContent='预览指出的位置：'+window.reportingRefusal.text(detail,labelsOf())+'。';canvas.mark(detail);}
+ function render(){syncPrint();canvas.mark(null);const target=$('doc-elements'),two=config?.schema_version==='2.0';target.replaceChildren();for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=two;$('doc2-panel').hidden=!two;renderConvert();if(!config){canvas.show(null);renderBanded();return;}
+  // Panels follow the template: 1.x inputs, or the 2.0 groups, bands and elements.
+  if(config.schema_version==='2.0'){$('doc-table-status').textContent='2.0 分带模板：明细表 '+tableOf2(config).columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。';canvas.show(config);renderBanded();return;}
   for(const e of config.elements){const item=node('div');item.className='designer-row';item.append(node('span',e.id+' · '+e.source+' · '+(e.source==='literal'?e.text:e.field)));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=e[k];input.setAttribute('aria-label',e.id+' '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.elements.find(v=>v.id===e.id)[k]=Number(input.value);if(k!=='font_size'&&!Number.isInteger(Number(input.value))&&d.schema_version==='1.0'){d.schema_version='1.1';d.print={mode:'full',offset_x:0,offset_y:0};}apply(d,'修改 '+e.id+' '+k);}));label.append(input);item.append(label);}const remove=node('button','移除');remove.type='button';remove.addEventListener('click',()=>action(()=>apply({...config,elements:config.elements.filter(v=>v.id!==e.id)},'移除 '+e.id)));item.append(remove);target.append(item);}
   if(config.table){const t=config.table,item=node('div');item.className='designer-row';item.append(node('span','明细表 · '+t.columns.map(c=>c.field+' '+c.width+'mm').join('、')));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=t[k];input.setAttribute('aria-label','table '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.table[k]=Number(input.value);apply(d,'修改明细表 '+k);}));label.append(input);item.append(label);}const remove=node('button','移除明细表');remove.type='button';remove.addEventListener('click',()=>action(()=>removeTable()));item.append(remove);target.append(item);}
-  $('doc-table-status').textContent=config.table?'明细表：'+config.table.columns.length+' 列，列出冻结快照的全部行，超过一页自动续页并承前过次。':'无明细表。';canvas.show(config);}
+  $('doc-table-status').textContent=config.table?'明细表：'+config.table.columns.length+' 列，列出冻结快照的全部行，超过一页自动续页并承前过次。':'无明细表。';canvas.show(config);renderBanded();}
  // A template with a table is 1.3 whatever else changes (print settings, background); without one the given version applies.
  const schemaFor=(c,otherwise)=>c.table?'1.3':otherwise;
- const only1x=()=>{if(config?.schema_version==='2.0')throw Error('2.0 分带模板请用“模板元数据JSON”编辑；文本框、明细表、套打与底稿设置只适用于 1.x 模板。');};
+ const only1x=()=>{if(config?.schema_version==='2.0')throw Error('2.0 分带模板请在画布与“2.0 分带模板”面板编辑（或用模板元数据JSON）；文本框、明细表、套打与底稿设置只适用于 1.x 模板。');};
+ // ---- schema 2.0 panels (S03-L): groups, bands, the element to add, the selected element's properties, the table's columns. Every
+ // change builds a configuration and goes through apply (validate + canonical + one undo step); a refusal says why and the inputs go back. ----
+ const clone=v=>JSON.parse(JSON.stringify(v));
+ const bandOrder=['page_header','document_header','document_footer','page_footer'],bandDefaults={page_header:15,document_header:30,document_footer:20,page_footer:12};
+ const sourceLabels={literal:'固定文字',field:'字段',group_sum:'分组合计',page:'页码文字'},alignLabels={left:'左对齐',center:'居中',right:'右对齐'},fillLabels={none:'无填充',grey1:'浅灰 1',grey2:'浅灰 2',grey3:'灰 3',grey4:'深灰 4'};
+ const propLabels={x:'x（毫米）',y:'y（毫米）',width:'宽（毫米）',height:'高（毫米）',font_size:'字号（点）',x1:'x1（毫米）',y1:'y1（毫米）',x2:'x2（毫米）',y2:'y2（毫米）',stroke:'线宽 stroke（点）'};
+ const named=text=>{const e=node('span',text);e.className='cv2-name';return e;};
+ const ctl=(tag,id,fn)=>{const e=node(tag);if(id)e.id=id;if(fn)fn(e);return e;};
+ const wrapped=(text,control,className)=>{const l=node('label',text);if(className)l.className=className;l.append(control);return l;};
+ const numberInput=(id,value,step,commit)=>ctl('input',id,i=>{i.type='number';i.step=step;i.value=String(value);i.addEventListener('change',()=>commit(Number(i.value)));});
+ const selectInput=(id,options,value,commit)=>ctl('select',id,s=>{for(const [v,t] of options){const o=node('option',t);o.value=v;s.append(o);}s.value=value;s.addEventListener('change',()=>commit(s.value));});
+ const checkInput=(id,value,commit)=>ctl('input',id,i=>{i.type='checkbox';i.checked=!!value;i.addEventListener('change',()=>commit(i.checked));});
+ const buttonOf=(id,text,fn)=>ctl('button',id,b=>{b.textContent=text;b.type='button';b.className='button secondary small';b.addEventListener('click',fn);});
+ const only2=()=>{if(config?.schema_version!=='2.0')throw Error('只有 2.0 分带模板有带与元素面板。');};
+ const elementOf=(d,id)=>{for(const n of bandNames){const b=d.bands[n];if(!b)continue;const e=b.elements.find(v=>v.id===id);if(e)return {band:n,e};}return null;};
+ const tableOf2=d=>d.bands.detail.elements[0];
+ // An edit of the open 2.0 template: fn changes a copy; a refusal (from apply, or fn's own) is shown and the panels go back to the template.
+ const edit2=(label,fn)=>action(()=>{try{only2();const d=clone(config);fn(d);apply(d,label);}catch(e){renderBanded();throw e;}});
+ const freeId=d=>{const used=new Set();for(const n of bandNames)for(const e of d.bands[n]?.elements||[])used.add(e.id);for(let k=1;k<=64;k++)if(!used.has('e'+k))return 'e'+k;throw Error('最多64个元素。');};
+ // A panel is rebuilt after every applied change. When the rebuilt panel has the same shape as the one on the page (the same controls, with the same
+ // options), the controls already there are updated in place, so that the focus stays where the user's Tab or Enter left it and a click is not lost to a
+ // control that was replaced between the press and the release; otherwise (another element selected, another list) the panel is replaced. `key` says
+ // what the panel is about: the controls' handlers hold on to it.
+ const shape=n=>n.nodeType===3?'#':n.tagName+'#'+n.id+(n.type?'/'+n.type:'')+(n.tagName==='SELECT'?'['+[...n.options].map(o=>o.value+'='+o.textContent).join('|')+']':'')+'('+[...n.childNodes].map(shape).join(',')+')';
+ function patch(old,next){
+  if(old.nodeType===3){old.nodeValue=next.nodeValue;return;}
+  if(old.tagName==='INPUT'){old.value=next.value;old.checked=next.checked;old.placeholder=next.placeholder;}
+  else if(old.tagName==='SELECT')old.value=next.value;
+  old.childNodes.forEach((c,i)=>patch(c,next.childNodes[i]));
+ }
+ function reconcile(container,nodes,key=''){
+  const probe=node('div');probe.append(...nodes);
+  if(container.getAttribute('data-for')===key&&[...container.childNodes].map(shape).join(',')===[...probe.childNodes].map(shape).join(','))container.childNodes.forEach((c,i)=>patch(c,probe.childNodes[i]));
+  else{container.replaceChildren(...probe.childNodes);container.setAttribute('data-for',key);}
+ }
+ // The options of a select that lists something: replaced only when the list changed; the value stays when it is still there.
+ function listOptions(select,pairs){
+  if([...select.options].map(o=>o.value+'='+o.textContent).join('|')===pairs.map(p=>p[0]+'='+p[1]).join('|'))return;
+  const prev=select.value;select.replaceChildren(...pairs.map(([v,t])=>{const o=node('option',t);o.value=v;return o;}));if(pairs.some(p=>p[0]===prev))select.value=prev;
+ }
+ function renderBanded(){
+  if(!config||!result||!query||config.schema_version!=='2.0'){for(const id of ['doc2-group','doc2-bands','doc2-table'])$(id).replaceChildren();renderProps();return;}
+  const lab=labelsOf(),dims=(query.dimensions||[]).filter(id=>result.columns.some(c=>c.id===id)),fields=config.group?.fields||[];
+  // Group: up to three dimension fields, in order, or none.
+  reconcile($('doc2-group'),[0,1,2].map(n=>wrapped('分组字段 '+(n+1),selectInput('doc2-group-'+n,[['','（无）'],...dims.map(id=>[id,(lab[id]||id)+'（'+id+'）'])],fields[n]||'',()=>setGroup()))));
+  $('doc2-group-status').textContent=fields.length?'分组：'+fields.join('、')+'。每个不同取值一份文档；预览、检查与出具按所给行号所在的分组。':'无分组：整个快照一份文档。字段文本须在全部行取值相同，否则请选择分组字段。';
+  // Bands: add or remove each optional band, set its height.
+  const rows=bandOrder.map(name=>{
+   const band=config.bands[name],row=node('div');row.className='cv2-row';
+   if(band)row.append(named(bandLabels[name]+'（'+band.elements.length+' 个元素）'),wrapped('高度（毫米）',numberInput('doc2-band-height-'+name,band.height,'0.1',v=>edit2('修改'+bandLabels[name]+'高度',d=>{d.bands[name].height=v;}))),buttonOf('doc2-band-remove-'+name,'移除'+bandLabels[name],()=>edit2('移除'+bandLabels[name],d=>{delete d.bands[name];})));
+   else row.append(named(bandLabels[name]+'：未设置'),buttonOf('doc2-band-add-'+name,'添加'+bandLabels[name],()=>edit2('添加'+bandLabels[name],d=>{d.bands[name]={height:bandDefaults[name],elements:[]};})));
+   return row;
+  });
+  const detail=node('div');detail.className='cv2-row';detail.append(named(bandLabels.detail+'：必有，只放一个明细表；高度随页面伸展（至少 '+minDetail(tableOf2(config).font_size)/10+' 毫米：表头、承前行、一行明细与过次或合计行）。'));
+  reconcile($('doc2-bands'),[...rows,detail]);
+  // The band a new element goes to.
+  listOptions($('doc2-add-band'),bandOrder.filter(n=>config.bands[n]).map(n=>[n,bandLabels[n]]));
+  renderTable2();renderProps();
+ }
+ function setGroup(){edit2('分组字段',d=>{const f=[0,1,2].map(n=>$('doc2-group-'+n).value).filter(Boolean);if(f.length)d.group={fields:f};else delete d.group;});}
+ // A free place for a text box of this size in the band: down the left column, then the right; the first that overlaps no other text box.
+ function freeSpot(band,w,h){
+  const H=tenths(band.height),texts=band.elements.filter(e=>e.type==='text').map(e=>[tenths(e.x),tenths(e.y),tenths(e.width),tenths(e.height)]);
+  for(const x of [0,100])for(let y=0;y*10+h*10<=H;y++){const a=[x*10,y*10,w*10,h*10];if(!texts.some(t=>a[0]<t[0]+t[2]&&t[0]<a[0]+a[2]&&a[1]<t[1]+t[3]&&t[1]<a[1]+a[3]))return {x,y};}
+  throw Error('带内没有放得下新文本框的空位：请先调高该带，或移动其他元素。');
+ }
+ const sourceOf={literal:'literal',field:'field',sum:'group_sum',page:'page'};
+ function add2(kind){
+  action(()=>{
+   only2();const name=$('doc2-add-band').value,d=clone(config),band=d.bands[name];if(!band)throw Error('请先添加并选择一个带。');
+   const id=freeId(d),H=tenths(band.height),metricIds=(query.metrics||[]).map(m=>m.id);let e;
+   if(kind==='line')e={id,type:'line',x1:0,y1:H/10,x2:190,y2:H/10,stroke:0.5};
+   else if(kind==='rect')e={id,type:'rect',x:0,y:0,width:60,height:Math.min(10,H/10),stroke:0.5,fill:'none'};
+   else{
+    const size=H>=60?10:8,h=size===10?6:5,w=kind==='page'?60:80,spot=freeSpot(band,w,h),typed=$('doc2-text').value,chosen=$('doc2-field').value,field=kind==='sum'&&!metricIds.includes(chosen)?metricIds[0]||chosen:chosen;
+    e={id,type:'text',source:sourceOf[kind],text:kind==='literal'?(typed||'固定文字'):kind==='page'?(/\{pages?\}/.test(typed)?typed:'Page {page} of {pages}'):'',field:kind==='field'||kind==='sum'?field:'',wrap:false,x:spot.x,y:spot.y,width:w,height:h,font_size:size,align:'left',bold:false};
+   }
+   band.elements.push(e);apply(d,'添加 '+id);canvas.select([id]);
+  });
+ }
+ for(const kind of ['literal','field','sum','page','line','rect'])$('doc2-add-'+kind).addEventListener('click',()=>add2(kind));
+ // The selected element: every key its type has, each a validated input (the validator decides; a refusal puts the value back).
+ function renderProps(){
+  const box=$('doc2-props'),out=[];
+  if(!config||!result||!query||config.schema_version!=='2.0'){reconcile(box,[]);return;}
+  const sel=canvas.selection();
+  if(sel.length!==1){reconcile(box,[node('p',sel.length?'已选择 '+sel.length+' 项：属性一次编辑一个元素，请只选一项。':'在画布上点击一个元素，这里列出它的每个属性。')]);return;}
+  const hit=elementOf(config,sel[0]);if(!hit){reconcile(box,[]);return;}
+  const {band,e}=hit,id=e.id,grid=node('div'),set=(key,v)=>edit2('修改 '+id+' '+key,d=>{elementOf(d,id).e[key]=v;}),num=(key,step)=>wrapped(propLabels[key]||key,numberInput('doc2-p-'+key,e[key],step||'0.1',v=>set(key,v)));
+  grid.className='cv2-grid';
+  const head=node('p',id+' · '+bandLabels[band]+' · '+(e.type==='text'?'文本（'+sourceLabels[e.source]+'）':{line:'线',rect:'矩形',table:'明细表'}[e.type]));head.id='doc2-p-title';
+  out.push(head);
+  if(e.type==='table'){out.push(node('p','明细表的位置、宽度、字号和各列在下方“明细表”区域编辑。'));reconcile(box,out,id);return;}
+  grid.append(wrapped('所在带',selectInput('doc2-p-band',bandOrder.filter(n=>config.bands[n]).map(n=>[n,bandLabels[n]]),band,v=>edit2('移动 '+id+' 到'+bandLabels[v],d=>{const h=elementOf(d,id);if(h.band===v)return;d.bands[h.band].elements.splice(d.bands[h.band].elements.indexOf(h.e),1);d.bands[v].elements.push(h.e);}))));
+  if(e.type==='text'){
+   grid.append(wrapped('来源',selectInput('doc2-p-source',Object.entries(sourceLabels),e.source,v=>edit2('修改 '+id+' 来源',d=>{
+    const x=elementOf(d,id).e,metricIds=(query.metrics||[]).map(m=>m.id),first=result.columns[0]?.id||'';
+    x.source=v;
+    if(v==='literal'){x.field='';x.text=x.text||'固定文字';}
+    else if(v==='page'){x.field='';x.wrap=false;if(!/\{pages?\}/.test(x.text))x.text='Page {page} of {pages}';}
+    else{x.text='';x.field=v==='group_sum'&&!metricIds.includes(x.field)?metricIds[0]||x.field:(x.field||first);}
+   }))));
+   if(e.source==='literal'||e.source==='page')grid.append(wrapped('文字',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=e.source==='page'?256:1024;i.addEventListener('change',()=>set('text',i.value));})));
+   else grid.append(wrapped('字段',selectInput('doc2-p-field',result.columns.filter(c=>e.source!=='group_sum'||(query.metrics||[]).some(m=>m.id===c.id)).map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
+   for(const key of ['x','y','width','height'])grid.append(num(key));
+   grid.append(num('font_size','1'),wrapped('align',selectInput('doc2-p-align',Object.entries(alignLabels),e.align,v=>set('align',v))),wrapped('自动换行（wrap）',checkInput('doc2-p-wrap',e.wrap,v=>set('wrap',v)),'cv2-check'),wrapped('粗体（bold）',checkInput('doc2-p-bold',e.bold,v=>set('bold',v)),'cv2-check'));
+  }else if(e.type==='line'){
+   for(const key of ['x1','y1','x2','y2'])grid.append(num(key));grid.append(num('stroke','0.25'));
+  }else{
+   for(const key of ['x','y','width','height'])grid.append(num(key));
+   grid.append(num('stroke','0.25'),wrapped('fill',selectInput('doc2-p-fill',Object.entries(fillLabels),e.fill,v=>set('fill',v))));
+  }
+  out.push(grid,ctl('div',null,d=>{d.className='cv2-actions';d.append(buttonOf('doc2-p-delete','删除此元素',()=>edit2('删除 '+id,x=>{const h=elementOf(x,id);x.bands[h.band].elements.splice(x.bands[h.band].elements.indexOf(h.e),1);})));}));
+  reconcile(box,out,id);
+ }
+ // The table: place, width (the columns scale with it), type size, and its columns: field, width, header label, alignment, order.
+ function renderTable2(){
+  const t=tableOf2(config),lab=labelsOf(),metrics=new Set((query.metrics||[]).map(m=>m.id)),box=$('doc2-table'),top=node('div'),used=new Set(t.columns.map(c=>c.field));
+  top.className='cv2-grid';
+  const tset=(key,label,fn)=>edit2('修改明细表'+label,d=>fn(tableOf2(d)));
+  top.append(wrapped('x（毫米，相对带）',numberInput('doc2-table-x',t.x,'0.1',v=>tset('x','x',x=>{x.x=v;}))),wrapped('表宽（毫米）',numberInput('doc2-table-width',t.width,'0.1',v=>tset('width','宽度',x=>{canvas.ops.scaleColumns(x,Math.round(v*10));x.width=v;}))),wrapped('字号（点）',numberInput('doc2-table-font',t.font_size,'1',v=>tset('font','字号',x=>{x.font_size=v;}))));
+  const rows=t.columns.map((c,k)=>{
+   const row=node('div'),col=fn=>edit2('修改明细表第 '+(k+1)+' 列',d=>fn(tableOf2(d).columns,tableOf2(d).columns[k]));
+   row.className='cv2-row';
+   row.append(named('第 '+(k+1)+' 列'),
+    wrapped('字段',selectInput('doc2-col-field-'+k,result.columns.filter(x=>x.id===c.field||!used.has(x.id)).map(x=>[x.id,x.label+'（'+x.id+'）']),c.field,v=>col((cols,x)=>{x.field=v;}))),
+    wrapped('宽（毫米）',numberInput('doc2-col-width-'+k,c.width,'0.1',v=>col((cols,x)=>{const other=cols[k<cols.length-1?k+1:k-1];if(!other)throw Error('只有一列时宽度等于表宽。');const diff=tenths(v)-tenths(x.width);x.width=tenths(v)/10;other.width=(tenths(other.width)-diff)/10;}))),
+    wrapped('表头文字',ctl('input','doc2-col-label-'+k,i=>{i.value=c.label||'';i.placeholder=lab[c.field]||c.field;i.maxLength=64;i.addEventListener('change',()=>col((cols,x)=>{if(i.value==='')delete x.label;else x.label=i.value;}));})),
+    wrapped('对齐',selectInput('doc2-col-align-'+k,[['','默认（'+(metrics.has(c.field)?'右':'左')+'）'],...Object.entries(alignLabels)],c.align||'',v=>col((cols,x)=>{if(v==='')delete x.align;else x.align=v;}))),
+    buttonOf('doc2-col-up-'+k,'上移',()=>col(cols=>{if(k<1)throw Error('已是第一列。');[cols[k-1],cols[k]]=[cols[k],cols[k-1]];})),
+    buttonOf('doc2-col-down-'+k,'下移',()=>col(cols=>{if(k>=cols.length-1)throw Error('已是最后一列。');[cols[k+1],cols[k]]=[cols[k],cols[k+1]];})),
+    buttonOf('doc2-col-remove-'+k,'移除',()=>col(cols=>{if(cols.length<2)throw Error('明细表至少保留一列。');const [gone]=cols.splice(k,1),to=cols[k>0?k-1:0];to.width=(tenths(to.width)+tenths(gone.width))/10;})));
+   return row;
+  });
+  reconcile(box,[top,...rows]);
+  listOptions($('doc2-col-field'),result.columns.filter(c=>!used.has(c.id)).map(c=>[c.id,c.label+'（'+c.id+'）']));
+ }
+ // A new column takes half of the widest column (both at least 8 mm), next to it; the table keeps its width.
+ $('doc2-col-add').addEventListener('click',()=>edit2('添加明细表列',d=>{
+  const t=tableOf2(d),field=$('doc2-col-field').value;
+  if(!field)throw Error('当前授权字段都已是明细表的列，没有可添加的字段。');
+  if(t.columns.length>=12)throw Error('明细表最多 12 列。');
+  let at=0;t.columns.forEach((c,k)=>{if(tenths(c.width)>tenths(t.columns[at].width))at=k;});
+  const w=tenths(t.columns[at].width);if(w<160)throw Error('没有可让出宽度的列：需要某一列至少 16 毫米。');
+  const take=Math.floor(w/2);t.columns[at].width=(w-take)/10;t.columns.splice(at+1,0,{field,width:take/10});
+ }));
+ $('doc2-reset').addEventListener('click',()=>$('doc-reset').click());
+ // ---- the 1.x to 2.0 conversion (S03-L, ADR 0004 decision 1): the console builds the 2.0 configuration when the user asks; the server converts nothing. ----
+ // Boxes above the table (all of them when there is no table) become the document header, positions made relative to the top of the safe region
+ // (25 mm) and the band reaching the table's top, so they print where the 1.x preview puts them; the table becomes the detail band's table; boxes
+ // below the table's region become the document footer, positions relative to the table region's bottom edge (2.0 places that band after the last
+ // row, not at the old page position). A row box becomes a group field text, a total box a group sum, a literal stays. No group. A box that
+ // overlaps the table's vertical extent is refused by name. Returns {config, notes}.
+ function convertTo2(d){
+  const u=n=>Math.round(n*10),t=d.table,notes=[];
+  const above=[],below=[];
+  if(t){const top=u(t.y),bottom=top+u(t.height);for(const e of d.elements){const a=u(e.y),b=a+u(e.height);if(b<=top)above.push(e);else if(a>=bottom)below.push(e);else throw Error('文本框 '+e.id+' 与明细表的纵向范围重叠（y '+e.y+'–'+(a+u(e.height))/10+' 毫米，表 '+t.y+'–'+(top+u(t.height))/10+' 毫米），无法转换为 2.0：请先把它移到表的上方或下方。');}}
+  else above.push(...d.elements);
+  let next=0;const id=()=>'e'+(++next),text=(e,top)=>({id:id(),type:'text',source:e.source==='row'?'field':e.source==='total'?'group_sum':'literal',text:e.source==='literal'?e.text:'',field:e.source==='literal'?'':e.field,wrap:false,x:(u(e.x)-100)/10,y:(u(e.y)-top)/10,width:e.width,height:e.height,font_size:e.font_size,align:e.align,bold:false});
+  const bands={};
+  // The table: the 1.x table, or, when there is none (2.0 needs a detail table), the first columns of the result at 10 pt across the whole width.
+  let table;
+  if(t)table={id:'',type:'table',x:(u(t.x)-100)/10,width:t.width,font_size:t.font_size,columns:t.columns.map(c=>({field:c.field,width:c.width}))};
+  else{
+   const n=Math.min(6,result.columns.length),each=Math.floor(1900/n);
+   table={id:'',type:'table',x:0,width:190,font_size:10,columns:result.columns.slice(0,n).map((c,k)=>({field:c.id,width:(k===n-1?1900-each*(n-1):each)/10}))};
+   const low=Math.max(...above.map(e=>u(e.y)+u(e.height)));
+   if(low-250+minDetail(10)>2450)throw Error('这个 1.x 模板没有明细表，而 2.0 必须有明细带：文本框最低处（y '+low/10+' 毫米）没有给默认明细表留下至少 '+minDetail(10)/10+' 毫米的空间；请先上移文本框，或先添加明细表。');
+   notes.push('1.x 模板没有明细表，而 2.0 的明细带必须有一个明细表：已加入默认明细表（结果的前 '+n+' 个字段，10 点，全宽），请按需要调整列。');
+  }
+  if(above.length){
+   const top=250,height=t?u(t.y)-top:Math.max(...above.map(e=>u(e.y)+u(e.height)))-top;
+   bands.document_header={height:height/10,elements:above.map(e=>text(e,top))};
+  }else if(t&&u(t.y)>250)notes.push('明细表原在第一页 y '+t.y+' 毫米；2.0 的明细表紧接在上方各带之后，现在位于安全区顶部（y 25 毫米）。需要留白时请添加单据头带。');
+  table.id=id();bands.detail={elements:[table]};
+  if(below.length){
+   const edge=u(t.y)+u(t.height),height=Math.max(...below.map(e=>u(e.y)+u(e.height)))-edge;
+   bands.document_footer={height:height/10,elements:below.map(e=>text(e,edge))};
+   notes.push('表格下方的 '+below.length+' 个文本框已移到单据尾带：2.0 把单据尾带放在明细表最后一行（含合计）之后，不再停在原来的页面位置，与 1.x 预览不同；单据头中的文本框位置不变。');
+  }
+  const rows=d.elements.filter(e=>e.source==='row').length,totals=d.elements.filter(e=>e.source==='total').length;
+  if(rows)notes.push(rows+' 个行字段文本框已改为分组字段文本。2.0 按分组生成文档，字段文本须是分组字段，或在组内各行取值相同，否则预览被拒绝（单据头带的元素会被描出）；当前无分组（整个快照一份文档），请在“分组字段”中选择维度字段。');
+  if(totals)notes.push(totals+' 个合计文本框已改为分组合计（对分组内各行精确求和；无分组时即整个快照）。');
+  const p=d.print;
+  if(p&&p.mode==='variables')notes.push('警告：变量层模式不属于 2.0，已丢弃；2.0 打印全部文本（含固定文字）。');
+  if(p&&(p.offset_x!==0||p.offset_y!==0))notes.push('警告：整体偏移 '+p.offset_x+' / '+p.offset_y+' 毫米不属于 2.0，已丢弃；文本位置按偏移前的位置转换。');
+  if(d.background)notes.push('警告：底稿引用不属于 2.0，已丢弃；2.0 预览不叠加底稿。');
+  if(t)notes.push('明细表的“高”不属于 2.0：明细带占满上下各带留下的页面空间，续页从页眉带下方开始。');
+  return {config:{schema_version:'2.0',kind:'document',binding:clone(d.binding),bands},notes};
+ }
+ let conversion=[];
+ function renderConvert(){
+  const two=config?.schema_version==='2.0';
+  $('doc-convert').hidden=!config||two;
+  $('doc-convert-status').textContent=!config?'尚无当前授权模板。':two?(conversion.length?'本模板由 1.x 转换而来，尚未保存；转换时的说明如下。':'当前是 2.0 分带模板。'):'当前是 1.x 模板；“转换为 2.0”生成 2.0 配置并作为未保存的修改打开（可撤销），保存才会成为新版本。';
+  $('doc-convert-notes').replaceChildren(...(two?conversion:[]).map(n=>node('li',n)));
+ }
+ $('doc-convert').addEventListener('click',()=>action(()=>{
+  if(!config||config.schema_version==='2.0')throw Error('只有 1.x 模板可以转换为 2.0。');
+  const out=convertTo2(config);apply(out.config,'转换为 2.0');conversion=out.notes;renderConvert();
+  $('doc-status').textContent='已转换为 2.0（未保存）：'+(out.notes.some(n=>n.startsWith('警告'))?'有被丢弃的设置，见下方说明；':'')+'请先生成预览核对，再保存为新版本。';
+ }));
+
  function removeTable(){only1x();if(!config.table)return;const d={...config,schema_version:config.background?'1.2':'1.1'};delete d.table;apply(d,'移除明细表');}
  function addTable(){action(()=>{only1x();const chosen=[...$('doc-table-columns').selectedOptions].map(o=>o.value);if(chosen.length<1||chosen.length>12)throw Error('请选择1–12个明细表字段。');const width=Number($('doc-table-width').value),size=Number($('doc-table-font').value),first=chosen.length===1?width:Math.max(labelMinimum[size]||42,Math.floor(width*10/chosen.length)/10),rest=chosen.length-1,each=rest?Math.floor((width-first)*10/rest)/10:0;const columns=chosen.map((field,i)=>({field,width:i===0?first:i===chosen.length-1?Math.round((width-first-each*(rest-1))*10)/10:each}));const table={x:Number($('doc-table-x').value),y:Number($('doc-table-y').value),width,height:Number($('doc-table-height').value),font_size:Number($('doc-table-font').value),columns};const d={...config,schema_version:'1.3',print:config.print||{mode:'full',offset_x:0,offset_y:0},table};if(!config.background)delete d.background;apply(d,'添加明细表');});}
  $('doc-table-add').addEventListener('click',addTable);$('doc-table-remove').addEventListener('click',()=>action(removeTable));
@@ -268,7 +465,7 @@ window.createReportingDocuments=function(ports){
    load.addEventListener('click',()=>{$('doc-row').value=String(r.row_index+1);line.textContent='预览行号已设为 '+(r.row_index+1)+'。';});
    const act=node('td');act.append(load);
    // A refusal that names an element or a column of a 1.x template can be shown on the canvas (S03-J).
-   if(r.detail&&(r.detail.element||r.detail.column)&&config?.schema_version!=='2.0'){const where=node('button','在画布定位');where.type='button';where.className='button secondary small';where.addEventListener('click',()=>{canvas.mark(r.detail);line.textContent='第 '+(r.row_index+1)+' 行：'+window.reportingRefusal.text(r.detail,labelsOf())+'。';});act.append(where);}
+   if(r.detail&&(r.detail.element||r.detail.column||(r.detail.band&&config?.schema_version==='2.0'))){const where=node('button','在画布定位');where.type='button';where.className='button secondary small';where.addEventListener('click',()=>{canvas.mark(r.detail);line.textContent='第 '+(r.row_index+1)+' 行：'+window.reportingRefusal.text(r.detail,labelsOf())+'。';});act.append(where);}
    row.append(node('td','第 '+(r.row_index+1)+' 行'),node('td',r.ok?'通过':'不通过 · '+r.code+(checkCodes[r.code]?'（'+checkCodes[r.code]+'）':'')+(r.detail?' · '+window.reportingRefusal.text(r.detail,labelsOf()):'')),node('td',(r.reasons||[]).map(reasonText).join('、')||'—'),act);body.append(row);
   }
   const bad=v.rows.filter(r=>!r.ok).length;checks=v;
@@ -276,6 +473,6 @@ window.createReportingDocuments=function(ports){
   wrap.hidden=!v.rows.length;
  }
  $('doc-check').addEventListener('click',()=>action(()=>{previews();validate(config);if(!ports.snapshot())throw Error('请先生成/打开冻结快照，再检查样本。');const body={config:JSON.parse(JSON.stringify(config)),snapshot_id:ports.snapshot(),samples:'boundary'};$('doc-check-status').textContent='正在检查样本…';ports.check(body,v=>showChecks(v,body));}));
- return {clear(logout=false){past=[];future=[];scope='';checks=null;$('doc-check-body').replaceChildren();$('doc-check-wrap').hidden=true;$('doc-check-status').textContent='检查样本：用当前模板检查冻结快照的首行、末行与各行字段最长/最短的行，不渲染 PDF。';$('doc-check').hidden=true;canvas.clear();backgrounds=[];$('doc-background-file').value='';$('doc-background-listing').replaceChildren();$('doc-background-status').textContent='尚无当前授权模板。';$('doc-pdf').hidden=$('doc-saved-pdf').hidden=true;$('doc-issue').hidden=true;publishedOpen=false;$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent='正式出具需要已发布模板、冻结快照与行号。';resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('doc-print-mode').value='full';$('doc-offset-x').value='0';$('doc-offset-y').value='0';$('doc-print-status').textContent='尚无当前授权模板。';$('doc-server-listing').replaceChildren();$('doc-server-version').value='1';$('doc-server-status').textContent='查询当前授权结果后可使用服务器模板。';$('doc-elements').replaceChildren();$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc-table-status').textContent='无明细表。';$('doc-json').value='';$('doc-text').value='';$('doc-row').value='1';$('doc-status').textContent='先查询当前授权数据；生成PDF需冻结快照。';},refresh(value,q){resetRelease();result=value;query=q;if(saved&&!sameBinding(saved.config))saved=null;$('doc-server-status').textContent=saved?'正在编辑模板 '+saved.id+' · 版本 '+saved.version:'未关联服务器模板。';const key=JSON.stringify([q,ports.snapshot()]);if(key!==scope){past=[];future=[];scope=key;}
-try{validate(config);}catch{past=[];future=[];config={schema_version:'1.0',kind:'document',binding:binding(),elements:[{id:'n1',source:'literal',field:'',text:'Document preview',x:10,y:25,width:190,height:12,font_size:18,align:'left'}]};}$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();for(const c of value.columns){const o=node('option',c.label);o.value=c.id;$('doc-field').append(o);const p=node('option',c.label);p.value=c.id;$('doc-table-columns').append(p);}render();$('doc-pdf').hidden=$('doc-saved-pdf').hidden=$('doc-check').hidden=!ports.previews();$('doc-issue').hidden=!ports.issuance();$('doc-status').textContent=ports.previews()?'单页文本模板；生成PDF需当前冻结快照，行号为快照全局行号。':'单页文本模板；服务端未启用 PDF 渲染，不提供预览。';}};
+ return {clear(logout=false){past=[];future=[];conversion=[];$('doc2-panel').hidden=true;for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=false;$('doc-convert').hidden=true;$('doc-convert-status').textContent='尚无当前授权模板。';$('doc-convert-notes').replaceChildren();for(const id of ['doc2-group','doc2-bands','doc2-table','doc2-props','doc2-add-band','doc2-field','doc2-col-field'])$(id).replaceChildren();scope='';checks=null;$('doc-check-body').replaceChildren();$('doc-check-wrap').hidden=true;$('doc-check-status').textContent='检查样本：用当前模板检查冻结快照的首行、末行与各行字段最长/最短的行，不渲染 PDF。';$('doc-check').hidden=true;canvas.clear();backgrounds=[];$('doc-background-file').value='';$('doc-background-listing').replaceChildren();$('doc-background-status').textContent='尚无当前授权模板。';$('doc-pdf').hidden=$('doc-saved-pdf').hidden=true;$('doc-issue').hidden=true;publishedOpen=false;$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent='正式出具需要已发布模板、冻结快照与行号。';resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('doc-print-mode').value='full';$('doc-offset-x').value='0';$('doc-offset-y').value='0';$('doc-print-status').textContent='尚无当前授权模板。';$('doc-server-listing').replaceChildren();$('doc-server-version').value='1';$('doc-server-status').textContent='查询当前授权结果后可使用服务器模板。';$('doc-elements').replaceChildren();$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc-table-status').textContent='无明细表。';$('doc-json').value='';$('doc-text').value='';$('doc-row').value='1';$('doc-status').textContent='先查询当前授权数据；生成PDF需冻结快照。';},refresh(value,q){resetRelease();result=value;query=q;if(saved&&!sameBinding(saved.config))saved=null;$('doc-server-status').textContent=saved?'正在编辑模板 '+saved.id+' · 版本 '+saved.version:'未关联服务器模板。';const key=JSON.stringify([q,ports.snapshot()]);if(key!==scope){past=[];future=[];scope=key;}
+try{validate(config);}catch{past=[];future=[];conversion=[];config={schema_version:'1.0',kind:'document',binding:binding(),elements:[{id:'n1',source:'literal',field:'',text:'Document preview',x:10,y:25,width:190,height:12,font_size:18,align:'left'}]};}$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc2-field').replaceChildren();for(const c of value.columns){const o=node('option',c.label);o.value=c.id;$('doc-field').append(o);const p=node('option',c.label);p.value=c.id;$('doc-table-columns').append(p);const f=node('option',c.label+'（'+c.id+'）');f.value=c.id;$('doc2-field').append(f);}render();$('doc-pdf').hidden=$('doc-saved-pdf').hidden=$('doc-check').hidden=!ports.previews();$('doc-issue').hidden=!ports.issuance();$('doc-status').textContent=ports.previews()?'单页文本模板；生成PDF需当前冻结快照，行号为快照全局行号。':'单页文本模板；服务端未启用 PDF 渲染，不提供预览。';}};
 };
