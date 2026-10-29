@@ -532,6 +532,78 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 			t.Fatalf("%+v %v", st, e)
 		}
 	})
+	// A group issue job (S03-K) is stored with its group in place of a row and publishes a record that keeps it: both
+	// stores hand back the group they were given, and refuse a record whose group is not the job's.
+	t.Run("a_group_issue_job_and_its_record_round_trip", func(t *testing.T) {
+		v := env(t, factory(t))
+		snap := freeze(t, v, contractsim.FinancialQuery(), "snap")
+		stored, e := v.repo.Snapshot(ctx, v.p.Identity, snap.SnapshotID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		sum := sha256.Sum256([]byte(frozenTemplate))
+		templateID, digest := strings.Repeat("a", 32), hex.EncodeToString(sum[:])
+		rows := stored.Result.Rows
+		group := r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0, 1, 2}, RowsSHA256: r.RowsDigest(rows)}
+		job := func(key string, g r.IssueGroup) r.Job {
+			return r.Job{ID: r.NewID(), Owner: stored.Owner, Kind: "issue", State: "queued", Key: key, RequestHash: r.IssueGroupRequestHash(templateID, 1, digest, stored.ID, g), Query: stored.Query, Prepared: stored.Prepared,
+				SnapshotID: stored.ID, Format: "pdf", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, Template: frozenTemplate, Group: &g}
+		}
+		j := job("group", group)
+		admitted, e := v.repo.Admit(ctx, j)
+		if e != nil || admitted.Group == nil || !admitted.Group.Equal(&group) || admitted.RowIndex != 0 {
+			t.Fatalf("%+v %v", admitted, e)
+		}
+		// The same key and group again is the same job; another group under the key is a conflict; a job whose hash is
+		// not its group's, or that has a row too, is not admitted.
+		if again, e := v.repo.Admit(ctx, job("group", group)); e != nil || again.ID != j.ID {
+			t.Fatal(again, e)
+		}
+		other := group.Clone()
+		other.Rows = []int{0, 1}
+		mustError(t, func() error { _, e := v.repo.Admit(ctx, job("group", other)); return e }(), r.ErrConflict)
+		wrongHash := job("wrong hash", group)
+		wrongHash.RequestHash = r.IssueRequestHash(templateID, 1, digest, stored.ID, 0)
+		mustError(t, func() error { _, e := v.repo.Admit(ctx, wrongHash); return e }(), r.ErrInvalid)
+		withRow := job("with a row", group)
+		withRow.RowIndex = 1
+		mustError(t, func() error { _, e := v.repo.Admit(ctx, withRow); return e }(), r.ErrInvalid)
+		claim, e := v.repo.Claim(ctx, time.Minute)
+		if e != nil || claim == nil || claim.Job.ID != j.ID || claim.Job.Group == nil || !claim.Job.Group.Equal(&group) {
+			t.Fatal(claim, e)
+		}
+		content := []byte("%PDF-1.7 group")
+		fileSum := sha256.Sum256(content)
+		artifact := r.Artifact{ID: r.NewID(), Owner: stored.Owner, SnapshotID: stored.ID, Format: "pdf", ExpiresAt: stored.Prepared.ExpiresAt, Content: content, SHA256: hex.EncodeToString(fileSum[:]), Issue: j.ID}
+		at := time.Date(2026, 10, 28, 1, 2, 3, 0, time.UTC)
+		rec := r.Issue{ID: j.ID, Owner: stored.Owner, Number: "AR-000001", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, SnapshotID: stored.ID, SnapshotSHA256: stored.SHA256, Group: &group, ArtifactID: artifact.ID, SHA256: artifact.SHA256, Pages: 1,
+			IssuedAt: at, ReservationRef: "res-1", ConfirmationRef: "con-1", ConfirmedAt: at.Add(time.Second)}
+		rec.Stamp = r.IssueStamp(rec.Number, at, rec.ID)
+		// A record whose group is not the job's is refused and publishes nothing.
+		wrong := rec
+		wg := group.Clone()
+		wg.Key = []string{"x"}
+		wg.Fields = []string{"x"}
+		wrong.Group = &wg
+		mustError(t, v.repo.Publish(ctx, *claim, r.Publication{Artifact: &artifact, Issue: &wrong}), r.ErrIntegrity)
+		noGroup := rec
+		noGroup.Group = nil
+		mustError(t, v.repo.Publish(ctx, *claim, r.Publication{Artifact: &artifact, Issue: &noGroup}), r.ErrIntegrity)
+		if st, e := v.repo.Job(ctx, v.p.Identity, j.ID); e != nil || st.State != "running" {
+			t.Fatalf("a refused publication changed the job: %+v %v", st, e)
+		}
+		if e = v.repo.Publish(ctx, *claim, r.Publication{Artifact: &artifact, Issue: &rec}); e != nil {
+			t.Fatal(e)
+		}
+		got, e := v.repo.Issue(ctx, v.p.Identity, j.ID)
+		if e != nil || got.Group == nil || !got.Group.Equal(&group) || got.RowIndex != 0 || got.Number != "AR-000001" {
+			t.Fatalf("%+v %v", got, e)
+		}
+		done, e := v.repo.Job(ctx, v.p.Identity, j.ID)
+		if e != nil || done.State != "succeeded" || done.Group == nil || !done.Group.Equal(&group) {
+			t.Fatalf("%+v %v", done, e)
+		}
+	})
 }
 func TestMemoryContract(t *testing.T) {
 	runContract(t, func(*testing.T) r.Repository { return memory.New(time.Now) })

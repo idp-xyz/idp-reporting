@@ -9,6 +9,15 @@ window.reportingRefusal=(()=>{
  const text=(v,labels)=>[reasons[v.reason],v.band?bandLabels[v.band]:'',v.element?'元素 '+v.element:'',v.row!==undefined?'快照第 '+(v.row+1)+' 行':'',v.column?'列 '+(labels&&Object.hasOwn(labels,v.column)?labels[v.column]+'（'+v.column+'）':v.column):''].filter(Boolean).join(' · ');
  return {valid,text,reasons,bandLabels};
 })();
+// The group a schema 2.0 issue names in place of a row (S03-K): the template's group fields, the key values in their order,
+// how many rows the group has and the digest of those rows. The key values are the caller's own data, shown as text.
+window.reportingIssueGroup=(()=>{
+ const valid=g=>!!g&&typeof g==='object'&&!Array.isArray(g)&&Object.keys(g).sort().join()==='fields,key,row_count,rows_sha256'&&Array.isArray(g.fields)&&g.fields.length<=3&&g.fields.every((f,i)=>typeof f==='string'&&f.length>=1&&f.length<=128&&g.fields.indexOf(f)===i)&&Array.isArray(g.key)&&g.key.length===g.fields.length&&g.key.every(v=>typeof v==='string'&&v.length<=4096)&&Number.isSafeInteger(g.row_count)&&g.row_count>=1&&g.row_count<=1000&&typeof g.rows_sha256==='string'&&/^[a-f0-9]{64}$/.test(g.rows_sha256);
+ const clip=v=>{const c=Array.from(v);return c.length>40?c.slice(0,40).join('')+'…':v;};
+ // Without fields the group is the whole snapshot.
+ const text=g=>(g.fields.length?g.fields.map((f,i)=>f+' = '+clip(g.key[i])).join('、'):'整个快照')+'（'+g.row_count+' 行）';
+ return {valid,text};
+})();
 window.createReportingDocuments=function(ports){
  const $=id=>document.getElementById(id),node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
  let result=null,query=null,config=null,saved=null,release=null,backgrounds=[],publishedOpen=false,past=[],future=[],scope='',checks=null;
@@ -158,7 +167,11 @@ window.createReportingDocuments=function(ports){
  // The number is the source product's (1..32 of A-Za-z0-9._-, starting with a letter or digit): a string, present only on a succeeded record.
  const validNumber=n=>typeof n==='string'&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(n);
  function issuance(){previews();if(!ports.issuance())throw Error('服务端未启用正式出具。');}
- $('doc-issue').addEventListener('click',()=>action(()=>{issuance();if(config?.schema_version==='2.0')throw Error('2.0 分带模板暂不能正式出具（按分组出具在后续版本提供）；可预览、检查样本、保存与发布。');const id=cleanSaved();if(!publishedOpen)throw Error('正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。');const row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');$('doc-issue-status').textContent='正在提交正式出具：模板 '+id+' · 版本 '+saved.version+' · 第 '+row+' 行。';ports.issue({template_id:id,version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1});}));
+ $('doc-issue').addEventListener('click',()=>action(()=>{issuance();const id=cleanSaved();if(!publishedOpen)throw Error('正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。');const row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');
+  // A 2.0 template is issued for the row group that holds the row (S03-K): the server finds the group by the row and freezes it.
+  const banded=config?.schema_version==='2.0';
+  $('doc-issue-status').textContent='正在提交正式出具：模板 '+id+' · 版本 '+saved.version+(banded?' · 第 '+row+' 行所在分组（由服务端按模板的分组字段在冻结快照中确定）。':' · 第 '+row+' 行。');
+  ports.issue({template_id:id,version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1},banded);}));
  const issueStates={queued:'排队中',running:'执行中',succeeded:'已出具',failed:'失败',cancelled:'已取消'};
  // A failed record shows its code, and for these two what it means; other codes stand as they are.
  const issueFailures={AUTH_SCOPE_DENIED:'来源产品拒绝出具',ISSUE_UNRECONCILED:'未能通知来源产品作废预留，请联系管理员'};
@@ -169,7 +182,7 @@ window.createReportingDocuments=function(ports){
    const state=issueStates[v.state]+(v.error_code?' · '+v.error_code+(Object.hasOwn(issueFailures,v.error_code)?'（'+issueFailures[v.error_code]+'）':''):'');
    const row=node('tr');
    // Number, state, issue time, template, snapshot and row, file digest and pages, the product's confirmation, then the action.
-   for(const text of [v.state==='succeeded'?'No. '+v.number:'—',state,v.issued_at||'—',v.template_id+' · 版本 '+v.template_version,v.snapshot_id+' · 第 '+(v.row_index+1)+' 行',v.sha256?v.sha256+' · '+v.pages+' 页':'—',v.confirmation_ref?v.confirmation_ref+' · '+v.confirmed_at:'—'])row.append(node('td',text));
+   for(const text of [v.state==='succeeded'?'No. '+v.number:'—',state,v.issued_at||'—',v.template_id+' · 版本 '+v.template_version,v.snapshot_id+' · '+(v.group?'分组 '+window.reportingIssueGroup.text(v.group):'第 '+(v.row_index+1)+' 行'),v.sha256?v.sha256+' · '+v.pages+' 页':'—',v.confirmation_ref?v.confirmation_ref+' · '+v.confirmed_at:'—'])row.append(node('td',text));
    const actions=node('td');if(v.state==='succeeded'){const b=node('button','下载');b.type='button';b.className='button secondary';b.addEventListener('click',()=>action(()=>ports.issued(v.artifact_id,v.number,v.sha256)));actions.append(b);}row.append(actions);body.append(row);
   }
   $('doc-issues-wrap').hidden=!values.length;$('doc-issue-status').textContent=values.length?'当前身份共 '+values.length+' 条出具记录（最新在前，最多显示 50 条）。':'当前身份尚无出具记录。';
@@ -181,7 +194,7 @@ window.createReportingDocuments=function(ports){
  function checkIssues(values){
   if(!Array.isArray(values)||values.length>100)throw Error('无法验证出具记录列表。');
   for(const v of values){
-   if(!v||typeof v!=='object'||!validID(v.issue_id)||!Object.hasOwn(issueStates,v.state)||!validID(v.template_id)||!Number.isSafeInteger(v.template_version)||v.template_version<1||!hex64(v.template_sha256)||!validID(v.snapshot_id)||!Number.isSafeInteger(v.row_index)||v.row_index<0||(v.error_code!==undefined&&(v.state!=='failed'||typeof v.error_code!=='string'||!/^[A-Z][A-Z0-9_]{0,63}$/.test(v.error_code))))throw Error('无法验证出具记录。');
+   if(!v||typeof v!=='object'||!validID(v.issue_id)||!Object.hasOwn(issueStates,v.state)||!validID(v.template_id)||!Number.isSafeInteger(v.template_version)||v.template_version<1||!hex64(v.template_sha256)||!validID(v.snapshot_id)||!(v.group===undefined?Number.isSafeInteger(v.row_index)&&v.row_index>=0:v.row_index===undefined&&window.reportingIssueGroup.valid(v.group))||(v.error_code!==undefined&&(v.state!=='failed'||typeof v.error_code!=='string'||!/^[A-Z][A-Z0-9_]{0,63}$/.test(v.error_code))))throw Error('无法验证出具记录。');
    // Until the source product has confirmed there is no number, no file and no confirmation.
    if(v.state!=='succeeded'){if(confirmedFields.some(k=>v[k]!==undefined))throw Error('未完成的出具不应带有编号、产物或确认信息。');continue;}
    if(!validNumber(v.number)||!validID(v.artifact_id)||!hex64(v.sha256)||!hex64(v.snapshot_sha256)||!Number.isSafeInteger(v.pages)||v.pages<1||v.pages>100||!utc(v.issued_at)||!reference(v.reservation_ref)||!reference(v.confirmation_ref)||!utc(v.confirmed_at))throw Error('无法验证出具记录。');

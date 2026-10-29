@@ -69,6 +69,40 @@ var concurrentScenarios = []ruleScenario{
 			}
 		}
 	}},
+	// The same for the intent of a group (contract version 2, S03-K): one job is one reservation however many calls
+	// race on it, and different groups of different jobs take distinct consecutive numbers.
+	{"group_calls_for_one_job_make_one_reservation_and_different_jobs_distinct_numbers", func(t *testing.T, newEnv NewEnv) {
+		groups := []func() *r.IssueGroup{byCustomerA, byCustomerB, byCurrent, everyRow}
+		g := NewGroupRig(t, newEnv)
+		for round := 1; round <= rounds; round++ {
+			got := make([]r.IssueReservation, workers)
+			errs := make([]error, workers)
+			together(workers, func(i int) { got[i], errs[i] = g.PrepareGroup(round, groups[round%len(groups)]()) })
+			for i := range got {
+				if errs[i] != nil {
+					t.Fatalf("round %d call %d: %v", round, i, errs[i])
+				}
+				sameReservation(t, got[i], got[0])
+			}
+			if want := fmt.Sprintf("AR-%06d", round); got[0].Number != want {
+				t.Fatalf("round %d: the job got %s, want %s", round, got[0].Number, want)
+			}
+		}
+		g = NewGroupRig(t, newEnv)
+		got := make([]r.IssueReservation, workers)
+		errs := make([]error, workers)
+		together(workers, func(i int) { got[i], errs[i] = g.PrepareGroup(i+1, groups[i%len(groups)]()) })
+		seen := map[string]bool{}
+		for i := range got {
+			if errs[i] != nil {
+				t.Fatalf("job %d: %v", i+1, errs[i])
+			}
+			seen[got[i].Number] = true
+		}
+		if len(seen) != workers {
+			t.Fatalf("%d distinct numbers for %d jobs: %v", len(seen), workers, seen)
+		}
+	}},
 	{"calls_for_one_job_make_one_reservation", func(t *testing.T, newEnv NewEnv) {
 		g := NewRig(t, newEnv, Finance())
 		for round := 1; round <= rounds; round++ {

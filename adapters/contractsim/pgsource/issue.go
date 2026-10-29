@@ -129,6 +129,10 @@ func (s *Source) IssueRecord(ctx context.Context, jobID string) (contractsim.Iss
 	return rec, true, nil
 }
 
+// IssueContractVersion declares contract version 2 of the document authority (r.IssueContractGroups, S03-K), as the
+// in-memory simulator does: the source takes the intent of a row and the intent of a row group.
+func (s *Source) IssueContractVersion() int { return r.IssueContractGroups }
+
 // PrepareDocument makes the refusals of the in-memory simulator in the same order: an intent that
 // is not well formed or made for another context than sc, an unavailable source, a principal whose
 // current grant may not issue documents, a source read that is not the source's own, unexpired and
@@ -167,7 +171,7 @@ func (s *Source) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.I
 	if e != nil {
 		return r.IssueReservation{}, e
 	}
-	if e = contractsim.CheckRow(rows, in); e != nil {
+	if e = contractsim.CheckIntent(rows, saved.Query.Dimensions, in); e != nil {
 		return r.IssueReservation{}, e
 	}
 	prefix, refused, e := lockSequence(ctx, tx, sc)
@@ -314,4 +318,7 @@ func (s *Source) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, reaso
 	return nil
 }
 
-var _ r.DocumentAuthority = (*Source)(nil)
+var (
+	_ r.DocumentAuthority  = (*Source)(nil)
+	_ r.VersionedAuthority = (*Source)(nil)
+)

@@ -58,18 +58,25 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 	// the service can issue, so that a deployment without the renderer answers 422, not 404; so
 	// does an integration whose adapter cannot issue (S03-H): the source product numbers and
 	// confirms every document.
+	//
+	// A schema 2.0 template is issued by row group (S03-K, ADR 0004 decision 7): the request names the group by
+	// its key values (`group`, in the order of the template's group fields, none for a template without one) or
+	// by a row it contains (`row_index`, as the console does), never both and never neither; a 1.x template
+	// takes `row_index` alone. The group is resolved in the frozen snapshot and frozen with the job (its key,
+	// its row indices and the digest of its rows), so that both ways of naming one group are one request.
 	{
 		mux.HandleFunc("POST /api/reporting/v1/issues", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			var input struct {
-				TemplateID string `json:"template_id"`
-				Version    *int   `json:"version"`
-				SnapshotID string `json:"snapshot_id"`
-				RowIndex   *int   `json:"row_index"`
+				TemplateID string    `json:"template_id"`
+				Version    *int      `json:"version"`
+				SnapshotID string    `json:"snapshot_id"`
+				RowIndex   *int      `json:"row_index"`
+				Group      *[]string `json:"group"`
 			}
 			if e := decode(req, &input); e != nil {
 				return e
 			}
-			if input.Version == nil || input.RowIndex == nil {
+			if input.Version == nil || (input.RowIndex == nil) == (input.Group == nil) {
 				return r.ErrInvalid
 			}
 			key, e := idem(req)
@@ -89,10 +96,10 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			if e != nil {
 				return e
 			}
-			// A schema 2.0 template is issued by row group (ADR 0004, decision 7), which the source
-			// contract does not carry yet (S03-K): admission refuses it before anything is frozen.
-			if entry.Layout.Schema == doctemplates.SchemaBanded {
-				return r.ErrUnsupported
+			banded := entry.Layout.Schema == doctemplates.SchemaBanded
+			// A 1.x template has rows and no group.
+			if !banded && input.Group != nil {
+				return r.ErrInvalid
 			}
 			if e = authorize(req, p, entry.Layout); e != nil {
 				return e
@@ -105,13 +112,21 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			if e != nil {
 				return e
 			}
-			if _, e = doctemplates.Bind(entry.Layout, snap, *input.RowIndex); e != nil {
-				return e
+			in := r.IssueInput{TemplateID: entry.ID, TemplateVersion: entry.Version, Template: frozen, SnapshotID: snap.ID}
+			if banded {
+				if in.Group, e = resolveIssueGroup(entry.Layout, snap, input.RowIndex, input.Group); e != nil {
+					return e
+				}
+			} else {
+				if _, e = doctemplates.Bind(entry.Layout, snap, *input.RowIndex); e != nil {
+					return e
+				}
+				if _, e = doctemplates.BindTable(entry.Layout, snap); e != nil {
+					return e
+				}
+				in.RowIndex = *input.RowIndex
 			}
-			if _, e = doctemplates.BindTable(entry.Layout, snap); e != nil {
-				return e
-			}
-			v, e := service.SubmitIssue(req.Context(), p, r.IssueInput{TemplateID: entry.ID, TemplateVersion: entry.Version, Template: frozen, SnapshotID: snap.ID, RowIndex: *input.RowIndex}, key)
+			v, e := service.SubmitIssue(req.Context(), p, in, key)
 			if e != nil {
 				return e
 			}
@@ -120,4 +135,34 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 		}))
 	}
 	return mux, nil
+}
+
+// resolveIssueGroup finds the group of a 2.0 template that an issue request names, by its key values or by a row it
+// contains, in the frozen snapshot, and binds it as a preview does, so that a group the snapshot cannot form, a
+// field that differs inside it or a value the layout could not print is refused at once with the preview's code
+// and detail (the worker checks again from the stored snapshot). It returns the group as the job freezes it. An
+// unknown key is not found; neither refusal carries a value.
+func resolveIssueGroup(layout doctemplates.Document, snap r.Snapshot, row *int, key *[]string) (*r.IssueGroup, error) {
+	var group doctemplates.RowGroup
+	var e error
+	if row != nil {
+		group, e = doctemplates.GroupOf(layout, snap, *row)
+	} else {
+		group, e = doctemplates.GroupByKey(layout, snap, *key)
+	}
+	if e != nil {
+		return nil, e
+	}
+	if _, _, e = doctemplates.BindGroup(layout, snap, group); e != nil {
+		return nil, e
+	}
+	var fields []string
+	if layout.Group != nil {
+		fields = layout.Group.Fields
+	}
+	issued, e := r.NewIssueGroup(snap, fields, group.Key, group.Rows)
+	if e != nil {
+		return nil, e
+	}
+	return &issued, nil
 }

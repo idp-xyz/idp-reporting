@@ -16,7 +16,7 @@ import (
 )
 
 // Schema 2.0 over HTTP (S03-J): previews and checks bind the group of a row, a refusal says why and where, a
-// 2.0 template is saved and published like any, and nothing issues it until S03-K.
+// 2.0 template is saved and published like any (it is issued by group: issue_group_test.go, S03-K).
 
 // bandedRenderer renders and checks like the PDF writer's two entry points, without Typst: a preview answers a
 // small PDF and records what it was given; a check records it too and may refuse.
@@ -402,40 +402,5 @@ func TestBandedTemplatesAreSavedOpenedAndPublishedLikeAnyTemplate(t *testing.T) 
 	body = []byte(`{"id":"","expected_version":0,"config":{"schema_version":"2.0","kind":"document","binding":{"integration_id":"` + contractsim.FinanceIntegration + `","dataset":{"id":"receivables.aging","version":"1.0.0"}},"elements":[],"bands":{}}}`)
 	if w := request(h, "POST", "/api/reporting/v1/document-templates", body, true); w.Code != 400 {
 		t.Errorf("a 2.0 template with a 1.x key: %d %s", w.Code, w.Body.String())
-	}
-}
-
-func TestBandedTemplateIsNotAdmittedForIssueUntilS03K(t *testing.T) {
-	v := newIssueHTTP(t, nil)
-	banded := doctemplates.Document{Schema: "2.0", Kind: "document", Binding: doctemplates.Binding{Integration: contractsim.FinanceIntegration, Dataset: contractsim.FinancialQuery().Dataset},
-		Bands: &doctemplates.Bands{Detail: &doctemplates.DetailBand{Elements: []doctemplates.Item{{ID: "e1", Type: "table", X: 0, Width: 190, FontSize: 10, Columns: []doctemplates.ItemColumn{{Field: "customer.id", Width: 190}}}}}}}
-	saved, e := v.store.Save(v.p.Identity, "", 0, banded)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = v.store.Publish(v.p.Identity, saved.ID, "publish", 1, 0); e != nil {
-		t.Fatal(e)
-	}
-	input := map[string]any{"template_id": saved.ID, "version": 1, "snapshot_id": v.snapshot, "row_index": 0}
-	code, out := v.post(input, "")
-	if code != 422 || out["error"] != "UNSUPPORTED_COMBINATION" {
-		t.Fatalf("%d %v", code, out)
-	}
-	// Nothing was admitted: no job, no record.
-	if w := request(v.h, "GET", "/api/reporting/v1/issues", nil, true); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
-		t.Fatalf("a job was admitted: %d %s", w.Code, w.Body.String())
-	}
-	if v.drawn.calls != 0 || v.drawn.checks != 0 {
-		t.Errorf("the renderer was asked: %d %d", v.drawn.calls, v.drawn.checks)
-	}
-	// The refusal is for the template, not the request: the 1.x template of the fixture still issues.
-	v.publish()
-	if code, out := v.post(v.input(0), "other-key"); code != 202 {
-		t.Errorf("the 1.x template: %d %v", code, out)
-	}
-	// A version that is not the published one is unpublished before it is unsupported, as for 1.x.
-	input["version"] = 2
-	if code, _ := v.post(input, "third-key"); code != 404 {
-		t.Errorf("an unknown version: %d", code)
 	}
 }

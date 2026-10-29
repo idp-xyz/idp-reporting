@@ -104,6 +104,14 @@ each integration's adapter and the PDF renderer). A worker without one claims an
 fails it (UNSUPPORTED_COMBINATION), possibly after another worker's earlier attempt had reserved a number for it,
 which is then voided.
 
+Issue by group (S03-K, docs/API.md) adds no migration: a group issue job and its record carry the group in their JSON
+payloads. It does add a rolling constraint. A group job is asked of an adapter that declares contract version 2
+(`IssueContractVersion() == 2`) and fails with UNSUPPORTED_COMBINATION, asking the product nothing, on a worker whose
+adapter does not; and a binary older than S03-K reads a group job as corrupt (its request hash is not a row's), so that
+its claim and its reads of that job fail with INTEGRITY_FAILURE: roll the platform's binaries together, and do not run an
+older worker against a store that holds group jobs. Real products implement version 2 when they are integrated; until
+then a 2.0 template is issued only by the contract simulators.
+
 The failure of an issue job (S03-H, docs/API.md) is recorded before the source product is told, in this order:
 
 1. the job is failed as `ISSUE_UNRECONCILED`, fenced by the worker's claim (running, the claim's generation, a

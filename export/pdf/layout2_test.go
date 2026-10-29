@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -845,11 +846,28 @@ func TestBandedIssueLayoutRefusesTheBannerTextWherever2xHoldsIt(t *testing.T) {
 	}
 }
 
-func TestWriterIssueRefuses2xUntilS03K(t *testing.T) {
-	d := banded(doctemplates.Bands{Detail: detailOf(twoColumns("e1", 10))})
-	_, _, err := (&Writer{}).Issue(t.Context(), d, nil, nil, groupRows(1, 0), "ISSUED No. 1", created)
-	if !errors.Is(err, r.ErrUnsupported) {
-		t.Errorf("issuing a 2.0 document: %v", err)
+// A 2.0 document is issued (S03-K): the pages of an issue are the pages of its preview, bands, table, footer and all, and
+// differ only in the strip, which the writer sets; a 2.0 document has no background, so one is refused.
+func TestIssueLayoutOfA2xDocumentIsItsPreviewLayoutAndTakesNoBackground(t *testing.T) {
+	d := banded(doctemplates.Bands{
+		PageHeader:     fixedBand(20, textItem("e1", "literal", "ok", 0, 0, 100, 9, 12, "left"), textItem("e2", "field", "customer", 0, 10, 100, 9, 12, "left"), textItem("e4", "page", "{page}/{pages}", 110, 0, 80, 9, 12, "right")),
+		Detail:         detailOf(twoColumns("e3", 10)),
+		DocumentFooter: fixedBand(15, textItem("e5", "literal", "total", 0, 1, 100, 9, 12, "left")),
+	})
+	values := valuesFor(d, map[string]string{"e2": "x"})
+	issued, err := issueLayout(d, values, nil, groupRows(60, 5), plainFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previewed, err := layOut(d, values, nil, groupRows(60, 5), plainFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issued.Pages) < 2 || !reflect.DeepEqual(issued.Pages, previewed.Pages) || !reflect.DeepEqual(issued.Footer, previewed.Footer) {
+		t.Fatalf("the issue of a 2.0 document is laid out as %d pages, its preview as %d", len(issued.Pages), len(previewed.Pages))
+	}
+	if _, err = issueLayout(d, values, []byte("\x89PNG\r\n\x1a\n"), groupRows(60, 5), plainFake()); !errors.Is(err, r.ErrInvalid) {
+		t.Errorf("a background for a 2.0 document: %v", err)
 	}
 }
 

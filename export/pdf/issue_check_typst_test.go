@@ -47,6 +47,8 @@ func TestTypstChecksIssuesBeforeTheProductIsAsked(t *testing.T) {
 	t.Run("check_refuses_what_issue_refuses_for_the_layout", func(t *testing.T) { checkRefusesWhatIssueRefuses(t, w) })
 	t.Run("the_service_asks_the_product_only_after_the_check", func(t *testing.T) { serviceChecksBeforeTheProduct(t, w) })
 	t.Run("the_real_issuer_and_writer_issue_the_same_bytes", func(t *testing.T) { realIssuerIsDeterministic(t, w) })
+	// A schema 2.0 template issued by group through the whole stack (S03-K).
+	t.Run("a_2x_template_is_issued_by_group_through_the_service", func(t *testing.T) { serviceIssuesGroups(t, w) })
 }
 
 // checkRefusesWhatIssueRefuses: a table of documents, each given to CheckIssue and to Issue with a good

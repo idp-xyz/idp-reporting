@@ -1063,6 +1063,8 @@ func TestTypstIssuesDocuments(t *testing.T) {
 		t.Errorf("issue while previews are saturated: %v", err)
 	}
 	release(w.previews)
+	// A schema 2.0 document is issued by group (S03-K).
+	t.Run("banded", func(t *testing.T) { testTypstIssuesBandedDocuments(t, w, later) })
 }
 
 // TestTypstIssuesTheWidestLegalStamp: the worker must never void a number the product reserved

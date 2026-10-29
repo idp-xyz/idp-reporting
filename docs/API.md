@@ -64,8 +64,8 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET /document-templates/{id}/published | The published version |
 | POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
 | GET, POST /document-backgrounds | List authorized PNG backgrounds; upload `{binding, png}` (base64, 512 KiB) and get `{id, sha256}` |
-| POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}`, and the product's `number` once the job succeeded (read from its record), wherever the job is shown: the 202 of a request repeated with the key of a job that has succeeded (a client whose answer was lost asks again), `GET /jobs/{id}` and the 200 of `POST /jobs/{id}/cancel` |
-| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
+| POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` (a schema 2.0 template: `row_index` or `group`, see "Issue by group" below) with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}` (a group issue: `group` in place of `row_index`), and the product's `number` once the job succeeded (read from its record), wherever the job is shown: the 202 of a request repeated with the key of a job that has succeeded (a client whose answer was lost asks again), `GET /jobs/{id}` and the 200 of `POST /jobs/{id}/cancel` |
+| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
 | GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's, so once the snapshot expired it is refused (403 with the contract simulators, whose adapter denies an expired read; 409 for the download), while `GET /issues/{id}` still answers; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
 
 An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
@@ -247,9 +247,62 @@ the first and last, the one with the most and the one with the fewest rows (`fir
 `fewest_rows`), for each `field` and `group_sum` text the groups with the longest and the shortest value
 (`longest:<id>`, `shortest:<id>`) and for each table column the group with the longest cell (`cell:<field>`), each
 by its first row, at most 50. Authorization checks every field the template names (a group field a dimension: 422 for a
-metric; a group sum a metric; a table column or text field a column the caller may read: 403). Issuing a 2.0 template
-is not available until S03-K: `POST /issues` answers 422 UNSUPPORTED_COMBINATION at admission, and the issuer and the
-PDF writer refuse one too.
+metric; a group sum a metric; a table column or text field a column the caller may read: 403). A 2.0 template is issued by group (S03-K), under the source product's authority exactly as a 1.x row is: see "Issue by
+group" below.
+
+Issue by group (S03-K, docs/S03K_SCOPE.md, ADR 0004 decision 7). A schema 2.0 template makes one document per row group, and
+`POST /issues` issues one: `{template_id, version, snapshot_id, group}`, where `group` is the list of the group's key values in the
+order of the template's `group.fields` (the empty list for a template without `group`, whose one group is the whole snapshot), or,
+for a client that holds a row number (the console), `{template_id, version, snapshot_id, row_index}`, the group containing that row.
+Both or neither is 400, and so is a `group` of a 1.x template (a 1.x template keeps `row_index` alone, as ever) or of a length other than
+the template's fields. The admission resolves the group in the frozen snapshot, as the preview does, and refuses as the preview refuses
+(a field that differs inside the group, a value the layout cannot print: 422 with the reason and the place, never a value); a key no group
+of the snapshot has, and the whole-snapshot group of a snapshot with no rows, is 404 NOT_FOUND, and a `row_index` beyond the snapshot is
+400. Every refusal and error carries no value: the key values appear only in the request, in the job and the record and in the views of
+the caller's own data. The group is frozen with the job: its fields, its key values, its row indices and the digest of its rows; the request
+hash covers the resolved group, so `row_index` and `group` naming the same group are one request (the same Idempotency-Key replays the
+one job; another group under the key is 409 IDEMPOTENCY_CONFLICT; a row request is never a group request).
+
+The source contract has a second version for it. An adapter declares contract version 2 of `DocumentAuthority` by implementing
+`IssueContractVersion() int` and returning 2 (`reporting.VersionedAuthority`; an adapter without it speaks version 1). The platform
+never sends a group intent to an adapter that has not declared it: `POST /issues` of a group answers 422 UNSUPPORTED_COMBINATION at
+admission, nothing admitted, and a stored group job whose adapter lost the declaration fails with UNSUPPORTED_COMBINATION before the
+source is read or the product asked. A group intent is `IssueIntent.Group` (`Fields`, `Key`, `Rows` and `RowsSHA256`) and no
+`RowIndex` or `RowSHA256`; the intent of a 1.x row is exactly what it was. The product checks every row of the group against its own
+source snapshot and decides as it decides for a row: it refuses (AUTH_SCOPE_DENIED, nothing reserved) when the principal may not issue, when
+a group field is not a dimension of its frozen read, when a row is not one of that read's rows or does not have the group's key, when the group
+is not whole (its read has another row with the key; without fields the group is every row) or when the digest of the rows is not the one
+the platform froze; otherwise it reserves the number, confirms the file and voids as for a row. Idempotency by the job id, reservation,
+confirmation, void, tombstones and ISSUE_UNRECONCILED are unchanged, and another intent under a job id, a group for a row or another group, is
+ErrConflict.
+
+The digest of the rows of a group (`IssueGroup.RowsSHA256`, `reporting.RowsDigest`) is the encoding of one row's digest (above) applied to the
+rows together: the SHA-256, in lowercase hexadecimal, of the group's rows as one JSON array of the rows' arrays of strings, in the order of
+the group (the snapshot's order), no white space, escaped as for one row; no row is `[]`. Test vectors (reporting/row_digest_test.go
+reproduces them; the group of no rows is never issued):
+
+| Rows | The bytes hashed | SHA-256 |
+|---|---|---|
+| (`customer_a`, `current`, `10.00`), (`customer_a`, `1_30`, `30.00`), (`customer_a`, `current`, `50.00`) | `[["customer_a","current","10.00"],["customer_a","1_30","30.00"],["customer_a","current","50.00"]]` | `42785716cd90e7e5c5eaac4159000d35054396fad9d8cc31578e8d1dbaffd1e7` |
+| (`甲方<&>`, `a` U+2028 `b` U+2029 `c`, `1.00`), (empty, `x"y\z`, empty) | `[["甲方\u003c\u0026\u003e","a\u2028b\u2029c","1.00"],["","x\"y\\z",""]]` | `209828bd1e32d244685625799e6d48ce46055607aedfc5331caa0868fd31bcb6` |
+| (`customer_b`, `1_30`, `20.00`) | `[["customer_b","1_30","20.00"]]` | `034bcc9595806bc506e14adebf2fd7f70058fa8a28389f8700a8e037d226a390` |
+
+The worker re-checks the frozen group against the frozen snapshot before the product is asked (a stored group that is not that snapshot's,
+whole, fails with INTEGRITY_FAILURE and calls nothing), then has the issuer check what it can without the product: the frozen template is
+still the published version, the group binds as a preview binds it (BindGroup), and the layout accepts the document; the issuer refuses a
+group job whose fields are not the template's, a 2.0 job without a group and a 1.x job with one. After the product's reservation it renders
+the group's document, the stamp `ISSUED No. <number> - <issue time> - <record id>` set in the strip of every page, with the same
+determinism as a row (the product's issue time is the PDF's creation date, so that the same job gives the same bytes), has the product
+confirm the file and publishes the artifact and the record. The failure order is S03-H's, unchanged: the failure recorded first, fenced by the
+claim, as ISSUE_UNRECONCILED, then the void, then the job's own code. The record keeps the group (its fields, key values, row indices and the
+digest of its rows) in place of the row, and `ValidatePublication` and every view check it against the job. No SQL migration is needed:
+the job's and the record's JSON payloads carry the group (a binary older than S03-K reads a group job as corrupt: INTEGRITY_FAILURE;
+platform binaries are rolled together, docs/OPERATIONS.md).
+
+The views show the group where they showed the row: `issue.group` of a job view and `group` of an entry of `GET /issues` and of
+`GET /issues/{id}` are `{fields, key, row_count, rows_sha256}` (the template's group fields, the key values in their order, how many rows, the
+digest of those rows), and a group issue has no `row_index`; a row issue has no `group`. The row indices stay in the record, which the
+views check but do not repeat.
 
 Configured fixture budgets: 1,000 rows, 1 MiB result, 8 MiB artifact, 50 source rows
 per page, 20 s work timeout and 30 s repository lease. These are test-profile

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -142,6 +143,30 @@ func GroupOf(d Document, s r.Snapshot, row int) (RowGroup, error) {
 		}
 	}
 	return RowGroup{}, r.ErrIntegrity
+}
+
+// GroupByKey returns the group whose key is exactly the given values, in the order of the template's group fields
+// (none for a template without a group, whose one group is the whole snapshot). A key of another length is
+// invalid; a key that no group of the snapshot has, and the whole-snapshot group of a snapshot without rows,
+// is not found (there are no rows to make a document of). Errors carry no value.
+func GroupByKey(d Document, s r.Snapshot, key []string) (RowGroup, error) {
+	groups, e := Groups(d, s)
+	if e != nil {
+		return RowGroup{}, e
+	}
+	fields := 0
+	if d.Group != nil {
+		fields = len(d.Group.Fields)
+	}
+	if len(key) != fields {
+		return RowGroup{}, r.ErrInvalid
+	}
+	for _, g := range groups {
+		if len(g.Rows) > 0 && slices.Equal(g.Key, key) {
+			return g, nil
+		}
+	}
+	return RowGroup{}, r.ErrNotFound
 }
 
 // BindGroup gives the values of the text elements of a 2.0 document, by element id, and the table's

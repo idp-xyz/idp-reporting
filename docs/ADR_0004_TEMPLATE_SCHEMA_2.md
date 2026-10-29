@@ -53,11 +53,11 @@ amounts and numbers, the platform renders and keeps the file (docs/s00/ARCHITECT
    carries, table totals, `group_sum`). Tax, rounding, document totals and amounts in words are fields the
    product supplies; the platform never computes them.
 7. **Issue by group.** For a 2.0 template, `POST /issues` names the group by its key values, and
-   `IssueIntent` carries `GroupFields`, the group's row indices and the digest of those rows in place of
-   `RowIndex` and `RowSHA256`. This is version 2 of the `DocumentAuthority` contract: an adapter declares it,
-   and without it a 2.0 template cannot be issued (422). The product checks the rows against its own source
-   snapshot and decides, as it does for a row. The record keeps the group's key digest, rows and digest; the
-   stamp is unchanged. 1.x keeps the row form.
+   `IssueIntent` carries `Group` (the group's fields, key values, row indices and the digest of those rows)
+   in place of `RowIndex` and `RowSHA256`. This is version 2 of the `DocumentAuthority` contract: an adapter
+   declares it, and without it a 2.0 template cannot be issued (422). The product checks the rows against its
+   own source snapshot and decides, as it does for a row. The record keeps the group's fields, key values, rows
+   and digest; the stamp is unchanged. 1.x keeps the row form. (Wording aligned with the S03-K implementation.)
 8. **Refusals say where.** A layout refusal may add `detail` to the problem answer: `reason` (`DOES_NOT_FIT`,
    `NOT_COVERED`, `INCONSISTENT_GROUP`, `TOO_MANY_PAGES`, `BAND_OVERFLOW`) and, where they apply, `band`,
    `element`, `row` and `column` — names and indices, never values. Clients that ignore `detail` keep
