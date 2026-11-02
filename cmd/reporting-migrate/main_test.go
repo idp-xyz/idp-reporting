@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"idp.local/reporting/internal/pgauthproxy"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/objects"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -181,6 +183,75 @@ func TestMigrateCommand(t *testing.T) {
 	expect([]string{"up"}, false, "at version 009")
 	expect([]string{"init-profile", "contract-simulator-only"}, false)
 	retention(t, admin, dsn, expect)
+	migratorCredentials(t, admin, dsn, expect)
+}
+
+// migratorCredentials proves the rotation of the migrator role's password (S04-H H3) for the command: run with the DSN of the role, it
+// works; after ALTER ROLE ... PASSWORD it is refused with the old DSN, without a password in what it prints, and works with the new one.
+// The throwaway server trusts every password, so the connections go through internal/pgauthproxy, which checks the password against the
+// verifier the server stores (see its documentation: the check is the proxy's, the verifier and the role are the server's).
+func migratorCredentials(t *testing.T, admin *pgxpool.Pool, dsn string, expect func([]string, bool, ...string) string) {
+	t.Helper()
+	ctx := context.Background()
+	const role, oldPassword, newPassword = "reporting_cli_mig_t", "migrator-OLD-password-6c2e91d0a4", "migrator-NEW-password-d7013fb85e"
+	expect([]string{"up"}, false, "at version 009")
+	expect([]string{"roles", "--migrator-role", role, "--app-role", "reporting_cli_app_t"}, false, "owned by "+role)
+	set := func(password string) {
+		t.Helper()
+		if _, err := admin.Exec(ctx, "ALTER ROLE "+role+" LOGIN PASSWORD '"+password+"'"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	upstream, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := pgauthproxy.Start(t, upstream.Host, pgauthproxy.Admin{Pool: admin})
+	as := func(password string) {
+		t.Helper()
+		u := url.URL{Scheme: "postgresql", User: url.UserPassword(role, password), Host: proxy.Addr, Path: upstream.Path, RawQuery: "sslmode=disable"}
+		t.Setenv("REPORTING_STORE_DSN", u.String())
+	}
+	check := func(what string, out string, err error) {
+		t.Helper()
+		all := out
+		if err != nil {
+			all += err.Error()
+		}
+		for _, leak := range []string{oldPassword, newPassword, "SCRAM-SHA-256$", "postgresql://"} {
+			if strings.Contains(all, leak) {
+				t.Errorf("%s: the output carries %q: %q", what, leak, all)
+			}
+		}
+	}
+	set(oldPassword)
+	as(oldPassword)
+	out, err := capture(t, "status")
+	check("status with the password", out, err)
+	if err != nil || !strings.Contains(out, "applied:  009 capacity_indexes") {
+		t.Fatalf("the migrator cannot run the command with its password: %v %s", err, out)
+	}
+	set(newPassword)
+	refused := proxy.Refused.Load()
+	out, err = capture(t, "status")
+	check("status with the old password", out, err)
+	if err == nil || proxy.Refused.Load() <= refused {
+		t.Fatalf("the command ran with the old password: %v %s", err, out)
+	}
+	for _, args := range [][]string{{"plan"}, {"up"}, {"roles", "--migrator-role", role, "--app-role", "reporting_cli_app_t"}} {
+		out, err = capture(t, args...)
+		check(args[0]+" with the old password", out, err)
+		if err == nil {
+			t.Errorf("%v ran with the old password", args)
+		}
+	}
+	as(newPassword)
+	out, err = capture(t, "status")
+	check("status with the new password", out, err)
+	if err != nil || !strings.Contains(out, "applied:  009 capacity_indexes") {
+		t.Fatalf("the migrator cannot run the command with its new password: %v %s", err, out)
+	}
+	expect([]string{"up"}, false, "at version 009")
 }
 
 // retention drives the operator's sweep (S04-B) on rows seeded by SQL: a dry run that counts and changes nothing, the sweep in batches of
@@ -479,5 +550,30 @@ VALUES($1,'t','i','x','y','artifact',jsonb_build_object('ID',$1::text,'Object',$
 	_, err = capture(t, "verify-objects", "--object-store-endpoint="+endpoint, "--object-store-bucket=reporting-test-s04e-absent", "--object-store-loopback-http")
 	if err == nil || !strings.Contains(err.Error(), `"reporting-test-s04e-absent"`) || strings.Contains(err.Error(), secret) {
 		t.Fatalf("a bucket that cannot be reached: %v", err)
+	}
+}
+
+// S04-H H3: a REPORTING_STORE_DSN the command cannot use is refused without the string and without the password in it, whether the string
+// cannot be parsed or the server cannot be reached; the credential flags of the object store are refused as before.
+func TestMigrateCommandRefusalsCarryNoPassword(t *testing.T) {
+	const password = "S04H-migrator-pw-0123456789-NEVER-SHOWN"
+	for name, dsn := range map[string]string{
+		"not a connection string": "::" + password,
+		"a bad sslmode":           "postgresql://migrator:" + password + "@127.0.0.1:1/db?sslmode=bogus",
+		"connection refused":      "postgresql://migrator:" + password + "@127.0.0.1:1/db?sslmode=disable",
+	} {
+		t.Setenv("REPORTING_STORE_DSN", dsn)
+		out, err := capture(t, "status", "--timeout", "5s")
+		if err == nil {
+			t.Errorf("%s: status ran", name)
+			continue
+		}
+		if all := out + err.Error(); strings.Contains(all, password) || strings.Contains(all, "postgresql://") {
+			t.Errorf("%s: the refusal carries the connection string: %q", name, all)
+		}
+	}
+	t.Setenv("REPORTING_STORE_DSN", "::"+password)
+	if _, err := capture(t, "status"); !errors.Is(err, r.ErrInvalid) || !strings.Contains(err.Error(), "REPORTING_STORE_DSN") {
+		t.Errorf("an unparseable string: %v", err)
 	}
 }

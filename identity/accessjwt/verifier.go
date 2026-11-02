@@ -120,12 +120,40 @@ func (v *Verifier) Replace(c Config) error {
 // transport. Only one Authorization Bearer header is read. Returned identities
 // are copied; neither claims nor forwarded headers can expand their bindings.
 func (v *Verifier) Authenticate(req *http.Request) (r.Principal, error) {
-	denied := func() (r.Principal, error) { return r.Principal{}, r.ErrDenied }
 	if v == nil || req == nil || req.Context().Err() != nil {
-		return denied()
+		return r.Principal{}, r.ErrDenied
+	}
+	// One snapshot for the whole authentication (S04-H): a Replace that lands after this load does not change the keys, the audience or the
+	// bindings this request is judged by, and one that landed before it does. That is the documented semantics of a rotation.
+	c := v.current.Load()
+	if c == nil {
+		return r.Principal{}, r.ErrDenied
+	}
+	return c.authenticate(req)
+}
+
+// KeyIDs lists the kids of the issuer keys in force, sorted: nothing of the keys themselves, no modulus and no exponent. It is what an
+// operator checks after a rotation, and what the server may log at start. The zero Verifier, which denies everything, trusts none.
+func (v *Verifier) KeyIDs() []string {
+	if v == nil {
+		return nil
 	}
 	c := v.current.Load()
-	if c == nil || len(req.Header.Values("Authorization")) != 1 {
+	if c == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(c.keys))
+	for id := range c.keys {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// authenticate judges a request by this configuration alone.
+func (c *configuration) authenticate(req *http.Request) (r.Principal, error) {
+	denied := func() (r.Principal, error) { return r.Principal{}, r.ErrDenied }
+	if len(req.Header.Values("Authorization")) != 1 {
 		return denied()
 	}
 	header := req.Header.Get("Authorization")

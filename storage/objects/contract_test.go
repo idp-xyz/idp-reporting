@@ -235,6 +235,66 @@ func TestS3Objects(t *testing.T) {
 			t.Fatalf("missing bucket: %v", err)
 		}
 	})
+	// S04-H H3, the rotation of the object store's key pair. The throwaway server has the one root key pair and no way to make a second
+	// (MinIO could, with its admin API; versitygw in CI is started with a root key only), so a revoked key cannot be shown being revoked. What
+	// the server cannot tell apart is shown instead: a request signed by a key it does not accept is answered 403 whether the key was never
+	// known, was deleted, or has the wrong secret, so a client built with a wrong key is exactly the running client after a revocation.
+	// The procedure (create the new pair, restart with it, delete the old one) is the object store's own and is written down, not proved here.
+	t.Run("a_key_the_server_does_not_accept_fails_the_start_and_every_later_request_without_naming_a_key", func(t *testing.T) {
+		wrongSecret, unknownKey := *c, *c
+		wrongSecret.creds.secret = "rotated-away-secret-0123456789abcdef"
+		unknownKey.creds.access = "ROTATEDAWAYACCESSKEY"
+		secrets := []string{c.creds.access, c.creds.secret, wrongSecret.creds.secret, unknownKey.creds.access, c.base.Host, c.base.String(), "InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "<Error>"}
+		noKey := func(what string, err error) {
+			t.Helper()
+			for _, leak := range secrets {
+				if err != nil && strings.Contains(err.Error(), leak) {
+					t.Errorf("%s: the error carries %q: %v", what, leak, err)
+				}
+			}
+		}
+		// The start: the text names the bucket and the status and nothing else.
+		want := fmt.Sprintf("the object store's bucket %q is not usable: HEAD bucket answered status 403", c.Bucket)
+		for name, bad := range map[string]*S3{"a wrong secret": &wrongSecret, "an unknown access key": &unknownKey} {
+			err := CheckAtStart(ctx, bad)
+			if err == nil || err.Error() != want {
+				t.Errorf("%s: the start says %v, want %q", name, err, want)
+			}
+		}
+		// A running client whose key stops being accepted: its next request of every kind fails as the store being unavailable, with the
+		// status, so that the API answers 503 and Retry-After, and never with the key.
+		key := fmt.Sprintf("client-test/rotation-%d", time.Now().UnixNano())
+		content := []byte("kept through the rotation")
+		if err := c.Put(ctx, key, content, digest(content)); err != nil {
+			t.Fatal(err)
+		}
+		defer c.Delete(ctx, key)
+		for name, bad := range map[string]*S3{"a wrong secret": &wrongSecret, "an unknown access key": &unknownKey} {
+			calls := map[string]error{
+				"check":  bad.Check(ctx),
+				"put":    bad.Put(ctx, key+"-x", content, digest(content)),
+				"delete": bad.Delete(ctx, key),
+			}
+			_, calls["get"] = bad.Get(ctx, key, digest(content), len(content))
+			_, _, calls["list"] = bad.List(ctx, "client-test/", "", 10)
+			for call, err := range calls {
+				var o *r.ObjectStoreError
+				if !errors.As(err, &o) || o.Status != 403 || !errors.Is(err, r.ErrUnavailable) || !r.IsObjectStoreError(err) {
+					t.Errorf("%s, %s: %v", name, call, err)
+				}
+				noKey(name+", "+call, err)
+			}
+		}
+		// The restarted server, with the key pair the store accepts, reads what the old one wrote: the objects are not signed by the key.
+		got, err := c.Get(ctx, key, digest(content), len(content))
+		if err != nil || string(got) != string(content) {
+			t.Errorf("the restarted client does not read what was written: %q %v", got, err)
+		}
+		// Nothing was written or deleted by the clients the store refused.
+		if _, err := c.Get(ctx, key+"-x", digest(content), len(content)); err == nil {
+			t.Error("a refused put wrote an object")
+		}
+	})
 	t.Run("keys_with_awkward_characters_round_trip", func(t *testing.T) {
 		prefix := fmt.Sprintf("client-test/awkward-%d/", time.Now().UnixNano())
 		for _, name := range []string{"a b", "a+b", "a=b&c", "ünï", "tilde~dollar$", "star*paren(", "中文"} {

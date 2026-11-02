@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,9 +14,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -299,6 +306,137 @@ func TestSweepLoopLogsTheObjectCountsAndOnlyCounts(t *testing.T) {
 			if strings.Contains(line, leak) {
 				t.Fatalf("the log carries %q: %s", leak, line)
 			}
+		}
+	}
+}
+
+// The demo's cursor key ring (S04-H): one token derives the key it always did; previous tokens are the older keys, newest first, at most 3;
+// a refusal names the variable and the entry, never a token.
+func TestDemoCursorKeysAreDerivedFromTheTokensAndNeverNamedInARefusal(t *testing.T) {
+	const current = "current-demo-token-0123456789abcdef-CURRENT"
+	const older1, older2, older3, older4 = "older-demo-token-1-0123456789abcdef-OLDER1", "older-demo-token-2-0123456789abcdef-OLDER2", "older-demo-token-3-0123456789abcdef-OLDER3", "older-demo-token-4-0123456789abcdef-OLDER4"
+	// A single token: the key of S01..S04-G, byte for byte (cursors issued by the previous binary stay valid).
+	sum := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + current))
+	ring, err := demoCursorKeys(current, "")
+	if err != nil || len(ring) != 1 || !bytes.Equal(ring[0], sum[:]) {
+		t.Fatalf("the single-token key changed: %v", err)
+	}
+	ring, err = demoCursorKeys(current, older1+","+older2+","+older3)
+	if err != nil || len(ring) != 4 || !bytes.Equal(ring[0], sum[:]) {
+		t.Fatalf("%d keys, %v", len(ring), err)
+	}
+	for i, token := range []string{older1, older2, older3} {
+		want := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + token))
+		if !bytes.Equal(ring[i+1], want[:]) {
+			t.Errorf("previous token %d is not at position %d, newest first", i+1, i+2)
+		}
+	}
+	for name, c := range map[string]struct{ current, previous, want string }{
+		"no current token":        {"", "", "REPORTING_DEMO_TOKEN must contain at least 32 characters"},
+		"a short current token":   {"short", "", "REPORTING_DEMO_TOKEN must contain at least 32 characters"},
+		"four previous tokens":    {current, older1 + "," + older2 + "," + older3 + "," + older4, "REPORTING_DEMO_PREVIOUS_TOKENS holds at most 3 tokens"},
+		"a short previous token":  {current, older1 + ",short-SECRET", "REPORTING_DEMO_PREVIOUS_TOKENS entry 2 must contain at least 32 characters"},
+		"an empty entry":          {current, older1 + ",", "REPORTING_DEMO_PREVIOUS_TOKENS entry 2 must contain at least 32 characters"},
+		"the current token again": {current, older1 + "," + current, "REPORTING_DEMO_PREVIOUS_TOKENS entry 2 repeats another token"},
+		"a repeated previous":     {current, older1 + "," + older1, "REPORTING_DEMO_PREVIOUS_TOKENS entry 2 repeats another token"},
+	} {
+		_, err := demoCursorKeys(c.current, c.previous)
+		if err == nil || err.Error() != c.want {
+			t.Errorf("%s: %v, want %q", name, err, c.want)
+			continue
+		}
+		for _, secret := range []string{current, older1, older2, older3, older4, "short-SECRET"} {
+			if strings.Contains(err.Error(), secret) {
+				t.Errorf("%s: the refusal carries a token: %q", name, err)
+			}
+		}
+	}
+}
+
+// lockedBuffer is written by the child's copier goroutine while the test polls it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// demoHelperEnv makes this test binary run the demo's main, so that its real log output can be read: the child process of
+// TestTheDemosLogCarriesNoTokenAndNoKey.
+const demoHelperEnv = "REPORTING_DEMO_TEST_AS_MAIN"
+
+// TestMain makes the test binary run the demo's main when the child process of TestTheDemosLogCarriesNoTokenAndNoKey asks for it.
+func TestMain(m *testing.M) {
+	if os.Getenv(demoHelperEnv) == "1" {
+		os.Args = []string{"reporting-demo", "-profile=contract-simulator", "-memory", "-listen=127.0.0.1:0", "-sweep-interval=0"}
+		main() // exits 1 on a refusal; returns on the signal
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// S04-H H5: the demo's output, started with a known token and a known previous token, carries neither, nor a key derived from them; a
+// start with a refused previous-token list says why without them. The log says how many cursor keys the ring holds.
+func TestTheDemosLogCarriesNoTokenAndNoKey(t *testing.T) {
+	const current, previous = "child-demo-token-CURRENT-0123456789abcdef", "child-demo-token-PREVIOUS-0123456789abcdef"
+	run := func(previousTokens string, stop bool) (string, error) {
+		cmd := exec.Command(os.Args[0], "-test.count=1")
+		cmd.Env = append(os.Environ(), demoHelperEnv+"=1", "REPORTING_DEMO_TOKEN="+current, previousTokensEnv+"="+previousTokens)
+		out := &lockedBuffer{}
+		cmd.Stdout, cmd.Stderr = out, out
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		if stop {
+			deadline := time.After(20 * time.Second)
+			for !strings.Contains(out.String(), "listening at") {
+				select {
+				case err := <-done:
+					return out.String(), err
+				case <-deadline:
+					_ = cmd.Process.Kill()
+					t.Fatalf("the demo did not start: %s", out.String())
+				case <-time.After(20 * time.Millisecond):
+				}
+			}
+			_ = cmd.Process.Signal(syscall.SIGTERM)
+		}
+		err := <-done
+		return out.String(), err
+	}
+	currentKey, previousKey := sha256.Sum256([]byte("reporting-demo-cursor-v1:"+current)), sha256.Sum256([]byte("reporting-demo-cursor-v1:"+previous))
+	forbidden := []string{current, previous, string(currentKey[:]), string(previousKey[:]), hex.EncodeToString(currentKey[:]), hex.EncodeToString(previousKey[:]),
+		base64.StdEncoding.EncodeToString(currentKey[:]), base64.RawURLEncoding.EncodeToString(currentKey[:]), base64.StdEncoding.EncodeToString(previousKey[:]), base64.RawURLEncoding.EncodeToString(previousKey[:])}
+	output, err := run(previous, true)
+	if err != nil || !strings.Contains(output, "cursor-keys=2;") {
+		t.Fatalf("the demo with a previous token: %v\n%s", err, output)
+	}
+	if only, err := run("", true); err != nil || !strings.Contains(only, "cursor-keys=1;") {
+		t.Fatalf("the demo with one token: %v\n%s", err, only)
+	} else {
+		output += only
+	}
+	for _, bad := range []string{"short", previous + "," + previous, previous + ",b,c,d", previous + ",child-demo-token-FOURTH-0123456789abcdef,child-demo-token-FIFTH-0123456789abcdefg,child-demo-token-SIXTH-0123456789abcdef"} {
+		out, err := run(bad, false)
+		if err == nil || !strings.Contains(out, previousTokensEnv) {
+			t.Errorf("a refused list %q started or does not say why: %v\n%s", bad, err, out)
+		}
+		output += out
+	}
+	for _, leak := range forbidden {
+		if strings.Contains(output, leak) {
+			t.Errorf("the demo's output carries a secret (%d bytes of it)", len(leak))
 		}
 	}
 }

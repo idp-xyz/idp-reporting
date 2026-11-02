@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -152,6 +153,47 @@ func openObjectStore(flags *objects.Flags, getenv func(string) string, useMemory
 	return client, nil
 }
 
+// previousTokensEnv names the optional older demo tokens (S04-H): comma-separated, newest first, whose cursors are still accepted so that a
+// rotation of the demo token can be rehearsed. They only verify; the current token signs.
+const previousTokensEnv = "REPORTING_DEMO_PREVIOUS_TOKENS"
+
+// maxPreviousTokens is the ring's size, 4, less the current key.
+const maxPreviousTokens = r.MaxCursorKeys - 1
+
+// demoCursorKey is the demo's cursor key for one token: unchanged since S01, so that a single token keeps the cursors it always had.
+func demoCursorKey(token string) []byte {
+	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + token))
+	return key[:]
+}
+
+// demoCursorKeys derives the demo's cursor key ring from the current token and the optional previous ones (S04-H). A refusal names the
+// variable and the position of the entry, never a token or a key.
+func demoCursorKeys(current, previous string) ([][]byte, error) {
+	if len(current) < 32 {
+		return nil, fmt.Errorf("REPORTING_DEMO_TOKEN must contain at least 32 characters")
+	}
+	ring := [][]byte{demoCursorKey(current)}
+	if previous == "" {
+		return ring, nil
+	}
+	entries := strings.Split(previous, ",")
+	if len(entries) > maxPreviousTokens {
+		return nil, fmt.Errorf("%s holds at most %d tokens", previousTokensEnv, maxPreviousTokens)
+	}
+	tokens := []string{current}
+	for i, token := range entries {
+		if len(token) < 32 {
+			return nil, fmt.Errorf("%s entry %d must contain at least 32 characters", previousTokensEnv, i+1)
+		}
+		if slices.Contains(tokens, token) {
+			return nil, fmt.Errorf("%s entry %d repeats another token", previousTokensEnv, i+1)
+		}
+		tokens = append(tokens, token)
+		ring = append(ring, demoCursorKey(token))
+	}
+	return ring, nil
+}
+
 func run() error {
 	profile := flag.String("profile", "", "required: contract-simulator")
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
@@ -205,8 +247,9 @@ func run() error {
 		return e
 	}
 	secret := os.Getenv("REPORTING_DEMO_TOKEN")
-	if len(secret) < 32 {
-		return fmt.Errorf("REPORTING_DEMO_TOKEN must contain at least 32 characters")
+	cursorKeys, e := demoCursorKeys(secret, os.Getenv(previousTokensEnv))
+	if e != nil {
+		return e
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -304,8 +347,7 @@ func run() error {
 		}
 		issuer = v
 	}
-	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + secret))
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas, Objects: objectBucket})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKeys: cursorKeys, Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas, Objects: objectBucket})
 	if e != nil {
 		return e
 	}
@@ -405,7 +447,7 @@ func run() error {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; sweep=%s; objects=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, *sweepInterval, objectBucket != nil, os.Getpid(), listener.Addr())
+	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; sweep=%s; objects=%t; cursor-keys=%d; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, *sweepInterval, objectBucket != nil, len(cursorKeys), os.Getpid(), listener.Addr())
 	e = server.Serve(listener)
 	stop()
 	workers.Wait()

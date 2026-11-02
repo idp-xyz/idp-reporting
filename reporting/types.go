@@ -461,11 +461,14 @@ type WorkbookWriter interface {
 type Config struct {
 	Repository  Repository
 	Connections []Connection
-	CursorKey   []byte
-	Writer      WorkbookWriter            // the default workbook format
-	Formats     map[string]WorkbookWriter // further export formats by name, such as "pdf"
-	Issuer      Issuer                    // renders issue jobs; without it issuing is unsupported
-	Quotas      Quotas                    // per-identity admission limits (S04-D); zero fields take the defaults
+	// CursorKey is the ring of one; CursorKeys is the cursor key ring (S04-H): the newest key first, 1 to 4 keys of at least 32 bytes, pairwise
+	// distinct. The first signs every new cursor and any of them verifies. Exactly one of the two fields is set.
+	CursorKey  []byte
+	CursorKeys [][]byte
+	Writer     WorkbookWriter            // the default workbook format
+	Formats    map[string]WorkbookWriter // further export formats by name, such as "pdf"
+	Issuer     Issuer                    // renders issue jobs; without it issuing is unsupported
+	Quotas     Quotas                    // per-identity admission limits (S04-D); zero fields take the defaults
 	// Objects, when set, is where the worker puts the content of an artifact before it publishes the row, and where a download reads it back
 	// (S04-E). The repository must be one that accepts such rows (the durable store opened with the same object store, or the memory store);
 	// without it the content stays inline in the row, as before.
