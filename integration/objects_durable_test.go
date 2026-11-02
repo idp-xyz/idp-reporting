@@ -111,6 +111,7 @@ func durableObjectStorage(t *testing.T) {
 			world := newObjectsDurable(makeObjects)
 			t.Run("contract", func(t *testing.T) { runObjectContract(t, world) })
 			t.Run("durable", func(t *testing.T) { durableObjectDetails(t, world) })
+			t.Run("restore", func(t *testing.T) { restoreObjects(t, world) })
 		})
 	}
 }

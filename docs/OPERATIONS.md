@@ -560,13 +560,102 @@ download of it is `INTEGRITY_FAILURE`, and the bucket's versioning or backup is 
 
 A deployment gains a second service with its own credentials, availability and backup: a bucket that is down makes exports and issues fail (the job
 fails, an issue is voided) and downloads 503, never a wrong file. The row store and the bucket must be backed up in a way that keeps them consistent
-(a restored database whose bucket is older promises files that are not there; S04's backup slice owns that). The qualification runs against a throwaway
+(a restored database whose bucket is older promises files that are not there; "Backup and restore (S04-F)" below says how to restore and how to check). The qualification runs against a throwaway
 S3-compatible server, as PostgreSQL's (MinIO where one is already present locally; versitygw in CI, since MinIO's images are no
 longer publicly pullable from quay.io or Docker Hub); **AWS S3 itself is not qualified by a test here.** The fixture's `ResetFixture` truncates
 rows, not objects: a test that shares a bucket empties it first.
 
 Not in this slice: moving existing inline artifacts, snapshots in the object store, server-side encryption, bucket lifecycle rules, multipart
 uploads, AWS S3 qualification by test, backups, capacity, key lifecycle.
+
+## Backup and restore (S04-F)
+
+Since S04-E the platform's state is in two places: the PostgreSQL store (jobs, snapshots, artifact rows, issue records, the ledgers) and, with an object
+store configured, the files the artifact rows name. A backup of one is not a backup of the platform. This section says what a restore must leave true,
+gives the command that checks it, and gives the order of a restore (docs/S04F_SCOPE.md). **The platform has no backup tool**: `pg_dump`,
+`pg_basebackup`, WAL archiving, the bucket's versioning and replication are the operator's; this says how to use them and how to know it worked.
+
+### What to back up
+
+| What | Where it lives | How |
+|---|---|---|
+| The platform store | the database (`reporting_s01`: `jobs`, `assets`, `schema_migrations`, `profile`, `sweeps`) | `pg_dump -Fc`, or a base backup with WAL archiving. A per-database dump holds the tables, the row-level security flags and policies; it does **not** hold the roles (cluster objects): they are re-created, and `roles` re-run (below). |
+| The artifact files | the bucket, under `artifacts/` | the bucket's versioning, replication or the provider's backup. Take the bucket's copy **after** the database's dump finishes (or replicate continuously): then every object a dumped row names is in the copy, and what the bucket has beyond the dump is orphans, which are harmless. The other order leaves rows that promise files the copy never had. |
+| The private directories | files on one host (`-layout-directory`, `-dashboard-directory`, `-template-directory`, `-background-directory` and its `images`), mode 0700 | **not in the database and not covered by either backup above**: they need a file-level backup of their own. A restore without them loses layouts, dashboards, published templates, backgrounds and images; issue jobs already admitted carry their frozen template in the job row and are not affected. |
+| The configuration | flags, environment (`REPORTING_STORE_DSN`, the object store flags and keys, the demo token), the database roles and their passwords, the object store's credentials and policy | the operator's configuration management. Keys never live in the platform's own backups: they are the environment's alone. |
+
+### What must be true after a restore
+
+1. **The schema is the binary's.** `reporting-migrate status` prints no `problem:` line and exits 0: the ledger, the profile and the checksums are those of the binary (if the dump is older than the binary, `status` lists the `pending:` steps; `up` applies them as the migrator).
+2. **The roles and the policies are in place.** The roles are re-created and `reporting-migrate roles --migrator-role … --app-role … [--sweep-role …]` is re-run as the owner (it is idempotent); row-level security is enabled on `jobs` and `assets` with both policies (`identity`, `worker`): `status` run as the application role says the role satisfies the rules, and the server refuses to start otherwise.
+3. **A row never promises a missing file.** Every artifact row that names an object has that object, with the length and SHA-256 the row says. An object that no row names is an *orphan*: harmless, and removed by the sweep's reconciliation after the grace. `verify-objects --deep` (below) checks this; a download of a row whose object is missing or is another file is `409 INTEGRITY_FAILURE`, never a wrong file.
+4. **Issue records are the platform's copy of what the product confirmed.** A restore older than the product's confirmations leaves numbers the platform does not know (below). The platform never invents or reuses a number.
+5. **Jobs resume.** A job that was queued or running at the backup is claimed again once its lease has run out, by the database's clock (30 s after the claim it was restored with; a restored `running` job whose lease already ran out is claimed at once): snapshot and export jobs run again; an issue job runs again under the same job id, which the product answers idempotently (S03-H); nothing is issued twice. A client's retry (the idempotency key) of a job the restored database has answers that job; of one it does not have admits a new job under the same key. The quotas count the restored rows.
+
+### The order of a restore
+
+1. Stop the server and every worker and sweep of the platform being replaced (no process may write while the two halves are being put together).
+2. Restore the database into a fresh database: `pg_restore -d NEWDB --no-owner --no-acl dump` (or recover the base backup to the point you want).
+3. Create the roles if the cluster is new, then re-run `reporting-migrate roles --migrator-role … --app-role … [--sweep-role …]` against the restored database, as the owner. A dump restored with `--no-owner --no-acl` needs this; one restored with its owners and grants finds it a no-op.
+4. Restore the bucket (or point the platform at the replica) so that its state is **not older than the database's**.
+5. `reporting-migrate status` (clean; apply `up` if steps are pending).
+6. `reporting-migrate verify-objects --deep --object-store-endpoint … --object-store-bucket …` (below). It must exit 0.
+7. Only then start the server. The workers claim the jobs whose leases have run out.
+
+### `verify-objects`
+
+```
+reporting-migrate verify-objects [--deep] [--ids] --object-store-endpoint URL --object-store-bucket NAME [--object-store-region R] [--object-store-ca FILE] [--object-store-loopback-http]
+```
+
+It runs on `REPORTING_STORE_DSN`, with the object store flags as `sweep` takes them and the keys in `REPORTING_OBJECT_STORE_ACCESS_KEY` and `REPORTING_OBJECT_STORE_SECRET_KEY` (a key given as a flag is refused, as for `sweep`). Without the object store flags it refuses: there is nothing to compare. **It never writes**: it reads the artifact rows that name an object in read-only transactions of the worker scope (`SELECT` on `assets` is all the role needs: the application role, the sweep role or any role with that grant; the tests run it as a role with nothing else), and the bucket with `List` and, with `--deep`, `Get`. It pages both sides in key order and joins them, so its memory is a page whatever the store holds. It prints counts only:
+
+```
+rows:       2 artifact rows name an object
+objects:    4 under artifacts/
+missing:    0 rows whose object is absent
+orphans:    2 objects no row names (informational; the sweep's reconciliation removes them after the grace)
+invalid:    0 rows that do not say where their file is, or fail their digest
+mismatched: 0 objects whose length or SHA-256 is not the row's
+```
+
+| Count | Meaning | Fails the command |
+|---|---|---|
+| `missing` | rows whose object is absent: the database is newer than the bucket | yes |
+| `mismatched` | with `--deep` only: the object's length or SHA-256 is not the row's (another file under the key). Without `--deep` the line says `not checked` | yes |
+| `invalid` | rows that do not say, as the store requires, where their file is (the object is not the artifact's own key, the length or the digest is missing, content and object together) or whose payload fails its digest. The download of such a row is `INTEGRITY_FAILURE` too | yes |
+| `orphans` | objects under `artifacts/` that no artifact row names: the bucket is newer than the database | no |
+
+Exit 0 when `missing`, `mismatched` and `invalid` are zero, non-zero otherwise (the error line is counts too: `verify-objects: 2 missing, 0 mismatched, 0 invalid`). **No identifier, key or value is printed by default.** `--ids` additionally prints `missing id: …`, `mismatched id: …` and `invalid id: …` lines (at most 10,000 of each kind; a line says when a list is cut), which are artifact ids: an operator restoring a bucket needs them, and they go to stdout, so redirect them with care. `--deep` reads every object once, at most `MaxArtifactBytes` (8 MiB) each, so it is the slow check for after a restore and not a probe; the whole run is bounded by `--timeout` (default 5 minutes: size it for the bucket). An object store that cannot be reached is an error, never a count.
+
+Run it with the server stopped. On a live platform a sweep can delete a row and its object between the two reads and show as a transient `missing`, and an object put just before its row is published shows as an orphan; neither is a fault. A bucket copy taken after the dump may also lack objects a sweep deleted in between: those rows have expired, `missing` counts them, and the first sweep after the restore deletes them (`SELECT id, expires_at FROM reporting_s01.assets WHERE id = ANY('{…}')` with the ids from `--ids` says so).
+
+### Reading the result
+
+* **`orphans` only** (the bucket is newer): nothing to do. The rows the database lost are `404` on download; their objects wait for the sweep's reconciliation (`reporting-migrate sweep` with the object store flags deletes them once older than the grace).
+* **`missing`** (the database is newer): the rows promise files that are not there. Put the objects back from the bucket's versioning or backup under the same keys (`artifacts/<id>`, the bytes the row says) and run `verify-objects` again; every download of such a row is `409 INTEGRITY_FAILURE` meanwhile. What cannot be recovered is lost: the artifact can be exported again from its snapshot while that lives, and the row is deleted by the sweep when it expires. An issued PDF whose object is lost is not regenerated by the platform (the job has succeeded; a new issue job is a new job id and so a new number): whether the lost document stands is a question for the product, which holds the confirmed digest.
+* **`mismatched`**: another file is under the key (a restore of another moment, a mistaken put). Put the right bytes back. The platform never serves it: the download refuses a body whose digest or length is not the row's.
+* **`invalid`**: the row itself is damaged or was restored from a store that is not this platform's. Do not start the server on it before it is understood.
+
+### Issue jobs, the product and a restore older than the product
+
+An issue job is the platform's side of a number the source product confirmed (docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md). The product answers by the **job id** the issue was reserved under. After a restore the two can differ in either direction.
+
+List the issue jobs the restored database holds:
+
+```sql
+SELECT id, state, generation, created_at FROM reporting_s01.jobs WHERE kind = 'issue' ORDER BY created_at, id;
+```
+
+* A job in the list that is `queued` or `running` runs again once its lease has run out, under the same job id. The product answers the same reservation and the same confirmation for the same file, so the platform ends with one record and one number (the tests and the drill prove it for a number confirmed before the restore point and for a worker killed between the reservation and the confirmation).
+* A restore **older than the product's confirmations** leaves issue jobs the platform does not have at all: the product holds a confirmed number for a job id the restored database never heard of. The platform does not learn it, invent it, reuse it or issue the next one over it (the product's counter has moved on; the next issue is the next number). The product can find each by the job id it was reserved under; **the reconciliation is the operator's, with the product**: ask the product for the issues it confirmed for the integration since the time of the backup, and for each decide with its owner whether the document stands (the file is the product's, confirmed by digest; the platform's copy is gone) or is voided at the product. The client of a lost issue that retries (same idempotency key) is admitted as a new job and gets a new number.
+* The platform's own record of a number is never the only copy: a restored database that is *newer* than the product (the product was restored to an earlier point) is the product's to reconcile in the other direction, and the platform reads that as it reads any product answer.
+
+### Tested, and not
+
+* Tested (docs/S04F_SCOPE.md F3; `TestDurablePostgresContract/object_storage/*/restore`, `/restore`, `TestDurablePostgresIssues/restore_…`, `TestPostgresMigrations/row_level_security/a_restore_…`, `TestMigrateCommand`): the cases above, on rewound rows and objects with the memory object store and the throwaway S3-compatible server; `verify-objects` as the application role, the sweep role and a role with `SELECT` on `assets` only; paging over two thousand rows and objects that interleave.
+* Run for real, once, on one machine, by `scripts/restore_drill.sh` (not CI): a demo session through the object store, `pg_dump -Fc`, a copy of the bucket's objects through the platform's client, more work, `pg_restore` into a fresh database, `roles`, `status`, `verify-objects --deep` with the bucket newer, with the bucket restored, and with the database newer; a download of every artifact in each; a `kill -9` of the server inside an issue job and the restart. The transcript of the run is kept with the slice's evidence and summarised in the README.
+* **Not qualified here**: point-in-time recovery, cross-region replication, encrypted backups, a restore from provider snapshots, AWS S3 itself, a backup of the private directories, the restore of a cluster (roles with passwords). They work the way the operator's tools do; the invariants above and `verify-objects` are how to know.
 
 ## Demo and tests
 
@@ -589,4 +678,4 @@ The quota qualification (S04-D) runs inside `TestDurablePostgresContract` (`quot
 
 The object storage qualification (S04-E) runs inside `TestDurablePostgresContract` (`object_storage`: the contract of both object stores on the durable store, then what only it has to qualify) and in `TestMemoryObjectContract` (the memory store); both run the same contract, against `objects.Memory` and, when `REPORTING_OBJECT_STORE_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set, against a throwaway S3-compatible server (`REPORTING_OBJECT_STORE_REQUIRE=1` makes a missing endpoint a failure, as `REPORTING_S01_REQUIRE_PG=1` does for PostgreSQL). `TestS3Objects` qualifies the client alone against the same server; the signing is qualified against the published examples of the AWS Signature Version 4 documentation without one. The CI postgres job starts versitygw (Apache-2.0, `versity/versitygw` pinned by digest; MinIO's images are no longer publicly pullable) before the tests; the test creates the bucket `reporting-test-s04e` with a PUT bucket request, the one bucket-level call in the repository, in the test only (a source test holds it to that).
 
-Not covered yet: backups and restore, capacity, key lifecycle.
+The backup and restore qualification (S04-F) runs inside the same tests and in `scripts/restore_drill.sh` ("Backup and restore (S04-F)" above). Not covered yet: capacity, key lifecycle, and what that section lists as not qualified.

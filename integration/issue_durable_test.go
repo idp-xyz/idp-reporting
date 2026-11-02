@@ -1001,4 +1001,5 @@ UPDATE reporting_s01.profile SET version=2 WHERE singleton;`); e != nil {
 	})
 	// Issue by group (S03-K), in issue_group_durable_test.go.
 	t.Run("issue_by_group", durableGroupIssues)
+	t.Run("restore_against_a_product_that_confirmed_after_the_backup", func(t *testing.T) { restoreIssue(t, newDurable(t)) })
 }

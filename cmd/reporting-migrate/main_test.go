@@ -53,10 +53,15 @@ func TestMigrateCommandArguments(t *testing.T) {
 		"access key as a flag": {[]string{"sweep", "--object-store-access-key", "ACCESSVALUE"}, "REPORTING_OBJECT_STORE_ACCESS_KEY"},
 		"endpoint alone":       {[]string{"sweep", "--object-store-endpoint=https://s3.example.com"}, "-object-store-endpoint and -object-store-bucket together"},
 		"keys missing":         {[]string{"sweep", "--object-store-endpoint=https://s3.example.com", "--object-store-bucket=reports-bucket"}, "REPORTING_OBJECT_STORE_ACCESS_KEY"},
-		"http off loopback":    {[]string{"sweep", "--object-store-endpoint=http://s3.example.com", "--object-store-bucket=reports-bucket", "--object-store-loopback-http"}, "loopback"},
+		// verify-objects has nothing to compare without the object store (S04-F), and takes the same flags and the same refusals as sweep.
+		"verify without the store": {[]string{"verify-objects"}, "verify-objects compares the artifact rows with an object store"},
+		"verify deep without it":   {[]string{"verify-objects", "--deep", "--ids"}, "--object-store-endpoint"},
+		"verify secret as a flag":  {[]string{"verify-objects", "--object-store-secret-key=SECRETVALUE"}, "REPORTING_OBJECT_STORE_SECRET_KEY"},
+		"verify keys missing":      {[]string{"verify-objects", "--object-store-endpoint=https://s3.example.com", "--object-store-bucket=reports-bucket"}, "REPORTING_OBJECT_STORE_ACCESS_KEY"},
+		"http off loopback":        {[]string{"sweep", "--object-store-endpoint=http://s3.example.com", "--object-store-bucket=reports-bucket", "--object-store-loopback-http"}, "loopback"},
 	} {
 		keys := "AK0123456789"
-		if name == "keys missing" {
+		if name == "keys missing" || name == "verify keys missing" {
 			keys = ""
 		}
 		t.Setenv("REPORTING_OBJECT_STORE_ACCESS_KEY", keys)
@@ -280,6 +285,7 @@ encode(sha256(convert_to('{"ID":"kept","Query":{"filters":"secret"},"Prepared":{
 	expect([]string{"sweep"}, true, "the application role never deletes")
 	t.Setenv("REPORTING_STORE_DSN", dsn)
 	objectSweep(t, admin, expect)
+	verifyObjects(t, admin, expect)
 }
 
 // objectSweep drives the operator's sweep with and without the object store flags (S04-E) against the throwaway S3-compatible server: rows whose files are
@@ -369,5 +375,109 @@ VALUES($1,'t','i','x','y','artifact',$2::jsonb,encode(sha256(convert_to($2::json
 	// The ledger holds the counts and nothing that names an object.
 	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE NOT dry_run AND objects=1 AND orphans=0"); n != 1 {
 		t.Fatal("the ledger row of the sweep with the object store", n)
+	}
+}
+
+// verifyObjects drives the read-only verification (S04-F) against the throwaway S3-compatible server: the counts it prints, the exit status, the
+// ids only when asked, a missing object, another file under a key (found by --deep only), the object put back, and that it wrote nothing.
+func verifyObjects(t *testing.T, admin *pgxpool.Pool, expect func([]string, bool, ...string) string) {
+	t.Helper()
+	ctx := context.Background()
+	endpoint, access, secret := os.Getenv("REPORTING_OBJECT_STORE_TEST_ENDPOINT"), os.Getenv("REPORTING_OBJECT_STORE_TEST_ACCESS_KEY"), os.Getenv("REPORTING_OBJECT_STORE_TEST_SECRET_KEY")
+	if endpoint == "" || access == "" || secret == "" {
+		return // objectSweep has said so, or failed
+	}
+	client, err := objects.NewS3(objects.S3{Endpoint: endpoint, Bucket: "reporting-test-s04e", Region: "us-east-1", AccessKey: access, SecretKey: secret, LoopbackHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := []string{"--object-store-endpoint=" + endpoint, "--object-store-bucket=reporting-test-s04e", "--object-store-loopback-http"}
+	verify := func(args ...string) []string { return append(append([]string{"verify-objects"}, args...), flags...) }
+	// An empty world: no rows, nothing under artifacts/.
+	if _, err = admin.Exec(ctx, "DELETE FROM reporting_s01.assets"); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		page, _, err := client.List(ctx, r.ObjectPrefix, "", 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, o := range page {
+			if err = client.Delete(ctx, o.Key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	body, other := []byte("PK the file"), []byte("PK another file")
+	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
+	x, y, z, orphan := r.NewID(), r.NewID(), r.NewID(), r.NewID()
+	t.Cleanup(func() {
+		for _, id := range []string{x, y, z, orphan} {
+			_ = client.Delete(context.Background(), r.ObjectKey(id))
+		}
+	})
+	put := func(id string, b []byte) {
+		t.Helper()
+		if err := client.Put(ctx, r.ObjectKey(id), b, sum(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(x, body)
+	put(y, other) // the row says body
+	put(orphan, body)
+	for _, id := range []string{x, y, z} {
+		if _, err = admin.Exec(ctx, `INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256,expires_at)
+VALUES($1,'t','i','x','y','artifact',jsonb_build_object('ID',$1::text,'Object',$2::text,'Size',$3::int,'SHA256',$4::text),'',clock_timestamp()+interval '1 hour')`, id, r.ObjectKey(id), len(body), sum(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = admin.Exec(ctx, `UPDATE reporting_s01.assets SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex')`); err != nil {
+		t.Fatal(err)
+	}
+	var before string
+	snapshot := func() (d string) {
+		if err := admin.QueryRow(ctx, `SELECT md5(coalesce((SELECT string_agg(a::text,'|' ORDER BY id) FROM reporting_s01.assets a),'') || coalesce((SELECT string_agg(j::text,'|' ORDER BY id) FROM reporting_s01.jobs j),'') || (SELECT count(*) FROM reporting_s01.sweeps)::text)`).Scan(&d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	before = snapshot()
+	t.Setenv(objects.AccessKeyEnv, access)
+	t.Setenv(objects.SecretKeyEnv, secret)
+	// Presence only: z is missing, y is there (its bytes are not looked at), the orphan is informational. Counts, an error that is counts, no id.
+	out := expect(verify(), true, "rows:       3 artifact rows name an object", "objects:    3 under artifacts/", "missing:    1 rows whose object is absent", "orphans:    1 objects no row names", "invalid:    0", "mismatched: not checked", "verify-objects: 1 missing, 0 mismatched, 0 invalid")
+	for _, id := range []string{x, y, z, orphan} {
+		if strings.Contains(out, id) || strings.Contains(out, r.ObjectKey(id)) {
+			t.Fatalf("an identifier was printed without --ids: %s", out)
+		}
+	}
+	if _, err = capture(t, verify()...); err == nil || strings.Contains(err.Error(), z) || strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), endpoint) {
+		t.Fatalf("the failure carries more than counts: %v", err)
+	}
+	// Deep: y is another file.
+	out = expect(verify("--deep"), true, "missing:    1", "mismatched: 1 objects whose length or SHA-256 is not the row's", "verify-objects: 1 missing, 1 mismatched, 0 invalid")
+	if strings.Contains(out, y) || strings.Contains(out, z) {
+		t.Fatalf("--deep printed an identifier: %s", out)
+	}
+	// With --ids, and only then, the ids of exactly the rows that fail.
+	out = expect(verify("--deep", "--ids"), true, "missing id: "+z, "mismatched id: "+y)
+	if strings.Contains(out, x) || strings.Contains(out, orphan) || strings.Count(out, " id: ") != 2 {
+		t.Fatalf("--ids lists more than the rows that fail: %s", out)
+	}
+	// The operator puts the objects right: clean, exit 0, the orphan still only informational.
+	put(z, body)
+	put(y, body)
+	expect(verify("--deep"), false, "rows:       3", "objects:    4", "missing:    0", "orphans:    1", "mismatched: 0")
+	expect(verify(), false, "missing:    0", "mismatched: not checked")
+	if snapshot() != before {
+		t.Fatal("verify-objects wrote to the database")
+	}
+	// A bucket that is not there stops it before anything is read, with the bucket's name and the status.
+	_, err = capture(t, "verify-objects", "--object-store-endpoint="+endpoint, "--object-store-bucket=reporting-test-s04e-absent", "--object-store-loopback-http")
+	if err == nil || !strings.Contains(err.Error(), `"reporting-test-s04e-absent"`) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("a bucket that cannot be reached: %v", err)
 	}
 }

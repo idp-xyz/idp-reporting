@@ -641,4 +641,5 @@ func TestDurablePostgresContract(t *testing.T) {
 	})
 	t.Run("quotas", durableQuotas)
 	t.Run("object_storage", durableObjectStorage)
+	t.Run("restore", restoreJobs)
 }

@@ -1,3 +1,21 @@
+# IDP Reporting Platform · S04-F
+
+2026-11-02。备份与恢复（docs/S04F_SCOPE.md，docs/OPERATIONS.md “Backup and restore (S04-F)”）：自 S04-E 起平台状态分在两处——PostgreSQL 存储（任务、快照、产物行、出具记录、各账本）与对象存储里产物行所指的文件；只备份其一不是备份平台。本阶段定义恢复后必须成立的不变量、给出只读的核对命令、用测试与一次真实的转储恢复演练证明各种情形、写出运维手册。**平台不带备份工具**：`pg_dump`/`pg_basebackup`/WAL 归档与桶的版本化或复制是运维方的，手册说明怎么用、怎么知道成功。
+
+不变量（手册 “What must be true after a restore”）：模式、画像与校验和是二进制的（`reporting-migrate status` 干净）；角色与策略就位（重跑 `roles` 幂等，行级安全与两条策略在，`status` 的角色检查如实说）；**产物行绝不承诺不存在的文件**（有 `Object` 的行必有该对象，长度与 SHA-256 相符；没有行指向的对象是孤儿，无害，由清理的对账在宽限后删除）；出具记录是来源产品所确认之物在平台的副本，早于产品确认的恢复会留下平台不认识的编号，平台从不凭空造号或复用编号，手册给出列出已恢复出具任务的查询以及与产品按任务 id 对账的做法；排队或执行中的任务在租约（数据库时钟）过期后被重新领取，出具任务以同一任务 id 重跑、产品幂等应答，不会重复出具。恢复顺序：数据库、角色、桶、`status`、`verify-objects --deep`，然后才启动服务；桶的副本应取在转储完成之后。
+
+命令：`reporting-migrate verify-objects [--deep] [--ids] --object-store-…`（`REPORTING_STORE_DSN`，对象存储参数与 `sweep` 相同，密钥只从环境读取、给成参数即拒绝；没有对象存储参数则拒绝）。检查在 `storage/postgres.VerifyObjects`：以只读事务（工作者范围，只需对 `assets` 的 SELECT）按 id 分页读出有 `Object` 的产物行，按键序分页列出桶的 `artifacts/`，两路归并，内存只与一页相关。默认只打印计数：`rows`（有对象的行）、`objects`、`missing`（行有对象无）、`orphans`（对象无行，仅提示）、`invalid`（行没有按要求说明文件在哪、或载荷过不了摘要）、`mismatched`（仅 `--deep`：对象的长度或 SHA-256 不是行的；`--deep` 把每个对象读一遍，至多 8 MiB，是恢复后的慢检查，不是探针）；`missing`、`mismatched`、`invalid` 全为零退出 0，否则退出非零。**默认不打印任何 id、键或值**；`--ids` 另行打印失败行的产物 id（文档注明是标识符，默认关）。它只用现有客户端的 `List` 与 `Get`，没有新增对象存储操作，也从不写库、写桶（源码测试固定其只用只读事务，测试以仅有 `assets` 的 SELECT 的角色运行它）。
+
+测试（需要 PostgreSQL 或对象存储的都是既有受门控测试的子测试，新增的顶层测试都不需要二者，所以两份跳过名单不变）：`TestDurablePostgresContract/object_storage/{memory_objects,s3}/restore`（桶比库新：孤儿被计数、退出 0、被删行的下载为 404、对账在宽限后只删孤儿；库比桶新：缺失被计数并退出非零、`--ids` 恰好列出缺失行、下载是 409 INTEGRITY_FAILURE 而不是错误的文件、放回相同字节后干净且可下载、放回不同字节（同长或不同长）则 `--deep` 报 mismatched、下载 409、浅检查看不出；行本身残缺为 invalid；验证不改库不改桶；两千三百行与对象交错分页；对象存储不可达是错误而不是计数）、`TestDurablePostgresContract/restore`（恢复时在执行的任务租约未过不被领取、过期后被领取并以第 2 代完成、旧领取者被围栏；幂等键对已恢复的任务应答该任务、对不在的任务重试则准入新任务；配额按恢复的行计数）、`TestDurablePostgresIssues/restore_…`（产品在备份之后已确认编号：任务以同一 id 重跑，产品与平台各一条记录、一个编号，下一张是下一个编号；手册的查询列出已恢复的出具任务）、`TestPostgresMigrations/row_level_security/a_restore_…`（倒回后 `status` 干净、两种角色检查通过、`OpenProduction` 可开、两张表的行级安全与策略在、各身份只见自己的行；以应用角色、清理角色与仅有 SELECT 的角色运行核对）、`TestMigrateCommand`（命令的计数、退出状态、默认无 id、`--ids`、`--deep`、桶不存在、不写库）与参数测试（无对象存储参数拒绝、密钥作参数拒绝）。恢复由倒回模拟（受保护夹具库不能删了重建）：备份是两张表某一刻的内容，恢复是整表替换，对象由测试保留、删除或替换。
+
+演练（本地证据，不进 CI）：`scripts/restore_drill.sh`（bash；只需 docker、`docker exec` 里的 `pg_dump`/`pg_restore`、与它自己构建的两个二进制 `reporting-migrate` 和 `internal/restoredrill`）。它在一次性 PostgreSQL 容器里自建并在结束时删除 `reporting_restore_s04f_*` 数据库与两个角色，在一次性 S3 兼容服务器上只用自己的桶 `reporting-restore-s04f`，从不碰夹具库与 55432 端口，结束时按 pid 停掉自己启动的所有进程。一次运行（2026-11-02，PostgreSQL 16.14，MinIO RELEASE.2025-09-07T16-13-09Z，一台机器）：以生产路径（应用角色）跑演示会话——导出、出具、下载，对象都在桶里；`pg_dump -Fc`、经客户端把桶里的对象拷到一边；再做一轮工作；`pg_restore --no-owner --no-acl` 进新库，重跑 `roles`，`status` 干净，行级安全与两条策略在。**桶比库新**：4 个对象、2 个孤儿、`verify-objects --deep` 退出 0，旧的 2 个产物下载 200 且字节与会话所见相同，丢失的 2 个下载 404；**桶恢复到转储时刻**：2 个对象、无孤儿、退出 0，同样 200/404；**库比桶新**（原库配恢复后的桶）：2 个缺失、退出 1，`--ids` 恰好列出这 2 个，下载 409。**kill -9**：出具任务停在渲染里（产品已预留编号、尚未确认），杀掉服务进程，任务仍是第 1 代 running；重启后约 30 秒（租约过期后）由第 2 代领取完成，库里一条出具记录，产品对该任务 id 只有一个已确认的编号，随后 `verify-objects --deep` 干净。演练还显示：备份之后产品确认的编号（AR-000002）对应的任务恢复后的平台根本没有，这正是手册要求运维方与产品对账的情形；平台随后给的下一个编号是 AR-000003，没有复用。完整记录由运行者保存（不入库）；它是一台机器上一次运行的证据，不是资格。
+
+未验：时间点恢复（PITR）、跨区域复制、加密备份、用云厂商快照恢复、AWS S3 本身、私有目录（版面、看板、模板、背景、图片）的备份——它们是磁盘上的文件，不在数据库里，需要文件级备份，手册已写明。CI 的 PostgreSQL 任务仍用 versitygw 对象存储（MinIO 的镜像已不能公开拉取），新测试只用既有客户端操作。
+
+不在本阶段：备份调度或备份工具、时间点恢复资格、跨区域复制、备份加密、私有目录的备份、容量、密钥生命周期。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S04-E
 
 2026-11-01。产物的对象存储（ADR 0007 docs/ADR_0007_OBJECT_STORAGE.md，docs/S04E_SCOPE.md，docs/OPERATIONS.md “Object storage”，docs/API.md “Object storage”）：此前导出的 XLSX/PDF 与出具的 PDF 以 base64 存在 `assets` 行的 JSON 载荷里（最大 8 MiB），数据库的备份、复制与清理都背着文件；本阶段让文件离开数据库，进入 S3 兼容的对象存储，行只留元数据与摘要。配置了对象存储时，新产物的行带 `Object`（`artifacts/<产物 id>`，id 随机，键不透露任何信息）、`Size`（字节数）与原有的 `SHA256`，不再带 `Content`，载荷摘要覆盖这些元数据；此前存下的产物保持内联、照旧提供，直到过期被清理，不做批量迁移。快照（业务行）、任务、出具记录、配额（一个产物算一个存储结果）、保留规则与行级安全都不变；内存存储仍内联（它是明确的临时存储，demo 拒绝 `-memory` 与对象存储参数同用）；不配置对象存储时一切照旧。
@@ -7,8 +25,6 @@
 配置：`-object-store-endpoint`、`-object-store-bucket`、`-object-store-region`（默认 `us-east-1`）、`-object-store-ca`、`-object-store-loopback-http`（demo 与 `reporting-migrate sweep` 相同）；访问密钥与私密密钥只从环境 `REPORTING_OBJECT_STORE_ACCESS_KEY`、`REPORTING_OBJECT_STORE_SECRET_KEY` 读取，给其中任何一个参数都被拒绝（拒绝文本不复述其后的值）；启动时 HEAD bucket 必须通过，否则服务器不启动，文本只说桶名与状态；平台从不创建或配置桶、生命周期规则或加密。OPERATIONS.md 给出凭据所需的最小策略（对该桶的 PutObject、GetObject、DeleteObject、ListBucket）、核对办法（有 `Object` 的行数对桶内对象数，差为孤儿）、对账与时钟、成本与未覆盖项。
 测试：SigV4 示例与规范化、构造拒绝、Get 的长度与摘要核对（含分块无 Content-Length 的响应）、错误文本无响应体/键/端点/凭据、重试与超时与重定向、https 与命名 CA、列表解析、`CreateBucketForTests` 只许测试调用（源码测试）；同一份对象存储契约（`TestMemoryObjectContract`，PostgreSQL 的 `TestDurablePostgresContract/object_storage/{memory_objects,minio}`）在两种存储与两种对象存储上跑：文件是对象而行只有元数据、先 PUT 后发布行与先删行后删对象（注入的顺序观察）、PUT 失败的导出与出具（出具的产品只有被作废的预留）、PUT 与发布之间的注入故障留下孤儿而对账在宽限后删除、下载逐字节核对（同长度异摘要、更短、更长、别的文件、缺失均 409）、说谎的存储不能让服务提供错误文件、不可达的存储 503 而任务视图不依赖它、清理删对象并计数（含试运行）、删除失败被计数且由对账收尾、不带对象存储的清理留下对象、对账保留年轻的/行所提到的/不是我们的键且不删年龄不足下限的、此前内联的产物照旧提供与清理；PostgreSQL 独有的：Publish 接受什么、行必须恰好说一次文件在哪里并只提自己的对象、账本只有计数、被篡改指向别人对象的行不让清理删别人的对象、服务与存储配置不一致时失败得安全、清理角色在行级安全下的对账能看到所有身份所有种类的行；迁移 008 往返、目录与拒绝；HTTP（503 与 `Retry-After: 10`、409、轮询、能力文档、来源产品自己的 503 无 `Retry-After`）；命令（凭据参数被拒、端点缺桶、桶不可达在删行之前停止、带与不带参数的清理对真实 S3 兼容服务）；demo 启动检查与清理循环日志；DOM 一条。S3 兼容服务部分由 `REPORTING_OBJECT_STORE_TEST_ENDPOINT`/`_ACCESS_KEY`/`_SECRET_KEY` 开启（`REPORTING_OBJECT_STORE_REQUIRE=1` 时缺失即失败），CI 的 postgres 作业在测试前以摘要固定的镜像启动一次性 versitygw（Apache-2.0 的 S3 网关；MinIO 的镜像在 quay.io 与 Docker Hub 都已不再公开可拉取，本机资格测试用的是早已存在的 MinIO 镜像；服务容器无法传 `posix /data` 参数，所以是该作业里的一个 `docker run` 步骤）。Go 无环境 347 项顶层测试通过（改动前 316）、跳过 17 项（新增 `TestS3Objects`，已加入 ci.yml 两份跳过清单），数据库、S3 兼容服务与 Typst 全开 364 项通过、无跳过（改动前 332），普通与 race 都通过；DOM 165 项（改动前 164；无 Typst 146 项通过、19 项跳过，含 Typst 全部通过）。AWS S3 本身没有测试资格，OPERATIONS.md 如实列出。
 不在本阶段：迁移已有的内联产物、对象存储中的快照、服务端加密、桶的生命周期规则、分段上传、AWS S3 的测试资格、备份、容量、密钥生命周期。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S04-D
 

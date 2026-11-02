@@ -43,6 +43,21 @@ func Open(ctx context.Context, dsn string, initialize bool) (*Source, error) {
 	if e != nil {
 		return nil, e
 	}
+	return opened(ctx, p, initialize)
+}
+
+// OpenDrill is Open for the scratch database of the restore drill (S04-F): the product simulator that must outlive the platform process the
+// drill kills. It opens only a database named with fixturedb.DrillPrefix, never a fixture database (Open still refuses the drill's).
+func OpenDrill(ctx context.Context, dsn string, initialize bool) (*Source, error) {
+	p, e := fixturedb.OpenDrill(ctx, dsn)
+	if e != nil {
+		return nil, e
+	}
+	return opened(ctx, p, initialize)
+}
+
+func opened(ctx context.Context, p *pgxpool.Pool, initialize bool) (*Source, error) {
+	var e error
 	fail := func(err error) (*Source, error) { p.Close(); return nil, err }
 	if initialize {
 		if e = migrate(ctx, p); e != nil {

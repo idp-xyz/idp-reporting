@@ -48,6 +48,20 @@ func beginWorker(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, error) {
 	return tx, nil
 }
 
+// beginWorkerReadOnly is beginWorker for a transaction that can write nothing: the database refuses any statement that would (the
+// verification of the object store after a restore, S04-F, reads and never writes).
+func beginWorkerReadOnly(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, error) {
+	tx, e := pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if e != nil {
+		return nil, e
+	}
+	if _, e = tx.Exec(ctx, setWorkerSQL, workerScope); e != nil {
+		rollback(ctx, tx)
+		return nil, e
+	}
+	return tx, nil
+}
+
 // asIdentity runs fn in a transaction of the identity's context and commits it (a read commits too: there is nothing to undo).
 func asIdentity(ctx context.Context, pool *pgxpool.Pool, i r.Identity, fn func(pgx.Tx) error) error {
 	tx, e := beginAs(ctx, pool, i)
