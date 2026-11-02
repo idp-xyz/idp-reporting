@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
@@ -173,29 +174,7 @@ func newRetentionDurable(t *testing.T) *retention {
 		return s
 	}
 	admin := fixtureAdmin(t)
-	age := func(d time.Duration) {
-		t.Helper()
-		ctx := context.Background()
-		const iso = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`
-		for _, sql := range []string{
-			`UPDATE reporting_s01.assets SET expires_at = expires_at - $1::interval WHERE expires_at IS NOT NULL`,
-			`UPDATE reporting_s01.assets SET data = jsonb_set(data, '{ExpiresAt}', to_jsonb(to_char(expires_at AT TIME ZONE 'UTC', ` + iso + `))) WHERE expires_at IS NOT NULL`,
-			`UPDATE reporting_s01.assets SET data_sha256 = encode(sha256(convert_to(data::text,'UTF8')),'hex')`,
-			`UPDATE reporting_s01.jobs SET source_expires_at = source_expires_at - $1::interval`,
-			`UPDATE reporting_s01.jobs SET data = jsonb_set(data, '{Prepared,ExpiresAt}', to_jsonb(to_char(source_expires_at AT TIME ZONE 'UTC', ` + iso + `))) WHERE data ? 'Prepared'`,
-			`UPDATE reporting_s01.jobs SET data_sha256 = encode(sha256(convert_to(data::text,'UTF8')),'hex')`,
-		} {
-			var e error
-			if strings.Contains(sql, "$1") {
-				_, e = admin.Exec(ctx, sql, fmt.Sprintf("%d microseconds", d.Microseconds()))
-			} else {
-				_, e = admin.Exec(ctx, sql)
-			}
-			if e != nil {
-				t.Fatal(e)
-			}
-		}
-	}
+	age := func(d time.Duration) { ageDurable(t, admin, d) }
 	return &retention{t: t, repo: v.repo, s: connections(nil), p: v.p, issuer: issuer, age: age, service: connections}
 }
 
@@ -611,4 +590,30 @@ func runRetentionContract(t *testing.T, newHarness func(*testing.T) *retention) 
 			t.Fatalf("the reduced issue job: %+v", ij)
 		}
 	})
+}
+
+// ageDurable lets time pass for the durable store, whose clock is the database's and cannot move: every stored expiry goes into the past by d,
+// the column, the payload and the digest of each row rewritten together.
+func ageDurable(t *testing.T, admin *pgxpool.Pool, d time.Duration) {
+	t.Helper()
+	ctx := context.Background()
+	const iso = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`
+	for _, sql := range []string{
+		`UPDATE reporting_s01.assets SET expires_at = expires_at - $1::interval WHERE expires_at IS NOT NULL`,
+		`UPDATE reporting_s01.assets SET data = jsonb_set(data, '{ExpiresAt}', to_jsonb(to_char(expires_at AT TIME ZONE 'UTC', ` + iso + `))) WHERE expires_at IS NOT NULL`,
+		`UPDATE reporting_s01.assets SET data_sha256 = encode(sha256(convert_to(data::text,'UTF8')),'hex')`,
+		`UPDATE reporting_s01.jobs SET source_expires_at = source_expires_at - $1::interval`,
+		`UPDATE reporting_s01.jobs SET data = jsonb_set(data, '{Prepared,ExpiresAt}', to_jsonb(to_char(source_expires_at AT TIME ZONE 'UTC', ` + iso + `))) WHERE data ? 'Prepared'`,
+		`UPDATE reporting_s01.jobs SET data_sha256 = encode(sha256(convert_to(data::text,'UTF8')),'hex')`,
+	} {
+		var e error
+		if strings.Contains(sql, "$1") {
+			_, e = admin.Exec(ctx, sql, fmt.Sprintf("%d microseconds", d.Microseconds()))
+		} else {
+			_, e = admin.Exec(ctx, sql)
+		}
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
 }

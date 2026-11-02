@@ -455,7 +455,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 			sum := sha256.Sum256([]byte(frozenTemplate))
 			templateID, digest := strings.Repeat("a", 32), hex.EncodeToString(sum[:])
 			if _, e = v.repo.Admit(ctx, r.Job{ID: r.NewID(), Owner: stored.Owner, Kind: "issue", State: "queued", Key: key, RequestHash: r.IssueRequestHash(templateID, 1, digest, stored.ID, 0), Query: stored.Query, Prepared: stored.Prepared,
-				SnapshotID: stored.ID, Format: "pdf", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, Template: frozenTemplate}); e != nil {
+				SnapshotID: stored.ID, Format: "pdf", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, Template: frozenTemplate}, r.Quotas{}); e != nil {
 				t.Fatal(e)
 			}
 			c, e := v.repo.Claim(ctx, time.Minute)
@@ -550,24 +550,24 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 				SnapshotID: stored.ID, Format: "pdf", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, Template: frozenTemplate, Group: &g}
 		}
 		j := job("group", group)
-		admitted, e := v.repo.Admit(ctx, j)
+		admitted, e := v.repo.Admit(ctx, j, r.Quotas{})
 		if e != nil || admitted.Group == nil || !admitted.Group.Equal(&group) || admitted.RowIndex != 0 {
 			t.Fatalf("%+v %v", admitted, e)
 		}
 		// The same key and group again is the same job; another group under the key is a conflict; a job whose hash is
 		// not its group's, or that has a row too, is not admitted.
-		if again, e := v.repo.Admit(ctx, job("group", group)); e != nil || again.ID != j.ID {
+		if again, e := v.repo.Admit(ctx, job("group", group), r.Quotas{}); e != nil || again.ID != j.ID {
 			t.Fatal(again, e)
 		}
 		other := group.Clone()
 		other.Rows = []int{0, 1}
-		mustError(t, func() error { _, e := v.repo.Admit(ctx, job("group", other)); return e }(), r.ErrConflict)
+		mustError(t, func() error { _, e := v.repo.Admit(ctx, job("group", other), r.Quotas{}); return e }(), r.ErrConflict)
 		wrongHash := job("wrong hash", group)
 		wrongHash.RequestHash = r.IssueRequestHash(templateID, 1, digest, stored.ID, 0)
-		mustError(t, func() error { _, e := v.repo.Admit(ctx, wrongHash); return e }(), r.ErrInvalid)
+		mustError(t, func() error { _, e := v.repo.Admit(ctx, wrongHash, r.Quotas{}); return e }(), r.ErrInvalid)
 		withRow := job("with a row", group)
 		withRow.RowIndex = 1
-		mustError(t, func() error { _, e := v.repo.Admit(ctx, withRow); return e }(), r.ErrInvalid)
+		mustError(t, func() error { _, e := v.repo.Admit(ctx, withRow, r.Quotas{}); return e }(), r.ErrInvalid)
 		claim, e := v.repo.Claim(ctx, time.Minute)
 		if e != nil || claim == nil || claim.Job.ID != j.ID || claim.Job.Group == nil || !claim.Job.Group.Equal(&group) {
 			t.Fatal(claim, e)

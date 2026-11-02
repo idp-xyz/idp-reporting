@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	r "idp.local/reporting/reporting"
+	"sync"
 	"testing"
 	"time"
 )
@@ -26,14 +27,14 @@ func TestStoreRefusesAValueItCannotCopyWithoutPanicking(t *testing.T) {
 			t.Fatalf("the store panicked: %v", p)
 		}
 	}()
-	if _, e := s.Admit(ctx, snapshotJob("far", time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC))); e == nil || errors.Is(e, r.ErrConflict) {
+	if _, e := s.Admit(ctx, snapshotJob("far", time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)), r.Quotas{}); e == nil || errors.Is(e, r.ErrConflict) {
 		t.Fatalf("a job whose time JSON cannot hold was admitted or refused as another thing: %v", e)
 	}
 	if c, e := s.Claim(ctx, time.Minute); c != nil || e != nil {
 		t.Fatalf("the refused job is in the store: %v %v", c, e)
 	}
 	good := snapshotJob("good", time.Now().Add(time.Minute))
-	if _, e := s.Admit(ctx, good); e != nil {
+	if _, e := s.Admit(ctx, good, r.Quotas{}); e != nil {
 		t.Fatal(e)
 	}
 	if c, e := s.Claim(ctx, time.Minute); e != nil || c == nil || c.Job.ID != good.ID {
@@ -62,7 +63,7 @@ func TestUnreadableJobIsFailedAtItsClaimAndNeverClaimedAgain(t *testing.T) {
 			s := New(func() time.Time { return now })
 			bad, first, second := snapshotJob("bad", now.Add(time.Hour)), snapshotJob("good-1", now.Add(time.Hour)), snapshotJob("good-2", now.Add(time.Hour))
 			for _, j := range []r.Job{bad, first, second} {
-				if _, e := s.Admit(ctx, j); e != nil {
+				if _, e := s.Admit(ctx, j, r.Quotas{}); e != nil {
 					t.Fatal(e)
 				}
 			}
@@ -123,7 +124,7 @@ func TestUnreadableJobIsFailedAtItsClaimAndNeverClaimedAgain(t *testing.T) {
 	// Alone in the queue, it leaves nothing to claim: nil, as for an empty queue.
 	s := New(time.Now)
 	bad := snapshotJob("bad", time.Now().Add(time.Hour))
-	if _, e := s.Admit(ctx, bad); e != nil {
+	if _, e := s.Admit(ctx, bad, r.Quotas{}); e != nil {
 		t.Fatal(e)
 	}
 	s.mu.Lock()
@@ -145,7 +146,7 @@ func TestAClaimTheClockCannotLeaseLeavesTheJobQueued(t *testing.T) {
 	now := time.Now()
 	s := New(func() time.Time { return now })
 	j := snapshotJob("one", now.Add(time.Hour))
-	if _, e := s.Admit(ctx, j); e != nil {
+	if _, e := s.Admit(ctx, j, r.Quotas{}); e != nil {
 		t.Fatal(e)
 	}
 	now = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
@@ -248,5 +249,36 @@ func TestSweepKeepsAnArtifactWhileItsSnapshotIsHeld(t *testing.T) {
 	now = now.Add(3 * time.Hour) // the snapshot is past its grace too
 	if res, e := s.Sweep(ctx, r.SweepOptions{Grace: time.Hour}); e != nil || res.Artifacts != 1 || res.Snapshots != 1 || len(s.artifacts) != 0 || len(s.snapshots) != 0 {
 		t.Fatalf("%+v %v", res, e)
+	}
+}
+
+// The memory store counts under its mutex (S04-D): parallel admissions of one identity with a limit of K admit exactly K.
+func TestParallelAdmissionsAdmitExactlyTheLimit(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	s := New(func() time.Time { return now })
+	const parallel, limit = 64, 5
+	answers := make([]error, parallel)
+	var wg sync.WaitGroup
+	for i := range answers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, answers[i] = s.Admit(ctx, snapshotJob(fmt.Sprintf("parallel-%d", i), now.Add(time.Hour)), r.Quotas{JobsInFlight: limit})
+		}()
+	}
+	wg.Wait()
+	admitted := 0
+	for _, e := range answers {
+		switch {
+		case e == nil:
+			admitted++
+		case errors.Is(e, r.ErrQuota) && r.QuotaOf(e) == r.QuotaJobsInFlight:
+		default:
+			t.Fatal(e)
+		}
+	}
+	if admitted != limit {
+		t.Fatalf("%d admitted, want %d", admitted, limit)
 	}
 }

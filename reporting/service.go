@@ -23,13 +23,18 @@ type Service struct {
 	writers     map[string]WorkbookWriter // by format; "" is the workbook
 	issuer      Issuer                    // nil: issuing is unsupported
 	now         func() time.Time
+	quotas      Quotas // resolved: every field in its bounds
 }
 
 func NewService(c Config) (*Service, error) {
 	if c.Repository == nil || len(c.CursorKey) < 32 || len(c.Connections) == 0 {
 		return nil, ErrInvalid
 	}
-	s := &Service{repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
+	quotas, e := c.Quotas.Resolved()
+	if e != nil {
+		return nil, e
+	}
+	s := &Service{quotas: quotas, repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -217,7 +222,7 @@ func (s *Service) SubmitSnapshot(ctx context.Context, p Principal, q QuerySpec, 
 	if e != nil {
 		return JobView{}, e
 	}
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: prepared.Context.Owner, Kind: "snapshot", State: "queued", Key: key, RequestHash: Digest(q), Query: q, Prepared: prepared, Columns: d.Columns})
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: prepared.Context.Owner, Kind: "snapshot", State: "queued", Key: key, RequestHash: Digest(q), Query: q, Prepared: prepared, Columns: d.Columns}, s.quotas)
 	if e != nil {
 		return JobView{}, e
 	}
@@ -316,7 +321,7 @@ func (s *Service) SubmitExportFormat(ctx context.Context, p Principal, id, forma
 	if e != nil {
 		return JobView{}, e
 	}
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHash(id, format), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format})
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHash(id, format), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format}, s.quotas)
 	if e != nil {
 		return JobView{}, e
 	}
@@ -391,6 +396,9 @@ func (s *Service) jobView(ctx context.Context, p Principal, j Job) (JobView, Iss
 // depends on its adapter, which must implement DocumentAuthority: SubmitIssue says so.
 func (s *Service) CanIssue() bool { return s.issuer != nil }
 
+// Quotas is the per-identity admission limits in force (S04-D), every field resolved.
+func (s *Service) Quotas() Quotas { return s.quotas }
+
 // IssueInput is what the caller freezes when it asks for an official issue: the published
 // version's canonical configuration as the template store holds it.
 //
@@ -450,7 +458,7 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 		}
 		job.RowIndex, job.RequestHash = in.RowIndex, IssueRequestHash(in.TemplateID, in.TemplateVersion, sum, in.SnapshotID, in.RowIndex)
 	}
-	j, e := s.repo.Admit(ctx, job)
+	j, e := s.repo.Admit(ctx, job, s.quotas)
 	if e != nil {
 		return JobView{}, e
 	}

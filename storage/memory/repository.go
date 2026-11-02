@@ -20,14 +20,15 @@ type Store struct {
 	snapshots map[string]r.Snapshot
 	artifacts map[string]r.Artifact
 	issues    map[string]r.Issue
-	order     []string // job ids in admission order, for the issue listing
+	order     []string             // job ids in admission order, for the issue listing
+	admitted  map[string]time.Time // when each job was admitted, by this store's clock (the quota of jobs per hour, S04-D)
 }
 
 func New(now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}}
+	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}, admitted: map[string]time.Time{}}
 }
 
 // clone copies a value through JSON, as the durable store keeps it. A value that cannot be encoded
@@ -44,11 +45,18 @@ func clone[T any](v T) (T, error) {
 	}
 	return out, nil
 }
-func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
+
+// Admit counts under the store's mutex what PostgreSQL counts under the identity's advisory lock (docs/S04D_SCOPE.md D2), by the same rules:
+// after the replay of the key is settled and before the insert, so that a replay is never refused by a quota and a refusal stores nothing.
+func (s *Store) Admit(ctx context.Context, j r.Job, quotas r.Quotas) (r.Job, error) {
 	if e := ctx.Err(); e != nil {
 		return r.Job{}, e
 	}
 	if e := r.ValidateAdmission(j); e != nil {
+		return r.Job{}, e
+	}
+	quotas, e := quotas.Resolved()
+	if e != nil {
 		return r.Job{}, e
 	}
 	s.mu.Lock()
@@ -67,6 +75,9 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if _, ok := s.jobs[j.ID]; ok {
 		return r.Job{}, r.ErrConflict
 	}
+	if q := s.overQuota(j.Owner.Identity, quotas); q != "" {
+		return r.Job{}, &r.QuotaError{Quota: q}
+	}
 	if len(s.jobs) >= 10000 {
 		return r.Job{}, r.ErrBudget
 	}
@@ -76,8 +87,48 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	}
 	s.keys[key] = j.ID
 	s.jobs[j.ID] = stored
+	s.admitted[j.ID] = s.now()
 	s.order = append(s.order, j.ID)
 	return clone(j)
+}
+
+// overQuota names the first quota (jobs in flight, stored results, admissions per hour) that the identity has reached, or "". Only the
+// identity's own rows count: queued and running jobs of any kind; snapshots and artifacts whose expiry is after the store's clock (an
+// expired one waits for the sweep and does not count; an issue record is not among them); jobs admitted within the last hour. Called
+// under the mutex.
+func (s *Store) overQuota(i r.Identity, q r.Quotas) string {
+	now := s.now()
+	inFlight, results, lastHour := 0, 0, 0
+	for id, j := range s.jobs {
+		if j.Owner.Identity != i {
+			continue
+		}
+		if j.State == "queued" || j.State == "running" {
+			inFlight++
+		}
+		if s.admitted[id].After(now.Add(-time.Hour)) {
+			lastHour++
+		}
+	}
+	for _, v := range s.snapshots {
+		if v.Owner.Identity == i && v.ExpiresAt.After(now) {
+			results++
+		}
+	}
+	for _, v := range s.artifacts {
+		if v.Owner.Identity == i && v.ExpiresAt.After(now) {
+			results++
+		}
+	}
+	switch {
+	case inFlight >= q.JobsInFlight:
+		return r.QuotaJobsInFlight
+	case results >= q.StoredResults:
+		return r.QuotaStoredResults
+	case lastHour >= q.AdmissionsPerHour:
+		return r.QuotaAdmissionsPerHour
+	}
+	return ""
 }
 func (s *Store) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
 	if e := ctx.Err(); e != nil {

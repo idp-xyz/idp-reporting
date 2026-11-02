@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -105,14 +106,67 @@ type querier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
+// The lock and the counts of admission (S04-D, docs/S04D_SCOPE.md, docs/OPERATIONS.md "Quotas"). Admit takes a transaction-scoped advisory
+// lock keyed on the identity, so that two admissions of one identity count and insert one after the other (the second counts what the
+// first committed), while two identities never wait on each other; the lock ends with the transaction, committed or not. The key is the
+// three parts of the identity, each length-prefixed so that no two identities share one text, under a prefix of this use.
+const (
+	admitLockSQL = `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`
+	// admitReplaySQL finds the job a key already names: a replay is settled before anything is counted.
+	admitReplaySQL = `SELECT EXISTS (SELECT 1 FROM reporting_s01.jobs WHERE tenant=$1 AND integration=$2 AND issuer=$3 AND subject=$4 AND kind=$5 AND idem_key=$6)`
+	// admitCountSQL counts the identity's own rows, by the database's clock: the queued and running jobs; the snapshots and artifacts whose
+	// expiry is still in the future (an issue record is another kind and never counts; an expired one waits for the sweep and does not
+	// count; a NULL expiry is not in the future); the jobs admitted in the last hour.
+	admitCountSQL = `SELECT
+(SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND state IN ('queued','running')),
+(SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp()),
+(SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND created_at > clock_timestamp() - interval '1 hour')`
+)
+
+// AdmissionLockForTests returns the statement that takes an identity's admission lock and the key it takes it on, for the qualification that
+// holds one identity's lock and watches another's admission pass it by. Nothing in the platform runs it.
+func AdmissionLockForTests(i r.Identity) (sql, key string) { return admitLockSQL, admitLockKey(i) }
+
+func admitLockKey(i r.Identity) string {
+	return fmt.Sprintf("reporting.admit:%d:%s:%d:%s:%d:%s", len(i.Tenant), i.Tenant, len(i.Issuer), i.Issuer, len(i.Subject), i.Subject)
+}
+
 // Admit stores the job as it is: every kind goes through the same insert. An issue job has no
-// number (S03-H): the source product gives it when the worker prepares the document.
-func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
+// number (S03-H): the source product gives it when the worker prepares the document. Inside the one
+// transaction of the identity's context it takes the identity's lock, settles a replay of the key (which no quota refuses), counts, and
+// only then inserts; a refusal rolls back and changes nothing.
+func (s *Store) Admit(ctx context.Context, j r.Job, quotas r.Quotas) (r.Job, error) {
 	if e := r.ValidateAdmission(j); e != nil {
 		return r.Job{}, e
 	}
+	quotas, e := quotas.Resolved()
+	if e != nil {
+		return r.Job{}, e
+	}
 	var v r.Job
-	e := asIdentity(ctx, s.pool, j.Owner.Identity, func(tx pgx.Tx) (err error) {
+	e = asIdentity(ctx, s.pool, j.Owner.Identity, func(tx pgx.Tx) (err error) {
+		if _, err = tx.Exec(ctx, admitLockSQL, admitLockKey(j.Owner.Identity)); err != nil {
+			return err
+		}
+		var replay bool
+		o := j.Owner
+		if err = tx.QueryRow(ctx, admitReplaySQL, o.Tenant, o.Integration, o.Issuer, o.Subject, j.Kind, j.Key).Scan(&replay); err != nil {
+			return err
+		}
+		if !replay {
+			var inFlight, results, lastHour int
+			if err = tx.QueryRow(ctx, admitCountSQL, o.Tenant, o.Issuer, o.Subject).Scan(&inFlight, &results, &lastHour); err != nil {
+				return err
+			}
+			switch {
+			case inFlight >= quotas.JobsInFlight:
+				return &r.QuotaError{Quota: r.QuotaJobsInFlight}
+			case results >= quotas.StoredResults:
+				return &r.QuotaError{Quota: r.QuotaStoredResults}
+			case lastHour >= quotas.AdmissionsPerHour:
+				return &r.QuotaError{Quota: r.QuotaAdmissionsPerHour}
+			}
+		}
 		v, err = admit(ctx, tx, j)
 		return err
 	})

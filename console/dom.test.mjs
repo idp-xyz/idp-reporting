@@ -32,7 +32,7 @@ before(async()=>{
   url='http://127.0.0.1:'+port;
   // PDF export runs when the pinned Typst binary and fonts are configured, as in CI.
   const pdf=pdfConfigured?['-pdf-typst',process.env.REPORTING_TYPST,'-pdf-typst-sha256',process.env.REPORTING_TYPST_SHA256,'-pdf-fonts',process.env.REPORTING_PDF_FONTS]:[];
-  child=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(temporary,'layouts'),'-dashboard-directory',join(temporary,'dashboards'),'-template-directory',join(temporary,'templates'),'-background-directory',join(temporary,'backgrounds'),...pdf],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
+  child=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(temporary,'layouts'),'-dashboard-directory',join(temporary,'dashboards'),'-template-directory',join(temporary,'templates'),'-background-directory',join(temporary,'backgrounds'),'-quota-jobs','1000','-quota-results','100000','-quota-admissions','100000',...pdf],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
   child.stderr.resume();
   for(let i=0;i<100;i++){try{const r=await fetch(url+'/console/');if(r.ok)return;}catch(_){}if(child.exitCode!==null)throw new Error('Go fixture did not start');await sleep(30);}
   throw new Error('Go fixture startup timeout');
@@ -2766,5 +2766,104 @@ test('the issue list shows 已过期并清除 for an issue whose file expired, k
       ['expired on a queued record',open({expired:true})],['expired on a failed record',open({state:'failed',error_code:'INTEGRITY_FAILURE',expired:true})],['expired on a running record',open({state:'running',expired:true})],
     ]){assert.match(await refresh([record]),/无法验证出具记录。|不应带有/,label);assert.equal(a.$('doc-issues-wrap').hidden,true,label);}
     assert.equal(a.downloads.length,0);assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});
+
+// Quotas (S04-D, docs/S04D_SCOPE.md D3): the refusal is 429 {error:'QUOTA_EXCEEDED',quota}; the console names the quota with the number the
+// capabilities state, leaves the page as it was, and takes any other shape for a response it cannot verify.
+const QUOTA_NUMBERS={jobs_in_flight:3,stored_results:7,admissions_per_hour:11};
+const QUOTA_TEXT={jobs_in_flight:'已达到进行中任务上限 (3)，请等待任务完成或取消后再试',stored_results:'已达到保留结果上限 (7)，结果过期后自动释放',admissions_per_hour:'已达到每小时提交上限 (11)，请稍后再试'};
+function quotaServer(answer,numbers=QUOTA_NUMBERS){
+  return async(path,options)=>{
+    if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,options)).json();caps.quotas=numbers;return json(caps);}
+    if(path.endsWith('/snapshot-jobs')&&options?.method==='POST')return answer();
+  };
+}
+test('a quota refusal names the quota with the number of the capabilities and leaves the page as it was',async()=>{
+  for(const quota of Object.keys(QUOTA_TEXT)){
+    const a=app(quotaServer(()=>json({error:'QUOTA_EXCEEDED',quota},429)));
+    try{
+      await a.login();a.configure();a.click('preview');await until(()=>!a.$('result-table-wrap').hidden&&!a.$('preview').disabled,'preview result');
+      const rows=a.$('result-table').tBodies[0].rows.length;assert.ok(rows>0);
+      a.click('snapshot');await until(()=>!a.$('notice').hidden&&!a.$('snapshot').disabled,'quota notice');
+      assert.ok(a.$('notice').textContent.includes(QUOTA_TEXT[quota]),quota+': '+a.$('notice').textContent);
+      assert.equal(a.$('result-table-wrap').hidden,false,'the preview stays');assert.equal(a.$('result-table').tBodies[0].rows.length,rows);
+      assert.equal(a.$('result-kind').textContent!=='冻结快照',true);
+      assert.equal(a.$('connection-overlay').hidden,true,'still connected');
+      assert.equal(a.errors.length,0,a.errors.join('|'));
+    }finally{a.close();}
+  }
+});
+
+test('the capabilities state the quotas in force, and the console shows them',async()=>{
+  const a=app();try{
+    await a.login();
+    const caps=await (await fetch(url+'/api/reporting/v1/capabilities',{headers:{Authorization:'Bearer '+token}})).json();
+    assert.deepEqual(Object.keys(caps.quotas).sort(),['admissions_per_hour','jobs_in_flight','stored_results']);
+    assert.ok(a.$('capability-details').textContent.includes('每小时提交 '+caps.quotas.admissions_per_hour));
+  }finally{a.close();}
+});
+
+test('a refusal that is not exactly the quota shape is an unverifiable response, and capabilities without valid quotas are refused',async()=>{
+  const verdict='服务返回了无法验证的响应。';
+  const raw=(body,status=429,type='application/json')=>()=>new Response(body,{status,headers:{'Content-Type':type}});
+  for(const [label,answer] of [
+    ['an unknown quota',raw('{"error":"QUOTA_EXCEEDED","quota":"bytes"}')],['no quota',raw('{"error":"QUOTA_EXCEEDED"}')],['an extra key',raw('{"error":"QUOTA_EXCEEDED","quota":"jobs_in_flight","count":8}')],
+    ['a quota that is not text',raw('{"error":"QUOTA_EXCEEDED","quota":3}')],['another code under 429',raw('{"error":"BUDGET_EXCEEDED","quota":"jobs_in_flight"}')],['429 without a body',raw('')],['a list',raw('["QUOTA_EXCEEDED"]')],
+    ['not JSON',raw('quota exceeded',429,'text/plain')],['the code under another status',raw('{"error":"QUOTA_EXCEEDED","quota":"jobs_in_flight"}',400)]
+  ]){
+    const a=app(quotaServer(answer));
+    try{
+      await a.login();a.configure();a.click('preview');await until(()=>!a.$('result-table-wrap').hidden&&!a.$('preview').disabled,'preview result');
+      a.click('snapshot');await until(()=>!a.$('notice').hidden&&!a.$('snapshot').disabled,'notice');
+      assert.ok(a.$('notice').textContent.includes(verdict),label+': '+a.$('notice').textContent);
+      assert.equal(/上限/.test(a.$('notice').textContent),false,label);
+    }finally{a.close();}
+  }
+  for(const [label,quotas] of [['missing',undefined],['a missing key',{jobs_in_flight:3,stored_results:7}],['an extra key',{...QUOTA_NUMBERS,other:1}],['zero',{...QUOTA_NUMBERS,jobs_in_flight:0}],['a fraction',{...QUOTA_NUMBERS,stored_results:1.5}],['text',{...QUOTA_NUMBERS,admissions_per_hour:'11'}],['beyond the bound',{...QUOTA_NUMBERS,stored_results:100001}]]){
+    const a=app(async path=>{if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,{headers:{Authorization:'Bearer '+token}})).json();if(quotas===undefined)delete caps.quotas;else caps.quotas=quotas;return json(caps);}});
+    try{
+      a.$('access-token').value=token;a.$('connect-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));
+      await until(()=>!a.$('connect-error').hidden,'refusal');
+      assert.ok(a.$('connect-error').textContent.includes(verdict),label);assert.equal(a.$('connection-overlay').hidden,false,label);
+    }finally{a.close();}
+  }
+});
+
+test('a real server at its limit refuses with the quota notice',async()=>{
+  // A second demo that admits one job at a time and runs no worker: the first submission holds the only slot.
+  const listener=createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
+  const strict=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-pause-workers','-quota-jobs','1'],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
+  strict.stderr.resume();
+  const normal=url;url='http://127.0.0.1:'+port;
+  let held=false;
+  const a=app(async(path,options)=>{
+    // The first job is admitted for real; the poll for it is answered "unavailable", so that the console moves on to the second submission.
+    if(path.includes('/jobs/')&&!path.endsWith('/cancel')&&held)return json({error:'AUTHORITY_UNAVAILABLE'},503);
+    if(path.endsWith('/snapshot-jobs')&&options?.method==='POST'){const answer=await fetch(url+path,options);if(answer.status===202)held=true;return answer;}
+  });
+  try{
+    for(let i=0;i<100;i++){try{if((await fetch(url+'/console/')).ok)break;}catch(_){}await sleep(30);}
+    await a.login();a.configure();
+    a.click('snapshot');await until(()=>held&&!a.$('notice').hidden&&!a.$('snapshot').disabled,'first submission held');
+    const capabilities=await (await fetch(url+'/api/reporting/v1/capabilities',{headers:{Authorization:'Bearer '+token}})).json();
+    assert.deepEqual(capabilities.quotas,{jobs_in_flight:1,stored_results:64,admissions_per_hour:120});
+    a.click('snapshot');await until(()=>a.$('notice').textContent.includes('进行中任务上限 (1)'),'quota notice from the real server');
+    assert.ok(a.$('notice').textContent.includes('已达到进行中任务上限 (1)，请等待任务完成或取消后再试'));
+    assert.equal(a.errors.length,0,a.errors.join('|'));
+  }finally{a.close();url=normal;if(strict.exitCode===null){strict.kill('SIGTERM');await new Promise(resolve=>strict.once('exit',resolve));}}
+});
+
+test('a quota refusal of an export keeps the frozen snapshot on show and starts no download',async()=>{
+  let refuse=false;
+  const a=app(async(path,options)=>{
+    if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,options)).json();caps.quotas=QUOTA_NUMBERS;return json(caps);}
+    if(refuse&&path.endsWith('/exports')&&options?.method==='POST')return json({error:'QUOTA_EXCEEDED',quota:'admissions_per_hour'},429);
+  });
+  try{
+    await snapshotReady(a);const rows=a.$('result-table').tBodies[0].rows.length;refuse=true;
+    a.click('export');await until(()=>a.$('notice').textContent.includes(QUOTA_TEXT.admissions_per_hour),'quota notice');
+    assert.equal(a.$('result-kind').textContent,'冻结快照');assert.equal(a.$('result-table').tBodies[0].rows.length,rows);assert.equal(a.downloads.length,0);
+    assert.equal(a.errors.length,0,a.errors.join('|'));
   }finally{a.close();}
 });
