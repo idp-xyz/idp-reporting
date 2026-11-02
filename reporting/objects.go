@@ -91,3 +91,6 @@ func ValidArtifactBody(a Artifact) bool {
 	}
 	return len(a.Content) == 0 && a.Object == ObjectKey(a.ID) && a.Size > 0 && a.Size <= MaxArtifactBytes && validSHA256(a.SHA256)
 }
+
+// BytesDigestForTests is the SHA-256 (hex) the store keeps of a file, for the qualification tools that put objects and rows of their own.
+func BytesDigestForTests(b []byte) string { return bytesDigest(b) }

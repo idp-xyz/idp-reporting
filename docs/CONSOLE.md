@@ -171,10 +171,13 @@ S03-I 的脚本与 DOM 测试对 1.x 原样通过。
 测试：console/embed.dom.test.mjs（DOM，真实 Go 服务）与 scripts/browser_embed_s03n.mjs（Windows Chrome 经 CDP，主机页面与平台在不同的回环来源，本地证据）。
 
 更新（S04-D，配额，docs/API.md “Quotas”，docs/OPERATIONS.md “Quotas”）：每个身份有进行中任务、保留结果与每小时提交三项上限，数值由 `GET /capabilities` 的 `quotas` 给出，控制台在“能力”详情里显示（“提交限额”）。
-提交（快照、导出、出具）被拒时服务端回 429，体为恰好 `{"error":"QUOTA_EXCEEDED","quota":<jobs_in_flight|stored_results|admissions_per_hour>}`；控制台校验状态码、代码与 `quota` 键（多一个键、未知名称、
+提交（快照、导出、出具）被拒时服务端回 429，体为恰好 `{"error":"QUOTA_EXCEEDED","quota":<jobs_in_flight|stored_results|admissions_per_hour|queries_in_flight>}`；控制台校验状态码、代码与 `quota` 键（多一个键、未知名称、
 非 429 状态下的该代码、或 429 配其他体，都按“服务返回了无法验证的响应”处理），并用能力里的数字显示一句话：
 “已达到进行中任务上限 (8)，请等待任务完成或取消后再试”、“已达到保留结果上限 (64)，结果过期后自动释放”、“已达到每小时提交上限 (120)，请稍后再试”。
 页面保持原样：创建快照被拒时不清除正在显示的结果（其他失败照旧清除），导出被拒时快照与分页不变；不建立任务、不发起下载；被拒的提交不保留待确认键，之后的重试用新键。
-能力里的 `quotas` 缺失、缺键、多键或不是 1..100000 的整数时，连接按“无法验证的响应”失败。
+能力里的 `quotas` 缺失、缺键、多键或不是 1..100000 的整数（第四项 `queries_in_flight` 为 1..64）时，连接按“无法验证的响应”失败；自 S04-G 起 `quotas` 恰好四个键。
 嵌入页同样如此（运行同一份脚本），并且**不**把配额拒绝告诉父页面：`reporting:error` 的代码仍是封闭列表，配额拒绝是用户自己的限额而不是框架的错误，发给父页面的消息里没有 `quota`。
 测试：console/dom.test.mjs（每项配额的提示与来自能力的数字、畸形体、导出被拒、真实服务限额为 1 时的拒绝）与 console/embed.dom.test.mjs（不向父页面发送）。
+
+更新（S04-G，容量，docs/API.md “Limits”，docs/OPERATIONS.md “Capacity”）：第四项配额 `queries_in_flight`（本进程内同一身份同时进行的查询与快照行读取）只在恰好 `{"error":"QUOTA_EXCEEDED","quota":"queries_in_flight"}` 且状态 429 时被接受，多一个键、状态不是 429 都按“无法验证的响应”处理；提示为“查询进行中过多 (N)，请稍后再试”（N 来自能力里的 `quotas.queries_in_flight`），页面保持原样，嵌入页同样不向父页面发送。
+服务端因同时请求数达到上限回 503 `{"error":"OVERLOADED"}`（`Retry-After: 1`）；控制台把它与“授权来源不可用”的 503 区分开：提示“服务繁忙，请稍后再试”，页面上已有的结果、作业列表不清除也不标为受限；`OVERLOADED` 只有在状态 503 且体恰好只有 `error` 键时才被接受，其他形状按“无法验证的响应”处理。其他 503 仍显示“当前授权来源不可用，请稍后重试。”并按原规则清除结果。嵌入页对 `OVERLOADED` 仍按既有的封闭列表向父页面报告 `UNAVAILABLE`（503 的既有映射），配额拒绝则仍不报告。

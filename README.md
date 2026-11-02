@@ -1,3 +1,19 @@
+# IDP Reporting Platform · S04-G
+
+2026-11-02。容量（docs/S04G_SCOPE.md，docs/OPERATIONS.md “Capacity”，docs/CAPACITY.md，docs/API.md “Limits”）：此前热路径缺索引、若干路径无上界，也没有测量。本阶段加索引、给无界路径设上界，并给出可复现的测量工具与有边界的数字。
+
+索引（迁移 009 `capacity_indexes`，台账、校验和、单事务、可回滚，003–008 字节不变，`integration/testdata/catalog_009.txt`）：`jobs (tenant, issuer, subject, created_at DESC)`、`jobs (tenant, issuer, subject) WHERE state IN ('queued','running')`、`assets (tenant, issuer, subject, kind, expires_at)`，以及清理用的 `jobs (source_expires_at) WHERE state IN ('succeeded','failed','cancelled') AND NOT (data ? 'Reduced')`。迁移用 `IF NOT EXISTS`，所以可以先用 `CREATE INDEX CONCURRENTLY` 以同名同定义在迁移前建好（普通 `CREATE INDEX` 在构建期间阻塞该表的写入，OPERATIONS.md 说明）；迁移随后核对：同名但定义不同或失效（并发构建失败遗留）的索引被拒绝。行级安全策略下的执行计划由门控子测试 `TestPostgresMigrations/capacity_plans_*` 以应用角色加身份上下文断言（索引名出现、`jobs`/`assets` 无顺序扫描，不断言时间）；诚实的结果：发行列表对历史短的身份，规划器仍用唯一键索引（其前缀已被语句自己的谓词填满），对历史长的身份才用 `jobs_identity_created`。
+
+上界：请求体按路由设上限（4 KiB / 64 KiB / 1 MiB，超限 413 `REQUEST_TOO_LARGE`，不解析；见 API.md “Limits”）；`httpapi.WithMaxInFlight`（demo `-max-in-flight`，默认 128，1..4096）超限回 503 `{"error":"OVERLOADED"}` 与 `Retry-After: 1`，不做任何工作，槽位在正常、出错、panic、客户端断开时都释放；第四项配额 `queries_in_flight`（默认 4，1..64，demo `-quota-queries`，服务内、按进程、按身份，`POST /queries` 与快照行读取共用）超限回 429 与 `Retry-After: 1`；`OpenProduction` 现在读 DSN 的 `pool_max_conns`（低于 workers+2 或高于 100 拒绝；缺省仍是 8）。控制台把 `OVERLOADED` 与授权来源的 503 分开，接受第四个配额名（仅限精确形状），`capabilities.quotas` 现在恰好四个键。
+
+测量：`scripts/capacity_run.sh`（`internal/capacity`，只在受保护的夹具库里用 SQL 播种并清理）在迁移 009 之前与之后测准入、发行列表、按 id 读取、Claim、一次清理、`verify-objects` 与 1/8/32 并发写入的 p50/p95/p99 与吞吐；`-growth` 打印真实服务写出的行的字节数。数字、机器与它们**不**说明的事（一台主机、无网络、无 TLS、热缓存、合成数据）在 docs/CAPACITY.md；它们不是生产容量规划。
+
+清理修复：测量发现 S04-B 的清理在 200,000 行 `jobs` 上清 2,000 条要 95 秒，主因是行级安全下“产物所指的快照”这一探测无法走主键（谓词里的 `a.data->>'SnapshotID'` 不是 leakproof），退化成对每个候选整表位图扫描；探测改为对普通列比较（`LATERAL … OFFSET 0`），并加上 `jobs_reducible` 部分索引，同样的行现在约 2 秒（docs/CAPACITY.md）。清理的规则与 `countSweep` 的计数不变。
+
+不在本阶段：清理或归档 `jobs`、分区、只读副本、读路径的时间限流、自动伸缩、生产容量声明、密钥生命周期。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S04-F
 
 2026-11-02。备份与恢复（docs/S04F_SCOPE.md，docs/OPERATIONS.md “Backup and restore (S04-F)”）：自 S04-E 起平台状态分在两处——PostgreSQL 存储（任务、快照、产物行、出具记录、各账本）与对象存储里产物行所指的文件；只备份其一不是备份平台。本阶段定义恢复后必须成立的不变量、给出只读的核对命令、用测试与一次真实的转储恢复演练证明各种情形、写出运维手册。**平台不带备份工具**：`pg_dump`/`pg_basebackup`/WAL 归档与桶的版本化或复制是运维方的，手册说明怎么用、怎么知道成功。
@@ -13,8 +29,6 @@
 未验：时间点恢复（PITR）、跨区域复制、加密备份、用云厂商快照恢复、AWS S3 本身、私有目录（版面、看板、模板、背景、图片）的备份——它们是磁盘上的文件，不在数据库里，需要文件级备份，手册已写明。CI 的 PostgreSQL 任务仍用 versitygw 对象存储（MinIO 的镜像已不能公开拉取），新测试只用既有客户端操作。
 
 不在本阶段：备份调度或备份工具、时间点恢复资格、跨区域复制、备份加密、私有目录的备份、容量、密钥生命周期。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S04-E
 

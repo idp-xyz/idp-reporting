@@ -137,14 +137,40 @@ const (
 	admitLockSQL = `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`
 	// admitReplaySQL finds the job a key already names: a replay is settled before anything is counted.
 	admitReplaySQL = `SELECT EXISTS (SELECT 1 FROM reporting_s01.jobs WHERE tenant=$1 AND integration=$2 AND issuer=$3 AND subject=$4 AND kind=$5 AND idem_key=$6)`
-	// admitCountSQL counts the identity's own rows, by the database's clock: the queued and running jobs; the snapshots and artifacts whose
+	// The three counts of the identity's own rows, by the database's clock: the queued and running jobs; the snapshots and artifacts whose
 	// expiry is still in the future (an issue record is another kind and never counts; an expired one waits for the sweep and does not
 	// count; a NULL expiry is not in the future); the jobs admitted in the last hour.
-	admitCountSQL = `SELECT
-(SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND state IN ('queued','running')),
-(SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp()),
-(SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND created_at > clock_timestamp() - interval '1 hour')`
+	admitInFlightSQL = `SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND state IN ('queued','running')`
+	admitResultsSQL  = `SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp()`
+	admitHourSQL     = `SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND created_at > clock_timestamp() - interval '1 hour'`
+	// admitCountSQL is the three counts in one round trip; the indexes of migration 009 (S04-G) serve them: jobs_identity_in_flight,
+	// assets_identity_kind_expires and jobs_identity_created, in this order.
+	admitCountSQL = `SELECT (` + admitInFlightSQL + `), (` + admitResultsSQL + `), (` + admitHourSQL + `)`
+	// issueListingSQL is the listing of an identity's issue jobs, newest first (Store.Issues); jobs_identity_created serves it.
+	issueListingSQL = "SELECT " + jobFields + " FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5"
 )
+
+// CapacityStatement is one of the statements whose plan the capacity qualification holds to the indexes of migration 009 (S04-G): the three
+// counts of an admission, taken one at a time, and the issue listing. Args makes its arguments for an identity.
+type CapacityStatement struct {
+	Name string
+	SQL  string
+	Args func(i r.Identity, integrations []string) []any
+}
+
+// CapacityStatementsForTests returns the statements the platform runs on its hot paths, exactly as it runs them, for the plan test and the
+// measurement tool (internal/capacity). Nothing in the platform runs them through this.
+func CapacityStatementsForTests() []CapacityStatement {
+	identity := func(i r.Identity, _ []string) []any { return []any{i.Tenant, i.Issuer, i.Subject} }
+	return []CapacityStatement{
+		{"jobs in flight", admitInFlightSQL, identity},
+		{"stored results", admitResultsSQL, identity},
+		{"admissions in the last hour", admitHourSQL, identity},
+		{"issue listing", issueListingSQL, func(i r.Identity, integrations []string) []any {
+			return []any{i.Tenant, i.Issuer, i.Subject, integrations, 25}
+		}},
+	}
+}
 
 // AdmissionLockForTests returns the statement that takes an identity's admission lock and the key it takes it on, for the qualification that
 // holds one identity's lock and watches another's admission pass it by. Nothing in the platform runs it.
@@ -482,7 +508,7 @@ func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string,
 	}
 	out := []r.Job{}
 	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5", i.Tenant, i.Issuer, i.Subject, integrations, limit)
+		rows, e := tx.Query(ctx, issueListingSQL, i.Tenant, i.Issuer, i.Subject, integrations, limit)
 		if e != nil {
 			return e
 		}

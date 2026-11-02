@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	r "idp.local/reporting/reporting"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -22,6 +23,54 @@ type ProductionConfig struct {
 	// InsecureTestOnly lifts the TLS and database-name rules; it exists so that the role and
 	// schema rules can be qualified on the throwaway test server, and nowhere else.
 	InsecureTestOnly bool
+	// Workers is the number of worker loops (claim, execute, publish) this process runs; zero is one. It sets the floor of the pool (S04-G):
+	// each loop holds a connection while it works, and the requests that serve callers need at least two more.
+	Workers int
+}
+
+// The pool of the production store (S04-G, docs/OPERATIONS.md "Capacity"). It is sized by the DSN parameter pool_max_conns, which the
+// opener now reads: a value below Workers+2 (a worker loop would leave the requests no connection) or above MaxPoolConns is refused, and
+// an absent one takes DefaultPoolConns (what the opener always used), raised to the floor when the workers need more.
+const (
+	DefaultPoolConns = 8
+	MaxPoolConns     = 100
+	maxWorkers       = MaxPoolConns - 2
+)
+
+// poolSize says how many connections the pool may hold: the DSN's pool_max_conns when it names one, checked against the bounds, else the
+// default (the pool library fills in a default of its own when the DSN does not name one, which is why the DSN is looked at, not only parsed).
+func poolSize(dsn string, parsed int32, workers int) (int32, error) {
+	if workers == 0 {
+		workers = 1
+	}
+	if workers < 0 || workers > maxWorkers {
+		return 0, fmt.Errorf("workers must be between 1 and %d: %w", maxWorkers, r.ErrInvalid)
+	}
+	floor := int32(workers + 2)
+	if !dsnNames(dsn, "pool_max_conns") {
+		return max(int32(DefaultPoolConns), floor), nil
+	}
+	if parsed < floor || parsed > MaxPoolConns {
+		return 0, fmt.Errorf("pool_max_conns must be between %d (the workers plus 2) and %d, not %d: %w", floor, MaxPoolConns, parsed, r.ErrInvalid)
+	}
+	return parsed, nil
+}
+
+// dsnNames says whether the connection string sets the parameter, in the URL form or the keyword form.
+func dsnNames(dsn, name string) bool {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		if u, err := url.Parse(dsn); err == nil {
+			_, ok := u.Query()[name]
+			return ok
+		}
+		return false
+	}
+	for _, field := range strings.Fields(dsn) {
+		if k, _, ok := strings.Cut(field, "="); ok && k == name {
+			return true
+		}
+	}
+	return false
 }
 
 var fixtureDatabases = []string{"reporting_test_s01", "reporting_test_s01_race"}
@@ -41,7 +90,11 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (
 			return nil, fmt.Errorf("production stores require sslmode=verify-full: %w", r.ErrDenied)
 		}
 	}
-	c.MaxConns = 8
+	size, err := poolSize(cfg.DSN, c.MaxConns, cfg.Workers)
+	if err != nil {
+		return nil, err
+	}
+	c.MaxConns = size
 	c.MinConns = 0
 	c.ConnConfig.ConnectTimeout = 3 * time.Second
 	pool, err := pgxpool.NewWithConfig(ctx, c)

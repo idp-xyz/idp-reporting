@@ -109,16 +109,27 @@ func embedConfig(values []string, integrations []string) (*embedding.Config, err
 
 // quotaConfig reads the -quota-* flags (S04-D): zero is the default of each, a value outside its bounds stops the start with the flag's
 // name and the bounds, before anything is opened.
-func quotaConfig(jobs, results, admissions int) (r.Quotas, error) {
+func quotaConfig(jobs, results, admissions, queries int) (r.Quotas, error) {
 	for _, f := range []struct {
 		name     string
 		v, bound int
-	}{{"-quota-jobs", jobs, r.MaxJobsInFlight}, {"-quota-results", results, r.MaxStoredResults}, {"-quota-admissions", admissions, r.MaxAdmissionsPerHour}} {
+	}{{"-quota-jobs", jobs, r.MaxJobsInFlight}, {"-quota-results", results, r.MaxStoredResults}, {"-quota-admissions", admissions, r.MaxAdmissionsPerHour}, {"-quota-queries", queries, r.MaxQueriesInFlight}} {
 		if f.v < 0 || f.v > f.bound {
 			return r.Quotas{}, fmt.Errorf("%s must be 0 (the default) or between 1 and %d", f.name, f.bound)
 		}
 	}
-	return r.Quotas{JobsInFlight: jobs, StoredResults: results, AdmissionsPerHour: admissions}.Resolved()
+	return r.Quotas{JobsInFlight: jobs, StoredResults: results, AdmissionsPerHour: admissions, QueriesInFlight: queries}.Resolved()
+}
+
+// maxInFlightConfig reads -max-in-flight (S04-G): zero is the default, 128; a value outside 1..4096 stops the start with the flag's name.
+func maxInFlightConfig(n int) (int, error) {
+	if n < 0 || n > httpapi.MaxMaxInFlight {
+		return 0, fmt.Errorf("-max-in-flight must be 0 (the default) or between 1 and %d", httpapi.MaxMaxInFlight)
+	}
+	if n == 0 {
+		return httpapi.DefaultMaxInFlight, nil
+	}
+	return n, nil
 }
 
 // openObjectStore reads the object store flags and the environment and, when the store is configured, reaches its bucket: when HEAD bucket
@@ -159,6 +170,8 @@ func run() error {
 	quotaJobs := flag.Int("quota-jobs", 0, "quota per identity: queued and running jobs (S04-D); 0 is the default, 8; 1..1000")
 	quotaResults := flag.Int("quota-results", 0, "quota per identity: snapshots and artifacts not yet expired (S04-D); 0 is the default, 64; 1..100000")
 	quotaAdmissions := flag.Int("quota-admissions", 0, "quota per identity: jobs admitted in the last hour (S04-D); 0 is the default, 120; 1..100000")
+	quotaQueries := flag.Int("quota-queries", 0, "quota per identity: POST /queries and snapshot row reads running at once in this process (S04-G); 0 is the default, 4; 1..64")
+	maxInFlight := flag.Int("max-in-flight", 0, "API requests worked on at once in this process (S04-G); beyond it a request is answered 503 OVERLOADED with Retry-After: 1; 0 is the default, 128; 1..4096")
 	objectStore := objects.Register(flag.CommandLine)
 	flag.Func("embed-origin", "repeatable integration=origin: a page of that origin may show the embed pages of that integration in a frame (ADR 0006); an https origin as https://host[:port], or http://127.0.0.1:port for a local product page", func(value string) error {
 		embedOrigins = append(embedOrigins, value)
@@ -178,7 +191,11 @@ func run() error {
 	if *sweepInterval < 0 {
 		return fmt.Errorf("-sweep-interval must be 0 (off) or positive")
 	}
-	quotas, e := quotaConfig(*quotaJobs, *quotaResults, *quotaAdmissions)
+	quotas, e := quotaConfig(*quotaJobs, *quotaResults, *quotaAdmissions, *quotaQueries)
+	if e != nil {
+		return e
+	}
+	inFlight, e := maxInFlightConfig(*maxInFlight)
 	if e != nil {
 		return e
 	}
@@ -341,6 +358,10 @@ func run() error {
 		if handler, e = httpapi.WithEmbedding(handler, s, auth, embed); e != nil {
 			return e
 		}
+	}
+	// The cap on requests in flight wraps the API alone, under the console, whose static pages are not what it protects (S04-G).
+	if handler, e = httpapi.WithMaxInFlight(handler, inFlight); e != nil {
+		return e
 	}
 	handler, e = console.HandlerWithEmbedding(handler, embed)
 	if e != nil {

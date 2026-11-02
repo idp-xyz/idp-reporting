@@ -38,7 +38,7 @@ func WithDocumentPreviews(fallback http.Handler, s *r.Service, auth Authenticate
 			SnapshotID string                `json:"snapshot_id"`
 			RowIndex   *int                  `json:"row_index"`
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodyDocument); e != nil {
 			return e
 		}
 		if input.RowIndex == nil {

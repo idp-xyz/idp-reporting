@@ -25,6 +25,7 @@ type Service struct {
 	now         func() time.Time
 	quotas      Quotas      // resolved: every field in its bounds
 	objects     ObjectStore // nil: artifact content stays inline in the row (S04-E)
+	gate        queryGate   // the reads running per identity (S04-G)
 }
 
 func NewService(c Config) (*Service, error) {
@@ -199,6 +200,12 @@ func (s *Service) collect(ctx context.Context, o Owner, q QuerySpec, p PreparedR
 	return Result{}, ErrBudget
 }
 func (s *Service) Query(ctx context.Context, p Principal, q QuerySpec) (Result, error) {
+	// A read beyond the identity's queries in flight is refused before anything runs (S04-G); the slot is given back on every way out.
+	release, e := s.admitRead(p)
+	if e != nil {
+		return Result{}, e
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, WorkTimeout)
 	defer cancel()
 	q, d, prepared, e := s.prepare(ctx, p, q)
@@ -260,6 +267,11 @@ func (s *Service) Rows(ctx context.Context, p Principal, id string, limit int, c
 	if limit < 1 || limit > 100 {
 		return RowsPage{}, ErrInvalid
 	}
+	release, e := s.admitRead(p)
+	if e != nil {
+		return RowsPage{}, e
+	}
+	defer release()
 	snap, e := s.snapshot(ctx, p, id)
 	if e != nil {
 		return RowsPage{}, e
