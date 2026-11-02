@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"encoding/json"
@@ -146,7 +147,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 				Version  int    `json:"version"`
 				Expected int    `json:"expected_revision"`
 			}
-			if e := decode(req, &input); e != nil {
+			if e := decode(w, req, &input, bodySmall); e != nil {
 				return e
 			}
 			if input.Action != "publish" && input.Action != "withdraw" {
@@ -181,7 +182,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 				Expected int              `json:"expected_version"`
 				Layout   layouts.Document `json:"layout"`
 			}
-			if e := decode(req, &input); e != nil {
+			if e := decode(w, req, &input, bodyDocument); e != nil {
 				return e
 			}
 			if e := authorize(req, p, input.Layout); e != nil {
@@ -213,7 +214,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	})
 	bind("POST "+base+"/queries", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		var q r.QuerySpec
-		if e := decode(req, &q); e != nil {
+		if e := decode(w, req, &q, bodyQuery); e != nil {
 			return e
 		}
 		v, e := service.Query(req.Context(), p, q)
@@ -224,7 +225,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	})
 	bind("POST "+base+"/snapshot-jobs", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		var q r.QuerySpec
-		if e := decode(req, &q); e != nil {
+		if e := decode(w, req, &q, bodyQuery); e != nil {
 			return e
 		}
 		key, e := idem(req)
@@ -282,7 +283,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			SnapshotID string `json:"snapshot_id"`
 			Format     string `json:"format"` // absent means xlsx
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodySmall); e != nil {
 			return e
 		}
 		key, e := idem(req)
@@ -361,7 +362,7 @@ func capabilities(service *r.Service, embedding bool) map[string]any {
 	view := map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
 	view["embedding"] = embedding
 	q := service.Quotas()
-	view["quotas"] = map[string]int{r.QuotaJobsInFlight: q.JobsInFlight, r.QuotaStoredResults: q.StoredResults, r.QuotaAdmissionsPerHour: q.AdmissionsPerHour}
+	view["quotas"] = map[string]int{r.QuotaJobsInFlight: q.JobsInFlight, r.QuotaStoredResults: q.StoredResults, r.QuotaAdmissionsPerHour: q.AdmissionsPerHour, r.QuotaQueriesInFlight: q.QueriesInFlight}
 	return view
 }
 
@@ -381,12 +382,37 @@ func secured(next http.Handler) http.Handler {
 		next.ServeHTTP(w, req)
 	})
 }
-func decode(req *http.Request, out any) error {
+
+// The bound of the body of each route that reads one (S04-G, docs/API.md "Limits"), in bytes. A body over it is refused with 413
+// REQUEST_TOO_LARGE before any of it is parsed, and the connection is closed rather than the rest read. The documents (a layout, a
+// template, a dashboard, a preview or a check request, a background or an image, which travels as base64) keep the bound of every
+// document, MaxResultBytes; the small requests are bounded where they are small.
+const (
+	bodySmall    = 4 << 10          // exports, issues, the release and publish actions
+	bodyQuery    = 64 << 10         // POST /queries and /snapshot-jobs
+	bodyDocument = r.MaxResultBytes // the documents and the uploads
+)
+
+// errTooLarge is a body over its route's bound.
+var errTooLarge = errors.New("REQUEST_TOO_LARGE")
+
+func decode(w http.ResponseWriter, req *http.Request, out any, limit int64) error {
 	kind, _, e := mime.ParseMediaType(req.Header.Get("Content-Type"))
 	if e != nil || kind != "application/json" {
 		return r.ErrInvalid
 	}
-	return r.DecodeStrict(req.Body, out)
+	if req.ContentLength > limit {
+		return errTooLarge
+	}
+	b, e := io.ReadAll(http.MaxBytesReader(w, req.Body, limit))
+	var tooLarge *http.MaxBytesError
+	if errors.As(e, &tooLarge) {
+		return errTooLarge
+	}
+	if e != nil {
+		return r.ErrInvalid
+	}
+	return r.DecodeStrict(bytes.NewReader(b), out)
 }
 func idem(req *http.Request) (string, error) {
 	if len(req.Header.Values("Idempotency-Key")) != 1 {
@@ -418,6 +444,9 @@ func classify(e error) (code string, status int, ok bool) {
 	if errors.Is(e, r.ErrQuota) {
 		return "QUOTA_EXCEEDED", 429, true
 	}
+	if errors.Is(e, errTooLarge) {
+		return errTooLarge.Error(), 413, true
+	}
 	for _, candidate := range []struct {
 		err    error
 		status int
@@ -443,6 +472,10 @@ func problem(w http.ResponseWriter, e error, status int) {
 	if q := r.QuotaOf(e); ok && q != "" {
 		body["quota"] = q
 		w.Header().Set("Retry-After", "60")
+		if q == r.QuotaQueriesInFlight {
+			// The identity's own reads in this process: a read finishing frees the slot, so a second is a fair wait (S04-G).
+			w.Header().Set("Retry-After", "1")
+		}
 	}
 	// The object store being unreachable (S04-E) is an outage of the platform's own, not of the source product: it is the same 503, and it says
 	// when to try again. Nothing of the store is in the answer: not its status, not its text.

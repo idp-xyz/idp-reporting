@@ -40,7 +40,7 @@ func TestMigrationSetRules(t *testing.T) {
 		}
 	}
 	real, err := Migrations()
-	if err != nil || len(real) != 8 || real[0].Name != "base" || real[1].Name != "payload_digests" || real[2].Name != "issues" || real[3].Name != "source_confirmed_issue" || real[4].Name != "retention" || real[5].Name != "sweeps" || real[6].Name != "row_level_security" || real[7].Name != "object_storage" {
+	if err != nil || len(real) != 9 || real[0].Name != "base" || real[1].Name != "payload_digests" || real[2].Name != "issues" || real[3].Name != "source_confirmed_issue" || real[4].Name != "retention" || real[5].Name != "sweeps" || real[6].Name != "row_level_security" || real[7].Name != "object_storage" || real[8].Name != "capacity_indexes" {
 		t.Fatalf("%+v %v", real, err)
 	}
 	for _, m := range real {

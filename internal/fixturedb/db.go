@@ -28,7 +28,16 @@ func OpenDrill(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	return open(ctx, dsn, func(name string) bool { return strings.HasPrefix(name, DrillPrefix) && len(name) > len(DrillPrefix) }, 55432)
 }
 
+// OpenSized is Open with a pool of up to maxConns connections (the capacity tool's parallel writers need more than 8), under the same guard.
+func OpenSized(ctx context.Context, dsn string, maxConns int32, allowed ...string) (*pgxpool.Pool, error) {
+	return openSized(ctx, dsn, maxConns, func(name string) bool { return slices.Contains(allowed, name) })
+}
+
 func open(ctx context.Context, dsn string, allowed func(string) bool, refusedPorts ...uint16) (*pgxpool.Pool, error) {
+	return openSized(ctx, dsn, 8, allowed, refusedPorts...)
+}
+
+func openSized(ctx context.Context, dsn string, maxConns int32, allowed func(string) bool, refusedPorts ...uint16) (*pgxpool.Pool, error) {
 	c, e := pgxpool.ParseConfig(dsn)
 	if e != nil {
 		return nil, r.ErrInvalid
@@ -42,7 +51,7 @@ func open(ctx context.Context, dsn string, allowed func(string) bool, refusedPor
 			return nil, r.ErrDenied
 		}
 	}
-	c.MaxConns = 8
+	c.MaxConns = maxConns
 	c.MinConns = 0
 	c.ConnConfig.ConnectTimeout = 3 * time.Second
 	return pgxpool.NewWithConfig(ctx, c)

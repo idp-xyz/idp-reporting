@@ -49,7 +49,7 @@ func mountDocumentChecks(mux *http.ServeMux, s *r.Service, auth Authenticate, ch
 			Rows       *[]int                `json:"rows"`
 			Samples    *string               `json:"samples"`
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodyDocument); e != nil {
 			return e
 		}
 		// Either explicit rows or the boundary samples, never both and never neither.

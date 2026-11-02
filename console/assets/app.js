@@ -72,17 +72,18 @@
     if(embedded){document.querySelector('.shell').hidden=true;if(embed)embed.forget();}else $('access-token').focus();
   }
   // The quotas of an identity (S04-D): the notice names the quota and gives the number the server states in its capabilities.
-  const quotaNames=['jobs_in_flight','stored_results','admissions_per_hour'];
-  function validQuotas(q) {return !!q&&typeof q==='object'&&!Array.isArray(q)&&Object.keys(q).sort().join()===[...quotaNames].sort().join()&&quotaNames.every(k=>Number.isSafeInteger(q[k])&&q[k]>=1&&q[k]<=100000);}
+  const quotaNames=['jobs_in_flight','stored_results','admissions_per_hour','queries_in_flight'];
+  function validQuotas(q) {return !!q&&typeof q==='object'&&!Array.isArray(q)&&Object.keys(q).sort().join()===[...quotaNames].sort().join()&&quotaNames.every(k=>Number.isSafeInteger(q[k])&&q[k]>=1&&q[k]<=(k==='queries_in_flight'?64:100000));}
   function quotaMessage(name) {
     const n=state.capabilities&&validQuotas(state.capabilities.quotas)?state.capabilities.quotas[name]:undefined,at=n===undefined?'':' ('+n+')';
-    return {jobs_in_flight:'已达到进行中任务上限'+at+'，请等待任务完成或取消后再试',stored_results:'已达到保留结果上限'+at+'，结果过期后自动释放',admissions_per_hour:'已达到每小时提交上限'+at+'，请稍后再试'}[name];
+    return {jobs_in_flight:'已达到进行中任务上限'+at+'，请等待任务完成或取消后再试',stored_results:'已达到保留结果上限'+at+'，结果过期后自动释放',admissions_per_hour:'已达到每小时提交上限'+at+'，请稍后再试',queries_in_flight:'查询进行中过多'+at+'，请稍后再试'}[name];
   }
   function errorMessage(error) {
     if(error.code==='QUOTA_EXCEEDED'&&error.status===429&&quotaNames.includes(error.quota))return quotaMessage(error.quota);
     if(error.status===401)return '访问令牌无效或已失效，请重新连接。';
     if(error.status===403)return error.code==='INSUFFICIENT_TOKEN_SCOPE'?'令牌缺少报表访问范围。':'当前身份无权访问，或原数据范围已被撤销。';
     if(error.status===404)return '未找到当前身份有权访问的资源；它也可能已过期。';
+    if(error.code==='OVERLOADED'&&error.status===503)return '服务繁忙，请稍后再试';
     if(error.status===503)return '当前授权来源不可用，请稍后重试。';
     if(error.code==='INTEGRITY_FAILURE')return '资源完整性校验失败，内容已停止显示。';
     if(error.code==='TEMPLATE_NOT_PUBLISHED')return '只能正式出具当前已发布的模板版本；请刷新发布状态、打开已发布模板后重试。';
@@ -103,7 +104,7 @@
   function fail(error,m,context) {
     if(error instanceof Stale||(m&&!current(m))||(error.name==='AbortError'&&!context?.uncertain))return;
     const affectsResult=!context||(context.snapshot&&context.snapshot===state.snapshot);
-    if(affectsResult&&error.code!=='TEMPLATE_NOT_PUBLISHED'&&([403,404,409,503].includes(error.status)||error.code==='INVALID_RESPONSE'))clearResult();
+    if(affectsResult&&error.code!=='TEMPLATE_NOT_PUBLISHED'&&error.code!=='OVERLOADED'&&([403,404,409,503].includes(error.status)||error.code==='INVALID_RESPONSE'))clearResult();
     notify((context?context.label+'：':'')+(context?.uncertain&&!error.status&&error.code!=='INVALID_RESPONSE'?context.uncertain:errorMessage(error)),'error');
     // A quota refusal is the caller's own limit, not an error of the frame: the host is not told.
     if(embed&&error.code!=='QUOTA_EXCEEDED')embed.error(embedCode(error));
@@ -139,6 +140,11 @@
         if(response.status===429||code==='QUOTA_EXCEEDED') {
           if(response.status!==429||!problem||typeof problem!=='object'||Array.isArray(problem)||Object.keys(problem).sort().join()!=='error,quota'||code!=='QUOTA_EXCEEDED'||!quotaNames.includes(problem.quota))throw new Failure(0,'INVALID_RESPONSE');
           const refusal=new Failure(429,'QUOTA_EXCEEDED');refusal.quota=problem.quota;throw refusal;
+        }
+        // The cap on requests in flight (S04-G) is exactly {error:'OVERLOADED'} with status 503; it is not the authorization source's 503.
+        if(code==='OVERLOADED') {
+          if(response.status!==503||!problem||typeof problem!=='object'||Array.isArray(problem)||Object.keys(problem).join()!=='error')throw new Failure(0,'INVALID_RESPONSE');
+          throw new Failure(503,'OVERLOADED');
         }
         throw new Failure(response.status,code,detail);
       }
@@ -419,7 +425,7 @@
   function checkIssue(v,state){return !!v&&typeof v==='object'&&(state==='succeeded'?validNumber(v.number):v.number===undefined)&&isID(v.template_id)&&Number.isSafeInteger(v.template_version)&&v.template_version>=1&&typeof v.template_sha256==='string'&&/^[a-f0-9]{64}$/.test(v.template_sha256)&&(v.group===undefined?Number.isSafeInteger(v.row_index)&&v.row_index>=0:v.row_index===undefined&&window.reportingIssueGroup.valid(v.group));}
   function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export','issue'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind==='snapshot'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format)))||(j.kind==='issue')!==(j.issue!==undefined)||(j.kind==='issue'&&(j.format!=='pdf'||!checkIssue(j.issue,j.state)))||(j.error_code!==undefined&&(j.state!=='failed'||!validCode(j.error_code)))||(j.expired!==undefined&&(j.expired!==true||j.state!=='succeeded')))throw new Failure(0,'INVALID_RESPONSE');}
   function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
-  async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
+  async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)&&error.code!=='OVERLOADED'){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
   async function refreshTask(id,m=mark()) {const context=taskContext(id,'任务刷新');try{await refreshJob(id);return true;}catch(error){fail(error,m,context);return false;}}
   async function cancelJob(id) {const m=mark(),context=taskContext(id,'任务取消');try{const j=await request('/jobs/'+encodeURIComponent(id)+'/cancel',{method:'POST'});rememberJob(j);if(current(m))notify(j.state==='cancelled'?'任务已取消。':j.kind==='issue'&&j.state==='running'?'出具任务已开始执行，不能取消；它会完成，或失败并通知来源产品作废预留。':'任务已结束，未更改已发布结果。');}catch(error){fail(error,m,context);}}
@@ -449,7 +455,7 @@
   }
   async function createSnapshot(m) {
     // The result on show is cleared once the submission is answered, or refused for any reason but a quota: a quota refusal leaves the page as it was.
-    const q=buildQuery();let job;try{job=await submit('snapshot',q,{query:copy(q),integration:q.integration_id});}catch(error){if(error.code!=='QUOTA_EXCEEDED')clearResult();throw error;}clearResult();if(!current(m))throw new Stale();
+    const q=buildQuery();let job;try{job=await submit('snapshot',q,{query:copy(q),integration:q.integration_id});}catch(error){if(error.code!=='QUOTA_EXCEEDED'&&error.code!=='OVERLOADED')clearResult();throw error;}clearResult();if(!current(m))throw new Stale();
     notify('快照任务已提交，正在后台执行。');const done=await poll(job.job_id,m);if(!done)return;
     if(done.state==='succeeded'&&done.snapshot_id){await loadSnapshot(done.snapshot_id,q,m,true);if(current(m))notify('冻结快照已生成，可分页查看或导出。','success');}
     else notify(done.state==='cancelled'?'快照任务已取消。':'快照任务失败，请检查当前授权与查询范围。',done.state==='cancelled'?'':'error');

@@ -38,6 +38,9 @@ const (
 	QuotaJobsInFlight      = "jobs_in_flight"
 	QuotaStoredResults     = "stored_results"
 	QuotaAdmissionsPerHour = "admissions_per_hour"
+	// QuotaQueriesInFlight (S04-G) is the one quota of this process rather than of the store: POST /queries and the row reads one identity
+	// has running at once.
+	QuotaQueriesInFlight = "queries_in_flight"
 )
 
 // QuotaError is ErrQuota naming the quota that was reached: its text carries the name, never a count or a value.
@@ -61,15 +64,21 @@ type Quotas struct {
 	JobsInFlight      int // queued and running jobs: default 8, 1..1000
 	StoredResults     int // snapshots and artifacts not yet expired by the store's clock: default 64, 1..100000
 	AdmissionsPerHour int // jobs admitted in the last hour by the store's clock: default 120, 1..100000
+	// QueriesInFlight (S04-G) bounds the POST /queries and snapshot row reads the service runs at once for one identity: default 4, 1..64.
+	// Unlike the three above it is enforced by the service, in this process (it protects this process's cores and its connections to the
+	// source product), and the store never sees it.
+	QueriesInFlight int
 }
 
 const (
 	DefaultJobsInFlight      = 8
 	DefaultStoredResults     = 64
 	DefaultAdmissionsPerHour = 120
+	DefaultQueriesInFlight   = 4
 	MaxJobsInFlight          = 1000
 	MaxStoredResults         = 100000
 	MaxAdmissionsPerHour     = 100000
+	MaxQueriesInFlight       = 64
 )
 
 // Resolved replaces each zero with its default and refuses (ErrInvalid) a value outside 1..its maximum.
@@ -80,7 +89,7 @@ func (q Quotas) Resolved() (Quotas, error) {
 		}
 		return *v >= 1 && *v <= max
 	}
-	if !one(&q.JobsInFlight, DefaultJobsInFlight, MaxJobsInFlight) || !one(&q.StoredResults, DefaultStoredResults, MaxStoredResults) || !one(&q.AdmissionsPerHour, DefaultAdmissionsPerHour, MaxAdmissionsPerHour) {
+	if !one(&q.JobsInFlight, DefaultJobsInFlight, MaxJobsInFlight) || !one(&q.StoredResults, DefaultStoredResults, MaxStoredResults) || !one(&q.AdmissionsPerHour, DefaultAdmissionsPerHour, MaxAdmissionsPerHour) || !one(&q.QueriesInFlight, DefaultQueriesInFlight, MaxQueriesInFlight) {
 		return Quotas{}, ErrInvalid
 	}
 	return q, nil

@@ -76,7 +76,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 			Version  int    `json:"version"`
 			Expected int    `json:"expected_revision"`
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodySmall); e != nil {
 			return e
 		}
 		if input.Action != "publish" && input.Action != "withdraw" {
@@ -111,7 +111,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 			Expected int    `json:"expected_version"`
 			Config   T      `json:"config"`
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodyDocument); e != nil {
 			return e
 		}
 		if e := authorize(req, p, input.Config); e != nil {

@@ -28,7 +28,7 @@ func WithDocumentAssets(fallback http.Handler, s *r.Service, auth Authenticate, 
 			Binding doctemplates.Binding `json:"binding"`
 			PNG     string               `json:"png"`
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodyDocument); e != nil {
 			return e
 		}
 		if _, e := describeDocumentBinding(req, s, p, input.Binding); e != nil {
@@ -111,7 +111,7 @@ func mountDocumentImages(mux *http.ServeMux, s *r.Service, auth Authenticate, im
 			Binding doctemplates.Binding `json:"binding"`
 			Image   string               `json:"image"`
 		}
-		if e := decode(req, &input); e != nil {
+		if e := decode(w, req, &input, bodyDocument); e != nil {
 			return e
 		}
 		if _, e := describeDocumentBinding(req, s, p, input.Binding); e != nil {

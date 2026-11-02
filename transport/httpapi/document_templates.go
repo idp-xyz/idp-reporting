@@ -33,7 +33,7 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 				SnapshotID string `json:"snapshot_id"`
 				RowIndex   *int   `json:"row_index"`
 			}
-			if e := decode(req, &input); e != nil {
+			if e := decode(w, req, &input, bodyDocument); e != nil {
 				return e
 			}
 			if input.Version == nil || input.RowIndex == nil {
@@ -73,7 +73,7 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 				RowIndex   *int      `json:"row_index"`
 				Group      *[]string `json:"group"`
 			}
-			if e := decode(req, &input); e != nil {
+			if e := decode(w, req, &input, bodySmall); e != nil {
 				return e
 			}
 			if input.Version == nil || (input.RowIndex == nil) == (input.Group == nil) {

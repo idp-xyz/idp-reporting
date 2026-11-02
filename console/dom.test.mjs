@@ -2786,8 +2786,8 @@ test('the issue list shows 已过期并清除 for an issue whose file expired, k
 
 // Quotas (S04-D, docs/S04D_SCOPE.md D3): the refusal is 429 {error:'QUOTA_EXCEEDED',quota}; the console names the quota with the number the
 // capabilities state, leaves the page as it was, and takes any other shape for a response it cannot verify.
-const QUOTA_NUMBERS={jobs_in_flight:3,stored_results:7,admissions_per_hour:11};
-const QUOTA_TEXT={jobs_in_flight:'已达到进行中任务上限 (3)，请等待任务完成或取消后再试',stored_results:'已达到保留结果上限 (7)，结果过期后自动释放',admissions_per_hour:'已达到每小时提交上限 (11)，请稍后再试'};
+const QUOTA_NUMBERS={jobs_in_flight:3,stored_results:7,admissions_per_hour:11,queries_in_flight:5};
+const QUOTA_TEXT={jobs_in_flight:'已达到进行中任务上限 (3)，请等待任务完成或取消后再试',stored_results:'已达到保留结果上限 (7)，结果过期后自动释放',admissions_per_hour:'已达到每小时提交上限 (11)，请稍后再试',queries_in_flight:'查询进行中过多 (5)，请稍后再试'};
 function quotaServer(answer,numbers=QUOTA_NUMBERS){
   return async(path,options)=>{
     if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,options)).json();caps.quotas=numbers;return json(caps);}
@@ -2814,7 +2814,7 @@ test('the capabilities state the quotas in force, and the console shows them',as
   const a=app();try{
     await a.login();
     const caps=await (await fetch(url+'/api/reporting/v1/capabilities',{headers:{Authorization:'Bearer '+token}})).json();
-    assert.deepEqual(Object.keys(caps.quotas).sort(),['admissions_per_hour','jobs_in_flight','stored_results']);
+    assert.deepEqual(Object.keys(caps.quotas).sort(),['admissions_per_hour','jobs_in_flight','queries_in_flight','stored_results']);
     assert.ok(a.$('capability-details').textContent.includes('每小时提交 '+caps.quotas.admissions_per_hour));
   }finally{a.close();}
 });
@@ -2835,7 +2835,7 @@ test('a refusal that is not exactly the quota shape is an unverifiable response,
       assert.equal(/上限/.test(a.$('notice').textContent),false,label);
     }finally{a.close();}
   }
-  for(const [label,quotas] of [['missing',undefined],['a missing key',{jobs_in_flight:3,stored_results:7}],['an extra key',{...QUOTA_NUMBERS,other:1}],['zero',{...QUOTA_NUMBERS,jobs_in_flight:0}],['a fraction',{...QUOTA_NUMBERS,stored_results:1.5}],['text',{...QUOTA_NUMBERS,admissions_per_hour:'11'}],['beyond the bound',{...QUOTA_NUMBERS,stored_results:100001}]]){
+  for(const [label,quotas] of [['missing',undefined],['a missing key',{jobs_in_flight:3,stored_results:7,admissions_per_hour:11}],['a fourth beyond its bound',{...QUOTA_NUMBERS,queries_in_flight:65}],['an extra key',{...QUOTA_NUMBERS,other:1}],['zero',{...QUOTA_NUMBERS,jobs_in_flight:0}],['a fraction',{...QUOTA_NUMBERS,stored_results:1.5}],['text',{...QUOTA_NUMBERS,admissions_per_hour:'11'}],['beyond the bound',{...QUOTA_NUMBERS,stored_results:100001}]]){
     const a=app(async path=>{if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,{headers:{Authorization:'Bearer '+token}})).json();if(quotas===undefined)delete caps.quotas;else caps.quotas=quotas;return json(caps);}});
     try{
       a.$('access-token').value=token;a.$('connect-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));
@@ -2862,7 +2862,7 @@ test('a real server at its limit refuses with the quota notice',async()=>{
     await a.login();a.configure();
     a.click('snapshot');await until(()=>held&&!a.$('notice').hidden&&!a.$('snapshot').disabled,'first submission held');
     const capabilities=await (await fetch(url+'/api/reporting/v1/capabilities',{headers:{Authorization:'Bearer '+token}})).json();
-    assert.deepEqual(capabilities.quotas,{jobs_in_flight:1,stored_results:64,admissions_per_hour:120});
+    assert.deepEqual(capabilities.quotas,{jobs_in_flight:1,stored_results:64,admissions_per_hour:120,queries_in_flight:4});
     a.click('snapshot');await until(()=>a.$('notice').textContent.includes('进行中任务上限 (1)'),'quota notice from the real server');
     assert.ok(a.$('notice').textContent.includes('已达到进行中任务上限 (1)，请等待任务完成或取消后再试'));
     assert.equal(a.errors.length,0,a.errors.join('|'));
@@ -2880,5 +2880,33 @@ test('a quota refusal of an export keeps the frozen snapshot on show and starts 
     a.click('export');await until(()=>a.$('notice').textContent.includes(QUOTA_TEXT.admissions_per_hour),'quota notice');
     assert.equal(a.$('result-kind').textContent,'冻结快照');assert.equal(a.$('result-table').tBodies[0].rows.length,rows);assert.equal(a.downloads.length,0);
     assert.equal(a.errors.length,0,a.errors.join('|'));
+  }finally{a.close();}
+});
+
+// The cap on requests in flight (S04-G): 503 {error:'OVERLOADED'} is "the service is busy", not "the authorization source is unavailable";
+// the page stays as it was; any other shape of that code cannot be verified. The fourth quota name is accepted in the exact 429 shape only.
+test('an OVERLOADED 503 says the service is busy, the authorization 503 still says the source is unavailable, and the page stays',async()=>{
+  const answers={
+    overloaded:[()=>json({error:'OVERLOADED'},503),'服务繁忙，请稍后再试',false],
+    source:[()=>json({error:'AUTHORITY_UNAVAILABLE'},503),'当前授权来源不可用，请稍后重试。',true],
+    'overloaded with an extra key':[()=>json({error:'OVERLOADED',quota:'x'},503),'服务返回了无法验证的响应。',true],
+    'overloaded under 429':[()=>json({error:'OVERLOADED'},429),'服务返回了无法验证的响应。',true],
+  };
+  for(const [label,[answer,text,clears]] of Object.entries(answers)){
+    const a=app(quotaServer(answer));
+    try{
+      await a.login();a.configure();a.click('preview');await until(()=>!a.$('result-table-wrap').hidden&&!a.$('preview').disabled,'preview result');
+      a.click('snapshot');await until(()=>!a.$('notice').hidden&&!a.$('snapshot').disabled,'notice');
+      assert.ok(a.$('notice').textContent.includes(text),label+': '+a.$('notice').textContent);
+      if(label==='overloaded')assert.equal(a.$('notice').textContent.includes('授权来源'),false);
+      assert.equal(a.$('result-table-wrap').hidden,clears,label+': the preview '+(clears?'is cleared':'stays'));
+    }finally{a.close();}
+  }
+});
+test('the fourth quota is refused in any shape but the exact one',async()=>{
+  const a=app(quotaServer(()=>json({error:'QUOTA_EXCEEDED',quota:'queries_in_flight',count:4},429)));
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>!a.$('notice').hidden&&!a.$('snapshot').disabled,'notice');
+    assert.ok(a.$('notice').textContent.includes('服务返回了无法验证的响应。'));
   }finally{a.close();}
 });

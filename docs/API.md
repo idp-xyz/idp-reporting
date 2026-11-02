@@ -434,10 +434,11 @@ cancelled job is reduced like any other once its own read's expiry plus the grac
 
 Every identity (tenant, issuer, subject) is bounded in what it may hold: `jobs_in_flight` (queued and running jobs, default 8),
 `stored_results` (snapshots and artifacts not yet expired, default 64; an issue record never counts) and `admissions_per_hour` (jobs
-admitted in the last hour, default 120), all by the store's clock. `GET /capabilities` carries the numbers in force:
+admitted in the last hour, default 120), all by the store's clock, and, since S04-G, `queries_in_flight` (below). `GET /capabilities` carries
+the numbers in force:
 
 ```json
-"quotas": {"jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120}
+"quotas": {"jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120, "queries_in_flight": 4}
 ```
 
 A submission that would take the identity over one of them (`POST /snapshot-jobs`, `POST /exports`, `POST /issues`) is refused with
@@ -448,12 +449,12 @@ Retry-After: 60
 {"error":"QUOTA_EXCEEDED","quota":"jobs_in_flight"}
 ```
 
-`quota` is one of `jobs_in_flight`, `stored_results`, `admissions_per_hour` (the first reached, in that order) and the body carries
+`quota` is one of `jobs_in_flight`, `stored_results`, `admissions_per_hour` (the first reached, in that order; `queries_in_flight` has its own refusal, below) and the body carries
 nothing else: no count, no limit, nothing of another identity. Nothing is admitted and there is no `Location`. The refusal is
 the identity's own state, so a later request may succeed: when a job finishes or is cancelled (`jobs_in_flight`), when results expire
 (`stored_results`), or as the hour passes (`admissions_per_hour`); `Retry-After: 60` is a fair wait, not a promise. A replay of an
 Idempotency-Key whose job exists is never refused by a quota (it answers the job as before), and a replay with a changed request is
-still 409 `IDEMPOTENCY_CONFLICT`. Reads, cancels, downloads and `POST /queries` are not subject to quotas.
+still 409 `IDEMPOTENCY_CONFLICT`. Reads, cancels and downloads are not subject to the three durable quotas; `POST /queries` and the row reads have the fourth.
 
 ## Object storage (S04-E, docs/S04E_SCOPE.md, docs/OPERATIONS.md "Object storage")
 
@@ -474,3 +475,45 @@ lost still shows `succeeded` and its download is the 409 above. An export or iss
 `error_code: "EXECUTION_FAILED"` and publishes nothing (an issue job is voided at the source product like any failed one, S03-H); the job view is otherwise
 unchanged. An artifact stored before the object store was configured is served exactly as before. The console handles the 503 of a download as it handles
 every 503 (it needs no change).
+
+## Limits (S04-G, docs/S04G_SCOPE.md, docs/OPERATIONS.md "Capacity")
+
+**Request bodies.** Every route that reads a body reads at most the bound of its route and refuses a larger one before parsing any of it:
+
+```
+HTTP/1.1 413 Request Entity Too Large
+{"error":"REQUEST_TOO_LARGE"}
+```
+
+| Routes | Bound |
+|---|---|
+| `POST /queries`, `POST /snapshot-jobs` | 64 KiB |
+| `POST /exports`, `POST /issues`, `POST /layouts/{id}/release`, `POST /dashboards/{id}/release`, `POST /document-templates/{id}/release` | 4 KiB |
+| `POST /layouts`, `POST /dashboards`, `POST /document-templates`, `POST /document-templates/{id}/previews`, `POST /document-previews`, `POST /document-checks`, `POST /document-backgrounds`, `POST /document-images` | 1 MiB (`MaxResultBytes`; an image or a background is base64 of at most 512 KiB, which fits) |
+| `POST /jobs/{id}/cancel` | no body: one byte is read and a body is 400 |
+
+A body over the bound is 413 whether or not it declares its length; a body of exactly the bound is read and judged as before (a malformed one is
+400). `REQUEST_TOO_LARGE` is not `BUDGET_EXCEEDED` (a result over its budget).
+
+**Requests in flight.** The server works on at most `-max-in-flight` API requests at once (default 128, 1..4096). Beyond it a request is refused
+before authentication, with no work done (the session and capabilities requests count too):
+
+```
+HTTP/1.1 503 Service Unavailable
+Retry-After: 1
+{"error":"OVERLOADED"}
+```
+
+This 503 is the process's own; it is not the 503 of an unavailable authorization source or object store (those carry other codes and the object
+store's has `Retry-After: 10`). The console shows "服务繁忙，请稍后再试" for it.
+
+**Queries in flight.** `POST /queries` and `GET /snapshots/{id}/rows` share one per-identity bound in the service, `queries_in_flight` (default 4,
+1..64; `-quota-queries`), counted per process. Beyond it:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 1
+{"error":"QUOTA_EXCEEDED","quota":"queries_in_flight"}
+```
+
+Nothing was run (the source product was not asked). Unlike the three durable quotas this one is not shared between processes.

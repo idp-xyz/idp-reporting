@@ -29,12 +29,21 @@ import (
 // in microseconds.
 const cutoff = `c AS MATERIALIZED (SELECT clock_timestamp() - $1::bigint * interval '1 microsecond' AS cutoff)`
 
-// artifactGoes is the condition under which the artifact aliased a (a row of assets, with the CTE c in scope) is deleted.
+// artifactFrom is the FROM list of a statement that tests artifactGoes on the asset aliased a: the asset, the cutoff CTE c and, as a column of
+// its own, the snapshot id the artifact's payload names. The id is computed in a subquery that PostgreSQL cannot pull up (OFFSET 0), so that the
+// probe of the snapshot is a comparison of two plain columns, which the planner may answer from the primary key. As an expression on the payload
+// (a.data->>'SnapshotID', a function that is not leakproof) it cannot be used as an index condition on assets under the row-level policies of
+// S04-C, and the probe was a scan of every snapshot not yet past its grace for every candidate artifact (S04-G, docs/CAPACITY.md).
+func artifactFrom(a string) string {
+	return strings.ReplaceAll(`reporting_s01.assets @, c, LATERAL (SELECT @.data->>'SnapshotID' AS sid OFFSET 0) @_snap`, "@", a)
+}
+
+// artifactGoes is the condition under which the artifact aliased a (a row of artifactFrom(a)) is deleted.
 func artifactGoes(a string) string {
 	return strings.ReplaceAll(`@.kind = 'artifact' AND @.expires_at IS NOT NULL AND @.expires_at < c.cutoff
-AND jsonb_typeof(@.data) = 'object' AND @.data->>'SnapshotID' IS NOT NULL
-AND NOT EXISTS (SELECT 1 FROM reporting_s01.jobs j WHERE j.state IN ('queued','running') AND (j.artifact_id = @.id OR j.snapshot_id = @.data->>'SnapshotID'))
-AND NOT EXISTS (SELECT 1 FROM reporting_s01.assets s WHERE s.kind = 'snapshot' AND s.id = @.data->>'SnapshotID' AND (s.expires_at IS NULL OR s.expires_at >= c.cutoff))`, "@", a)
+AND jsonb_typeof(@.data) = 'object' AND @_snap.sid IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM reporting_s01.jobs j WHERE j.state IN ('queued','running') AND (j.artifact_id = @.id OR j.snapshot_id = @_snap.sid))
+AND NOT EXISTS (SELECT 1 FROM reporting_s01.assets s WHERE s.kind = 'snapshot' AND s.id = @_snap.sid AND (s.expires_at IS NULL OR s.expires_at >= c.cutoff))`, "@", a)
 }
 
 // snapshotGoes is the condition under which the snapshot aliased a is deleted.
@@ -50,7 +59,7 @@ AND j.data_sha256 = encode(sha256(convert_to(j.data::text,'UTF8')),'hex')`
 
 var (
 	deleteArtifacts = `WITH ` + cutoff + `, picked AS (
-SELECT a.id FROM reporting_s01.assets a, c WHERE ` + artifactGoes("a") + `
+SELECT a.id FROM ` + artifactFrom("a") + ` WHERE ` + artifactGoes("a") + `
 ORDER BY a.expires_at, a.id FOR UPDATE OF a SKIP LOCKED LIMIT $2)
 DELETE FROM reporting_s01.assets d USING picked WHERE d.id = picked.id AND d.kind = 'artifact'
 RETURNING d.id, coalesce(d.data->>'Object', '')`
@@ -73,12 +82,12 @@ UPDATE reporting_s01.jobs u SET data = reduced.d, data_sha256 = encode(sha256(co
 	// A dry run counts what the three steps would do in turn: the jobs whose assets are still stored count as reduced when those assets
 	// are among the ones the sweep deletes.
 	countSweep = `WITH ` + cutoff + `
-SELECT (SELECT count(*) FROM reporting_s01.assets a, c WHERE ` + artifactGoes("a") + `),
-(SELECT count(*) FROM reporting_s01.assets a, c WHERE ` + artifactGoes("a") + ` AND a.data ? 'Object'),
+SELECT (SELECT count(*) FROM ` + artifactFrom("a") + ` WHERE ` + artifactGoes("a") + `),
+(SELECT count(*) FROM ` + artifactFrom("a") + ` WHERE ` + artifactGoes("a") + ` AND a.data ? 'Object'),
 (SELECT count(*) FROM reporting_s01.assets a, c WHERE ` + snapshotGoes("a") + `),
 (SELECT count(*) FROM reporting_s01.jobs j, c WHERE ` + jobReducible + `
 AND (j.snapshot_id = '' OR NOT EXISTS (SELECT 1 FROM reporting_s01.assets s, c WHERE s.id = j.snapshot_id AND NOT COALESCE(` + snapshotGoes("s") + `, false)))
-AND (j.artifact_id = '' OR NOT EXISTS (SELECT 1 FROM reporting_s01.assets a, c WHERE a.id = j.artifact_id AND NOT COALESCE(` + artifactGoes("a") + `, false))))`
+AND (j.artifact_id = '' OR NOT EXISTS (SELECT 1 FROM ` + artifactFrom("a") + ` WHERE a.id = j.artifact_id AND NOT COALESCE(` + artifactGoes("a") + `, false))))`
 )
 
 const sweepLockTimeout = "10s"
@@ -294,4 +303,21 @@ has_table_privilege(current_user,'reporting_s01.jobs','UPDATE'), has_table_privi
 // Sweep is r.Repository's retention on the durable store.
 func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, error) {
 	return sweep(ctx, s.pool, o, s.objects, s.objectNow)
+}
+
+// SweepStatement is one of the statements of the retention sweep, as it is run: Args are its arguments for a grace in microseconds and a batch.
+type SweepStatement struct {
+	Name string
+	SQL  string
+	Args func(graceMicros int64, batch int) []any
+}
+
+// SweepStatementsForTests returns the sweep's statements for the plan test and the measurement tool (S04-G). Nothing in the platform runs them
+// through this.
+func SweepStatementsForTests() []SweepStatement {
+	two := func(g int64, b int) []any { return []any{g, b} }
+	return []SweepStatement{
+		{"delete artifacts", deleteArtifacts, two}, {"delete snapshots", deleteSnapshots, two}, {"reduce jobs", reduceJobs, two},
+		{"dry run count", countSweep, func(g int64, _ int) []any { return []any{g} }},
+	}
 }

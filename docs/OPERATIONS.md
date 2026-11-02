@@ -18,6 +18,8 @@ The schema is a sequence of embedded migrations, `storage/postgres/migrations/NN
 | 005 | retention | `assets.expires_at` and its index (S04-B, "Retention") | nothing (the payload keeps the expiry) |
 | 006 | sweeps | the `sweeps` ledger (S04-B) | the ledger (refused while it has rows unless accepted) |
 | 007 | row_level_security | row-level security and the `identity` and `worker` policies on `jobs` and `assets` (S04-C, "Row-level security") | nothing (policies only) |
+| 008 | object_storage | the `objects` and `orphans` counts of the `sweeps` ledger (S04-E, "Object storage") | the two counts, and it is refused while a ledger row says objects were deleted or an artifact's file is an object, unless the loss is accepted |
+| 009 | capacity_indexes | four indexes: `jobs_identity_created`, `jobs_identity_in_flight`, `assets_identity_kind_expires`, `jobs_reducible` (S04-G, "Capacity") | nothing (an index is derived from the rows) |
 
 The ledger `reporting_s01.schema_migrations` records every applied step with the SHA-256 of its up file,
 the time and who applied it. The `profile` row names the deployment kind (`production` or
@@ -62,7 +64,7 @@ PDFs stay in the store but can no longer be downloaded, their records being gone
 snapshots); then `up` applies 003 and 004. A store that never issued under S03-G migrates
 without ceremony. Qualification: a fresh database taken up to the latest, down to zero and up again has a
 catalog (columns, types, defaults, nullability, constraints, indexes) identical to the first, and 004 down gives
-back exactly the catalog of version 3 (integration/migrate_test.go, integration/testdata/catalog_00{3,4,5,6,7}.txt).
+back exactly the catalog of version 3 (integration/migrate_test.go, integration/testdata/catalog_00{3,4,5,6,7,8,9}.txt).
 
 ## Roles
 
@@ -430,9 +432,8 @@ at deletion, so a slow or stopped sweep does not hold anyone at their limit; the
 and an identity that wants room sooner waits for expiry or cancels what it no longer needs. A quota of `stored_results` smaller than a
 tenant's working set makes its users wait for expiry: size it with the 24-hour grace and the ten-minute source reads in mind.
 
-The counting statements read the identity's rows by the tenant prefix of existing indexes; no migration was added. An identity with a very
-long history of jobs makes the hour count scan more rows; watch admission latency and add an index on `(tenant, issuer, subject, created_at)`
-in a later migration if it matters.
+The counting statements read the identity's rows by the tenant prefix of the unique key of `jobs`; S04-G ("Capacity") added the indexes that
+lead with (tenant, issuer, subject) and measured the difference (docs/CAPACITY.md).
 
 Not in this slice: rate limits on `POST /queries` and reads (no admission there; a later capacity slice), per-tenant or per-integration
 quotas, bytes-based quotas, quotas negotiated with the source product, object storage, backups, capacity, key lifecycle.
@@ -656,6 +657,66 @@ SELECT id, state, generation, created_at FROM reporting_s01.jobs WHERE kind = 'i
 * Tested (docs/S04F_SCOPE.md F3; `TestDurablePostgresContract/object_storage/*/restore`, `/restore`, `TestDurablePostgresIssues/restore_…`, `TestPostgresMigrations/row_level_security/a_restore_…`, `TestMigrateCommand`): the cases above, on rewound rows and objects with the memory object store and the throwaway S3-compatible server; `verify-objects` as the application role, the sweep role and a role with `SELECT` on `assets` only; paging over two thousand rows and objects that interleave.
 * Run for real, once, on one machine, by `scripts/restore_drill.sh` (not CI): a demo session through the object store, `pg_dump -Fc`, a copy of the bucket's objects through the platform's client, more work, `pg_restore` into a fresh database, `roles`, `status`, `verify-objects --deep` with the bucket newer, with the bucket restored, and with the database newer; a download of every artifact in each; a `kill -9` of the server inside an issue job and the restart. The transcript of the run is kept with the slice's evidence and summarised in the README.
 * **Not qualified here**: point-in-time recovery, cross-region replication, encrypted backups, a restore from provider snapshots, AWS S3 itself, a backup of the private directories, the restore of a cluster (roles with passwords). They work the way the operator's tools do; the invariants above and `verify-objects` are how to know.
+
+## Capacity (S04-G)
+
+docs/S04G_SCOPE.md, docs/CAPACITY.md. The slice indexes what the hot paths scanned, bounds what was unbounded, and measures. The numbers are in
+docs/CAPACITY.md with the machine and what they do not show; this section is what an operator does.
+
+### The indexes of migration 009
+
+| Index | Serves |
+|---|---|
+| `jobs_identity_created` on `jobs (tenant, issuer, subject, created_at DESC)` | the admissions-in-the-last-hour count of S04-D; the issue listing of an identity with a long issue history, when the planner chooses it |
+| `jobs_identity_in_flight` on `jobs (tenant, issuer, subject) WHERE state IN ('queued','running')` | the jobs-in-flight count; partial, so it holds only the live rows and stays tiny whatever the history |
+| `assets_identity_kind_expires` on `assets (tenant, issuer, subject, kind, expires_at)` | the stored-results count (which scanned every asset of every tenant) |
+| `jobs_reducible` on `jobs (source_expires_at) WHERE state IN ('succeeded','failed','cancelled') AND NOT (data ? 'Reduced')` | the retention sweep's job reduction (S04-B): the finished jobs not yet reduced, by the expiry of their own source read; a job leaves it when reduced |
+
+**`CREATE INDEX` blocks writes to the table while it builds.** `reporting-migrate up` builds the four inside the migration's transaction, so
+admissions, publications and the sweep of a store in use wait for the build of `jobs` and `assets` (0.1 s at 10,000 job rows, 4.4 s at 1,000,000 on the
+measurement host; yours will differ, and the build takes longer on a loaded machine). Reads are not blocked. For a store that cannot stop writing for that
+time, build them beforehand without the lock, with the same names and definitions, outside any transaction (`CREATE INDEX CONCURRENTLY` cannot run in
+one), as the migrator or an owner; then `up` finds them and builds nothing:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS jobs_identity_created ON reporting_s01.jobs (tenant, issuer, subject, created_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS jobs_identity_in_flight ON reporting_s01.jobs (tenant, issuer, subject) WHERE state IN ('queued','running');
+CREATE INDEX CONCURRENTLY IF NOT EXISTS assets_identity_kind_expires ON reporting_s01.assets (tenant, issuer, subject, kind, expires_at);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS jobs_reducible ON reporting_s01.jobs (source_expires_at) WHERE state IN ('succeeded','failed','cancelled') AND NOT (data ? 'Reduced');
+```
+
+A concurrent build that fails leaves an *invalid* index under that name, and `IF NOT EXISTS` would keep it. Migration 009 therefore checks, after its
+`CREATE INDEX IF NOT EXISTS` statements, that each of the four exists, is valid and has exactly the definition above, and refuses (naming the index) if it does not:
+drop the invalid or different index and run again. `down` drops the four (no rows are lost). An index made beforehand is recognised by its name and
+definition, not by who made it.
+
+### Bounds
+
+- **Request bodies:** per route, 4 KiB, 64 KiB or 1 MiB, over which a request is 413 `REQUEST_TOO_LARGE` before it is parsed (docs/API.md "Limits").
+- **Requests in flight:** the demo's `-max-in-flight` (library: `httpapi.WithMaxInFlight`; default 128, 1..4096). Beyond it a request is 503 `OVERLOADED`
+  with `Retry-After: 1` and does no work. It is per process; a deployment behind several processes has that many times the bound. Choose it with the
+  pool and the worker count in mind: a request in flight holds a connection only while its transaction runs, but a burst of admissions for one identity
+  queues on the identity's lock holding one connection each.
+- **Queries in flight per identity:** `queries_in_flight` (default 4, 1..64; demo `-quota-queries`; `reporting.Quotas.QueriesInFlight`): the `POST /queries` and
+  snapshot row reads one identity has running at once, **in this process**. It protects this process's cores and its connections to the source product; it is not
+  durable and not shared between processes, so the cross-process bounds remain the three durable quotas of S04-D. Beyond it: 429 `QUOTA_EXCEEDED` with
+  `quota: "queries_in_flight"` and `Retry-After: 1`, nothing run. Reads of other kinds (catalog, jobs, downloads) are not counted.
+- **Pool:** `pool_max_conns` in the DSN of the production store (`OpenProduction`) is now read: a value below the number of worker loops plus 2 or above 100
+  stops the open (`ErrInvalid`); without it the pool is 8 connections as before (raised to the workers plus 2 when that is more). The demo's fixture path keeps
+  its fixed 8. Figure: start at 32 for the default bound of 128 requests in flight and one worker loop; the measurement host did 32 concurrent admissions of different
+  identities at 5,765 per second on a pool of 64 (docs/CAPACITY.md), and a pool smaller than the writers on one identity makes the others wait. This is a starting
+  point from one host, not a sizing: measure the admission p99 under your own concurrency, and keep `pool_max_conns` (times the number of processes) below the
+  server's `max_connections` minus what the migrator, the sweep and your monitoring hold.
+
+### Measuring, and growth
+
+`scripts/capacity_run.sh` (docs/CAPACITY.md) seeds the guarded fixture database, measures before and after migration 009, and removes what it seeded; `-growth`
+prints what the real service's rows weigh. The `jobs` table keeps one row per admission **forever, by design**: it is the audit of what happened (retention reduces the payload of a
+finished job, about 1.6 KB to 0.8 KB, and keeps the row). Size the table by identities x jobs per identity per day x 365 (docs/CAPACITY.md "Rows per year"); at the default
+`admissions_per_hour` of 120 one identity can add at most 1,051,200 rows a year. When the table is too big the answer is to archive rows older than a cutoff to a separate table or
+a dump, out of band, as the migrator; the platform does **not** do it: it would be a rule about audit (which rows may be forgotten, and that an Idempotency-Key dies with its row)
+that the platform does not own. Partitioning by `created_at` is not done either.
+The retention sweep (S04-B) was found to cost 95 s for 2,000 expired rows at 200,000 job rows, because of a snapshot probe the row-level policies kept from using the primary key; S04-G rewrote the probe and added `jobs_reducible`, and the sweep is now about 2 s for the same rows (docs/CAPACITY.md "Sweep and verification"); it still grows with the jobs in flight.
 
 ## Demo and tests
 

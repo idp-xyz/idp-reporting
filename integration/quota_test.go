@@ -379,7 +379,7 @@ func runQuotaContract(t *testing.T, build func(*testing.T) *quotaWorld) {
 	t.Run("the_store_applies_the_quotas_it_is_given_defaults_and_bounds", func(t *testing.T) {
 		w := build(t)
 		s := w.svc(r.Quotas{})
-		if got := s.Quotas(); got != (r.Quotas{JobsInFlight: 8, StoredResults: 64, AdmissionsPerHour: 120}) {
+		if got := s.Quotas(); got != (r.Quotas{JobsInFlight: 8, StoredResults: 64, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
 			t.Fatalf("%+v", got)
 		}
 		base := w.mustSubmit(s, w.p, "base")
