@@ -52,15 +52,15 @@ jobs:
           if [ -n "$external" ]; then echo "reporting/ depends on: $external"; exit 1; fi
       - run: go vet ./...
       - run: go build ./...
-      # This job has neither a database nor Typst: the PostgreSQL entry tests and the Typst tests skip,
-      # and run in the postgres and pdf jobs.
+      # This job has neither a database, an object store nor Typst: the PostgreSQL entry tests, TestS3Objects (the client against a
+      # throwaway S3-compatible server) and the Typst tests skip, and run in the postgres and pdf jobs.
       - name: Test
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestDurablePostgresIssues TestDurableDocumentAuthority TestPostgresMigrations TestMigrateCommand TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments TestTypstIssuesTheWidestLegalStamp TestTypstChecksIssuesBeforeTheProductIsAsked
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestDurablePostgresIssues TestDurableDocumentAuthority TestPostgresMigrations TestMigrateCommand TestS3Objects TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments TestTypstIssuesTheWidestLegalStamp TestTypstChecksIssuesBeforeTheProductIsAsked
         run: python3 -I scripts/go_test_strict.py -count=1
       - name: Race
         env:
-          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestDurablePostgresIssues TestDurableDocumentAuthority TestPostgresMigrations TestMigrateCommand TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments TestTypstIssuesTheWidestLegalStamp TestTypstChecksIssuesBeforeTheProductIsAsked
+          EXPECTED_SKIPS: TestPostgresContract TestDurablePostgresContract TestDurablePostgresIssues TestDurableDocumentAuthority TestPostgresMigrations TestMigrateCommand TestS3Objects TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments TestTypstIssuesTheWidestLegalStamp TestTypstChecksIssuesBeforeTheProductIsAsked
         run: python3 -I scripts/go_test_strict.py -race -count=1
 
   postgres:
@@ -82,8 +82,12 @@ jobs:
           --health-retries 30
     env:
       # A missing DSN fails instead of skipping, and only the Typst tests, which run in the pdf job,
-      # may skip in this job.
+      # may skip in this job. The same for the object store (S04-E): its tests run against the throwaway S3-compatible server below.
       REPORTING_S01_REQUIRE_PG: "1"
+      REPORTING_OBJECT_STORE_REQUIRE: "1"
+      REPORTING_OBJECT_STORE_TEST_ENDPOINT: http://127.0.0.1:59000
+      REPORTING_OBJECT_STORE_TEST_ACCESS_KEY: reportingtest
+      REPORTING_OBJECT_STORE_TEST_SECRET_KEY: reportingtestsecret
       EXPECTED_SKIPS: TestTypstExportsThroughTheService TestTypstLaysOutDocuments TestTypstFailsClosed TestTypstRefusesFontsItNamesDifferently TestTypstWithAHardCoreLimitOfZero TestTypstRendersDocuments TestTypstSlotsBoundPreviewsAndExports TestTypstIssuesDocuments TestTypstIssuesTheWidestLegalStamp TestTypstChecksIssuesBeforeTheProductIsAsked
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,6 +97,26 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      # The throwaway S3-compatible server of the qualification (S04-E, docs/ADR_0007_OBJECT_STORAGE.md): versitygw (Apache-2.0, a
+      # gateway that serves a directory over the S3 API), pinned by digest, on loopback, with keys that exist only here. MinIO's images
+      # stopped being publicly pullable (quay.io and Docker Hub both answer unauthorized), so it is not usable on a runner; the local
+      # qualification may still use a MinIO that is already present. It is started as a container of the job rather than under `services:`
+      # because a service container cannot be given the arguments (`posix /data`) the gateway needs; the test creates the bucket it uses.
+      - name: Start the throwaway S3-compatible server
+        env:
+          S3_IMAGE: versity/versitygw:v1.9.0@sha256:eb7f786fcd91e72194e48fcf1ac16302d686bf8e3a71434bdbc067a6efd3fdc7
+        run: |
+          mkdir -p "$RUNNER_TEMP/s3data"
+          docker run -d --name reporting-s3 -p 127.0.0.1:59000:7070 -v "$RUNNER_TEMP/s3data:/data" \
+            -e ROOT_ACCESS_KEY="$REPORTING_OBJECT_STORE_TEST_ACCESS_KEY" -e ROOT_SECRET_KEY="$REPORTING_OBJECT_STORE_TEST_SECRET_KEY" \
+            "$S3_IMAGE" posix /data
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:59000/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then echo "the S3-compatible server answers ($code)"; exit 0; fi
+            sleep 1
+          done
+          docker logs reporting-s3
+          exit 1
       - name: Create the guarded test databases
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}

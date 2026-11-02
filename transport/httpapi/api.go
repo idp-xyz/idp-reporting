@@ -444,6 +444,11 @@ func problem(w http.ResponseWriter, e error, status int) {
 		body["quota"] = q
 		w.Header().Set("Retry-After", "60")
 	}
+	// The object store being unreachable (S04-E) is an outage of the platform's own, not of the source product: it is the same 503, and it says
+	// when to try again. Nothing of the store is in the answer: not its status, not its text.
+	if r.IsObjectStoreError(e) && ok {
+		w.Header().Set("Retry-After", "10")
+	}
 	// A layout or binding refusal says why and where (S03-J): a reason and names and indices, never a value.
 	if detail, found := doctemplates.DetailOf(e); found && ok {
 		body["detail"] = detail

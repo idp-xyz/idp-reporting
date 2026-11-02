@@ -19,6 +19,7 @@ import (
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
+	"idp.local/reporting/storage/objects"
 	"idp.local/reporting/storage/postgres"
 	"idp.local/reporting/transport/httpapi"
 	"log"
@@ -75,11 +76,16 @@ func sweepLoop(ctx context.Context, s sweeper, interval time.Duration, logf func
 			if e != nil && ctx.Err() != nil {
 				return
 			}
+			// The object store's counts (S04-E) are logged only when there are some, so that a deployment without one logs what it did.
+			objects := ""
+			if res.Objects+res.Orphans+res.ObjectsLeft > 0 {
+				objects = fmt.Sprintf("; objects: %d deleted, %d orphans deleted, %d left for the next reconciliation", res.Objects, res.Orphans, res.ObjectsLeft)
+			}
 			switch {
 			case e != nil:
-				logf("retention sweep stopped; it had deleted %d artifacts and %d snapshots and reduced %d job payloads", res.Artifacts, res.Snapshots, res.Jobs)
-			case res.Artifacts+res.Snapshots+res.Jobs > 0:
-				logf("retention sweep: %d artifacts and %d snapshots deleted, %d job payloads reduced", res.Artifacts, res.Snapshots, res.Jobs)
+				logf("retention sweep stopped; it had deleted %d artifacts and %d snapshots and reduced %d job payloads%s", res.Artifacts, res.Snapshots, res.Jobs, objects)
+			case res.Artifacts+res.Snapshots+res.Jobs+res.Objects+res.Orphans+res.ObjectsLeft > 0:
+				logf("retention sweep: %d artifacts and %d snapshots deleted, %d job payloads reduced%s", res.Artifacts, res.Snapshots, res.Jobs, objects)
 			}
 		}
 	}
@@ -115,6 +121,26 @@ func quotaConfig(jobs, results, admissions int) (r.Quotas, error) {
 	return r.Quotas{JobsInFlight: jobs, StoredResults: results, AdmissionsPerHour: admissions}.Resolved()
 }
 
+// openObjectStore reads the object store flags and the environment and, when the store is configured, reaches its bucket: when HEAD bucket
+// fails the server does not start, with a text that names the bucket and the status and nothing of the endpoint or the keys. The memory
+// store keeps content inline whatever is configured (it is the explicit ephemeral store), so the two together are refused rather than
+// silently ignored. A nil store, and no error, is the demo as it was: files inline in the rows.
+func openObjectStore(flags *objects.Flags, getenv func(string) string, useMemory bool) (r.ObjectStore, error) {
+	client, e := flags.Client(getenv)
+	if e != nil || client == nil {
+		return nil, e
+	}
+	if useMemory {
+		return nil, fmt.Errorf("the object store flags do not apply to -memory, which keeps artifact files inline in memory")
+	}
+	startup, cancel := context.WithTimeout(context.Background(), objects.StartupTimeout)
+	defer cancel()
+	if e = objects.CheckAtStart(startup, client); e != nil {
+		return nil, e
+	}
+	return client, nil
+}
+
 func run() error {
 	profile := flag.String("profile", "", "required: contract-simulator")
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
@@ -133,10 +159,14 @@ func run() error {
 	quotaJobs := flag.Int("quota-jobs", 0, "quota per identity: queued and running jobs (S04-D); 0 is the default, 8; 1..1000")
 	quotaResults := flag.Int("quota-results", 0, "quota per identity: snapshots and artifacts not yet expired (S04-D); 0 is the default, 64; 1..100000")
 	quotaAdmissions := flag.Int("quota-admissions", 0, "quota per identity: jobs admitted in the last hour (S04-D); 0 is the default, 120; 1..100000")
+	objectStore := objects.Register(flag.CommandLine)
 	flag.Func("embed-origin", "repeatable integration=origin: a page of that origin may show the embed pages of that integration in a frame (ADR 0006); an https origin as https://host[:port], or http://127.0.0.1:port for a local product page", func(value string) error {
 		embedOrigins = append(embedOrigins, value)
 		return nil
 	})
+	if e := objects.RefuseCredentialFlags(os.Args[1:]); e != nil {
+		return e
+	}
 	flag.Parse()
 	if *profile != "contract-simulator" {
 		return fmt.Errorf("profile must explicitly be contract-simulator")
@@ -149,6 +179,11 @@ func run() error {
 		return fmt.Errorf("-sweep-interval must be 0 (off) or positive")
 	}
 	quotas, e := quotaConfig(*quotaJobs, *quotaResults, *quotaAdmissions)
+	if e != nil {
+		return e
+	}
+	// The object store (S04-E): read and refused before anything is opened, and reached before the server starts.
+	objectBucket, e := openObjectStore(objectStore, os.Getenv, *useMemory)
 	if e != nil {
 		return e
 	}
@@ -185,7 +220,7 @@ func run() error {
 		}
 		dbctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		store, e := postgres.Open(dbctx, dsn, *initialize)
+		store, e := postgres.Open(dbctx, dsn, *initialize, postgres.WithObjects(objectBucket))
 		if e != nil {
 			return openFailure("guarded fixture could not be opened", e)
 		}
@@ -253,7 +288,7 @@ func run() error {
 		issuer = v
 	}
 	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + secret))
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas, Objects: objectBucket})
 	if e != nil {
 		return e
 	}
@@ -349,7 +384,7 @@ func run() error {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; sweep=%s; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, *sweepInterval, os.Getpid(), listener.Addr())
+	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; sweep=%s; objects=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, *sweepInterval, objectBucket != nil, os.Getpid(), listener.Addr())
 	e = server.Serve(listener)
 	stop()
 	workers.Wait()

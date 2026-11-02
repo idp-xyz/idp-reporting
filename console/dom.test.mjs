@@ -280,6 +280,21 @@ test('task file download denial preserves an unrelated current preview',async()=
   }finally{a.close();}
 });
 
+test('task file download with the file store unavailable says so, saves nothing, keeps an unrelated preview and recovers',async()=>{
+  // S04-E: a 503 with Retry-After on a download is the object store being unreachable; the console treats it as it treats every 503.
+  let down=false;const a=app(async(path)=>{if(down&&path.includes('/artifacts/')&&path.endsWith('/content'))return new Response(JSON.stringify({error:'AUTHORITY_UNAVAILABLE'}),{status:503,headers:{'Content-Type':'application/json','Retry-After':'10'}});});
+  try{
+    await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot ready');
+    a.click('export');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'real export complete');
+    a.click('preview');await until(()=>a.$('result-kind').textContent==='查询预览'&&!a.$('preview').disabled,'unrelated preview');
+    down=true;Array.from(a.$('tasks-body').querySelectorAll('button')).find(b=>b.textContent==='下载').click();
+    await until(()=>a.$('notice').textContent.includes('不可用'),'task file outage');
+    assert.equal(a.$('result-table').tBodies[0].rows.length,3);assert.equal(a.downloads.length,1);assert.ok(a.$('notice').textContent.startsWith('任务下载：'));assert.ok(a.$('notice').textContent.includes('请稍后重试'));
+    down=false;Array.from(a.$('tasks-body').querySelectorAll('button')).find(b=>b.textContent==='下载').click();
+    await until(()=>a.downloads.length===2,'download after the store is back');
+  }finally{a.close();}
+});
+
 test('task snapshot viewing denial preserves the previous unrelated preview',async()=>{
   let denied=false;const a=app(async(path)=>{if(denied&&path.includes('/snapshots/')&&path.includes('/rows?'))return problem(403,'ACCESS_DENIED');});
   try{

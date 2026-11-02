@@ -19,6 +19,29 @@ import (
 type Store struct {
 	pool    *pgxpool.Pool
 	fixture bool // opened through the guarded fixture path: resets are allowed
+	// objects is where the content of an artifact lives (S04-E, docs/ADR_0007_OBJECT_STORAGE.md): with one, Publish takes an artifact that is an
+	// object already put and refuses one that still carries its content, and the sweep deletes the objects of the rows it deletes and reconciles
+	// the bucket. objectNow is the platform's clock for the age of an object (see SweepWithObjects).
+	objects   r.ObjectStore
+	objectNow func() time.Time
+}
+
+// Option configures a store as it is opened.
+type Option func(*Store)
+
+// WithObjects gives the store the object store the artifacts' content lives in (S04-E). The service that publishes to the store must be
+// configured with the same one (Config.Objects).
+func WithObjects(o r.ObjectStore) Option { return func(s *Store) { s.objects = o } }
+
+// WithObjectClock sets the clock by which the sweep judges the age of an object (default time.Now): the one place the platform host's clock
+// decides anything, because the clock that stamped the object is the object store's and not the database's. Tests move it.
+func WithObjectClock(now func() time.Time) Option { return func(s *Store) { s.objectNow = now } }
+
+func (s *Store) apply(opts []Option) *Store {
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Open opens the guarded test fixture: one of the fixture database names on a loopback address,
@@ -26,12 +49,12 @@ type Store struct {
 // migrations are applied first and the profile row inserted; a database at an older version
 // (made before the ledger existed included) is upgraded. Production stores open through
 // OpenProduction.
-func Open(ctx context.Context, dsn string, initialize bool) (*Store, error) {
+func Open(ctx context.Context, dsn string, initialize bool, opts ...Option) (*Store, error) {
 	p, e := fixturedb.Open(ctx, dsn, fixtureDatabases...)
 	if e != nil {
 		return nil, e
 	}
-	s := &Store{pool: p, fixture: true}
+	s := (&Store{pool: p, fixture: true}).apply(opts)
 	fail := func(err error) (*Store, error) { p.Close(); return nil, err }
 	if initialize {
 		if e = Up(ctx, p, 0, "fixture"); e != nil {
@@ -309,6 +332,11 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e = r.ValidatePublication(j, p); e != nil {
 		return e
 	}
+	// Where the content lives is the store's: with an object store the artifact must be an object already put and carry no content, without
+	// one it must carry its content and name no object (S04-E). The row never promises what the store cannot serve.
+	if p.Artifact != nil && (s.objects != nil) != (p.Artifact.Object != "") {
+		return r.ErrIntegrity
+	}
 	// expires is the asset's expiry as the column (S04-B) keeps it: the snapshot's and the artifact's, never the issue record's, which
 	// does not expire and which the sweep never deletes.
 	type asset struct {
@@ -419,7 +447,9 @@ func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out an
 			return r.ErrIntegrity
 		}
 	case *r.Artifact:
-		if v.ID != resourceID || v.Owner != owner || resourceKind != "artifact" || !sameExpiry(v.ExpiresAt) {
+		// The content is in the row or in the object store, never both and never neither; an object is the key of the artifact's own id, with a
+		// length and a digest (S04-E).
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "artifact" || !sameExpiry(v.ExpiresAt) || (v.Object != "") == (len(v.Content) > 0) || (v.Object != "" && !r.ValidArtifactBody(*v)) {
 			return r.ErrIntegrity
 		}
 	case *r.Issue:

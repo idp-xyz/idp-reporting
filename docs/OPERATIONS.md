@@ -238,6 +238,9 @@ the default by the service and refused by the command, and a negative or oversiz
 slip can only keep data longer, never delete it sooner. The sweep refuses a store whose ledger is not at the binary's
 version and a role that lacks what it needs, before anything is changed. It is idempotent and returns counts only.
 
+With an object store configured (S04-E, "Object storage" below) the artifact step also deletes, after each batch commits, the objects the deleted rows
+named, and a fourth step reconciles the bucket; the counts above gain `objects` and `orphans`.
+
 Running it: `reporting-migrate sweep [--grace D] [--batch N] [--dry-run]` on `REPORTING_STORE_DSN`, as the sweep
 role or the migrator (the application role has no DELETE and is refused), prints `swept: A artifacts, S snapshots,
 J job payloads reduced (grace, batch, T transactions)` (or `dry run, would sweep: ...`) and exits 0, or prints how far
@@ -434,6 +437,137 @@ in a later migration if it matters.
 Not in this slice: rate limits on `POST /queries` and reads (no admission there; a later capacity slice), per-tenant or per-integration
 quotas, bytes-based quotas, quotas negotiated with the source product, object storage, backups, capacity, key lifecycle.
 
+## Object storage (S04-E)
+
+Until S04-E the bytes of an artifact (an XLSX or PDF export, an issued PDF) were base64 inside the JSON payload of its row in `assets`, up to
+`MaxArtifactBytes` = 8 MiB, so backups, replication and vacuum of the database carried the files. With an object store configured the file is an
+object in an S3-compatible bucket, the row keeps the metadata, and the database stops growing with files (docs/ADR_0007_OBJECT_STORAGE.md,
+docs/S04E_SCOPE.md).
+
+What moves and what does not:
+
+- **Moves**: the content of every new artifact. Its row carries `Object` (`artifacts/<artifact id>`; ids are random, so a key says nothing), `Size`
+  (the length in bytes) and the `SHA256` it always had, and no `Content`. The row's payload digest covers that metadata.
+- **Stays**: snapshots (business rows, bounded by `MaxResultBytes`, read page by page under the source product's authority), jobs, issue records,
+  quotas (an artifact is one stored result whatever holds its bytes), retention's rules and row-level security (they are the row's). An artifact
+  stored before S04-E stays inline and is served as before until it expires and the sweep deletes it; nothing is moved in bulk.
+- **Does not change**: the memory store keeps content inline (it is the explicit ephemeral store; the demo refuses `-memory` together with the
+  object store flags), the fixture path without an object store, `GET /capabilities` (it does not say where files live), the job view.
+
+### Configuration
+
+The demo and `reporting-migrate sweep` take the same five flags and the same two environment variables:
+
+| | |
+|---|---|
+| `-object-store-endpoint` | `https://host[:port]`, or `http://<loopback IP>:port` with `-object-store-loopback-http`; no user, path, query or fragment |
+| `-object-store-bucket` | the bucket (S3 naming rules); it must exist, the platform never creates or configures a bucket, a lifecycle rule or an encryption setting |
+| `-object-store-region` | the signing region, default `us-east-1` |
+| `-object-store-ca` | optional PEM file; the server is then verified against these certificates alone, otherwise against the system roots |
+| `-object-store-loopback-http` | the explicit option that allows `http://` on a loopback IP (127.0.0.1, ::1; not `localhost`); it is for the demo and the qualification and is refused with an `https://` endpoint |
+| `REPORTING_OBJECT_STORE_ACCESS_KEY`, `REPORTING_OBJECT_STORE_SECRET_KEY` | the credentials; both required; a flag for either is refused before anything is opened, and the refusal does not repeat what followed the flag |
+
+Any other configuration is refused at construction, with a text that repeats no key. The client is written in the repository over `net/http` and
+the standard library's crypto (no SDK, no module in `go.mod`): AWS Signature Version 4, path-style, one bucket, PUT, GET, DELETE,
+ListObjectsV2 by prefix and HEAD bucket; `x-amz-content-sha256` is the hex SHA-256 of the body on every request; 10 seconds per request; one retry
+of an idempotent request after a network error (not after an answer, a timeout or a cancelled context); redirects are not followed; no multipart
+(an artifact is at most 8 MiB).
+
+At startup the demo sends HEAD bucket and **refuses to start** when it does not answer 200, with `the object store's bucket "NAME" is not usable:
+HEAD bucket answered status N` (or `got no answer`): the bucket and the status, never the endpoint or a key. `reporting-migrate sweep` does the
+same before it deletes a row.
+
+### The policy the credentials need
+
+PutObject, GetObject, DeleteObject and ListBucket on that one bucket, and nothing else:
+
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], "Resource": "arn:aws:s3:::BUCKET/artifacts/*"},
+  {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": "arn:aws:s3:::BUCKET"}]}
+```
+
+`s3:ListBucket` serves the startup check (HEAD bucket), the reconciliation (ListObjectsV2 of `artifacts/`) and a detail of S3: without it a missing key
+is answered 403 instead of 404, which the platform then reports as the store being unavailable instead of as a missing object. Give the platform a
+bucket of its own. The sweep needs only DeleteObject and ListBucket; a deployment may give the scheduled sweep narrower credentials than the server's.
+
+### Order, and what a failure leaves
+
+| Step | Order | If it fails |
+|---|---|---|
+| Export or issue job | The worker PUTs the object, then publishes the row in the same transaction as the job's completion | PUT fails: the job fails with `EXECUTION_FAILED` (an issue is voided at the source product like any failure, S03-H) and nothing is published. The row is never written before the object exists. |
+| Issue job | The PDF is put **before** the source product is told it exists (`ConfirmIssue`) | A failed PUT leaves the product with a reservation that is voided, never a confirmation of a file the platform did not keep. |
+| Publication fails after the PUT (lost lease, a store error) | | The object is an orphan: no row names it. The reconciliation removes it after the grace. |
+| Sweep | Rows are deleted and committed in the batch's transaction (S04-B), then the objects they named, read in that batch's `RETURNING` | A delete that fails is counted (`ObjectsLeft`) and left: the object is an orphan for the next reconciliation. A download between the two answers as a swept artifact does (404). |
+| Download | Row first (source product's authority, expiry, row-level context, issue cross-checks), then GET with the row's SHA-256 and length, then the bytes are compared with the row again | A missing object, another length or another digest is 409 `INTEGRITY_FAILURE`, never a file. A store that cannot be reached is 503 with `Retry-After: 10`. |
+
+A publication with an object store configured must carry an object and no content; without one it must carry content and no object; the durable
+store refuses the other shapes (`INTEGRITY_FAILURE`, nothing written), so a service and a store configured differently fail closed. A row that
+says where its file is in both ways, in neither, or names an object that is not `artifacts/<its own id>`, is `INTEGRITY_FAILURE` when read. The job
+poll reads rows only: it answers whether or not the store is up and does not read an object (the bytes are checked when they are downloaded).
+Nothing of the store reaches a caller: no error carries a response body, a key, an endpoint or a credential (an unexpected status is the store
+being unavailable with the status code only).
+
+### The sweep and the reconciliation
+
+`Service.Sweep`, `postgres.SweepWithObjects` and `reporting-migrate sweep` with the object store flags run S04-B's three steps and a fourth:
+
+1. Artifacts: the rows are deleted in batches (each one transaction); after a batch commits, the objects its rows named are deleted. A key is deleted
+   only if it is `artifacts/<the id of the row that named it>`; a row that names anything else (a tampered payload) has its row deleted and its key left.
+2. Snapshots, then job payloads: as before.
+3. Reconciliation: list `artifacts/` in pages of 1000 and delete every object that (a) has the key of a canonical artifact id (anything else under
+   the prefix is another process's and is left alone), (b) is older than the grace, and (c) is named by no row of `assets` of any kind (a lookup per page
+   with `id = ANY($1)` in a transaction of the worker scope, so row-level security shows it every identity's rows).
+
+**Clock.** The age of an object is judged by the platform host's clock against the time the object store stamped on the object, because that clock is the
+one that stamped it; it is the only place the host's clock decides anything in the sweep (the rows' expiries stay the database's, and a source test holds
+both). The grace is the sweep's `--grace` (default 24 h) but never less than 15 minutes (`MinOrphanAge`) for objects: a worker that takes a minute
+between the PUT and the publication is slow, not dead, and deleting its object would leave a published row that promises a missing file. A host whose
+clock is far ahead of the store's would take young objects for old; keep hosts on NTP.
+
+Counts only, as every sweep. The result and the command's output carry `objects` (deleted after their rows), `orphans` (deleted by the reconciliation)
+and `objects left` (meant to be deleted and not: a failed delete, or no object store configured); the `sweeps` ledger gains the first two (migration
+008, default 0 for earlier rows). A dry run lists and counts, deletes nothing. A sweep whose store cannot be listed fails (non-zero) after its rows, with
+the counts it had.
+
+`reporting-migrate sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint ... --object-store-bucket ...]` prints, besides the S04-B line,
+`objects: N deleted, M orphans deleted, K left for the next reconciliation`; without the flags it deletes rows only, prints `objects: no object store
+configured, rows only; the files of N deleted artifacts that were in an object store, and any orphan, wait for a reconciliation (...)` and exits 0. The
+demo's worker loop sweeps every `-sweep-interval` through the store it was opened with and logs the object counts when there are some.
+
+Migration 008 (`object_storage`) adds the two ledger columns; its down drops them and is refused while a ledger row counts deleted objects or an
+artifact's file is an object (a binary older than the step cannot read such a row: it would stay, un-downloadable, until it expires), unless
+`--accept-data-loss`. The catalog is committed as `integration/testdata/catalog_008.txt`; 003 to 007 are byte for byte unchanged.
+
+### Verifying
+
+```sql
+-- rows that name an object, held (the number of objects that should exist, plus orphans not yet old enough to be reconciled)
+SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND data ? 'Object';
+-- rows that still hold their content inline (stored before S04-E); the two counts add up to the artifacts held
+SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND NOT data ? 'Object';
+-- the ledger: objects deleted after their rows and orphans reconciled, per sweep
+SELECT at, dry_run, complete, artifacts, objects, orphans FROM reporting_s01.sweeps ORDER BY at DESC LIMIT 20;
+```
+
+Against the bucket, count the objects under `artifacts/` with the store's own tool (`mc ls --recursive ALIAS/BUCKET/artifacts | wc -l`,
+`aws s3 ls s3://BUCKET/artifacts/ --recursive | wc -l`). The difference between that count and the first query is the orphans (objects whose
+transaction failed, deletes that failed): it should be zero after a sweep once the grace has passed, and `sweep --dry-run` with the flags prints how
+many the reconciliation would delete. A count of objects *below* the rows' count is not an orphan problem: a row promises a file that is gone, every
+download of it is `INTEGRITY_FAILURE`, and the bucket's versioning or backup is where it is recovered from.
+
+### What it costs, and what is not covered
+
+A deployment gains a second service with its own credentials, availability and backup: a bucket that is down makes exports and issues fail (the job
+fails, an issue is voided) and downloads 503, never a wrong file. The row store and the bucket must be backed up in a way that keeps them consistent
+(a restored database whose bucket is older promises files that are not there; S04's backup slice owns that). The qualification runs against a throwaway
+S3-compatible server, as PostgreSQL's (MinIO where one is already present locally; versitygw in CI, since MinIO's images are no
+longer publicly pullable from quay.io or Docker Hub); **AWS S3 itself is not qualified by a test here.** The fixture's `ResetFixture` truncates
+rows, not objects: a test that shares a bucket empties it first.
+
+Not in this slice: moving existing inline artifacts, snapshots in the object store, server-side encryption, bucket lifecycle rules, multipart
+uploads, AWS S3 qualification by test, backups, capacity, key lifecycle.
+
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the
@@ -453,4 +587,6 @@ tenant and a third of another; the fixture suites run as the superuser and do no
 
 The quota qualification (S04-D) runs inside `TestDurablePostgresContract` (`quotas`): the quota contract of both stores, parallel admissions of one identity (exactly the limit admit), and the identity-keyed lock watched in `pg_locks`; the same contract runs on the memory store in `TestMemoryQuotaContract`.
 
-Not covered yet: object storage, backups and restore, capacity, key lifecycle.
+The object storage qualification (S04-E) runs inside `TestDurablePostgresContract` (`object_storage`: the contract of both object stores on the durable store, then what only it has to qualify) and in `TestMemoryObjectContract` (the memory store); both run the same contract, against `objects.Memory` and, when `REPORTING_OBJECT_STORE_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set, against a throwaway S3-compatible server (`REPORTING_OBJECT_STORE_REQUIRE=1` makes a missing endpoint a failure, as `REPORTING_S01_REQUIRE_PG=1` does for PostgreSQL). `TestS3Objects` qualifies the client alone against the same server; the signing is qualified against the published examples of the AWS Signature Version 4 documentation without one. The CI postgres job starts versitygw (Apache-2.0, `versity/versitygw` pinned by digest; MinIO's images are no longer publicly pullable) before the tests; the test creates the bucket `reporting-test-s04e` with a PUT bucket request, the one bucket-level call in the repository, in the test only (a source test holds it to that).
+
+Not covered yet: backups and restore, capacity, key lifecycle.

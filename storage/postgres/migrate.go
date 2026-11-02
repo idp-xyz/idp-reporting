@@ -365,6 +365,18 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 		if n > 0 {
 			return fmt.Sprintf("%d rows of the sweeps ledger (the audit of what retention deleted)", n), nil
 		}
+	case 8:
+		// The two counts of the object store (S04-E) go with the step: the ledger rows that recorded objects deleted lose that. And an artifact
+		// whose file is an object (Object in its payload) cannot be read by a binary older than the step, which knows only content in the row:
+		// the row would stay, could no longer be downloaded, and its object would wait for a reconciliation no older binary runs.
+		var ledger, objects int64
+		if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM reporting_s01.sweeps WHERE objects > 0 OR orphans > 0),
+(SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND data ? 'Object')`).Scan(&ledger, &objects); err != nil {
+			return "", err
+		}
+		if ledger > 0 || objects > 0 {
+			return fmt.Sprintf("%d rows of the sweeps ledger that count objects deleted, and %d artifacts whose files are in the object store (an older binary could not serve them, and their objects would be left for a reconciliation it does not run; they expire with their snapshots)", ledger, objects), nil
+		}
 	}
 	return "", nil
 }

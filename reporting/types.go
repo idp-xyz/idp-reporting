@@ -225,8 +225,14 @@ type Artifact struct {
 	Format     string `json:",omitempty"`
 	ExpiresAt  time.Time
 	SHA256     string
-	Content    []byte
-	Issue      string `json:",omitempty"` // the issue record this artifact was issued under (S03-G)
+	// Content is the file when the artifact is stored inline (every artifact before S04-E, and every one the memory store holds without an
+	// object store); it is empty when Object is set. Exactly one of the two is present (ValidArtifactBody).
+	Content []byte
+	// Object is the key of the object that holds the file (S04-E, docs/ADR_0007_OBJECT_STORAGE.md): ObjectKey of the artifact's id. Size is
+	// then the file's length in bytes. The row's SHA256 and Size are what the object must match before a byte of it is served.
+	Object string `json:",omitempty"`
+	Size   int    `json:",omitempty"`
+	Issue  string `json:",omitempty"` // the issue record this artifact was issued under (S03-G)
 }
 type Job struct {
 	ID          string
@@ -451,7 +457,11 @@ type Config struct {
 	Formats     map[string]WorkbookWriter // further export formats by name, such as "pdf"
 	Issuer      Issuer                    // renders issue jobs; without it issuing is unsupported
 	Quotas      Quotas                    // per-identity admission limits (S04-D); zero fields take the defaults
-	Now         func() time.Time
+	// Objects, when set, is where the worker puts the content of an artifact before it publishes the row, and where a download reads it back
+	// (S04-E). The repository must be one that accepts such rows (the durable store opened with the same object store, or the memory store);
+	// without it the content stays inline in the row, as before.
+	Objects ObjectStore
+	Now     func() time.Time
 }
 type RowsPage struct {
 	SnapshotID string `json:"snapshot_id"`

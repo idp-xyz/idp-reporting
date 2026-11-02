@@ -22,6 +22,18 @@ type Store struct {
 	issues    map[string]r.Issue
 	order     []string             // job ids in admission order, for the issue listing
 	admitted  map[string]time.Time // when each job was admitted, by this store's clock (the quota of jobs per hour, S04-D)
+	objects   r.ObjectStore        // only for the sweep's deletes and reconciliation (UseObjects); nil: none
+}
+
+// UseObjects tells the store which object store the artifacts it is given have their files in (S04-E), so that its sweep deletes the objects
+// of the artifact rows it deletes and reconciles the bucket, as the durable store's does. The store never writes an object and never reads one: the
+// service that publishes to it puts the files there (Config.Objects), and the store keeps the rows, with an Object or with the content inline as
+// they come. The store's clock is the platform's clock for the age of an object.
+func (s *Store) UseObjects(o r.ObjectStore) *Store {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.objects = o
+	return s
 }
 
 func New(now func() time.Time) *Store {
@@ -370,27 +382,21 @@ func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, err
 	if e = ctx.Err(); e != nil {
 		return res, e
 	}
+	s.mu.Lock()
+	objects := s.objects
+	s.mu.Unlock()
 	if o.DryRun {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		c := s.retention(o.Grace)
-		res.Artifacts, res.Snapshots = len(c.artifacts), len(c.snapshots)
-		// What the sweep would delete counts as gone for the jobs, as it would be when the jobs are reached.
-		goneArtifacts, goneSnapshots := map[string]bool{}, map[string]bool{}
-		for _, id := range c.artifacts {
-			goneArtifacts[id] = true
+		s.dryRun(o, &res)
+		if objects != nil {
+			e = s.reconcile(ctx, objects, o, nil, &res)
 		}
-		for _, id := range c.snapshots {
-			goneSnapshots[id] = true
-		}
-		res.Jobs = len(c.reducible(func(j r.Job) bool {
-			return (!s.holdsSnapshot(j.SnapshotID) || goneSnapshots[j.SnapshotID]) && (!s.holdsArtifact(j.ArtifactID) || goneArtifacts[j.ArtifactID])
-		}))
-		return res, nil
+		return res, e
 	}
 	// One kind of row at a time, in batches until a batch is short: each takes the lock, picks at most Batch rows by the store's
-	// clock as it is then, changes them and lets go.
-	batches := func(count *int, pick func(*retained) []string, apply func(string)) error {
+	// clock as it is then, changes them and lets go. The objects the rows named are deleted after the lock is let go (the row first, then
+	// the object: ADR 0007 decision 4); one that cannot be deleted is left for the reconciliation.
+	left := map[string]bool{} // the keys this sweep meant to delete and could not: the reconciliation does not count them twice
+	batches := func(count *int, pick func(*retained) []string, apply func(string) string) error {
 		for {
 			if e := ctx.Err(); e != nil {
 				return e
@@ -400,29 +406,128 @@ func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, err
 			if len(ids) > o.Batch {
 				ids = ids[:o.Batch]
 			}
+			var keys []string
 			for _, id := range ids {
-				apply(id)
+				if key := apply(id); key != "" {
+					keys = append(keys, key)
+				}
 			}
 			s.mu.Unlock()
 			*count += len(ids)
 			if len(ids) > 0 {
 				res.Batches++
 			}
+			for _, key := range keys {
+				if objects == nil || objects.Delete(ctx, key) != nil {
+					res.ObjectsLeft++
+					left[key] = true
+				} else {
+					res.Objects++
+				}
+			}
 			if len(ids) < o.Batch {
 				return nil
 			}
 		}
 	}
-	if e = batches(&res.Artifacts, func(c *retained) []string { return c.artifacts }, func(id string) { delete(s.artifacts, id) }); e != nil {
+	if e = batches(&res.Artifacts, func(c *retained) []string { return c.artifacts }, func(id string) string {
+		key := s.artifacts[id].Object
+		delete(s.artifacts, id)
+		if key == r.ObjectKey(id) {
+			return key
+		}
+		return ""
+	}); e != nil {
 		return res, e
 	}
-	if e = batches(&res.Snapshots, func(c *retained) []string { return c.snapshots }, func(id string) { delete(s.snapshots, id) }); e != nil {
+	if e = batches(&res.Snapshots, func(c *retained) []string { return c.snapshots }, func(id string) string { delete(s.snapshots, id); return "" }); e != nil {
 		return res, e
 	}
-	e = batches(&res.Jobs, func(c *retained) []string {
+	if e = batches(&res.Jobs, func(c *retained) []string {
 		return c.reducible(func(j r.Job) bool { return !s.holdsSnapshot(j.SnapshotID) && !s.holdsArtifact(j.ArtifactID) })
-	}, func(id string) { s.jobs[id] = r.ReduceJob(s.jobs[id]) })
+	}, func(id string) string { s.jobs[id] = r.ReduceJob(s.jobs[id]); return "" }); e != nil {
+		return res, e
+	}
+	if objects != nil {
+		e = s.reconcile(ctx, objects, o, left, &res)
+	}
 	return res, e
+}
+
+// dryRun counts what the three steps would do in turn, under the lock.
+func (s *Store) dryRun(o r.SweepOptions, res *r.SweepResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.retention(o.Grace)
+	res.Artifacts, res.Snapshots = len(c.artifacts), len(c.snapshots)
+	named := 0
+	for _, id := range c.artifacts {
+		if s.artifacts[id].Object != "" {
+			named++
+		}
+	}
+	if s.objects != nil {
+		res.Objects = named
+	} else {
+		res.ObjectsLeft = named
+	}
+	// What the sweep would delete counts as gone for the jobs, as it would be when the jobs are reached.
+	goneArtifacts, goneSnapshots := map[string]bool{}, map[string]bool{}
+	for _, id := range c.artifacts {
+		goneArtifacts[id] = true
+	}
+	for _, id := range c.snapshots {
+		goneSnapshots[id] = true
+	}
+	res.Jobs = len(c.reducible(func(j r.Job) bool {
+		return (!s.holdsSnapshot(j.SnapshotID) || goneSnapshots[j.SnapshotID]) && (!s.holdsArtifact(j.ArtifactID) || goneArtifacts[j.ArtifactID])
+	}))
+}
+
+// reconcile deletes the objects of the bucket's artifact prefix that no row names (a snapshot, an artifact or an issue record, by id) and that
+// are older than the grace, at least r.MinOrphanAge, by the store's clock (docs/S04E_SCOPE.md E3).
+func (s *Store) reconcile(ctx context.Context, objects r.ObjectStore, o r.SweepOptions, left map[string]bool, res *r.SweepResult) error {
+	age := max(o.Grace, r.MinOrphanAge)
+	after := ""
+	for {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		page, next, e := objects.List(ctx, r.ObjectPrefix, after, 1000)
+		if e != nil {
+			return e
+		}
+		cutoff := s.now().Add(-age)
+		s.mu.Lock()
+		var orphans []string
+		for _, obj := range page {
+			id, ok := r.ObjectID(obj.Key)
+			if !ok || !obj.LastModified.Before(cutoff) || left[obj.Key] {
+				continue
+			}
+			_, a := s.artifacts[id]
+			_, sn := s.snapshots[id]
+			_, is := s.issues[id]
+			if !a && !sn && !is {
+				orphans = append(orphans, obj.Key)
+			}
+		}
+		s.mu.Unlock()
+		for _, key := range orphans {
+			switch {
+			case o.DryRun:
+				res.Orphans++
+			case objects.Delete(ctx, key) != nil:
+				res.ObjectsLeft++
+			default:
+				res.Orphans++
+			}
+		}
+		if next == "" {
+			return nil
+		}
+		after = next
+	}
 }
 
 // holdsSnapshot and holdsArtifact say whether the store still holds the asset a job names; a job that names none holds none.

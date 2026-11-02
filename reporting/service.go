@@ -23,7 +23,8 @@ type Service struct {
 	writers     map[string]WorkbookWriter // by format; "" is the workbook
 	issuer      Issuer                    // nil: issuing is unsupported
 	now         func() time.Time
-	quotas      Quotas // resolved: every field in its bounds
+	quotas      Quotas      // resolved: every field in its bounds
+	objects     ObjectStore // nil: artifact content stays inline in the row (S04-E)
 }
 
 func NewService(c Config) (*Service, error) {
@@ -34,7 +35,7 @@ func NewService(c Config) (*Service, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Service{quotas: quotas, repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
+	s := &Service{quotas: quotas, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -578,7 +579,9 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 			_, e = s.snapshot(ctx, p, j.SnapshotID)
 		} else {
 			var a Artifact
-			a, e = s.Download(ctx, p, j.ArtifactID)
+			// The row, not the file: a job poll does not read an object (S04-E), so it neither costs the store a read of up to
+			// MaxArtifactBytes nor depends on the store being reachable; the bytes are checked when they are downloaded.
+			a, e = s.artifactRow(ctx, p, j.ArtifactID)
 			if e == nil && j.Kind == "issue" {
 				// The artifact must claim the record and the record must name the artifact; the
 				// number the job view shows is the record's.
@@ -620,7 +623,41 @@ func (s *Service) Cancel(ctx context.Context, p Principal, id string) (JobView, 
 	v.ArtifactID = ""
 	return v, nil
 }
+
+// Download returns the artifact with its file, after everything the row says has been checked: the source product's current authority over
+// the snapshot, the owner, the expiry and, for an issued PDF, the record it was issued under (artifactRow). When the file is an object (S04-E)
+// it is read only then, with the row's digest and length, and every byte served has been compared with the row again here, whatever the
+// object store's implementation did: a different length or digest, or a missing object, is ErrIntegrity; a store that cannot be reached is
+// an *ObjectStoreError (ErrUnavailable), and nothing else of the store's reaches the caller.
 func (s *Service) Download(ctx context.Context, p Principal, id string) (Artifact, error) {
+	a, e := s.artifactRow(ctx, p, id)
+	if e != nil || a.Object == "" {
+		return a, e
+	}
+	if s.objects == nil {
+		// The row promises an object and this service has no store to read it from: the deployment lost its configuration.
+		return Artifact{}, &ObjectStoreError{}
+	}
+	b, e := s.objects.Get(ctx, a.Object, a.SHA256, a.Size)
+	switch {
+	case errors.Is(e, ErrIntegrity):
+		return Artifact{}, fmt.Errorf("the object of the artifact does not match its row: %w", ErrIntegrity)
+	case e != nil:
+		var o *ObjectStoreError
+		if errors.As(e, &o) {
+			return Artifact{}, &ObjectStoreError{Status: o.Status}
+		}
+		return Artifact{}, &ObjectStoreError{}
+	case len(b) != a.Size || bytesDigest(b) != a.SHA256:
+		return Artifact{}, fmt.Errorf("the object of the artifact does not match its row: %w", ErrIntegrity)
+	}
+	a.Content = b
+	return a, nil
+}
+
+// artifactRow is the artifact as its row describes it, authorized and cross-checked but with no object read: Download without the file. An
+// inline artifact is checked against its content here, as it always was; an object's bytes are checked when Download reads them.
+func (s *Service) artifactRow(ctx context.Context, p Principal, id string) (Artifact, error) {
 	if !p.Identity.Valid() || !validID(id) {
 		return Artifact{}, ErrNotFound
 	}
@@ -635,7 +672,7 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (Artifac
 	if e != nil {
 		return Artifact{}, e
 	}
-	if snap.Owner != a.Owner || !s.now().Before(a.ExpiresAt) || a.ExpiresAt.After(snap.ExpiresAt) || len(a.Content) == 0 || len(a.Content) > MaxArtifactBytes || a.SHA256 != bytesDigest(a.Content) {
+	if snap.Owner != a.Owner || !s.now().Before(a.ExpiresAt) || a.ExpiresAt.After(snap.ExpiresAt) || !ValidArtifactBody(a) {
 		return Artifact{}, ErrIntegrity
 	}
 	if a.Issue != "" {
@@ -860,7 +897,9 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		if len(b) == 0 || len(b) > MaxArtifactBytes {
 			return ErrBudget
 		}
-		pub.Artifact = &Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt, Content: b, SHA256: bytesDigest(b)}
+		if pub.Artifact, e = s.keep(ctx, Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt}, b); e != nil {
+			return e
+		}
 	case "issue":
 		// Under the source product's authority (S03-H): the issuer checks what it can without
 		// the product, the product authorizes the issue and gives the number and the issue time,
@@ -934,6 +973,13 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 			return ErrIntegrity
 		}
 		sum := bytesDigest(b)
+		// With an object store the file is put there before the product is told it exists (S04-E): the product never confirms a file the
+		// platform failed to keep, and a PUT that fails is a failure of the job like any other, voided at the product (S03-H). The row that
+		// names the object is published after the confirmation; an object whose row never comes is an orphan the sweep reconciles.
+		id := NewID()
+		if pub.Artifact, e = s.keep(ctx, Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: snap.ExpiresAt, Issue: j.ID}, b); e != nil {
+			return e
+		}
 		receipt, e := authority.ConfirmIssue(ctx, sc, IssueConfirmation{JobID: j.ID, ReservationRef: res.Ref, SHA256: sum, Pages: result.Pages})
 		if e != nil {
 			return fromProduct(e)
@@ -941,8 +987,6 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		if !validReceipt(res, receipt) {
 			return ErrIntegrity
 		}
-		id := NewID()
-		pub.Artifact = &Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: snap.ExpiresAt, Content: b, SHA256: sum, Issue: j.ID}
 		pub.Issue = &Issue{ID: j.ID, Owner: j.Owner, Number: res.Number, TemplateID: j.TemplateID, TemplateVersion: j.TemplateVersion, TemplateSHA256: j.TemplateSHA256, SnapshotID: snap.ID, SnapshotSHA256: snap.SHA256, RowIndex: j.RowIndex, Group: j.Group.cloned(), ArtifactID: id, SHA256: sum, Pages: result.Pages, Stamp: stamp, IssuedAt: issuedAt,
 			ReservationRef: res.Ref, ConfirmationRef: receipt.Ref, ConfirmedAt: receipt.ConfirmedAt.UTC()}
 	default:
@@ -955,6 +999,22 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		return e
 	}
 	return s.repo.Publish(ctx, claim, pub)
+}
+
+// keep makes the artifact for the file b: inline with the content when no object store is configured, else the file is put in the object
+// store, under the key of the artifact's id, and the artifact carries the key and the length and no content (S04-E). The store's error is
+// not relayed: a job whose file could not be put fails with EXECUTION_FAILED and its text names nothing of the store.
+func (s *Service) keep(ctx context.Context, a Artifact, b []byte) (*Artifact, error) {
+	a.SHA256 = bytesDigest(b)
+	if s.objects == nil {
+		a.Content = b
+		return &a, nil
+	}
+	a.Object, a.Size = ObjectKey(a.ID), len(b)
+	if s.objects.Put(ctx, a.Object, b, a.SHA256) != nil {
+		return nil, errObjectStored
+	}
+	return &a, nil
 }
 func (s *Service) encodeCursor(snap Snapshot, start int) string {
 	payload := snap.ID + ":" + Digest(snap.Owner) + ":" + snap.Prepared.QueryHash + ":" + strconv.Itoa(start)

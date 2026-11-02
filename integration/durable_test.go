@@ -43,10 +43,13 @@ func durableService(t *testing.T, repo r.Repository, source r.Adapter, tenants .
 	}
 	return s
 }
-func newDurable(t *testing.T) durableEnv {
+func newDurable(t *testing.T) durableEnv { return newDurableOpts(t) }
+
+// newDurableOpts is newDurable with options for the store (the object store of S04-E).
+func newDurableOpts(t *testing.T, opts ...postgres.Option) durableEnv {
 	t.Helper()
 	ctx := context.Background()
-	repo, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), true)
+	repo, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), true, opts...)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -637,4 +640,5 @@ func TestDurablePostgresContract(t *testing.T) {
 		}
 	})
 	t.Run("quotas", durableQuotas)
+	t.Run("object_storage", durableObjectStorage)
 }
