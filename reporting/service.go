@@ -221,6 +221,11 @@ func (s *Service) SubmitSnapshot(ctx context.Context, p Principal, q QuerySpec, 
 	if e != nil {
 		return JobView{}, e
 	}
+	if j.Reduced {
+		// The key names a job whose read has expired and been cleared (S04-B): a replay of an expired job is denied before its payload is
+		// cleared (current, below, fails on the expiry), and it is after.
+		return JobView{}, ErrDenied
+	}
 	if e = s.current(ctx, j.Owner, j.Query, j.Prepared); e != nil {
 		return JobView{}, e
 	}
@@ -338,6 +343,30 @@ func issueSummary(j Job) *IssueSummary {
 	row := j.RowIndex
 	s.RowIndex = &row
 	return s
+}
+
+// expired says whether a finished job's results are over: its source read has expired by the service's clock, or retention cleared its
+// frozen read. A queued or running job is never expired in this sense (its read decides its fate when a worker meets it).
+func (s *Service) expired(j Job) bool {
+	return Terminal(j.State) && (j.Reduced || !s.now().Before(j.Prepared.ExpiresAt))
+}
+
+// expiredView is the view of a finished job past its expiry: Expired is true for a job that succeeded, whose snapshot and artifact are
+// no longer served (and, after the grace period, no longer stored). The ids stay: they are the audit of what the job produced.
+func (s *Service) expiredView(ctx context.Context, p Principal, j Job) (JobView, error) {
+	out := view(j)
+	if j.State != "succeeded" {
+		return out, nil
+	}
+	out.Expired = true
+	if j.Kind == "issue" {
+		rec, e := s.issueView(ctx, p, j)
+		if e != nil {
+			return JobView{}, e
+		}
+		out.Issue.Number = rec.Number
+	}
+	return out, nil
 }
 
 // jobView is how an issue job is shown wherever it is shown: the admission and its replay, the
@@ -502,7 +531,18 @@ func (s *Service) issueView(ctx context.Context, p Principal, j Job) (IssueView,
 	v.Number = rec.Number
 	v.ArtifactID, v.SnapshotSHA256, v.SHA256, v.Pages, v.Stamp, v.IssuedAt = rec.ArtifactID, rec.SnapshotSHA256, rec.SHA256, rec.Pages, rec.Stamp, rec.IssuedAt.UTC().Format(time.RFC3339)
 	v.ReservationRef, v.ConfirmationRef, v.ConfirmedAt = rec.ReservationRef, rec.ConfirmationRef, rec.ConfirmedAt.UTC().Format(time.RFC3339)
+	v.Expired = s.expired(j)
 	return v, nil
+}
+
+// Sweep is the retention of S04-B: it deletes the expired artifacts, then snapshots, once the grace period has passed by the store's
+// clock, and reduces the payload of the finished jobs whose results are gone. See SweepOptions and Repository.Sweep. It returns counts only.
+func (s *Service) Sweep(ctx context.Context, o SweepOptions) (SweepResult, error) {
+	o, e := o.Resolved()
+	if e != nil {
+		return SweepResult{}, e
+	}
+	return s.repo.Sweep(ctx, o)
 }
 func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, error) {
 	if !p.Identity.Valid() || !validID(id) {
@@ -514,6 +554,12 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 	}
 	if _, _, e = s.source(p, j.Owner.Integration); e != nil {
 		return JobView{}, e
+	}
+	if s.expired(j) {
+		// A finished job whose source read has expired, or whose frozen read was cleared (S04-B), no longer discloses anything: there
+		// is no result to authorize, so it is not asked of the source, and the view says what is left: the job's own state, its ids,
+		// its code, and, for an issue, the number its permanent record holds.
+		return s.expiredView(ctx, p, j)
 	}
 	if e = s.current(ctx, j.Owner, j.Query, j.Prepared); e != nil {
 		return JobView{}, e

@@ -15,13 +15,15 @@ import (
 	"time"
 )
 
-// catalog is a textual snapshot of the platform schema: tables, columns, constraints, indexes.
+// catalog is a textual snapshot of the platform schema: tables, columns, constraints, indexes. A column's position is its rank among the
+// columns the table has, not its attribute number: a column dropped by a down step (005's) leaves a hole in the numbers, which an up step
+// does not fill, and the schema is still the same.
 func catalog(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	ctx := context.Background()
 	var out strings.Builder
 	rows, e := pool.Query(ctx, `SELECT c.relname, a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod), CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END,
-coalesce(pg_get_expr(d.adbin, d.adrelid), ''), a.attnum
+coalesce(pg_get_expr(d.adbin, d.adrelid), ''), row_number() OVER (PARTITION BY c.relname ORDER BY a.attnum)
 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
 WHERE n.nspname='reporting_s01' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname, a.attnum`)
 	if e != nil {
@@ -83,7 +85,7 @@ func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	admin := fixtureAdmin(t)
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 4 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" {
+	if e != nil || len(known) != 6 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	t.Run("round_trip_reproduces_the_catalog_exactly", func(t *testing.T) {
@@ -98,23 +100,26 @@ func TestPostgresMigrations(t *testing.T) {
 		if !strings.Contains(first, "constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))") || strings.Contains(first, "issue_numbers") || !strings.Contains(first, "column schema_migrations.checksum") {
 			t.Fatalf("unexpected catalog:\n%s", first)
 		}
-		// The catalogs of the latest version (4) and of version 3 are committed: a later edit of an
+		// The catalogs of the latest version (6), of 5, 4 and 3 are committed: a later edit of an
 		// earlier migration file (which the checksums would also flag) changes a fresh database and
 		// fails here.
 		if os.Getenv("REPORTING_WRITE_CATALOG") == "1" { // after a reviewed migration change only
-			if e := os.WriteFile("testdata/catalog_004.txt", []byte(first), 0o644); e != nil {
+			if e := os.WriteFile("testdata/catalog_006.txt", []byte(first), 0o644); e != nil {
 				t.Fatal(e)
 			}
 		}
-		want, e := os.ReadFile("testdata/catalog_004.txt")
+		want, e := os.ReadFile("testdata/catalog_006.txt")
 		if e != nil {
 			t.Fatal(e)
 		}
 		if string(want) != first {
-			t.Fatalf("the catalog differs from testdata/catalog_004.txt:\n%s", first)
+			t.Fatalf("the catalog differs from testdata/catalog_006.txt:\n%s", first)
+		}
+		if !strings.Contains(first, "column assets.expires_at") || !strings.Contains(first, "index assets assets_expires_at") || !strings.Contains(first, "column sweeps.artifacts") {
+			t.Fatalf("the retention schema (005, 006) is not in the catalog:\n%s", first)
 		}
 		st, e := postgres.Status(ctx, admin)
-		if e != nil || st.Current() != 4 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
+		if e != nil || st.Current() != 6 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
 			t.Fatalf("%+v %v", st, e)
 		}
 		for _, a := range st.Applied {
@@ -144,6 +149,23 @@ func TestPostgresMigrations(t *testing.T) {
 		}
 		if e := postgres.Verify(ctx, admin, postgres.ProfileFixture); e != nil {
 			t.Fatal(e)
+		}
+		// Versions 5 and 4 are committed too: each down gives back exactly the catalog it left, 006 the schema without the ledger
+		// of the sweeps, 005 the schema without the expiry column and its index.
+		for _, v := range []int{5, 4} {
+			if e := postgres.Down(ctx, admin, v, "test", false); e != nil {
+				t.Fatal(v, "down with no rows to lose needs no acceptance:", e)
+			}
+			name := fmt.Sprintf("testdata/catalog_%03d.txt", v)
+			at := catalog(t, admin)
+			if os.Getenv("REPORTING_WRITE_CATALOG") == "1" {
+				if e := os.WriteFile(name, []byte(at), 0o644); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if want, e := os.ReadFile(name); e != nil || string(want) != at {
+				t.Fatalf("the catalog at version %d differs from %s (%v):\n%s", v, name, e, at)
+			}
 		}
 		// Version 3 is where S03-G left the schema, and its catalog is committed as well: 004 down
 		// must give it back exactly, the counters table as 003 created it, empty, and 004 up must
@@ -308,11 +330,11 @@ func TestPostgresMigrations(t *testing.T) {
 		// binary does not know, a gap, a profile at another version.
 		for _, c := range []struct{ name, tamper, restore, reason string }{
 			{"checksum", "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=2", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[1].Checksum + "' WHERE version=2", "version 2 was applied from a different file"},
-			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(5,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=5", "version 5 was applied by a newer binary"},
+			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(7,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=7", "version 7 was applied by a newer binary"},
 			{"gap", "DELETE FROM reporting_s01.schema_migrations WHERE version=2", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(2,'payload_digests','" + known[1].Checksum + "','test')", "gap before version 3"},
 			{"other name", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET name='issues' WHERE version=3", "under another name"},
 			{"fake legacy", "UPDATE reporting_s01.schema_migrations SET checksum='legacy' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[2].Checksum + "' WHERE version=3", "claims to be a legacy row"},
-			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=4", "profile says version 2"},
+			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=6", "profile says version 2"},
 			{"other name of 004", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=4", "UPDATE reporting_s01.schema_migrations SET name='source_confirmed_issue' WHERE version=4", "under another name"},
 		} {
 			before := catalog(t, admin)
@@ -442,9 +464,9 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&rows); e != nil || rows != 0 {
 			t.Fatal(rows, e)
 		}
-		want4, e := os.ReadFile("testdata/catalog_004.txt")
-		if e != nil || string(want4) != catalog(t, admin) {
-			t.Fatalf("the catalog after the remedy differs from testdata/catalog_004.txt (%v)", e)
+		want6, e := os.ReadFile("testdata/catalog_006.txt")
+		if e != nil || string(want6) != catalog(t, admin) {
+			t.Fatalf("the catalog after the remedy differs from testdata/catalog_006.txt (%v)", e)
 		}
 		// Documents numbered by a source product (S03-H) do not block it: they are what the
 		// migration leaves in place; and with them the migrator refuses nothing on the way up again.
@@ -452,9 +474,126 @@ func TestPostgresMigrations(t *testing.T) {
 			t.Fatal(e)
 		}
 	})
+	// S04-B, migrations 005 and 006: the expiry column is backfilled from the payload and never refuses to run; the down step keeps every
+	// row as it was; the ledger of the sweeps is audit, and its down step is refused while it has rows.
+	t.Run("retention_steps_backfill_the_expiry_never_refuse_and_roll_back_without_loss", func(t *testing.T) {
+		dropSchema(t, admin)
+		if e := postgres.Up(ctx, admin, 4, "test"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.InitProfile(ctx, admin, postgres.ProfileFixture); e != nil {
+			t.Fatal(e)
+		}
+		at4 := catalog(t, admin)
+		// The expiries as the store wrote them (Go's RFC 3339 text, with up to nine fractional digits and any zone) and what a payload can
+		// be besides: no expiry, text that is not a time, a time that looks like one and is not, a number, and a payload that is no object.
+		type row struct{ id, kind, data, want string }
+		good := []row{
+			{"s1", "snapshot", `{"ExpiresAt":"2026-10-28T06:13:33.123456789Z"}`, "2026-10-28 06:13:33.123456+00"},
+			{"s2", "snapshot", `{"ExpiresAt":"2026-10-28T06:13:33Z"}`, "2026-10-28 06:13:33+00"},
+			{"a1", "artifact", `{"SnapshotID":"s1","ExpiresAt":"2026-10-28T14:13:33.5+08:00"}`, "2026-10-28 06:13:33.5+00"},
+			{"a2", "artifact", `{"SnapshotID":"s2","ExpiresAt":"2026-10-28T06:13:33.9999999Z"}`, "2026-10-28 06:13:33.999999+00"}, // cut, not rounded: the store's driver truncates
+			{"s0", "snapshot", `{"ExpiresAt":"0001-01-01T00:00:00Z"}`, "0001-01-01 00:00:00+00"},
+		}
+		bad := []row{
+			{"b1", "snapshot", `{"ID":"b1"}`, ""},
+			{"b2", "snapshot", `{"ExpiresAt":"not a time"}`, ""},
+			{"b3", "artifact", `{"ExpiresAt":17}`, ""},
+			{"b4", "snapshot", `[]`, ""},
+			{"b5", "issue", `{"ExpiresAt":"2026-10-28T06:13:33Z"}`, ""}, // a record never expires, whatever its payload says
+		}
+		insert := func(rows ...row) {
+			t.Helper()
+			for _, v := range rows {
+				if _, e := admin.Exec(ctx, `INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES($1,'t','i','x','y',$2,$3::jsonb,encode(sha256(convert_to($3::jsonb::text,'UTF8')),'hex'))`, v.id, v.kind, v.data); e != nil {
+					t.Fatal(e)
+				}
+			}
+		}
+		payloads := func() string {
+			t.Helper()
+			var out string
+			if e := admin.QueryRow(ctx, `SELECT coalesce(string_agg(id||data::text||data_sha256||created_at::text, '|' ORDER BY id),'') FROM reporting_s01.assets`).Scan(&out); e != nil {
+				t.Fatal(e)
+			}
+			return out
+		}
+		check := func(rows ...row) {
+			t.Helper()
+			for _, v := range rows {
+				var got *string
+				if e := admin.QueryRow(ctx, `SELECT expires_at::text FROM reporting_s01.assets WHERE id=$1`, v.id).Scan(&got); e != nil {
+					t.Fatal(e)
+				}
+				if v.want == "" && got != nil || v.want != "" && (got == nil || *got != v.want) {
+					t.Fatalf("%s %s: expires_at %v, want %q", v.id, v.data, got, v.want)
+				}
+			}
+		}
+		// Valid expiries alone: the set-based step does it. With a time that looks like one and is not, the step falls back to the rows one
+		// by one: the others are still backfilled, the bad one stays NULL, and neither refuses the migration.
+		for round, extra := range [][]row{nil, {{"b6", "snapshot", `{"ExpiresAt":"2026-02-30T00:00:00Z"}`, ""}, {"b7", "artifact", `{"ExpiresAt":"2026-13-01T00:00:00Z"}`, ""}}} {
+			if round == 1 {
+				if e := postgres.Down(ctx, admin, 4, "test", false); e != nil {
+					t.Fatal("005 down loses nothing and needs no acceptance:", e)
+				}
+			}
+			insert(good...)
+			insert(bad...)
+			insert(extra...)
+			before := payloads()
+			if e := postgres.Up(ctx, admin, 5, "test"); e != nil {
+				t.Fatalf("005 up was refused or failed with rows it cannot read (round %d): %v", round, e)
+			}
+			check(good...)
+			check(bad...)
+			check(extra...)
+			if payloads() != before {
+				t.Fatal("005 up changed a payload, a digest or a row's time of creation")
+			}
+			if e := postgres.Down(ctx, admin, 4, "test", false); e != nil {
+				t.Fatal("005 down loses nothing and needs no acceptance:", e)
+			}
+			if payloads() != before || catalog(t, admin) != at4 {
+				t.Fatal("005 down changed the rows or did not give back the catalog of version 4")
+			}
+			if _, e := admin.Exec(ctx, "TRUNCATE reporting_s01.assets"); e != nil {
+				t.Fatal(e)
+			}
+		}
+		// The index is there for the sweep, and the sweeps ledger (006) is audit: its down step is refused while it has rows.
+		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+			t.Fatal(e)
+		}
+		var indexed bool
+		if e := admin.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='reporting_s01' AND tablename='assets' AND indexdef LIKE '%(expires_at)')`).Scan(&indexed); e != nil || !indexed {
+			t.Fatal("no index on assets(expires_at)", e)
+		}
+		if _, e := admin.Exec(ctx, "INSERT INTO reporting_s01.sweeps(dry_run,complete,grace_seconds,batch,artifacts,snapshots,jobs,batches) VALUES(false,true,86400,500,1,2,3,4)"); e != nil {
+			t.Fatal(e)
+		}
+		if e := postgres.Down(ctx, admin, 5, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 rows of the sweeps ledger") || !strings.Contains(e.Error(), "--accept-data-loss") {
+			t.Fatal("006 down with a ledger row accepted", e)
+		}
+		if st := must(postgres.Status(ctx, admin)); st.Current() != 6 {
+			t.Fatal("a refused step moved the ledger", st.Current())
+		}
+		if e := postgres.Down(ctx, admin, 5, "test", true); e != nil {
+			t.Fatal(e)
+		}
+		if want5, e := os.ReadFile("testdata/catalog_005.txt"); e != nil || string(want5) != catalog(t, admin) {
+			t.Fatalf("006 down did not give back the catalog of version 5 (%v)", e)
+		}
+		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+			t.Fatal(e)
+		}
+		if want6, e := os.ReadFile("testdata/catalog_006.txt"); e != nil || string(want6) != catalog(t, admin) {
+			t.Fatalf("the catalog after the round trip differs from testdata/catalog_006.txt (%v)", e)
+		}
+	})
 	t.Run("concurrent_migrators_serialize_on_the_lock", func(t *testing.T) {
 		// Several rounds on a pool whose connections have seen the schema absent (a negative
-		// catalog cache entry): every migrator must end at version 4 with one ledger.
+		// catalog cache entry): every migrator must end at version 6 with one ledger.
 		const n = 6
 		for round := range 5 {
 			dropSchema(t, admin)
@@ -480,7 +619,7 @@ func TestPostgresMigrations(t *testing.T) {
 				}
 			}
 			st := must(postgres.Status(ctx, admin))
-			if st.Current() != 4 || len(st.Applied) != 4 || len(st.Problems) != 0 {
+			if st.Current() != 6 || len(st.Applied) != 6 || len(st.Problems) != 0 {
 				t.Fatalf("round %d: %+v", round, st)
 			}
 		}
@@ -515,14 +654,15 @@ func TestPostgresMigrations(t *testing.T) {
 	t.Run("legacy_database_without_a_ledger_is_bootstrapped", func(t *testing.T) {
 		// A database at profile version 2 made before S04-A: no ledger, no issue tables (the
 		// counters table that 003 made is not there at the latest version either).
-		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.schema_migrations;
+		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+DROP TABLE reporting_s01.schema_migrations;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check; ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));
 ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check; ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));
 UPDATE reporting_s01.profile SET version=2`); e != nil {
 			t.Fatal(e)
 		}
 		st := must(postgres.Status(ctx, admin))
-		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 2 || len(st.Problems) != 0 {
+		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 4 || len(st.Problems) != 0 {
 			t.Fatalf("%+v", st)
 		}
 		if _, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false); !errors.Is(e, r.ErrDenied) {
@@ -534,13 +674,14 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 4 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum {
+		if st.Legacy || st.Current() != 6 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum {
 			t.Fatalf("%+v", st)
 		}
 		// The realistic pre-S04-A database: the old fixture at version 3 (S03-G's, with its counters
 		// table) without a ledger. The server refuses it for the right reason; initialising records
 		// three legacy rows and applies 004.
-		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.schema_migrations;
+		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+DROP TABLE reporting_s01.schema_migrations;
 CREATE TABLE reporting_s01.issue_numbers (
   tenant text NOT NULL, integration text NOT NULL, last bigint NOT NULL CHECK(last >= 0),
   PRIMARY KEY(tenant,integration)
@@ -557,11 +698,11 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 4 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
+		if st.Legacy || st.Current() != 6 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
 			t.Fatalf("%+v", st)
 		}
-		if want4, e := os.ReadFile("testdata/catalog_004.txt"); e != nil || string(want4) != catalog(t, admin) {
-			t.Fatalf("the bootstrapped database does not have the catalog of version 4 (%v)", e)
+		if want6, e := os.ReadFile("testdata/catalog_006.txt"); e != nil || string(want6) != catalog(t, admin) {
+			t.Fatalf("the bootstrapped database does not have the catalog of version 6 (%v)", e)
 		}
 		// A production store is never a bootstrap: those rows are refused there.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile='"+postgres.ProfileProduction+"'"); e != nil {
@@ -834,13 +975,22 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		if e := admin.QueryRow(ctx, "SELECT has_table_privilege('reporting_app_t','reporting_s01.issue_numbers','INSERT') AND has_table_privilege('reporting_app_t','reporting_s01.issue_numbers','UPDATE') AND NOT has_table_privilege('reporting_app_t','reporting_s01.issue_numbers','DELETE')").Scan(&counters); e != nil || !counters {
 			t.Fatal("the application role cannot write the counters table at version 3, or can delete from it", counters, e)
 		}
-		// At the latest version the table is gone, and the role check does not miss it.
+		// At the latest version the table is gone, and the role check does not miss it. The sweeps ledger (006) was created here by
+		// the superuser, not by the migrator whose default privileges would have given the application role SELECT: the role check says so
+		// until roles is run, which is the documented rule for every up that creates a table.
 		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+			t.Fatal(e)
+		}
+		if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) == 0 || !strings.Contains(strings.Join(problems, ";"), "no SELECT on sweeps") {
+			t.Fatal("a sweeps ledger outside the grants passed", problems, e)
+		}
+		if e := postgres.Grants(ctx, admin, "reporting_migrator_t", "reporting_app_t"); e != nil {
 			t.Fatal(e)
 		}
 		if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) != 0 {
 			t.Fatal("a store at the latest version reports problems for the missing counters table", problems, e)
 		}
+		retentionRoles(t, admin, appPool, appDSN)
 		// The whole platform contract passes as the application role on the production path
 		// (the test-only option lifts TLS and the fixture name; the profile row is production
 		// for the duration).
@@ -887,6 +1037,21 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		if c, e := s.Cancel(ctx, v.p, j.ID); e != nil || c.State != "succeeded" {
 			t.Fatal(c, e)
 		}
+		// The application role never deletes (A3): the sweep it is asked for is refused before anything is touched, with the way out,
+		// and a dry run too, which needs to write the ledger; the data is as it was.
+		var before int
+		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.assets)+(SELECT count(*) FROM reporting_s01.jobs)+(SELECT count(*) FROM reporting_s01.sweeps)").Scan(&before); e != nil {
+			t.Fatal(e)
+		}
+		for _, dry := range []bool{false, true} {
+			if res, e := s.Sweep(ctx, r.SweepOptions{DryRun: dry}); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "the application role never deletes") || res.Artifacts+res.Snapshots+res.Jobs != 0 {
+				t.Fatal("the application role swept:", dry, res, e)
+			}
+		}
+		var after int
+		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.assets)+(SELECT count(*) FROM reporting_s01.jobs)+(SELECT count(*) FROM reporting_s01.sweeps)").Scan(&after); e != nil || after != before {
+			t.Fatal("a refused sweep changed the store", before, after, e)
+		}
 		// With the fixture profile row back, the production path refuses the database.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile=$1", postgres.ProfileFixture); e != nil {
 			t.Fatal(e)
@@ -920,6 +1085,127 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 	}
 	if e := postgres.InitProfile(ctx, admin, postgres.ProfileFixture); e != nil {
 		t.Fatal(e)
+	}
+}
+
+// retentionRoles qualifies the sweep role of S04-B on the roles of the migration qualification: it is the one role that deletes, and exactly
+// that; the application role keeps no DELETE; the migrator can sweep too.
+func retentionRoles(t *testing.T, admin, appPool *pgxpool.Pool, appDSN string) {
+	t.Helper()
+	ctx := context.Background()
+	const role = "reporting_sweep_t"
+	if _, e := admin.Exec(ctx, "DROP OWNED BY "+role+"; DROP ROLE IF EXISTS "+role); e != nil && !strings.Contains(e.Error(), "does not exist") {
+		t.Fatal(e)
+	}
+	if _, e := admin.Exec(ctx, "CREATE ROLE "+role+" LOGIN"); e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP OWNED BY "+role+"; DROP ROLE IF EXISTS "+role)
+	})
+	for _, bad := range [][3]string{{"reporting_migrator_t", "reporting_app_t", "reporting_app_t"}, {"reporting_migrator_t", "reporting_app_t", "reporting_migrator_t"}, {"reporting_migrator_t", "reporting_app_t", "Robert'; DROP"}, {"reporting_migrator_t", "reporting_app_t", ""}} {
+		if e := postgres.GrantSweeper(ctx, admin, bad[0], bad[1], bad[2]); !errors.Is(e, r.ErrInvalid) {
+			t.Fatal("the sweep role must be a third role with a plain name:", bad, e)
+		}
+	}
+	if e := postgres.GrantSweeper(ctx, admin, "reporting_migrator_t", "reporting_app_t", role); e != nil {
+		t.Fatal(e)
+	}
+	if e := postgres.GrantSweeper(ctx, admin, "reporting_migrator_t", "reporting_app_t", role); e != nil {
+		t.Fatal("the sweep role's grants are not idempotent", e)
+	}
+	sweepDSN := strings.Replace(os.Getenv("REPORTING_S01_TEST_DSN"), "postgres@", role+"@", 1)
+	sweepPool, e := pgxpool.New(ctx, sweepDSN)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer sweepPool.Close()
+	if problems, e := postgres.SweeperProblems(ctx, sweepPool); e != nil || len(problems) != 0 {
+		t.Fatalf("the sweep role has problems: %v %v", problems, e)
+	}
+	// Each role is judged by its own rules: the sweep role is not the application role (it deletes, it cannot write jobs), the application
+	// role is not the sweep role, the superuser is neither, and granting the sweep role changed nothing for the application role.
+	if problems, e := postgres.RoleProblems(ctx, sweepPool); e != nil || !strings.Contains(strings.Join(problems, ";"), "DELETE or TRUNCATE on assets") || !strings.Contains(strings.Join(problems, ";"), "no INSERT and UPDATE on jobs") {
+		t.Fatal("the sweep role passes as the application role", problems, e)
+	}
+	if problems, e := postgres.SweeperProblems(ctx, appPool); e != nil || !strings.Contains(strings.Join(problems, ";"), "no DELETE on assets") || !strings.Contains(strings.Join(problems, ";"), "no INSERT on sweeps") || !strings.Contains(strings.Join(problems, ";"), "INSERT or UPDATE on assets") || !strings.Contains(strings.Join(problems, ";"), "INSERT or UPDATE on jobs") {
+		t.Fatal("the application role passes as the sweep role", problems, e)
+	}
+	if problems, e := postgres.SweeperProblems(ctx, admin); e != nil || !strings.Contains(strings.Join(problems, ";"), "superuser") {
+		t.Fatal("the superuser passes as the sweep role", problems, e)
+	}
+	if problems, e := postgres.RoleProblems(ctx, appPool); e != nil || len(problems) != 0 {
+		t.Fatal("granting the sweep role changed the application role", problems, e)
+	}
+	var appDeletes bool
+	if e := admin.QueryRow(ctx, "SELECT has_table_privilege('reporting_app_t','reporting_s01.assets','DELETE') OR has_table_privilege('reporting_app_t','reporting_s01.jobs','DELETE') OR has_table_privilege('reporting_app_t','reporting_s01.sweeps','INSERT')").Scan(&appDeletes); e != nil || appDeletes {
+		t.Fatal("the application role can delete or write the ledger", e)
+	}
+	// What the sweep role can do, and what it cannot, tried: it deletes assets, updates jobs and writes the ledger; it cannot insert an
+	// asset or a job, delete a job or a ledger row, truncate, alter, or rewrite the ledger of the migrations. (It can delete an issue
+	// record at the privilege level: the table-level DELETE does not see the kind. What keeps the sweep from it is the sweep's own SQL,
+	// which names the kinds, and the tests of it.)
+	for name, c := range map[string]struct {
+		sql string
+		ok  bool
+	}{
+		"delete an asset":            {"DELETE FROM reporting_s01.assets WHERE id='nothing'", true},
+		"update a job":               {"UPDATE reporting_s01.jobs SET error_code=error_code WHERE id='nothing'", true},
+		"write the ledger":           {"INSERT INTO reporting_s01.sweeps(dry_run,complete,grace_seconds,batch,artifacts,snapshots,jobs,batches) VALUES(true,true,1,1,0,0,0,0)", true},
+		"read the ledger":            {"SELECT count(*) FROM reporting_s01.sweeps", true},
+		"insert an asset":            {"INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES('x','x','x','x','x','snapshot','{}','x')", false},
+		"update an asset":            {"UPDATE reporting_s01.assets SET kind=kind WHERE id='nothing'", true}, // PostgreSQL requires it for the row locks of FOR UPDATE SKIP LOCKED
+		"insert a job":               {"INSERT INTO reporting_s01.jobs(id,tenant,integration,issuer,subject,kind,state,idem_key,request_hash,source_expires_at,data,data_sha256) VALUES('x','x','x','x','x','snapshot','queued','x','x',now(),'{}','x')", false},
+		"delete a job":               {"DELETE FROM reporting_s01.jobs WHERE id='nothing'", false},
+		"delete a ledger row":        {"DELETE FROM reporting_s01.sweeps", false},
+		"update the ledger":          {"UPDATE reporting_s01.sweeps SET batches=0", false},
+		"truncate":                   {"TRUNCATE reporting_s01.assets", false},
+		"drop":                       {"DROP TABLE reporting_s01.assets", false},
+		"alter":                      {"ALTER TABLE reporting_s01.assets ADD COLUMN x int", false},
+		"write the migration ledger": {"DELETE FROM reporting_s01.schema_migrations", false},
+		"write the profile":          {"UPDATE reporting_s01.profile SET version=9", false},
+	} {
+		_, e := sweepPool.Exec(ctx, c.sql)
+		denied := e != nil && (strings.Contains(e.Error(), "permission denied") || strings.Contains(e.Error(), "must be owner"))
+		if c.ok && e != nil || !c.ok && !denied {
+			t.Errorf("the sweep role, %s: %v (allowed: %v)", name, e, c.ok)
+		}
+	}
+	// A sweep on this role needs no more, and a sweep as the sweep role against an empty store counts nothing and leaves its ledger row.
+	res, e := postgres.Sweep(ctx, sweepPool, r.SweepOptions{})
+	if e != nil || res.Artifacts+res.Snapshots+res.Jobs != 0 {
+		t.Fatal("the sweep role cannot sweep", res, e)
+	}
+	// The migrator, which owns the tables, sweeps without the role.
+	migPool, e := pgxpool.New(ctx, strings.Replace(os.Getenv("REPORTING_S01_TEST_DSN"), "postgres@", "reporting_migrator_t@", 1))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer migPool.Close()
+	if _, e := postgres.Sweep(ctx, migPool, r.SweepOptions{DryRun: true}); e != nil {
+		t.Fatal("the migrator cannot sweep", e)
+	}
+	// The application role cannot, even on a dry run, which writes the ledger.
+	for _, dry := range []bool{false, true} {
+		if _, e := postgres.Sweep(ctx, appPool, r.SweepOptions{DryRun: dry}); !errors.Is(e, r.ErrDenied) {
+			t.Fatal("the application role swept", dry, e)
+		}
+	}
+	// roles repairs a sweep role whose table was created later: a ledger it cannot write is a problem until roles is run again.
+	if _, e := admin.Exec(ctx, "REVOKE INSERT ON reporting_s01.sweeps FROM "+role); e != nil {
+		t.Fatal(e)
+	}
+	if problems, e := postgres.SweeperProblems(ctx, sweepPool); e != nil || len(problems) != 1 || problems[0] != "no INSERT on sweeps" {
+		t.Fatal(problems, e)
+	}
+	if _, e := postgres.Sweep(ctx, sweepPool, r.SweepOptions{}); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "INSERT on sweeps") {
+		t.Fatal("a sweep without the ledger ran", e)
+	}
+	if e := postgres.GrantSweeper(ctx, admin, "reporting_migrator_t", "reporting_app_t", role); e != nil {
+		t.Fatal(e)
+	}
+	if problems, e := postgres.SweeperProblems(ctx, sweepPool); e != nil || len(problems) != 0 {
+		t.Fatal("grants did not repair the sweep role", problems, e)
 	}
 }
 

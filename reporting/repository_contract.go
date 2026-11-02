@@ -93,7 +93,7 @@ func inProductYears(t time.Time) bool {
 func ValidProductTime(t time.Time) bool { return inProductYears(t) && t.Equal(t.Truncate(time.Second)) }
 
 func ValidateAdmission(j Job) error {
-	if !validID(j.ID) || !j.Owner.Identity.Valid() || j.Owner.Integration == "" || !validKey(j.Key) || j.State != "queued" || j.Generation != 0 || j.RequestHash == "" || j.Prepared.Context.Owner != j.Owner || j.Prepared.QueryHash != QueryHash(j.Query) {
+	if !validID(j.ID) || !j.Owner.Identity.Valid() || j.Owner.Integration == "" || !validKey(j.Key) || j.State != "queued" || j.Generation != 0 || j.RequestHash == "" || j.Prepared.Context.Owner != j.Owner || j.Prepared.QueryHash != QueryHash(j.Query) || j.Reduced {
 		return ErrInvalid
 	}
 	switch j.Kind {

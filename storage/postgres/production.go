@@ -60,20 +60,71 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig) (*Store, error) {
 	return &Store{pool: pool}, nil
 }
 
-// dataTables are the tables the application role reads and writes; the ledger and the profile
-// it only reads. issue_numbers, S03-G's counters, exists at version 3 only (004 drops it): where
-// it exists it is a data table, and the schemas older than the latest stay serviceable by roles.
+// dataTables are the tables the application role reads and writes; the ledger, the profile and the sweeps ledger (S04-B) it only reads.
+// issue_numbers, S03-G's counters, exists at version 3 only (004 drops it): where it exists it is a data table, and the schemas older than
+// the latest stay serviceable by roles. sweeps exists from version 6.
 var dataTables = []string{"jobs", "assets", "issue_numbers"}
-var readTables = []string{"profile", "schema_migrations"}
+var readTables = []string{"profile", "schema_migrations", "sweeps"}
 
-// requiredTables are the tables a store at the latest version has; issue_numbers is not one.
+// requiredTables are the tables a store at the latest version has for the application role; issue_numbers is not one, and sweeps is the
+// sweep role's (the application role never writes it and a store older than 006 still serves the rest).
 var requiredTables = []string{"jobs", "assets", "profile", "schema_migrations"}
+
+// A role's rules are what it may do to each table beyond reading it: the application role writes the data tables (INSERT and UPDATE) and
+// never deletes; the sweep role (S04-B) is the one role that deletes, and only from assets, updates the jobs (it reduces their payload)
+// and writes the sweeps ledger. Nothing else for either: no TRUNCATE, no DDL, no ownership. The sweep role holds UPDATE on assets too
+// because PostgreSQL requires it for the row locks (FOR UPDATE SKIP LOCKED) with which concurrent sweeps take different rows.
+type writes struct{ insert, update, delete bool }
+
+type roleRules struct {
+	tables   func(table string) (writes, bool) // what the role may do to the table; false for a table the rules do not know
+	required []string                          // tables a store at the latest version has for this role
+}
+
+var applicationRules = roleRules{
+	tables: func(t string) (writes, bool) {
+		switch {
+		case slices.Contains(dataTables, t):
+			return writes{insert: true, update: true}, true
+		case slices.Contains(readTables, t):
+			return writes{}, true
+		}
+		return writes{}, false
+	},
+	required: requiredTables,
+}
+
+var sweepRules = roleRules{
+	tables: func(t string) (writes, bool) {
+		switch t {
+		case "assets":
+			return writes{update: true, delete: true}, true
+		case "jobs":
+			return writes{update: true}, true
+		case "sweeps":
+			return writes{insert: true}, true
+		}
+		_, known := applicationRules.tables(t)
+		return writes{}, known
+	},
+	required: []string{"jobs", "assets", "profile", "schema_migrations", "sweeps"},
+}
 
 // RoleProblems lists every way the connected role exceeds or lacks the application role's
 // privileges: superuser, role or database creation, RLS bypass, schema ownership or CREATE on
 // the schema, DELETE or TRUNCATE on any table, DDL ownership of any table, or a missing SELECT,
 // INSERT or UPDATE on a data table.
 func RoleProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	return roleProblems(ctx, pool, applicationRules)
+}
+
+// SweeperProblems is RoleProblems for the sweep role of S04-B (reporting-migrate roles --sweep-role): the same attribute, ownership and
+// schema rules, and on the tables UPDATE and DELETE on assets, UPDATE on jobs and INSERT on sweeps, nothing else beyond SELECT.
+func SweeperProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	return roleProblems(ctx, pool, sweepRules)
+}
+
+func roleProblems(ctx context.Context, pool *pgxpool.Pool, rules roleRules) ([]string, error) {
 	var problems []string
 	var super, createRole, createDB, bypassRLS, replication, sameSession, ownsDB, createOnDB bool
 	var memberships int
@@ -127,35 +178,74 @@ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rep
 			problems = append(problems, "column-level privileges on "+name)
 		}
 		seen[name] = true
-		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {
+		want, known := rules.tables(name)
+		if !known {
 			problems = append(problems, "unexpected table "+name)
 		}
 		if owns {
 			problems = append(problems, "owns table "+name)
 		}
-		if del || trunc {
+		if del && !want.delete || trunc {
 			problems = append(problems, "DELETE or TRUNCATE on "+name)
 		}
 		if !sel {
 			problems = append(problems, "no SELECT on "+name)
 		}
-		if slices.Contains(dataTables, name) && (!ins || !upd) {
+		if want.insert && want.update && (!ins || !upd) {
 			problems = append(problems, "no INSERT and UPDATE on "+name)
+		} else {
+			if want.insert && !ins {
+				problems = append(problems, "no INSERT on "+name)
+			}
+			if want.update && !upd {
+				problems = append(problems, "no UPDATE on "+name)
+			}
 		}
-		if slices.Contains(readTables, name) && (ins || upd) {
+		if want.delete && !del {
+			problems = append(problems, "no DELETE on "+name)
+		}
+		if ins && !want.insert || upd && !want.update {
 			problems = append(problems, "INSERT or UPDATE on "+name)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, t := range requiredTables {
+	for _, t := range rules.required {
 		if !seen[t] {
 			problems = append(problems, "table "+t+" is missing")
 		}
 	}
 	slices.Sort(problems)
 	return problems, nil
+}
+
+// tablesToGrant lists the tables of the schema, refusing a schema that holds one the binary does not know: only the tables the binary
+// knows are touched, and every identifier is quoted, so that a table planted in the schema under a name that is SQL is reported, never
+// executed.
+func tablesToGrant(ctx context.Context, tx pgx.Tx) ([]string, error) {
+	rows, err := tx.Query(ctx, "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r' ORDER BY 1")
+	if err != nil {
+		return nil, err
+	}
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {
+			rows.Close()
+			return nil, fmt.Errorf("unexpected table %q in the schema: %w", name, r.ErrIntegrity)
+		}
+		tables = append(tables, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return tables, nil
 }
 
 // Grants gives the two roles exactly the privileges A3 describes: the migrator owns the schema
@@ -174,27 +264,8 @@ func Grants(ctx context.Context, pool *pgxpool.Pool, migrator, app string) error
 	defer rollback(ctx, tx)
 	q := func(name string) string { return pgx.Identifier{name}.Sanitize() }
 	table := func(name string) string { return pgx.Identifier{"reporting_s01", name}.Sanitize() }
-	// Only the tables the binary knows are touched, and every identifier is quoted: a table
-	// planted in the schema under a name that is SQL is reported, never executed.
-	rows, err := tx.Query(ctx, "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r' ORDER BY 1")
+	tables, err := tablesToGrant(ctx, tx)
 	if err != nil {
-		return err
-	}
-	var tables []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			rows.Close()
-			return err
-		}
-		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {
-			rows.Close()
-			return fmt.Errorf("unexpected table %q in the schema: %w", name, r.ErrIntegrity)
-		}
-		tables = append(tables, name)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return err
 	}
 	stmts := []string{"ALTER SCHEMA reporting_s01 OWNER TO " + q(migrator)}
@@ -216,6 +287,51 @@ func Grants(ctx context.Context, pool *pgxpool.Pool, migrator, app string) error
 			stmts = append(stmts, "GRANT INSERT, UPDATE ON "+table(t)+" TO "+q(app))
 		}
 	}
+	return execAll(ctx, tx, stmts)
+}
+
+// GrantSweeper gives the sweep role of S04-B exactly its privileges (see sweepRules): USAGE on the schema, SELECT on every table, UPDATE and
+// DELETE on assets, UPDATE on jobs and INSERT on the sweeps ledger, nothing else. It is the one role that deletes, and the only deletion the
+// platform's roles hold: the application role of A3 keeps no DELETE. The role must exist, be neither the migrator nor the application
+// role, and the tables must already be the migrator's (run Grants first, as the owner or a superuser). It is idempotent. The migrator
+// can sweep without this role; a deployment that keeps the migrator's credentials off its scheduler creates it.
+func GrantSweeper(ctx context.Context, pool *pgxpool.Pool, migrator, app, sweeper string) error {
+	if !validRole(migrator) || !validRole(app) || !validRole(sweeper) || migrator == app || migrator == sweeper || app == sweeper {
+		return r.ErrInvalid
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(ctx, tx)
+	q := func(name string) string { return pgx.Identifier{name}.Sanitize() }
+	table := func(name string) string { return pgx.Identifier{"reporting_s01", name}.Sanitize() }
+	tables, err := tablesToGrant(ctx, tx)
+	if err != nil {
+		return err
+	}
+	stmts := []string{
+		"REVOKE ALL ON SCHEMA reporting_s01 FROM " + q(sweeper),
+		"REVOKE ALL ON ALL TABLES IN SCHEMA reporting_s01 FROM " + q(sweeper),
+		"GRANT USAGE ON SCHEMA reporting_s01 TO " + q(sweeper),
+		"ALTER DEFAULT PRIVILEGES FOR ROLE " + q(migrator) + " IN SCHEMA reporting_s01 REVOKE ALL ON TABLES FROM " + q(sweeper),
+		"ALTER DEFAULT PRIVILEGES FOR ROLE " + q(migrator) + " IN SCHEMA reporting_s01 GRANT SELECT ON TABLES TO " + q(sweeper),
+	}
+	for _, t := range tables {
+		stmts = append(stmts, "GRANT SELECT ON "+table(t)+" TO "+q(sweeper))
+		switch t {
+		case "assets":
+			stmts = append(stmts, "GRANT UPDATE, DELETE ON "+table(t)+" TO "+q(sweeper))
+		case "jobs":
+			stmts = append(stmts, "GRANT UPDATE ON "+table(t)+" TO "+q(sweeper))
+		case "sweeps":
+			stmts = append(stmts, "GRANT INSERT ON "+table(t)+" TO "+q(sweeper))
+		}
+	}
+	return execAll(ctx, tx, stmts)
+}
+
+func execAll(ctx context.Context, tx pgx.Tx, stmts []string) error {
 	for _, s := range stmts {
 		if _, err := tx.Exec(ctx, s); err != nil {
 			return fmt.Errorf("%s: %w", s, err)
@@ -223,6 +339,9 @@ func Grants(ctx context.Context, pool *pgxpool.Pool, migrator, app string) error
 	}
 	return tx.Commit(ctx)
 }
+
+// ValidRole says whether a name is one the roles step accepts: lowercase letters, digits and _, at most 63 characters.
+func ValidRole(name string) bool { return validRole(name) }
 
 func validRole(name string) bool {
 	if name == "" || len(name) > 63 {

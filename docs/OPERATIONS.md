@@ -63,7 +63,7 @@ back exactly the catalog of version 3 (integration/migrate_test.go, integration/
 
 ## Roles
 
-Two roles, created by the DBA with their own login and password policy:
+Two roles, created by the DBA with their own login and password policy, and an optional third for the retention sweep (S04-B, below):
 
 - the migrator role owns the schema and every table and runs `up`, `down` and `roles`; it needs
   `GRANT CREATE ON DATABASE <db> TO <migrator>` for the very first `up` (it creates the schema), nothing after;
@@ -75,6 +75,13 @@ Two roles, created by the DBA with their own login and password policy:
   in effect, not the owner of the database and without CREATE on it (an owner can drop the database and set
   its parameters), no column-level grants anywhere in the schema. The ledger and the profile it only reads.
   Create the database as the DBA or the migrator, never as the application role.
+
+- the sweep role (optional, `roles --sweep-role NAME`) is what the scheduled retention sweep connects as: USAGE on
+  the schema, SELECT on every table, UPDATE and DELETE on `assets` (UPDATE because PostgreSQL requires it for the row
+  locks the sweep takes), UPDATE on `jobs` (it reduces finished payloads), INSERT on the `sweeps` ledger, and every
+  other rule of the application role (no TRUNCATE, no DDL, no ownership, no attributes, no memberships). It is the
+  one role that deletes. Without it the migrator runs the sweep; the server's role never can. `status` reports the
+  connected role against both rule sets (`role:` and `sweeper:`).
 
 `reporting-migrate roles` sets ownership and grants (idempotent) on the tables that exist; the migrator's
 default privileges give the application role SELECT on tables created later, never INSERT or UPDATE. So
@@ -195,6 +202,76 @@ trusted server configuration:
 - The browser evidence is local: `scripts/browser_embed_s03n.mjs` (header of the script: the demo with `-embed-origin`, two static servers of
   `console/embed-host/` on a listed and an unlisted loopback port, and a headless Chrome).
 
+## Retention (S04-B)
+
+What the platform stores of a result lives as long as the source read it was made from, plus a grace period, and is
+then deleted (docs/S04B_SCOPE.md). The rules, each one in the SQL of the batch that acts on it and each one proved by a
+test that fails if the sweep breaks it:
+
+- A snapshot (the frozen business rows) is deleted once its expiry (`assets.expires_at`, the source read's expiry
+  that every download and page already enforces) is older than the grace period by the database's clock
+  (`clock_timestamp()`), never the platform host's. An artifact (XLSX, PDF, an issued PDF) is deleted by the same
+  rule, and never before its snapshot: while the snapshot is held for a later expiry, its artifacts stay.
+- An issue record (`kind='issue'`) is never deleted: it is the permanent record of what was issued (ADR 0003), its
+  `expires_at` is NULL, and the delete statements name the kinds they delete. A row whose expiry could not be read
+  (NULL) is never deleted either.
+- Nothing a queued or running job names is deleted: not the snapshot it reads from, not an artifact of that snapshot.
+- A finished job keeps its row (state, code, ids, times: the audit of what happened). Once its own expiry plus the grace
+  is past and neither its snapshot nor its artifact is stored any more, its payload is reduced: the frozen query, the
+  prepared source read and the columns are cleared, the request hash and the rest stay, the payload is marked
+  `Reduced` and its digest recomputed (only a payload that is a JSON object whose digest matches is rewritten).
+  The frozen template of an issue job stays: it carries no business data.
+- The private stores on disk (layouts, dashboards, templates, backgrounds, images) are configuration, not results,
+  and are not swept.
+
+The sweep (`postgres.Sweep`, `Service.Sweep`) runs artifacts, then snapshots, then job payloads, in batches of at
+most `--batch` rows (default 500, at most 10000), each batch one transaction with `FOR UPDATE SKIP LOCKED` and a lock
+timeout of 10 s: a failed batch changes nothing, concurrent sweeps take different rows, a row a worker, a download or
+a cancel holds is left for the next sweep, and it takes no advisory lock, so it runs beside the workers and refuses
+to wait on a migration. The grace (`--grace`, default 24 h, at most ten years) is a retention period: zero is read as
+the default by the service and refused by the command, and a negative or oversized value is refused, so that a
+slip can only keep data longer, never delete it sooner. The sweep refuses a store whose ledger is not at the binary's
+version and a role that lacks what it needs, before anything is changed. It is idempotent and returns counts only.
+
+Running it: `reporting-migrate sweep [--grace D] [--batch N] [--dry-run]` on `REPORTING_STORE_DSN`, as the sweep
+role or the migrator (the application role has no DELETE and is refused), prints `swept: A artifacts, S snapshots,
+J job payloads reduced (grace, batch, T transactions)` (or `dry run, would sweep: ...`) and exits 0, or prints how far
+it got and exits non-zero. Schedule it (cron, a timer) from a host that holds the sweep role's credentials and never
+the migrator's. The demo runs one in its worker loop every `-sweep-interval` (default 10 minutes, `0` disables it,
+not run with `-pause-workers`) with the default grace and batch, through the fixture's own connection, and logs
+counts only.
+
+Every sweep, dry runs included and cut-short ones too, writes one row to the `sweeps` ledger (migration 006): when,
+dry run or not, complete or not, grace, batch and the four counts. No id of a business resource, no value. `006
+down` drops the ledger and is refused while it has rows unless `--accept-data-loss` is given. Migration 005 adds
+`assets.expires_at` and its index, backfilled from the payload's `ExpiresAt` (cut to microseconds, as the driver
+writes it; the digest is over the payload only, so nothing is re-signed); a payload with no readable expiry gets
+NULL and is never deleted; the step never refuses to run. `005 down` drops the column and the index: the payload still
+holds the expiry, nothing is lost. The store checks the column against the payload whenever it reads a snapshot or an
+artifact (an issue record must have NULL), so the two cannot drift apart unnoticed.
+
+Verifying, per kind (as any role that reads the schema; counts, no values):
+
+```sql
+-- artifacts and snapshots past their grace that are still held: after a sweep only those a queued or running job
+-- names, those whose snapshot is held for a later expiry, and those with no readable expiry
+SELECT kind, count(*) FROM reporting_s01.assets
+ WHERE kind IN ('artifact','snapshot') AND expires_at < clock_timestamp() - interval '24 hours' GROUP BY kind;
+-- issue records: never fewer than before, never with an expiry
+SELECT count(*), count(expires_at) FROM reporting_s01.assets WHERE kind='issue';
+-- finished jobs whose payload was reduced, and finished jobs past their grace that still hold a frozen read
+SELECT count(*) FILTER (WHERE data ? 'Reduced'), count(*) FILTER (WHERE NOT data ? 'Reduced' AND source_expires_at < clock_timestamp() - interval '24 hours')
+  FROM reporting_s01.jobs WHERE state IN ('succeeded','failed','cancelled');
+-- the ledger
+SELECT at, dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches FROM reporting_s01.sweeps ORDER BY at DESC LIMIT 20;
+```
+
+What the views say after a sweep is in docs/API.md ("Retention"): a job keeps its state and ids and says `expired`,
+an issue keeps its record, and what is gone is 404, never a server error or an integrity failure.
+
+Not in this slice: object storage for artifacts, quotas, row-level security, backups, deleting private configuration
+stores, legal holds.
+
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the
@@ -209,4 +286,4 @@ whole lifecycle with and without CREATE on the database, and every forbidden sta
 refused. The two test binaries share the fixture database, so the job runs packages one at a time.
 
 Not covered yet: row-level security (one application role for all tenants; isolation is the service's),
-retention and cleanup, object storage, backups and restore, capacity, key lifecycle.
+object storage, backups and restore, capacity, key lifecycle.

@@ -54,6 +54,37 @@ func openFailure(generic string, e error) error {
 	return errors.New(generic)
 }
 
+// sweeper is what the worker loop sweeps with: the service.
+type sweeper interface {
+	Sweep(context.Context, r.SweepOptions) (r.SweepResult, error)
+}
+
+// sweepLoop runs a retention sweep (S04-B) every interval with the default grace and batch until the context ends. What it logs is counts
+// only: the demo's store is the guarded fixture, whose connection may delete; a server connected as the application role cannot (it
+// has no DELETE) and sweeps through `reporting-migrate sweep` instead. A sweep that fails is logged without its error, which may carry
+// the connection's details, and the next one goes on; the sweeps ledger holds what was done.
+func sweepLoop(ctx context.Context, s sweeper, interval time.Duration, logf func(string, ...any)) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			res, e := s.Sweep(ctx, r.SweepOptions{})
+			if e != nil && ctx.Err() != nil {
+				return
+			}
+			switch {
+			case e != nil:
+				logf("retention sweep stopped; it had deleted %d artifacts and %d snapshots and reduced %d job payloads", res.Artifacts, res.Snapshots, res.Jobs)
+			case res.Artifacts+res.Snapshots+res.Jobs > 0:
+				logf("retention sweep: %d artifacts and %d snapshots deleted, %d job payloads reduced", res.Artifacts, res.Snapshots, res.Jobs)
+			}
+		}
+	}
+}
+
 // embedConfig reads the -embed-origin flags: the origins that may frame the embed pages of an integration, exact (https://host[:port], or
 // http://127.0.0.1:port in this demo). An origin that is not one, or an integration the demo does not have, is an error, so that a typo
 // stops the start instead of silently allowing nothing, or something else.
@@ -76,6 +107,7 @@ func run() error {
 	useMemory := flag.Bool("memory", false, "explicit ephemeral query/job store; loses query/job data on restart")
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
+	sweepInterval := flag.Duration("sweep-interval", 10*time.Minute, "retention sweep (S04-B) every interval in the worker loop: expired artifacts and snapshots are deleted once 24 hours past their expiry; 0 disables it")
 	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
 	dashboardDir := flag.String("dashboard-directory", "", "optional private single-process dashboard directory (0700)")
 	typst := flag.String("pdf-typst", "", "optional pinned Typst binary; with -pdf-typst-sha256 and -pdf-fonts enables PDF export")
@@ -95,6 +127,9 @@ func run() error {
 	host, _, e := net.SplitHostPort(*listen)
 	if e != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return fmt.Errorf("loopback listen address required")
+	}
+	if *sweepInterval < 0 {
+		return fmt.Errorf("-sweep-interval must be 0 (off) or positive")
 	}
 	secret := os.Getenv("REPORTING_DEMO_TOKEN")
 	if len(secret) < 32 {
@@ -280,13 +315,20 @@ func run() error {
 			}
 		}()
 	}
+	if !*pauseWorkers && *sweepInterval > 0 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			sweepLoop(ctx, s, *sweepInterval, log.Printf)
+		}()
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, os.Getpid(), listener.Addr())
+	log.Printf("S01-B CONTRACT SIMULATORS ONLY; memory=%t; paused=%t; pdf=%t; issuance=%t; sweep=%s; pid=%d; listening at http://%s", *useMemory, *pauseWorkers, formats["pdf"] != nil, issuer != nil, *sweepInterval, os.Getpid(), listener.Addr())
 	e = server.Serve(listener)
 	stop()
 	workers.Wait()
