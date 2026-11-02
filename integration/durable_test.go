@@ -516,6 +516,10 @@ func TestDurablePostgresContract(t *testing.T) {
 		mustError(t, e, r.ErrIntegrity)
 	})
 	t.Run("unreadable_job_is_failed_at_its_claim_and_never_claimed_again", durableUnreadableJobs)
+	// The retention of S04-B: the contract both stores meet, and what only the durable store has (the expiry column, the batches as
+	// transactions, the ledger of the sweeps, the sweep's locks).
+	t.Run("retention", func(t *testing.T) { runRetentionContract(t, newRetentionDurable) })
+	t.Run("retention_durable", durableRetention)
 	t.Run("fixture_v1_upgrade_preserves_existing_assets", func(t *testing.T) {
 		v := newDurable(t)
 		j := durableFreeze(t, v, contractsim.FinancialQuery(), "one")
@@ -528,7 +532,7 @@ func TestDurablePostgresContract(t *testing.T) {
 		p := fixtureAdmin(t)
 		// A database made before the ledger existed (S04-A): the profile's version alone says
 		// what was applied; the migrator bootstraps the ledger from it and upgrades.
-		if _, e = p.Exec(ctx, `ALTER TABLE reporting_s01.jobs DROP COLUMN data_sha256;ALTER TABLE reporting_s01.assets DROP COLUMN data_sha256;DROP TABLE reporting_s01.schema_migrations;ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check;ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check;ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));UPDATE reporting_s01.profile SET version=1 WHERE singleton;`); e != nil {
+		if _, e = p.Exec(ctx, `DROP TABLE reporting_s01.sweeps;DROP INDEX reporting_s01.assets_expires_at;ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;ALTER TABLE reporting_s01.jobs DROP COLUMN data_sha256;ALTER TABLE reporting_s01.assets DROP COLUMN data_sha256;DROP TABLE reporting_s01.schema_migrations;ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check;ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check;ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));UPDATE reporting_s01.profile SET version=1 WHERE singleton;`); e != nil {
 			t.Fatal(e)
 		}
 		bad, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false)

@@ -199,6 +199,11 @@ type Job struct {
 	// Group is the row group a schema 2.0 template is issued for (S03-K): frozen at admission in place of the
 	// row, so that RowIndex is 0 for a group job. Nil for a 1.x job.
 	Group *IssueGroup `json:",omitempty"`
+	// Reduced marks a terminal job whose frozen read was cleared by retention (S04-B): its query, its prepared source
+	// read and its columns are gone (no query value survives; the request hash does), and so are the snapshot and the artifact
+	// it named, which keep their ids in the job and its view. The job keeps what its view and the audit need: owner, kind,
+	// key, request hash, ids, format, state, code and, for an issue job, the frozen template and its row or group.
+	Reduced bool `json:",omitempty"`
 }
 
 // Issue is the permanent record of one officially issued document: which template version,
@@ -237,6 +242,10 @@ type JobView struct {
 	ArtifactID string        `json:"artifact_id,omitempty"`
 	ErrorCode  string        `json:"error_code,omitempty"`
 	Issue      *IssueSummary `json:"issue,omitempty"`
+	// Expired is true for a job that succeeded and whose results are no longer served: the source read it was made from
+	// has expired (its snapshot and artifact are not downloadable) and, once the retention grace has passed, they are
+	// deleted (S04-B). State stays the job's own state, the audit of what happened; the ids stay as the job recorded them.
+	Expired bool `json:"expired,omitempty"`
 }
 
 // IssueSummary is what an issue job says about itself before and after it ran. The number is
@@ -281,6 +290,10 @@ type IssueView struct {
 	ReservationRef  string `json:"reservation_ref,omitempty"`
 	ConfirmationRef string `json:"confirmation_ref,omitempty"`
 	ConfirmedAt     string `json:"confirmed_at,omitempty"` // RFC 3339, UTC
+	// Expired is true for an issue that succeeded whose file is no longer served: the snapshot's source read has expired, and
+	// once the retention grace has passed the PDF is deleted (S04-B). The record itself, with the product's number and
+	// references, the file's digest and page count, is permanent and unchanged.
+	Expired bool `json:"expired,omitempty"`
 }
 type Claim struct{ Job Job }
 type Publication struct {
@@ -340,6 +353,10 @@ type IssueResult struct {
 // ErrLease and changes nothing, and a code that is empty or ISSUE_UNRECONCILED itself is
 // ErrInvalid. It needs no lease: a failed job has none.
 //
+// Sweep is the retention of S04-B (docs/S04B_SCOPE.md, SweepOptions): it deletes the artifacts, then the snapshots, whose expiry
+// plus the grace is past by the store's clock, never an issue record, never anything a queued or running job names, then reduces the
+// payload of the terminal jobs whose snapshot and artifact are gone; in bounded batches, each one transaction, and it returns counts only.
+//
 // Claim returns the oldest job that is queued, or running with a lease that has run out, claimed for the lease it is given (the
 // generation one higher), or nil when there is none. A job that cannot be decoded is not claimed: it is failed in the same transaction as
 // its claim, terminally, with UnreadableJobCode, and Claim goes on to the next job, so that nil still means that nothing is claimable.
@@ -355,6 +372,7 @@ type Repository interface {
 	Artifact(context.Context, Identity, string) (Artifact, error)
 	Issue(context.Context, Identity, string) (Issue, error)
 	Issues(context.Context, Identity, []string, int) ([]Job, error)
+	Sweep(context.Context, SweepOptions) (SweepResult, error)
 }
 
 // WorkbookWriter renders a snapshot in one export format. The name predates formats other than

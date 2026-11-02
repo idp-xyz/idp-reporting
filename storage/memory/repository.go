@@ -7,6 +7,7 @@ import (
 	"fmt"
 	r "idp.local/reporting/reporting"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -299,3 +300,138 @@ func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string,
 }
 
 var _ r.Repository = (*Store)(nil)
+
+// Sweep is the retention of S04-B on the model: the same rules as the durable store's, by the store's own clock (the clock New was
+// given stands for the database's). A batch is the time the lock is held; the lock is released between batches, so that a worker, a
+// download or another sweep goes on meanwhile.
+//
+//   - an artifact is deleted once its expiry plus the grace is past, unless a queued or running job names it or its snapshot, or its
+//     snapshot is still held for a later expiry;
+//   - a snapshot, once its expiry plus the grace is past, unless a queued or running job names it;
+//   - an issue record never;
+//   - the payload of a finished job is reduced once its expiry plus the grace is past and neither its snapshot nor its artifact is held.
+func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, error) {
+	o, e := o.Resolved()
+	res := r.SweepResult{DryRun: o.DryRun}
+	if e != nil {
+		return res, e
+	}
+	if e = ctx.Err(); e != nil {
+		return res, e
+	}
+	if o.DryRun {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		c := s.retention(o.Grace)
+		res.Artifacts, res.Snapshots = len(c.artifacts), len(c.snapshots)
+		// What the sweep would delete counts as gone for the jobs, as it would be when the jobs are reached.
+		goneArtifacts, goneSnapshots := map[string]bool{}, map[string]bool{}
+		for _, id := range c.artifacts {
+			goneArtifacts[id] = true
+		}
+		for _, id := range c.snapshots {
+			goneSnapshots[id] = true
+		}
+		res.Jobs = len(c.reducible(func(j r.Job) bool {
+			return (!s.holdsSnapshot(j.SnapshotID) || goneSnapshots[j.SnapshotID]) && (!s.holdsArtifact(j.ArtifactID) || goneArtifacts[j.ArtifactID])
+		}))
+		return res, nil
+	}
+	// One kind of row at a time, in batches until a batch is short: each takes the lock, picks at most Batch rows by the store's
+	// clock as it is then, changes them and lets go.
+	batches := func(count *int, pick func(*retained) []string, apply func(string)) error {
+		for {
+			if e := ctx.Err(); e != nil {
+				return e
+			}
+			s.mu.Lock()
+			ids := pick(s.retention(o.Grace))
+			if len(ids) > o.Batch {
+				ids = ids[:o.Batch]
+			}
+			for _, id := range ids {
+				apply(id)
+			}
+			s.mu.Unlock()
+			*count += len(ids)
+			if len(ids) > 0 {
+				res.Batches++
+			}
+			if len(ids) < o.Batch {
+				return nil
+			}
+		}
+	}
+	if e = batches(&res.Artifacts, func(c *retained) []string { return c.artifacts }, func(id string) { delete(s.artifacts, id) }); e != nil {
+		return res, e
+	}
+	if e = batches(&res.Snapshots, func(c *retained) []string { return c.snapshots }, func(id string) { delete(s.snapshots, id) }); e != nil {
+		return res, e
+	}
+	e = batches(&res.Jobs, func(c *retained) []string {
+		return c.reducible(func(j r.Job) bool { return !s.holdsSnapshot(j.SnapshotID) && !s.holdsArtifact(j.ArtifactID) })
+	}, func(id string) { s.jobs[id] = r.ReduceJob(s.jobs[id]) })
+	return res, e
+}
+
+// holdsSnapshot and holdsArtifact say whether the store still holds the asset a job names; a job that names none holds none.
+func (s *Store) holdsSnapshot(id string) bool { _, ok := s.snapshots[id]; return id != "" && ok }
+func (s *Store) holdsArtifact(id string) bool { _, ok := s.artifacts[id]; return id != "" && ok }
+
+// retained is what a sweep finds at one instant of the store's clock, computed under the lock: the artifacts and the snapshots that may
+// go (oldest expiry first, the order they are deleted in).
+type retained struct {
+	s         *Store
+	cutoff    time.Time // an expiry before it is past its grace
+	artifacts []string
+	snapshots []string
+}
+
+func (s *Store) retention(grace time.Duration) *retained {
+	c := &retained{s: s, cutoff: s.now().Add(-grace)}
+	pastGrace := func(t time.Time) bool { return t.Before(c.cutoff) }
+	// What a queued or running job names is never touched: the snapshot it reads from, and so the artifacts of that snapshot.
+	named := map[string]bool{}
+	for _, j := range s.jobs {
+		if !r.Terminal(j.State) {
+			named[j.SnapshotID], named[j.ArtifactID] = true, true
+		}
+	}
+	for id, a := range s.artifacts {
+		if snap, ok := s.snapshots[a.SnapshotID]; ok && !pastGrace(snap.ExpiresAt) {
+			continue // its snapshot is held for a later expiry: the artifact is never deleted before it
+		}
+		if pastGrace(a.ExpiresAt) && !named[id] && !named[a.SnapshotID] {
+			c.artifacts = append(c.artifacts, id)
+		}
+	}
+	for id, v := range s.snapshots {
+		if pastGrace(v.ExpiresAt) && !named[id] {
+			c.snapshots = append(c.snapshots, id)
+		}
+	}
+	byExpiry := func(expiry func(string) time.Time) func(a, b string) int {
+		return func(a, b string) int {
+			if c := expiry(a).Compare(expiry(b)); c != 0 {
+				return c
+			}
+			return strings.Compare(a, b)
+		}
+	}
+	slices.SortFunc(c.artifacts, byExpiry(func(id string) time.Time { return s.artifacts[id].ExpiresAt }))
+	slices.SortFunc(c.snapshots, byExpiry(func(id string) time.Time { return s.snapshots[id].ExpiresAt }))
+	return c
+}
+
+// reducible lists, in admission order, the finished jobs not yet reduced whose expiry plus the grace is past and whose results are
+// gone by the test given.
+func (c *retained) reducible(gone func(r.Job) bool) []string {
+	var out []string
+	for _, id := range c.s.order {
+		j := c.s.jobs[id]
+		if r.Terminal(j.State) && !j.Reduced && j.Prepared.ExpiresAt.Before(c.cutoff) && gone(j) {
+			out = append(out, id)
+		}
+	}
+	return out
+}

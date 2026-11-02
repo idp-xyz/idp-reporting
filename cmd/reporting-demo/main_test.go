@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	r "idp.local/reporting/reporting"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // The demo says why a fixture store cannot be opened when the reason is the platform's own refusal,
@@ -69,6 +72,75 @@ func TestEmbedConfigStopsTheStartOnAnythingMalformed(t *testing.T) {
 	} {
 		if _, err := embedConfig([]string{value}, integrations); err == nil || !strings.Contains(err.Error(), "-embed-origin") {
 			t.Errorf("%s: %q accepted (%v)", name, value, err)
+		}
+	}
+}
+
+// A sweeper that answers from a script and keeps what it was asked.
+type scriptedSweeper struct {
+	mu      sync.Mutex
+	opts    []r.SweepOptions
+	results []r.SweepResult
+	errs    []error
+}
+
+func (s *scriptedSweeper) Sweep(_ context.Context, o r.SweepOptions) (r.SweepResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := len(s.opts)
+	s.opts = append(s.opts, o)
+	if n < len(s.results) {
+		return s.results[n], s.errs[n]
+	}
+	return r.SweepResult{}, nil
+}
+func (s *scriptedSweeper) calls() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.opts) }
+
+// The worker loop's sweep (S04-B) runs on every tick with the default grace and batch, logs counts only (a quiet sweep says nothing, a
+// failed one says that it stopped and what it had done, never the error, which may carry the connection's details), goes on after a failure
+// and stops with its context.
+func TestSweepLoopSweepsEveryIntervalLogsCountsOnlyAndStops(t *testing.T) {
+	sweeper := &scriptedSweeper{
+		results: []r.SweepResult{{Artifacts: 2, Snapshots: 1, Jobs: 3}, {Artifacts: 1}, {}},
+		errs:    []error{nil, errors.New("failed to connect to `host=db.internal user=reporting_sweep database=reports`: password authentication failed"), nil},
+	}
+	var mu sync.Mutex
+	var logged []string
+	logf := func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		logged = append(logged, fmt.Sprintf(format, args...))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); sweepLoop(ctx, sweeper, 5*time.Millisecond, logf) }()
+	for end := time.Now().Add(5 * time.Second); sweeper.calls() < 5 && time.Now().Before(end); time.Sleep(time.Millisecond) {
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the loop did not stop with its context")
+	}
+	calls := sweeper.calls()
+	if calls < 5 {
+		t.Fatalf("%d sweeps", calls)
+	}
+	for _, o := range sweeper.opts {
+		if o != (r.SweepOptions{}) {
+			t.Fatalf("the loop asked for %+v, not the defaults", o)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(logged) != 2 || logged[0] != "retention sweep: 2 artifacts and 1 snapshots deleted, 3 job payloads reduced" || logged[1] != "retention sweep stopped; it had deleted 1 artifacts and 0 snapshots and reduced 0 job payloads" {
+		t.Fatalf("logged %q", logged)
+	}
+	for _, line := range logged {
+		for _, leak := range []string{"db.internal", "reporting_sweep", "password", "host="} {
+			if strings.Contains(line, leak) {
+				t.Fatalf("the log carries %q: %s", leak, line)
+			}
 		}
 	}
 }

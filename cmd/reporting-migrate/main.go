@@ -1,6 +1,6 @@
 // reporting-migrate is the operator's schema tool for the platform store (S04-A): status, plan,
-// up, down, roles and init-profile on the store named by REPORTING_STORE_DSN. It never runs
-// inside the server and never touches a source product database.
+// up, down, roles and init-profile on the store named by REPORTING_STORE_DSN, and the retention
+// sweep (S04-B). It never runs inside the server and never touches a source product database.
 package main
 
 import (
@@ -28,8 +28,8 @@ func main() {
 }
 
 func usage() error {
-	return errors.New(`usage: reporting-migrate <status|plan [--to N]|up [--to N]|down --to N [--accept-data-loss]|roles --migrator-role NAME --app-role NAME|init-profile <production|contract-simulator-only>>
-the store is REPORTING_STORE_DSN; up/down/roles/init-profile run as the migrator role (or an owner)`)
+	return errors.New(`usage: reporting-migrate <status|plan [--to N]|up [--to N]|down --to N [--accept-data-loss]|roles --migrator-role NAME --app-role NAME [--sweep-role NAME]|init-profile <production|contract-simulator-only>|sweep [--grace D] [--batch N] [--dry-run]>
+the store is REPORTING_STORE_DSN; up/down/roles/init-profile run as the migrator role (or an owner); sweep runs as the sweep role or the migrator`)
 }
 
 func run(args []string, out io.Writer) error {
@@ -63,6 +63,10 @@ func run(args []string, out io.Writer) error {
 	accept := fs.Bool("accept-data-loss", false, "down: discard the rows a step cannot keep")
 	migrator := fs.String("migrator-role", "", "roles: the role that owns the schema and runs migrations")
 	app := fs.String("app-role", "", "roles: the role the server connects as")
+	sweeper := fs.String("sweep-role", "", "roles: optional third role that runs the retention sweep (the only one that deletes; the application role never does)")
+	grace := fs.Duration("grace", r.DefaultSweepGrace, "sweep: how long after its expiry an artifact or a snapshot is kept")
+	batch := fs.Int("batch", r.DefaultSweepBatch, "sweep: rows per transaction")
+	dryRun := fs.Bool("dry-run", false, "sweep: count what would be deleted, delete nothing")
 	timeout := fs.Duration("timeout", 5*time.Minute, "the whole run's time limit (002 rewrites every row; size it for the store)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -100,6 +104,13 @@ func run(args []string, out io.Writer) error {
 				fmt.Fprintln(out, "role:     the connected role satisfies the application role's rules")
 			} else {
 				fmt.Fprintf(out, "role:     the connected role is not the application role (%d rules unmet; expected for the migrator, the server must connect as the application role): %s\n", len(problems), strings.Join(problems, "; "))
+			}
+		}
+		if problems, err := postgres.SweeperProblems(ctx, pool); err == nil {
+			if len(problems) == 0 {
+				fmt.Fprintln(out, "sweeper:  the connected role satisfies the sweep role's rules")
+			} else {
+				fmt.Fprintf(out, "sweeper:  the connected role is not the sweep role (%d rules unmet; expected unless this is the role that runs the sweep): %s\n", len(problems), strings.Join(problems, "; "))
 			}
 		}
 		if len(st.Problems) > 0 {
@@ -154,11 +165,37 @@ func run(args []string, out io.Writer) error {
 		if *migrator == "" || *app == "" {
 			return errors.New("roles needs --migrator-role and --app-role (lowercase letters, digits and _, at most 63 characters, different)")
 		}
+		if *sweeper != "" {
+			// Refused before anything is granted: the sweep role is a third role.
+			if !postgres.ValidRole(*sweeper) || *sweeper == *migrator || *sweeper == *app {
+				return fmt.Errorf("--sweep-role must be a lowercase role name (letters, digits and _, at most 63 characters) different from the others: %w", r.ErrInvalid)
+			}
+		}
 		if err := postgres.Grants(ctx, pool, *migrator, *app); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "schema and tables owned by %s; %s may read every table and write the data tables\n", *migrator, *app)
+		if *sweeper != "" {
+			if err := postgres.GrantSweeper(ctx, pool, *migrator, *app, *sweeper); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "%s may read every table, delete expired assets, reduce finished jobs and write the sweeps ledger, nothing else\n", *sweeper)
+		}
 		return nil
+	case "sweep":
+		// The grace is a retention period: zero or negative is an operator's slip, never "no grace", so it is refused here (the service
+		// would read zero as the default).
+		if *grace <= 0 || *batch <= 0 {
+			return fmt.Errorf("--grace and --batch must be positive: %w", r.ErrInvalid)
+		}
+		res, err := postgres.Sweep(ctx, pool, r.SweepOptions{Grace: *grace, Batch: *batch, DryRun: *dryRun})
+		prefix := "swept"
+		if res.DryRun {
+			prefix = "dry run, would sweep"
+		}
+		// Counts only, also for a sweep that stopped part way: they are what it did.
+		fmt.Fprintf(out, "%s: %d artifacts, %d snapshots, %d job payloads reduced (grace %s, batch %d, %d transactions)\n", prefix, res.Artifacts, res.Snapshots, res.Jobs, *grace, *batch, res.Batches)
+		return err
 	case "init-profile":
 		if fs.NArg() != 1 || (fs.Arg(0) != postgres.ProfileProduction && fs.Arg(0) != postgres.ProfileFixture) {
 			return fmt.Errorf("init-profile takes %s or %s", postgres.ProfileProduction, postgres.ProfileFixture)

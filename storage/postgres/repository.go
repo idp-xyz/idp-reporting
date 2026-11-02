@@ -52,7 +52,7 @@ func (s *Store) ResetFixture(ctx context.Context) error {
 	if !s.fixture {
 		return r.ErrDenied
 	}
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.sweeps")
 	return e
 }
 
@@ -76,7 +76,12 @@ func scanJob(row scanner) (r.Job, error) {
 	if e := fixturedb.Decode(b, digest, &j); e != nil {
 		return j, r.ErrIntegrity
 	}
-	if j.ID != id || j.Owner != owner || j.Kind != kind || j.Key != key || j.RequestHash != requestHash || r.ValidateAdmission(j) != nil {
+	// A reduced job (S04-B) has no query or source read left to bind: it is held to its own shape.
+	valid := r.ValidateAdmission
+	if j.Reduced {
+		valid = r.ValidateReduced
+	}
+	if j.ID != id || j.Owner != owner || j.Kind != kind || j.Key != key || j.RequestHash != requestHash || valid(j) != nil {
 		return r.Job{}, r.ErrIntegrity
 	}
 	j.State = state
@@ -220,20 +225,23 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if e = r.ValidatePublication(j, p); e != nil {
 		return e
 	}
+	// expires is the asset's expiry as the column (S04-B) keeps it: the snapshot's and the artifact's, never the issue record's, which
+	// does not expire and which the sweep never deletes.
 	type asset struct {
 		id, kind string
 		value    any
+		expires  *time.Time
 	}
 	var assets []asset
 	snapshotID, artifactID := j.SnapshotID, j.ArtifactID
 	if p.Snapshot != nil {
 		snapshotID = p.Snapshot.ID
-		assets = append(assets, asset{p.Snapshot.ID, "snapshot", p.Snapshot})
+		assets = append(assets, asset{p.Snapshot.ID, "snapshot", p.Snapshot, &p.Snapshot.ExpiresAt})
 	} else {
 		artifactID = p.Artifact.ID
-		assets = append(assets, asset{p.Artifact.ID, "artifact", p.Artifact})
+		assets = append(assets, asset{p.Artifact.ID, "artifact", p.Artifact, &p.Artifact.ExpiresAt})
 		if p.Issue != nil {
-			assets = append(assets, asset{p.Issue.ID, "issue", p.Issue})
+			assets = append(assets, asset{p.Issue.ID, "issue", p.Issue, nil})
 		}
 	}
 	for _, a := range assets {
@@ -241,7 +249,7 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 		if e != nil {
 			return e
 		}
-		if _, e = tx.Exec(ctx, "INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,encode(sha256(convert_to($7::jsonb::text,'UTF8')),'hex'))", a.id, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, a.kind, b); e != nil {
+		if _, e = tx.Exec(ctx, "INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,encode(sha256(convert_to($7::jsonb::text,'UTF8')),'hex'),$8)", a.id, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, a.kind, b, a.expires); e != nil {
 			return e
 		}
 	}
@@ -303,7 +311,8 @@ func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out an
 	var b []byte
 	var digest, resourceID, resourceKind string
 	var owner r.Owner
-	e := s.pool.QueryRow(ctx, "SELECT data::text,data_sha256,id,kind,tenant,integration,issuer,subject FROM reporting_s01.assets WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 AND kind=$5", id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b, &digest, &resourceID, &resourceKind, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject)
+	var expires *time.Time
+	e := s.pool.QueryRow(ctx, "SELECT data::text,data_sha256,id,kind,tenant,integration,issuer,subject,expires_at FROM reporting_s01.assets WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 AND kind=$5", id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b, &digest, &resourceID, &resourceKind, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject, &expires)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return r.ErrNotFound
 	}
@@ -313,17 +322,22 @@ func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out an
 	if e = fixturedb.Decode(b, digest, out); e != nil {
 		return e
 	}
+	// The expiry column is what the sweep deletes by (S04-B): it must be the payload's expiry, as the store wrote it (to the microsecond),
+	// or the asset is not served; an issue record has none.
+	sameExpiry := func(payload time.Time) bool {
+		return expires != nil && expires.Equal(payload.Truncate(time.Microsecond))
+	}
 	switch v := out.(type) {
 	case *r.Snapshot:
-		if v.ID != resourceID || v.Owner != owner || resourceKind != "snapshot" || v.Prepared.Context.Owner != v.Owner || v.Prepared.QueryHash != r.QueryHash(v.Query) {
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "snapshot" || v.Prepared.Context.Owner != v.Owner || v.Prepared.QueryHash != r.QueryHash(v.Query) || !sameExpiry(v.ExpiresAt) {
 			return r.ErrIntegrity
 		}
 	case *r.Artifact:
-		if v.ID != resourceID || v.Owner != owner || resourceKind != "artifact" {
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "artifact" || !sameExpiry(v.ExpiresAt) {
 			return r.ErrIntegrity
 		}
 	case *r.Issue:
-		if v.ID != resourceID || v.Owner != owner || resourceKind != "issue" || v.Stamp != r.IssueStamp(v.Number, v.IssuedAt, v.ID) {
+		if v.ID != resourceID || v.Owner != owner || resourceKind != "issue" || v.Stamp != r.IssueStamp(v.Number, v.IssuedAt, v.ID) || expires != nil {
 			return r.ErrIntegrity
 		}
 	default:

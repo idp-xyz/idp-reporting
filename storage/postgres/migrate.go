@@ -357,6 +357,14 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 		if n > 0 || issued > 0 {
 			return fmt.Sprintf("%d issue jobs and records (an S03-G binary could not read them: the numbers are the source product's strings, not platform counters); %d issued PDFs would lose their records: they would stay in the store but could no longer be downloaded, and would expire with their snapshots", n, issued), nil
 		}
+	case 6:
+		// The ledger of the retention sweeps (S04-B) is the audit of what was deleted; the table is dropped with its rows.
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM reporting_s01.sweeps").Scan(&n); err != nil {
+			return "", err
+		}
+		if n > 0 {
+			return fmt.Sprintf("%d rows of the sweeps ledger (the audit of what retention deleted)", n), nil
+		}
 	}
 	return "", nil
 }

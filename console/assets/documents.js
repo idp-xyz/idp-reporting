@@ -203,7 +203,7 @@ window.createReportingDocuments=function(ports){
    const row=node('tr');
    // Number, state, issue time, template, snapshot and row, file digest and pages, the product's confirmation, then the action.
    for(const text of [v.state==='succeeded'?'No. '+v.number:'—',state,v.issued_at||'—',v.template_id+' · 版本 '+v.template_version,v.snapshot_id+' · '+(v.group?'分组 '+window.reportingIssueGroup.text(v.group):'第 '+(v.row_index+1)+' 行'),v.sha256?v.sha256+' · '+v.pages+' 页':'—',v.confirmation_ref?v.confirmation_ref+' · '+v.confirmed_at:'—'])row.append(node('td',text));
-   const actions=node('td');if(v.state==='succeeded'){const b=node('button','下载');b.type='button';b.className='button secondary';b.addEventListener('click',()=>action(()=>ports.issued(v.artifact_id,v.number,v.sha256)));actions.append(b);}row.append(actions);body.append(row);
+   const actions=node('td');if(v.state==='succeeded'&&v.expired){const l=node('span','已过期并清除');l.className='badge neutral expired';actions.append(l);}else if(v.state==='succeeded'){const b=node('button','下载');b.type='button';b.className='button secondary';b.addEventListener('click',()=>action(()=>ports.issued(v.artifact_id,v.number,v.sha256)));actions.append(b);}row.append(actions);body.append(row);
   }
   $('doc-issues-wrap').hidden=!values.length;$('doc-issue-status').textContent=values.length?'当前身份共 '+values.length+' 条出具记录（最新在前，最多显示 50 条）。':'当前身份尚无出具记录。';
  }
@@ -214,7 +214,7 @@ window.createReportingDocuments=function(ports){
  function checkIssues(values){
   if(!Array.isArray(values)||values.length>100)throw Error('无法验证出具记录列表。');
   for(const v of values){
-   if(!v||typeof v!=='object'||!validID(v.issue_id)||!Object.hasOwn(issueStates,v.state)||!validID(v.template_id)||!Number.isSafeInteger(v.template_version)||v.template_version<1||!hex64(v.template_sha256)||!validID(v.snapshot_id)||!(v.group===undefined?Number.isSafeInteger(v.row_index)&&v.row_index>=0:v.row_index===undefined&&window.reportingIssueGroup.valid(v.group))||(v.error_code!==undefined&&(v.state!=='failed'||typeof v.error_code!=='string'||!/^[A-Z][A-Z0-9_]{0,63}$/.test(v.error_code))))throw Error('无法验证出具记录。');
+   if(!v||typeof v!=='object'||!validID(v.issue_id)||!Object.hasOwn(issueStates,v.state)||!validID(v.template_id)||!Number.isSafeInteger(v.template_version)||v.template_version<1||!hex64(v.template_sha256)||!validID(v.snapshot_id)||!(v.group===undefined?Number.isSafeInteger(v.row_index)&&v.row_index>=0:v.row_index===undefined&&window.reportingIssueGroup.valid(v.group))||(v.error_code!==undefined&&(v.state!=='failed'||typeof v.error_code!=='string'||!/^[A-Z][A-Z0-9_]{0,63}$/.test(v.error_code)))||(v.expired!==undefined&&(v.expired!==true||v.state!=='succeeded')))throw Error('无法验证出具记录。');
    // Until the source product has confirmed there is no number, no file and no confirmation.
    if(v.state!=='succeeded'){if(confirmedFields.some(k=>v[k]!==undefined))throw Error('未完成的出具不应带有编号、产物或确认信息。');continue;}
    if(!validNumber(v.number)||!validID(v.artifact_id)||!hex64(v.sha256)||!hex64(v.snapshot_sha256)||!Number.isSafeInteger(v.pages)||v.pages<1||v.pages>100||!utc(v.issued_at)||!reference(v.reservation_ref)||!reference(v.confirmation_ref)||!utc(v.confirmed_at))throw Error('无法验证出具记录。');

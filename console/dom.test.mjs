@@ -2704,3 +2704,67 @@ test('S03-M M5: the console\'s validator refuses a 2.1 template that a 2.0 one n
   for(const c of coded21){const doc=editedCase(schema2.base,c.edit);a.$('doc-status').textContent='';a.$('doc-json').value=JSON.stringify(doc);a.click('doc-json-open');const ok=a.$('doc-status').textContent===READY;assert.equal(ok,c.expect==='valid',c.name+': '+a.$('doc-status').textContent);if(ok)accepted++;}
   assert.equal(accepted,kinds.valid);assert.equal(a.errors.length,0);
  }finally{a.close();}});
+
+// Retention (S04-B): a job whose results have expired, and are deleted after the grace period, shows the label where it showed a download or
+// a result; the job, its ids and, for an issue, its record stay. The server says so with `expired: true` on a job that succeeded.
+test('an expired job shows 已过期并清除 where it showed a result or a download, and only a succeeded job can say so',async()=>{
+  let mode='';
+  const a=app(async(path,options)=>{
+    if(mode&&/\/jobs\/[a-f0-9]{32}$/.test(path)){
+      const value=await (await fetch(url+path,options)).json();
+      return json(mode==='expired'?{...value,expired:true}:mode==='false'?{...value,expired:false}:mode==='text'?{...value,expired:'yes'}:value);
+    }
+  });
+  try{
+    await snapshotReady(a);a.click('export');await until(()=>a.downloads.length===1,'workbook download');
+    const rows=()=>[...a.$('tasks-body').rows];
+    const buttons=row=>[...row.querySelectorAll('button')].map(b=>b.textContent);
+    assert.equal(rows().length,2);
+    // Before: a snapshot with its result to view, an export with its file to download, and no label.
+    for(const row of rows()){assert.ok(buttons(row).includes('刷新'));assert.equal(row.querySelector('.expired'),null);assert.equal(row.cells[2].textContent,'已完成');}
+    assert.ok(rows().some(row=>buttons(row).includes('查看结果')));assert.ok(rows().some(row=>buttons(row).includes('下载')));
+    // A flag that is not `true`, or a text, is not a view the console believes: the notice says so and the rows are as they were.
+    for(const m of ['false','text']){
+      mode=m;for(const row of rows())row.querySelector('button').click();
+      await until(()=>/无法验证的响应/.test(a.$('notice').textContent),'the flag '+m+' is refused');
+      for(const row of rows())assert.equal(row.querySelector('.expired'),null);assert.ok(rows().some(row=>buttons(row).includes('下载')));
+    }
+    // After: the label replaces the result and the download; the refresh stays, and so do the state and the ids.
+    mode='expired';
+    for(const row of rows())row.querySelector('button').click();
+    await until(()=>rows().length===2&&rows().every(row=>row.querySelector('.expired')),'both rows say expired');
+    for(const row of rows()){
+      assert.equal(row.querySelector('.expired').textContent,'已过期并清除');
+      assert.deepEqual(buttons(row),['刷新']);
+      assert.equal(row.cells[2].textContent,'已完成');assert.match(row.cells[1].textContent,/^[a-f0-9]{32}$/);
+    }
+    // The workbook downloaded before the expiry is the user's own; nothing was fetched again for the label.
+    assert.equal(a.downloads.length,1);assert.equal(a.trace.filter(v=>v.path.includes('/artifacts/')).length,1);
+    assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});
+
+test('the issue list shows 已过期并清除 for an issue whose file expired, keeps its record and refuses the label on one that did not succeed',async()=>{
+  const F='f'.repeat(32),issued='2026-10-28T06:12:03Z',confirmed='2026-10-28T06:12:04Z';
+  const rec=(over={})=>({issue_id:F,state:'succeeded',number:'AR-000003',template_id:'d'.repeat(32),template_version:2,template_sha256:'e'.repeat(64),snapshot_id:'c'.repeat(32),snapshot_sha256:'a'.repeat(64),row_index:4,artifact_id:pdfArtifact,sha256:'1'.repeat(64),pages:2,issued_at:issued,stamp:'ISSUED No. AR-000003 - '+issued+' - '+F,reservation_ref:'RES-3',confirmation_ref:'CNF-3',confirmed_at:confirmed,...over});
+  const open=(over={})=>({issue_id:'e'.repeat(32),state:'queued',template_id:'d'.repeat(32),template_version:2,template_sha256:'e'.repeat(64),snapshot_id:'c'.repeat(32),row_index:4,...over});
+  const options={records:[]};const a=app(offeringIssuance(options));
+  const refresh=async records=>{options.records=records;a.click('doc-issues-refresh');await until(()=>!a.$('preview').disabled,'refreshed');return a.$('doc-issue-status').textContent;};
+  try{
+    await snapshotReady(a);
+    // Two issues: one whose file is still served, one whose file expired. The record of the second is as complete as the first's.
+    const second=rec({issue_id:'1'.repeat(32),number:'AR-000004',stamp:'ISSUED No. AR-000004 - '+issued+' - '+'1'.repeat(32),expired:true});
+    assert.match(await refresh([rec(),second]),/共 2 条/);
+    const rows=[...a.$('doc-issues-body').rows];
+    assert.equal(rows.length,2);
+    assert.deepEqual([...rows[0].querySelectorAll('button')].map(b=>b.textContent),['下载']);assert.equal(rows[0].querySelector('.expired'),null);
+    assert.deepEqual([...rows[1].querySelectorAll('button')].map(b=>b.textContent),[]);assert.equal(rows[1].querySelector('.expired').textContent,'已过期并清除');
+    assert.equal(rows[1].cells[0].textContent,'No. AR-000004');assert.equal(rows[1].cells[1].textContent,'已出具');assert.equal(rows[1].cells[5].textContent,'1'.repeat(64)+' · 2 页');assert.equal(rows[1].cells[6].textContent,'CNF-3 · '+confirmed);
+    // The label belongs to an issue that succeeded and is `true` or absent, nothing else.
+    for(const [label,record] of [
+      ['expired false',rec({expired:false})],['expired as text',rec({expired:'yes'})],['expired as a number',rec({expired:1})],
+      ['expired on a queued record',open({expired:true})],['expired on a failed record',open({state:'failed',error_code:'INTEGRITY_FAILURE',expired:true})],['expired on a running record',open({state:'running',expired:true})],
+    ]){assert.match(await refresh([record]),/无法验证出具记录。|不应带有/,label);assert.equal(a.$('doc-issues-wrap').hidden,true,label);}
+    assert.equal(a.downloads.length,0);assert.equal(a.errors.length,0);
+  }finally{a.close();}
+});

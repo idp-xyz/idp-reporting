@@ -13,7 +13,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
 | POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission |
-| GET /jobs/{id} | Owner-scoped status; current source authority even after success |
+| GET /jobs/{id} | Owner-scoped status; current source authority even after success. A job that succeeded and whose source read has expired is not re-authorized (there is no result left to authorize): it answers 200 with `expired: true`, its own state and ids, and, for an issue, the number from its record; the same after retention deleted its snapshot and artifact (S04-B, "Retention" below) |
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned. A running issue job is not cancelled (the source product may already hold a reservation for it): it is returned unchanged, and a queued one is cancelled |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
 | POST /exports | `{ "snapshot_id": "…", "format": "pdf" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports |
@@ -71,8 +71,8 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET, POST /document-images | Private images of schema 2.1 templates (S03-M, ADR 0005): list the caller's images of the datasets the caller may still read; upload `{binding, image}` (PNG or JPEG in base64, at most 512 KiB, 2000 x 2000 pixels, the format read from the content) and get `201 {id, sha256, binding, format, width, height}`; mounted with the backgrounds; the answers of the three image routes are `no-store` and `nosniff` |
 | GET /document-images/{id}/content | The bytes of one image to its owner only (another identity's id is 404), while the caller may read its dataset (else 403): `Content-Type` `image/png` or `image/jpeg`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox; frame-ancestors 'none'`, `X-Content-SHA256` (the digest the template names) |
 | POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` (a schema 2.0 template: `row_index` or `group`, see "Issue by group" below) with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}` (a group issue: `group` in place of `row_index`), and the product's `number` once the job succeeded (read from its record), wherever the job is shown: the 202 of a request repeated with the key of a job that has succeeded (a client whose answer was lost asks again), `GET /jobs/{id}` and the 200 of `POST /jobs/{id}/cancel` |
-| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
-| GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's, so once the snapshot expired it is refused (403 with the contract simulators, whose adapter denies an expired read; 409 for the download), while `GET /issues/{id}` still answers; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
+| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC), and `expired: true` once the file is no longer served (S04-B). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
+| GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's while the snapshot's read is valid; once it expired the job view says `expired: true` without asking the source (S04-B; the download is 409 inside the grace period and 404 once swept), and `GET /issues/{id}` answers with `expired: true` and the unchanged record; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
 
 An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
 row. The source product, not the platform, authorizes the issue, owns the number and confirms the file (S03-H);
@@ -406,3 +406,26 @@ package (`GET /embed/report`, `/embed/dashboard`, `/embed/document-designer`), s
 that one origin; the API itself is unchanged by embedding and needs no CORS: the embed page calls it from its own origin with the same
 `Authorization: Bearer` header as the console. `GET /capabilities` carries `embedding: true|false` for the caller's integrations (`httpapi.WithEmbedding`;
 the core API alone says false).
+
+## Retention (S04-B, docs/S04B_SCOPE.md, docs/OPERATIONS.md "Retention")
+
+A snapshot and the artifacts made from it live as long as the source read they were made from (the expiry every
+download and page already enforces) plus a grace period of 24 hours by the store's clock; then a sweep deletes them.
+An issue record is never deleted; a job keeps its row, and once its results are gone its payload is reduced to what
+its view and the audit need (no query, no prepared read, no columns; the ids and the request hash stay).
+
+What the API says, at each stage, for a job that succeeded:
+
+- Read valid: as before; no `expired` field.
+- Read expired, inside the grace: `GET /jobs/{id}` answers 200 with `expired: true`, `state: "succeeded"`, the same
+  `snapshot_id`/`artifact_id` and, for an issue, `issue.number`; the source is not asked. `GET /issues` entries and
+  `GET /issues/{id}` carry `expired: true` with the record unchanged. `GET /snapshots/{id}/rows` and
+  `GET /artifacts/{id}/content` are refused as they always were for an expired read (409 INTEGRITY_FAILURE with the
+  contract simulators).
+- Swept: the same views with the same ids and `expired: true`; `GET /snapshots/{id}/rows`, `GET /artifacts/{id}/content`,
+  `POST /exports` and `POST /issues` naming the snapshot are 404 NOT_FOUND; a request repeated with the Idempotency-Key
+  of a swept job is 403 (as the replay of an expired job always was); `POST /jobs/{id}/cancel` answers the job unchanged.
+  Never a 500, never an integrity failure caused by the sweep.
+
+`expired` is present only when true and only on a job that succeeded; the console refuses any other value. A failed or
+cancelled job is reduced like any other once its own read's expiry plus the grace is past; its view does not change.
