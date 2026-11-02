@@ -257,6 +257,7 @@ func rowLevelSecurity(t *testing.T, admin *pgxpool.Pool) {
 	t.Run("worker_scope", func(t *testing.T) { w.workerScope(t) })
 	t.Run("a_store_without_its_policies_is_refused", func(t *testing.T) { w.policiesAreChecked(t) })
 	t.Run("the_sweep_deletes_across_identities_only_in_the_worker_scope", func(t *testing.T) { w.sweepAcrossIdentities(t) })
+	t.Run("a_restore_leaves_the_roles_the_policies_and_the_isolation_in_place", func(t *testing.T) { w.afterARestore(t) })
 	t.Run("migration_007_round_trip_and_upgrade_from_version_6", func(t *testing.T) { migration007(t, admin) })
 }
 

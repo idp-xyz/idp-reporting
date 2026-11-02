@@ -29,10 +29,11 @@ func main() {
 }
 
 func usage() error {
-	return errors.New(`usage: reporting-migrate <status|plan [--to N]|up [--to N]|down --to N [--accept-data-loss]|roles --migrator-role NAME --app-role NAME [--sweep-role NAME]|init-profile <production|contract-simulator-only>|sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint URL --object-store-bucket NAME [--object-store-region R] [--object-store-ca FILE] [--object-store-loopback-http]]>
+	return errors.New(`usage: reporting-migrate <status|plan [--to N]|up [--to N]|down --to N [--accept-data-loss]|roles --migrator-role NAME --app-role NAME [--sweep-role NAME]|init-profile <production|contract-simulator-only>|sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint URL --object-store-bucket NAME [--object-store-region R] [--object-store-ca FILE] [--object-store-loopback-http]]|verify-objects [--deep] [--ids] --object-store-endpoint URL --object-store-bucket NAME [...as for sweep]>
 the store is REPORTING_STORE_DSN; up/down/roles/init-profile run as the migrator role (or an owner); sweep runs as the sweep role or the migrator;
 sweep deletes the objects of the artifacts it deletes, and reconciles the bucket, when the object store flags are given (the keys are in
-REPORTING_OBJECT_STORE_ACCESS_KEY and REPORTING_OBJECT_STORE_SECRET_KEY, never flags); without them it deletes rows only`)
+REPORTING_OBJECT_STORE_ACCESS_KEY and REPORTING_OBJECT_STORE_SECRET_KEY, never flags); without them it deletes rows only;
+verify-objects only reads (it needs the object store flags and prints counts; --deep reads every object, --ids also prints the artifact ids that fail)`)
 }
 
 func run(args []string, out io.Writer) error {
@@ -74,6 +75,8 @@ func run(args []string, out io.Writer) error {
 	grace := fs.Duration("grace", r.DefaultSweepGrace, "sweep: how long after its expiry an artifact or a snapshot is kept")
 	batch := fs.Int("batch", r.DefaultSweepBatch, "sweep: rows per transaction")
 	dryRun := fs.Bool("dry-run", false, "sweep: count what would be deleted, delete nothing")
+	deep := fs.Bool("deep", false, "verify-objects: read every object once and compare its length and SHA-256 with the row's (slow)")
+	ids := fs.Bool("ids", false, "verify-objects: also print the artifact ids of the missing, mismatched and invalid rows (identifiers on stdout)")
 	objectStore := objects.Register(fs)
 	timeout := fs.Duration("timeout", 5*time.Minute, "the whole run's time limit (002 rewrites every row; size it for the store)")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -226,6 +229,51 @@ func run(args []string, out io.Writer) error {
 			fmt.Fprintf(out, "objects: %d %s, %d orphans %s, %d left for the next reconciliation\n", res.Objects, verb, res.Orphans, verb, res.ObjectsLeft)
 		}
 		return err
+	case "verify-objects":
+		// Read-only (S04-F): the rows against the bucket after a restore. Without the object store there is nothing to compare, so it refuses.
+		client, err := objectStore.Client(os.Getenv)
+		if err != nil {
+			return err
+		}
+		if client == nil {
+			return fmt.Errorf("verify-objects compares the artifact rows with an object store: give --object-store-endpoint and --object-store-bucket (the keys are in the environment): %w", r.ErrInvalid)
+		}
+		if err = objects.CheckAtStart(ctx, client); err != nil {
+			return err
+		}
+		res, err := postgres.VerifyObjects(ctx, pool, client, *deep)
+		if err != nil {
+			return err
+		}
+		// Counts only; the ids of the rows that fail only when asked for.
+		fmt.Fprintf(out, "rows:       %d artifact rows name an object\n", res.Rows)
+		fmt.Fprintf(out, "objects:    %d under %s\n", res.Objects, r.ObjectPrefix)
+		fmt.Fprintf(out, "missing:    %d rows whose object is absent\n", res.Missing)
+		fmt.Fprintf(out, "orphans:    %d objects no row names (informational; the sweep's reconciliation removes them after the grace)\n", res.Orphans)
+		fmt.Fprintf(out, "invalid:    %d rows that do not say where their file is, or fail their digest\n", res.Invalid)
+		if res.Deep {
+			fmt.Fprintf(out, "mismatched: %d objects whose length or SHA-256 is not the row's\n", res.Mismatched)
+		} else {
+			fmt.Fprintln(out, "mismatched: not checked (presence only; --deep reads every object)")
+		}
+		if *ids {
+			for _, g := range []struct {
+				name string
+				n    int
+				ids  []string
+			}{{"missing", res.Missing, res.MissingIDs}, {"mismatched", res.Mismatched, res.MismatchedIDs}, {"invalid", res.Invalid, res.InvalidIDs}} {
+				for _, id := range g.ids {
+					fmt.Fprintf(out, "%s id: %s\n", g.name, id)
+				}
+				if len(g.ids) < g.n {
+					fmt.Fprintf(out, "%s ids: the list is cut at %d of %d\n", g.name, len(g.ids), g.n)
+				}
+			}
+		}
+		if res.Failed() {
+			return fmt.Errorf("verify-objects: %d missing, %d mismatched, %d invalid: %w", res.Missing, res.Mismatched, res.Invalid, r.ErrIntegrity)
+		}
+		return nil
 	case "init-profile":
 		if fs.NArg() != 1 || (fs.Arg(0) != postgres.ProfileProduction && fs.Arg(0) != postgres.ProfileFixture) {
 			return fmt.Errorf("init-profile takes %s or %s", postgres.ProfileProduction, postgres.ProfileFixture)
