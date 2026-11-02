@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,6 +27,9 @@ type ProductionConfig struct {
 	// Workers is the number of worker loops (claim, execute, publish) this process runs; zero is one. It sets the floor of the pool (S04-G):
 	// each loop holds a connection while it works, and the requests that serve callers need at least two more.
 	Workers int
+	// PoolMaxConns, when not zero, is the pool size (S05-A: the server's configuration file names it instead of the DSN), checked by the same
+	// bounds as the DSN's pool_max_conns. A DSN that names pool_max_conns as well is refused: the size has one place.
+	PoolMaxConns int
 }
 
 // The pool of the production store (S04-G, docs/OPERATIONS.md "Capacity"). It is sized by the DSN parameter pool_max_conns, which the
@@ -40,6 +44,11 @@ const (
 // poolSize says how many connections the pool may hold: the DSN's pool_max_conns when it names one, checked against the bounds, else the
 // default (the pool library fills in a default of its own when the DSN does not name one, which is why the DSN is looked at, not only parsed).
 func poolSize(dsn string, parsed int32, workers int) (int32, error) {
+	return sizeFor(dsnNames(dsn, "pool_max_conns"), parsed, workers)
+}
+
+// sizeFor is poolSize once it is known whether a size was named at all.
+func sizeFor(named bool, parsed int32, workers int) (int32, error) {
 	if workers == 0 {
 		workers = 1
 	}
@@ -47,7 +56,7 @@ func poolSize(dsn string, parsed int32, workers int) (int32, error) {
 		return 0, fmt.Errorf("workers must be between 1 and %d: %w", maxWorkers, r.ErrInvalid)
 	}
 	floor := int32(workers + 2)
-	if !dsnNames(dsn, "pool_max_conns") {
+	if !named {
 		return max(int32(DefaultPoolConns), floor), nil
 	}
 	if parsed < floor || parsed > MaxPoolConns {
@@ -101,7 +110,15 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (
 			return nil, fmt.Errorf("production stores require sslmode=verify-full: %w", r.ErrDenied)
 		}
 	}
-	size, err := poolSize(cfg.DSN, c.MaxConns, cfg.Workers)
+	var size int32
+	if cfg.PoolMaxConns != 0 {
+		if dsnNames(cfg.DSN, "pool_max_conns") {
+			return nil, fmt.Errorf("the pool size is set both in the configuration and in the connection string: %w", r.ErrInvalid)
+		}
+		size, err = sizeFor(true, int32(cfg.PoolMaxConns), cfg.Workers)
+	} else {
+		size, err = poolSize(cfg.DSN, c.MaxConns, cfg.Workers)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -514,4 +531,57 @@ func validRole(name string) bool {
 		}
 	}
 	return true
+}
+
+// The reasons Ready gives (S05-A): what a load balancer's readiness probe is told, and nothing more.
+const (
+	NotReadyStore  = "store"  // the database does not answer
+	NotReadySchema = "schema" // the ledger is not at the binary's version, has a problem, or the profile row is not production
+	NotReadyRoles  = "roles"  // the connected role is not the application role
+)
+
+// Ready re-runs the opening checks on the open store: the database answers, the ledger is at the binary's version with no problem and the
+// profile row is the production one, and the connected role is still the application role (the role's grants and the row-level security
+// policies are the database's and can be changed under a running server). It returns "" when all hold, else one of NotReadyStore,
+// NotReadySchema and NotReadyRoles, and never the error: a failure may carry the connection's details. The context bounds the whole check.
+func (s *Store) Ready(ctx context.Context) string {
+	if s == nil || s.pool == nil {
+		return NotReadyStore
+	}
+	// A connection that died while idle (the database restarted, a network blip) is found dead by the first use and discarded; the check is
+	// repeated for as many connections as the pool may hold, so that a pool full of dead ones is not taken for a database that is down.
+	var pinged error
+	for attempt := int32(0); attempt <= s.pool.Config().MaxConns; attempt++ {
+		if pinged = s.pool.Ping(ctx); pinged == nil || ctx.Err() != nil {
+			break
+		}
+	}
+	if pinged != nil {
+		return NotReadyStore
+	}
+	if err := Verify(ctx, s.pool, ProfileProduction); err != nil {
+		for _, own := range []error{r.ErrDenied, r.ErrIntegrity, r.ErrInvalid} {
+			if errors.Is(err, own) {
+				return NotReadySchema
+			}
+		}
+		return NotReadyStore
+	}
+	problems, err := RoleProblems(ctx, s.pool)
+	if err != nil {
+		return NotReadyStore
+	}
+	if len(problems) > 0 {
+		return NotReadyRoles
+	}
+	return ""
+}
+
+// LedgerVersion is the highest version the schema ledger records, for the start line of a server.
+func (s *Store) LedgerVersion(ctx context.Context) (int, error) {
+	st, err := Status(ctx, s.pool)
+	if err != nil {
+		return 0, err
+	}
+	return st.Current(), nil
 }

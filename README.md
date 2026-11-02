@@ -1,3 +1,19 @@
+# IDP Reporting Platform · S05-A
+
+2026-11-02。生产服务器（docs/S05A_SCOPE.md，docs/DEPLOYMENT.md）：此前仓库里唯一的服务器是 `cmd/reporting-demo`（演示令牌、只连受保护的夹具库、必须带 `-profile contract-simulator`），运维手册的“启动服务器”没有对应命令。本阶段写出生产组合：包 `idp.local/reporting/server` 与命令 `cmd/reporting-server`（`check-config`、`run`、`version`），把严格的配置文件、来自文件与环境的密钥、宿主注册的适配器变成一个运行的服务器。**不含任何真实来源产品的适配器**，也不给出生产准入：`GET /capabilities` 仍是 `production_approved: false`，配置里没有可改它的字段。
+
+配置：一份 JSON（至多 256 KiB），严格——未知字段、大小写不符、重复键（含适配器 `options` 内）、`null`、尾随数据、非 UTF-8 均被拒绝；名字像密钥的字段（`dsn`、`password`、`secret`、`token`、`…key`）被拒绝，密钥只来自环境（`REPORTING_STORE_DSN`、`REPORTING_OBJECT_STORE_ACCESS_KEY`/`_SECRET_KEY`）与文件（游标密钥 1 到 4 个、TLS 私钥：普通文件、属主为进程用户、0600/0400、拒绝符号链接；JWKS 与绑定：不得被组或他人写）。TLS 只允许 1.3；非回环地址不带 TLS 的监听被拒绝，明文 HTTP 只在回环 IP 且显式 `allow_plain_loopback` 时接受。命令不注册任何适配器，`run` 以 `no adapter is registered for integration "X"` 拒绝启动；宿主写三行 `main` 调用 `server.Main(os.Args, registry)`。契约模拟器自报 `IsSimulator()`，除非配置写 `"allow_simulator": true` 否则 `Run` 拒绝，此时 `/capabilities` 的 profile 为 `simulated:<label>`。
+
+启动顺序（每步失败是固定文本、点名步骤、不含任何密钥）：配置 → 密钥 → 签发方 → 适配器 → `OpenProduction`（verify-full、生产画像、台账版本、角色检查）→ 对象存储 `HEAD bucket` → PDF 与私有目录 → 服务 → 工作者与清理 → 监听。`GET /healthz`（200，不触依赖）与 `GET /readyz`（存储可答、台账与画像、角色与行级安全仍合规、对象存储最近一次检查（缓存 10 秒）、未在排空；否则 503 与唯一原因 `store|schema|roles|object_store|draining`）无需认证，带 API 的安全头与 `no-store`，不经控制台静态处理器。日志为每事件一行 JSON，只有计数与代码：启动、重载结果、清理计数、工作者失败代码、排空起止、每个请求一行（方法、路由模式、状态、毫秒、随机请求号；无查询串、正文、头、主体、租户）。
+
+生命周期：SIGHUP（或 `Server.Reload()`）重读 `jwks_file` 与 `bindings_file` 并调用 `Verifier.Replace`，成功则下一次认证起生效并记录受信任的 `kid`，失败保留旧配置并只记录代码；其余配置需重启。SIGTERM/SIGINT：`/readyz` 立即 503 `draining`，监听关闭，在途请求与工作者手中的任务在 `shutdown_grace` 内完成，之后关闭连接池；退出码 0 干净排空、1 拒绝启动、2 排空超时（任务保留租约，租约过期后由别的进程领取，日志记录剩余数）。两个服务器可同连一个数据库，共用任务队列与同一身份的配额。
+
+测试：新增顶层测试 36 项（`server` 包 32 项：配置拒绝与不含密钥、名字像密钥的字段、命令无法触及仅测试用选项、文件权限与符号链接、公共文件、绑定文件、签发方文件文本、启动拒绝逐步与顺序与回收、真实 TLS 与真实 RS256 令牌的全程会话、重载与 SIGHUP、就绪原因与对象存储缓存与探测不排队、排空三种情形、退出码、清理与工作者日志、panic 值不入日志、check-config、命令用法、示例配置、受门控的 `TestServerAgainstPostgres`（含对象存储子测试）；`internal/servertesthost` 1 项：独立进程；`httpapi` 3 项，含数据类别头随档案变化 `TestDataClassFollowsTheProfile` 与默认值测试），含对 goroutine 与在途名额的核算。无环境的 Go 套件 415 项通过（改动前 380）、跳过 18 项（新增 `TestServerAgainstPostgres`，两份跳过清单已更新）；数据库、S3 兼容服务与 Typst 全开 433 项通过、无跳过（改动前 397）；DOM 167 项通过（未改）；普通与 race 都通过。
+
+不在本阶段：任何真实来源产品的适配器、真实身份提供方（发现、紧急撤销）、生产准入、systemd 之外的容器与编排清单、指标与追踪端点、证书自动续期、除签发方文件外的任何热重载。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S04-H
 
 2026-11-02。密钥生命周期（docs/S04H_SCOPE.md，docs/OPERATIONS.md “Keys and credentials (S04-H)”，docs/ACCESS_JWT.md “签名密钥轮换与两个暴露窗口”）：平台持有的每个密钥与信任锚现在都有经过测试证明、有界限、写明的轮换办法；手册只在测试证明时才说“无停机”，其余写窗口或不作此声明。不含自动轮换、KMS/HSM、信封加密、单个令牌的撤销。
@@ -14,8 +30,6 @@ Bug 修复（范围内）：连接串无法解析时，连接池库把整个串�
 测试：新增顶层测试 16 项（游标环 5、HTTP 分页跨重启 1、签发方轮换 6、demo 2、拒绝文本无口令 2），全部不需要数据库或对象存储。无环境的 Go 套件 380 项通过（改动前 364）、跳过 17 项不变；数据库、S3 兼容服务与 Typst 全开 397 项通过、无跳过（改动前 381）；DOM 167 项通过；普通与 race 都通过。需要 PostgreSQL 或对象存储的证明都是既有受门控测试的子测试或其函数，所以 ci.yml 的两份跳过清单不变，CI 的对象存储仍是 versitygw。
 
 不在本阶段：自动轮换或密钥年龄强制、KMS/HSM、信封加密、备份加密密钥、TLS 证书轮换（超出手册步骤）、单个令牌的撤销、动态 JWKS 发现（等真实 IdP）、生产准入。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S04-G
 

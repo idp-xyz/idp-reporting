@@ -9,7 +9,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | Method and path | Request / response |
 |---|---|
 | GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials |
-| GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
+| GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
 | POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission |
@@ -23,7 +23,7 @@ The standalone HTML/CSS/JS console is served at /console/. Static assets contain
 no credentials or private rows; they do not bypass protected API routes.
 
 Every answer of every route below, success or refusal, whichever optional mounts a deployment composes,
-carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `X-Reporting-Data-Class: contract-simulator`
+carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `X-Reporting-Data-Class` (`contract-simulator` for the core API, the demo and every mount as such; the production server, S05-A, sets it on every answer, health endpoints, 404s and redirects included, to `business-data`, or keeps `contract-simulator` when its configuration allows simulators; always exactly one value)
 (one wrapper, applied by the core API and by each optional mount; a route adds only its own headers).
 
 JSON POST bodies require application/json. Unknown/case-mismatched fields,
@@ -401,7 +401,7 @@ remain S02 contracts, not simulated by a service account.
 
 No API answer can be framed: every route of every mount answers with `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`
 (the one policy a route sets of its own, the image content route's, includes the same source), next to `Cache-Control: no-store`,
-`X-Content-Type-Options: nosniff` and `X-Reporting-Data-Class`. The one frameable answer of the platform is an embed page of the console
+`X-Content-Type-Options: nosniff` and `X-Reporting-Data-Class` (its value depends on the profile: `contract-simulator`, or `business-data` on the production server). The one frameable answer of the platform is an embed page of the console
 package (`GET /embed/report`, `/embed/dashboard`, `/embed/document-designer`), served only for an integration's configured origin and framed by
 that one origin; the API itself is unchanged by embedding and needs no CORS: the embed page calls it from its own origin with the same
 `Authorization: Bearer` header as the console. `GET /capabilities` carries `embedding: true|false` for the caller's integrations (`httpapi.WithEmbedding`;
@@ -517,3 +517,15 @@ Retry-After: 1
 ```
 
 Nothing was run (the source product was not asked). Unlike the three durable quotas this one is not shared between processes.
+
+## Health and readiness (S05-A, docs/DEPLOYMENT.md)
+
+The production server (`reporting-server`) mounts two routes outside `/api/reporting/v1`, ahead of the API and the console, **without authentication** and without touching the API's authentication or `max_in_flight`. They carry
+the API's security headers and `Cache-Control: no-store`; any other method is 405 `{"error":"METHOD_NOT_ALLOWED"}`. The demo does not serve them.
+
+| Method and path | Answer |
+|---|---|
+| GET /healthz | `200 {"status":"ok"}` while the process answers. No dependency is touched; it does not turn 503 during a drain (the listener closes instead) |
+| GET /readyz | `200 {"status":"ready"}` when the store answers, its ledger is at the binary's version, the profile row is `production` and the connected role satisfies the application role's rules, the object store (when configured) answered its last check (cached 10 seconds), and the server is not draining. Otherwise `503 {"status":"not_ready","reason":"store"\|"schema"\|"roles"\|"object_store"\|"draining"}`; the body holds nothing else |
+
+`GET /capabilities` of the production server shows its `profile_label` in `profile` (`simulated:<label>` when a contract simulator is allowed) and keeps `production_approved: false`.

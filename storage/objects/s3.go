@@ -430,3 +430,11 @@ func (s *S3) List(ctx context.Context, prefix, after string, limit int) ([]r.Obj
 }
 
 var _ r.ObjectStore = (*S3)(nil)
+
+// Close gives back the idle connections the client keeps to the object store (the server calls it when it has drained, so that no
+// connection goroutine outlives the process's own shutdown). The client stays usable: a later request dials again.
+func (s *S3) Close() {
+	if s != nil && s.client != nil {
+		s.client.CloseIdleConnections()
+	}
+}

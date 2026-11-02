@@ -181,3 +181,5 @@ S03-I 的脚本与 DOM 测试对 1.x 原样通过。
 
 更新（S04-G，容量，docs/API.md “Limits”，docs/OPERATIONS.md “Capacity”）：第四项配额 `queries_in_flight`（本进程内同一身份同时进行的查询与快照行读取）只在恰好 `{"error":"QUOTA_EXCEEDED","quota":"queries_in_flight"}` 且状态 429 时被接受，多一个键、状态不是 429 都按“无法验证的响应”处理；提示为“查询进行中过多 (N)，请稍后再试”（N 来自能力里的 `quotas.queries_in_flight`），页面保持原样，嵌入页同样不向父页面发送。
 服务端因同时请求数达到上限回 503 `{"error":"OVERLOADED"}`（`Retry-After: 1`）；控制台把它与“授权来源不可用”的 503 区分开：提示“服务繁忙，请稍后再试”，页面上已有的结果、作业列表不清除也不标为受限；`OVERLOADED` 只有在状态 503 且体恰好只有 `error` 键时才被接受，其他形状按“无法验证的响应”处理。其他 503 仍显示“当前授权来源不可用，请稍后重试。”并按原规则清除结果。嵌入页对 `OVERLOADED` 仍按既有的封闭列表向父页面报告 `UNAVAILABLE`（503 的既有映射），配额拒绝则仍不报告。
+
+更新（S05-A，生产服务器，docs/DEPLOYMENT.md、docs/API.md “Health and readiness”）：`reporting-server` 在控制台之前挂载 `GET /healthz` 与 `GET /readyz`（无需认证，只回 `{"status":…}`），控制台的静态处理器不提供它们，控制台页面与脚本未改动；`GET /capabilities` 的 `profile` 由服务器配置的 `profile_label` 给出（允许模拟器时为 `simulated:<label>`），`production_approved` 仍恒为 false。
