@@ -111,7 +111,15 @@ func (s *Store) Admit(ctx context.Context, j r.Job) (r.Job, error) {
 	if e := r.ValidateAdmission(j); e != nil {
 		return r.Job{}, e
 	}
-	return admit(ctx, s.pool, j)
+	var v r.Job
+	e := asIdentity(ctx, s.pool, j.Owner.Identity, func(tx pgx.Tx) (err error) {
+		v, err = admit(ctx, tx, j)
+		return err
+	})
+	if e != nil {
+		return r.Job{}, e
+	}
+	return v, nil
 }
 func admit(ctx context.Context, q querier, j r.Job) (r.Job, error) {
 	b, e := json.Marshal(j)
@@ -131,18 +139,44 @@ func admit(ctx context.Context, q querier, j r.Job) (r.Job, error) {
 	}
 	return v, nil
 }
+
+// The identity predicate of every identity-scoped statement. It is the service's own isolation; the row-level policies of migration 007
+// are the database's, and either holds without the other. The statements without the predicate exist only for the test that proves that
+// (UnscopedQueriesForTests).
+const (
+	jobByID       = "SELECT " + jobFields + " FROM reporting_s01.jobs WHERE id=$1"
+	jobIdentity   = " AND tenant=$2 AND issuer=$3 AND subject=$4"
+	assetByID     = "SELECT data::text,data_sha256,id,kind,tenant,integration,issuer,subject,expires_at FROM reporting_s01.assets WHERE id=$1"
+	assetIdentity = " AND tenant=$2 AND issuer=$3 AND subject=$4 AND kind=$5"
+)
+
+// UnscopedQueriesForTests returns the statements of Job and of the asset reads (Snapshot, Artifact, Issue) with their identity predicates
+// removed, each taking the id alone, for the qualification that a missing predicate leaks nothing to a connection with a context. Nothing in
+// the platform runs them.
+func UnscopedQueriesForTests() (job, asset string) { return jobByID, assetByID }
+
 func (s *Store) Job(ctx context.Context, i r.Identity, id string) (r.Job, error) {
-	return scanJob(s.pool.QueryRow(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4", id, i.Tenant, i.Issuer, i.Subject))
+	var j r.Job
+	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) (err error) {
+		j, err = scanJob(tx.QueryRow(ctx, jobByID+jobIdentity, id, i.Tenant, i.Issuer, i.Subject))
+		return err
+	})
+	return j, e
 }
 
 // Cancel cancels a queued job, and a running one of any kind but issue: the source product may
 // hold a reservation for a running issue job (S03-H), which therefore finishes, or fails and voids,
 // and is returned unchanged.
 func (s *Store) Cancel(ctx context.Context, i r.Identity, id string) (r.Job, error) {
-	return scanJob(s.pool.QueryRow(ctx, `UPDATE reporting_s01.jobs SET
+	var j r.Job
+	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) (err error) {
+		j, err = scanJob(tx.QueryRow(ctx, `UPDATE reporting_s01.jobs SET
 state=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN 'cancelled' ELSE state END,
 lease_until=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN NULL ELSE lease_until END
 WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 RETURNING `+jobFields, id, i.Tenant, i.Issuer, i.Subject))
+		return err
+	})
+	return j, e
 }
 
 // Claim claims the oldest job that is queued, or running with a lease that has run out, by the database's clock. A job whose stored
@@ -165,15 +199,11 @@ func (s *Store) Claim(ctx context.Context, lease time.Duration) (*r.Claim, error
 // claimNext claims one job, or fails one that cannot be decoded (the bool is true then and the caller claims again); an error of any
 // other kind rolls the transaction back, so that no job is left claimed by a claim that was never answered.
 func (s *Store) claimNext(ctx context.Context, lease time.Duration) (*r.Claim, bool, error) {
-	tx, e := s.pool.Begin(ctx)
+	tx, e := beginWorker(ctx, s.pool)
 	if e != nil {
 		return nil, false, e
 	}
-	defer func() {
-		cleanup, cancel := fixturedb.RollbackContext(ctx)
-		defer cancel()
-		_ = tx.Rollback(cleanup)
-	}()
+	defer rollback(ctx, tx)
 	var id, kind string
 	var prior int64
 	e = tx.QueryRow(ctx, `SELECT id,kind,generation FROM reporting_s01.jobs WHERE state='queued' OR (state='running' AND lease_until<=clock_timestamp()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &kind, &prior)
@@ -202,7 +232,7 @@ func (s *Store) claimNext(ctx context.Context, lease time.Duration) (*r.Claim, b
 	return nil, true, nil
 }
 func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
-	tx, e := s.pool.Begin(ctx)
+	tx, e := beginWorker(ctx, s.pool)
 	if e != nil {
 		return e
 	}
@@ -280,14 +310,21 @@ WHERE id=$1 AND state='running' AND generation=$2 AND lease_until>clock_timestam
 // Fail fails a job that is running, at the claim's generation, with a lease that has not run out by
 // the store's clock (clock_timestamp()); anything else is ErrLease and changes nothing.
 func (s *Store) Fail(ctx context.Context, c r.Claim, code string) error {
-	result, e := s.pool.Exec(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND state='running' AND generation=$7 AND lease_until>clock_timestamp()`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation)
-	if e != nil {
-		return e
-	}
-	if result.RowsAffected() != 1 {
-		return r.ErrLease
-	}
-	return nil
+	return s.workerUpdate(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND state='running' AND generation=$7 AND lease_until>clock_timestamp()`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation)
+}
+
+// workerUpdate runs one fenced update in a transaction of the worker scope: exactly one row changes, or it is ErrLease and none does.
+func (s *Store) workerUpdate(ctx context.Context, sql string, args ...any) error {
+	return asWorker(ctx, s.pool, func(tx pgx.Tx) error {
+		result, e := tx.Exec(ctx, sql, args...)
+		if e != nil {
+			return e
+		}
+		if result.RowsAffected() != 1 {
+			return r.ErrLease
+		}
+		return nil
+	})
 }
 
 // ResolveFailure replaces the code ISSUE_UNRECONCILED of a failed issue job with the job's own failure
@@ -298,21 +335,16 @@ func (s *Store) ResolveFailure(ctx context.Context, c r.Claim, code string) erro
 	if code == "" || code == r.ErrUnreconciled.Error() {
 		return r.ErrInvalid
 	}
-	result, e := s.pool.Exec(ctx, `UPDATE reporting_s01.jobs SET error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND kind='issue' AND state='failed' AND generation=$7 AND error_code=$8`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation, r.ErrUnreconciled.Error())
-	if e != nil {
-		return e
-	}
-	if result.RowsAffected() != 1 {
-		return r.ErrLease
-	}
-	return nil
+	return s.workerUpdate(ctx, `UPDATE reporting_s01.jobs SET error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND kind='issue' AND state='failed' AND generation=$7 AND error_code=$8`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation, r.ErrUnreconciled.Error())
 }
 func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out any) error {
 	var b []byte
 	var digest, resourceID, resourceKind string
 	var owner r.Owner
 	var expires *time.Time
-	e := s.pool.QueryRow(ctx, "SELECT data::text,data_sha256,id,kind,tenant,integration,issuer,subject,expires_at FROM reporting_s01.assets WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 AND kind=$5", id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b, &digest, &resourceID, &resourceKind, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject, &expires)
+	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, assetByID+assetIdentity, id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b, &digest, &resourceID, &resourceKind, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject, &expires)
+	})
 	if errors.Is(e, pgx.ErrNoRows) {
 		return r.ErrNotFound
 	}
@@ -364,23 +396,30 @@ func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string,
 	if limit < 1 || limit > r.MaxIssueListing || !i.Valid() || len(integrations) == 0 {
 		return nil, r.ErrInvalid
 	}
-	rows, e := s.pool.Query(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5", i.Tenant, i.Issuer, i.Subject, integrations, limit)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
 	out := []r.Job{}
-	for rows.Next() {
-		j, e := scanJob(rows)
+	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, "SELECT "+jobFields+" FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5", i.Tenant, i.Issuer, i.Subject, integrations, limit)
 		if e != nil {
-			return nil, e
+			return e
 		}
-		out = append(out, j)
-	}
-	if e = rows.Err(); e != nil {
+		defer rows.Close()
+		for rows.Next() {
+			j, e := scanJob(rows)
+			if e != nil {
+				return e
+			}
+			out = append(out, j)
+		}
+		return rows.Err()
+	})
+	if e != nil {
 		return nil, e
 	}
 	return out, nil
 }
 
 var _ r.Repository = (*Store)(nil)
+
+// OnPoolForTests is a store over a pool the test made (one of a single connection, say, to show that no context outlives its call). It checks
+// nothing and is not a way to open a store: production opens through OpenProduction, the fixture through Open.
+func OnPoolForTests(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }

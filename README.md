@@ -1,3 +1,14 @@
+# IDP Reporting Platform · S04-C
+
+2026-11-01。行级安全（docs/S04C_SCOPE.md，docs/OPERATIONS.md “Row-level security”）：此前租户隔离只靠服务——每条存储查询都把所有者（租户、签发方、主体）写进谓词，应用角色对所有租户是同一个角色；本阶段让数据库自己拒绝：没说明自己在处理谁的行的连接，看不到、也写不进任何业务行。这是纵深防御，防的是平台自己的错误（将来某条查询漏了谓词、某个连接忘了上下文），不防已被攻破的服务进程（它自己能设任何上下文；那一层由 S04-A 的角色与真实身份提供方负责）。没有上下文，就没有行。
+策略（迁移 007 `row_level_security`）：`jobs` 与 `assets` 启用（ENABLE，不 FORCE：属主迁移角色与超级用户绕过，迁移及其数据检查照旧）行级安全，各有两条宽容策略，对所有命令、对 PUBLIC，USING 与 WITH CHECK 相同：`identity`（`tenant`、`issuer`、`subject` 三列分别等于 `nullif(current_setting('reporting.tenant', true), '')` 等三个设置）与 `worker`（`current_setting('reporting.scope', true) = 'worker'`）。设置缺失或为空串，比较为 NULL：不可见、不可写（池里的连接在设过事务局部设置之后显示空串而不是 NULL，`nullif` 就为此）；写入的行若属于别的身份，由数据库以 SQLSTATE 42501 “new row violates row-level security policy” 拒绝，而不是由 Go。账本（`schema_migrations`、`sweeps`）、`profile`、`issue_numbers` 不含业务行，不设策略。`007 down` 删策略并关闭行级安全，不动任何行。
+存储端（`storage/postgres/context.go`）：身份范围的每个调用（Admit、Job、Cancel、Snapshot、Artifact、Issue、Issues）在一个事务里先 `set_config('reporting.tenant'|'issuer'|'subject', $n, true)`，再执行原语句；工作进程的调用（Claim、Publish、Fail、ResolveFailure）与清理的每一批（含试运行）同样设 `reporting.scope = 'worker'`。值一律是参数，上下文只在事务内有效，事务结束即消失，池里的连接不会把它带进下一次调用；包内不出现 `set_config(..., false)`、`SET`、`SET SESSION`（源码测试守住，并要求存储的每条语句都经上下文事务）。身份谓词仍在每条查询里（服务自己的隔离），策略是数据库的；两者各自成立。内存存储不变；夹具路径（超级用户连接）绕过策略，OPERATIONS.md 写明这一点，既有套件原样通过（只有手工拼出旧版本库的几处夹具多删了新增的策略）。
+角色与启动：应用角色与清理角色都受策略约束（二者都没有 BYPASSRLS，S04-A 已拒绝该属性）；`roles` 不需新增授权。对版本不低于 7 的库，`RoleProblems` 与 `SweeperProblems` 新增：`jobs`、`assets` 未启用行级安全，或两条策略缺失、限定条件被改、命令或角色不是“全部命令、PUBLIC”、宽容性被改，或表上多出别的策略，都报出带表名的问题；`OpenProduction` 因此拒绝启动，`reporting-migrate status` 打印同样的问题（管理员的 `DISABLE ROW LEVEL SECURITY` 或删策略不动账本，只靠账本看不出）。
+测试（`TestPostgresMigrations/row_level_security`，自建迁移、应用、清理三个角色，经生产路径，同租户两个身份 A、B 与另一租户的 C，各经服务做出任务、快照、产物与出具记录）：故意犯错——去掉 `Job` 与 asset 读取语句里的身份谓词，在 A 的上下文下只返回 A 的行，同一语句以超级用户执行则返回所有人的行（策略缺失时失败的就是它）；无上下文（什么都没设、设为空串、只设一部分、别的范围）两个角色的 SELECT 都无行，INSERT 被 42501 拒绝，UPDATE 与 DELETE 不触及任何行，数据库内容摘要不变；A 的上下文下只见 A 的行（服务与裸 SQL），把行写成 B 或另一租户的（INSERT 或 UPDATE）被拒绝，B 的行读不到、改不了、取消不了、清理角色也删不掉，B 以 A 的任务、快照、产物、出具记录调用服务仍是“不存在”；工作范围：Claim 按受理顺序领取所有身份的任务，Publish 把资产写在任务所属身份名下，Fail 与 ResolveFailure 作用于任何身份的任务，清理跨身份删除而出具记录保留，没有范围设置的工作事务什么也领不到；调用之间不泄漏：单连接池里每一种调用与清理之后，探针看到的上下文设置不是值（NULL 或空串）；迁移 007 的往返与目录（`testdata/catalog_007.txt`，004、005、006 的目录逐字节不变，因为目录只在有标志或策略时才打印行级安全）、从有数据的版本 6 升级、`down --to 6`；关闭行级安全、删除或改动或增添策略都使 `OpenProduction` 拒绝（问题带表名）、`status` 打印、恢复后重新可开。Go 无环境 306 项顶层测试通过（改动前 305；新增源码测试一项，其余是 PostgreSQL 资格测试的子测试，跳过清单与 CI 一致，CI 无需改动），普通与 race 都通过；数据库与 Typst 全开 322 项通过、无跳过，PostgreSQL 全量普通与 race 都通过；DOM 与上一阶段相同（158 项，本阶段未改控制台）。
+不在本阶段：每租户一个角色或连接、账本上的策略、产物对象存储、配额、备份与恢复、容量、密钥生命周期。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S04-B
 
 2026-11-01。数据保留与清理（docs/S04B_SCOPE.md，docs/OPERATIONS.md “Retention”）：此前平台存下的东西从不删除——过期的冻结快照仍保留业务数据行，过期的导出文件与出具 PDF 仍保留文件，终态任务仍保留全部冻结内容；本阶段按来源授权的生命周期删除过期结果、保留必须保留的，并对两者都给出测试证明。
@@ -9,8 +20,6 @@
 视图（docs/API.md “Retention”）：已成功任务的来源读取过期后，`GET /jobs/{id}` 不再向来源重新授权（没有结果可授权），回 200 与 `expired: true`、原状态与原 ID，出具任务带记录里的编号；`GET /issues` 与 `GET /issues/{id}` 带 `expired: true`，记录不变；宽限期内行与文件照旧 409，清理后 `GET /snapshots/{id}/rows`、`GET /artifacts/{id}/content`、再次 `POST /exports`/`POST /issues` 为 404，同幂等键重放为 403（与过期任务一贯相同），取消原样返回；绝无 500，绝无清理造成的完整性失败。控制台在原“查看结果”“下载”处显示“已过期并清除”，只保留“刷新”，出具记录列表同样，编号、摘要、页数与确认信息照常；`expired` 只能为 `true` 且只在已成功的任务或记录上，否则按无法验证的响应处理。
 测试：两种存储共用的保留契约（每种资源在过期前、过期后宽限内、宽限后；存储时钟优先于主机时钟；出具记录永不删除；排队与执行中任务引用的不删；试运行不改任何行且计数与分批执行一致；并发清理每行只删一次；清理期间工作进程发布不丢数据；清理后的视图），PostgreSQL 独有的（过期列随资源写入并在读取时核对；缺失过期与损坏载荷不动且清理继续；失败批次不改行且账本记录进度；账本只有计数与时间；不取迁移锁且绕过被事务持有的行；产物绝不先于快照；默认批量约束每个事务；选项手误只会多留），迁移 005/006 在迁移资格测试里回填、往返与拒绝（testdata/catalog_004/005/006），`reporting-migrate sweep` 与 `roles --sweep-role` 的命令测试，HTTP 的清理后视图，demo 清理循环只记计数，`sweep.go` 源码不读主机时钟的测试，DOM 的两条标记测试。Go 无环境 305 项顶层测试通过（改动前 296；18 个包），跳过清单与 CI 一致，普通与 race 都通过；数据库与 Typst 全开 321 项通过、无跳过，PostgreSQL 全量普通与 race 都通过；DOM 158 项（改动前 156；无 Typst 139 项通过、19 项跳过，含 Typst 158 项全部通过）；`reporting-migrate status`、`sweep --dry-run` 与 `sweep` 在 demo 会话之后的测试库上的运行记录（读取过期前计数为零，过期加宽限后删除 1 个产物、1 个快照并缩减 2 个任务载荷，再次运行计数为零，账本逐次记录）为本地证据，不在仓库中。
 不在本阶段：产物的对象存储、配额、行级安全、备份与恢复、删除私有配置存储、法律保留（如有产品需要再议）。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S03-N
 

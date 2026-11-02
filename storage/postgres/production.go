@@ -113,13 +113,15 @@ var sweepRules = roleRules{
 // RoleProblems lists every way the connected role exceeds or lacks the application role's
 // privileges: superuser, role or database creation, RLS bypass, schema ownership or CREATE on
 // the schema, DELETE or TRUNCATE on any table, DDL ownership of any table, or a missing SELECT,
-// INSERT or UPDATE on a data table.
+// INSERT or UPDATE on a data table; and, from version 7 (S04-C), the store's own row-level security
+// missing: not enabled on jobs or assets, or their two policies missing, changed or joined by another.
 func RoleProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	return roleProblems(ctx, pool, applicationRules)
 }
 
 // SweeperProblems is RoleProblems for the sweep role of S04-B (reporting-migrate roles --sweep-role): the same attribute, ownership and
-// schema rules, and on the tables UPDATE and DELETE on assets, UPDATE on jobs and INSERT on sweeps, nothing else beyond SELECT.
+// schema rules, and on the tables UPDATE and DELETE on assets, UPDATE on jobs and INSERT on sweeps, nothing else beyond SELECT; the
+// sweep role is subject to the row-level policies too, so it has the same row-level security rules.
 func SweeperProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	return roleProblems(ctx, pool, sweepRules)
 }
@@ -216,7 +218,102 @@ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rep
 			problems = append(problems, "table "+t+" is missing")
 		}
 	}
+	rls, err := rlsProblems(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+	problems = append(problems, rls...)
 	slices.Sort(problems)
+	return problems, nil
+}
+
+// rlsVersion is the migration that enables row-level security (007, S04-C); a store below it has none to check.
+const rlsVersion = 7
+
+// The policies of 007, as the role check holds the database to them: on each of the two tables with business rows, row-level security enabled
+// and exactly these two permissive policies for every command to PUBLIC. A qualification is compared as the database prints it, without
+// spaces, parentheses or type casts and in lower case, so that a version of PostgreSQL that prints it a little differently is not a problem;
+// any other change of it is.
+const (
+	identityQual = `tenant = nullif(current_setting('reporting.tenant', true), '') AND issuer = nullif(current_setting('reporting.issuer', true), '') AND subject = nullif(current_setting('reporting.subject', true), '')`
+	workerQual   = `current_setting('reporting.scope', true) = 'worker'`
+)
+
+var rlsTables = []string{"assets", "jobs"}
+var rlsPolicies = map[string]string{"identity": identityQual, "worker": workerQual}
+
+var qualNoise = strings.NewReplacer(" ", "", "\n", "", "\t", "", "(", "", ")", "", "::text", "", "::name", "")
+
+func normalQual(q string) string { return strings.ToLower(qualNoise.Replace(q)) }
+
+// rlsProblems is what the ledger cannot see: an administrator's DISABLE ROW LEVEL SECURITY, a dropped, altered or added policy leave the
+// ledger intact, and the store would then run with the database no longer refusing another identity's rows. Every problem names the table.
+func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	var ledger bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('reporting_s01.schema_migrations') IS NOT NULL").Scan(&ledger); err != nil || !ledger {
+		return nil, err
+	}
+	var version int
+	if err := pool.QueryRow(ctx, "SELECT coalesce(max(version),0) FROM reporting_s01.schema_migrations").Scan(&version); err != nil || version < rlsVersion {
+		return nil, err
+	}
+	var problems []string
+	enabled := map[string]bool{}
+	rows, err := pool.Query(ctx, `SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='reporting_s01' AND c.relkind='r'`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var name string
+		var on bool
+		if err := rows.Scan(&name, &on); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		enabled[name] = on
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	have := map[string]bool{}
+	rows, err = pool.Query(ctx, `SELECT tablename, policyname, permissive, array_to_string(roles, ','), cmd, coalesce(qual,''), coalesce(with_check,'') FROM pg_policies WHERE schemaname='reporting_s01'`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var table, name, permissive, roles, cmd, qual, check string
+		if err := rows.Scan(&table, &name, &permissive, &roles, &cmd, &qual, &check); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if !slices.Contains(rlsTables, table) {
+			continue
+		}
+		want, known := rlsPolicies[name]
+		if !known {
+			problems = append(problems, fmt.Sprintf("unexpected policy %s on %s", name, table))
+			continue
+		}
+		have[table+"."+name] = true
+		if permissive != "PERMISSIVE" || cmd != "ALL" || roles != "public" || normalQual(qual) != normalQual(want) || normalQual(check) != normalQual(want) {
+			problems = append(problems, fmt.Sprintf("policy %s on %s does not have its qualification", name, table))
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, table := range rlsTables {
+		if !enabled[table] {
+			problems = append(problems, "row-level security is not enabled on "+table)
+		}
+		for name := range rlsPolicies {
+			if !have[table+"."+name] {
+				problems = append(problems, fmt.Sprintf("policy %s is missing on %s", name, table))
+			}
+		}
+	}
 	return problems, nil
 }
 
