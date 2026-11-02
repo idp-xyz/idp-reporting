@@ -19,7 +19,7 @@ import (
 type Service struct {
 	repo        Repository
 	connections map[[2]string]Connection
-	key         []byte
+	keys        [][]byte                  // the cursor key ring, newest first (S04-H): the first signs, every one verifies
 	writers     map[string]WorkbookWriter // by format; "" is the workbook
 	issuer      Issuer                    // nil: issuing is unsupported
 	now         func() time.Time
@@ -29,14 +29,15 @@ type Service struct {
 }
 
 func NewService(c Config) (*Service, error) {
-	if c.Repository == nil || len(c.CursorKey) < 32 || len(c.Connections) == 0 {
+	ring, e := cursorRing(c)
+	if c.Repository == nil || e != nil || len(c.Connections) == 0 {
 		return nil, ErrInvalid
 	}
 	quotas, e := c.Quotas.Resolved()
 	if e != nil {
 		return nil, e
 	}
-	s := &Service{quotas: quotas, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, key: slices.Clone(c.CursorKey), writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
+	s := &Service{quotas: quotas, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, keys: ring, writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -60,6 +61,41 @@ func NewService(c Config) (*Service, error) {
 		s.connections[k] = v
 	}
 	return s, nil
+}
+
+// Cursor key ring bounds (S04-H).
+const (
+	minCursorKeyBytes = 32
+	// MaxCursorKeys is the largest cursor key ring.
+	MaxCursorKeys = 4
+)
+
+// cursorRing resolves Config.CursorKey (the ring of one) or Config.CursorKeys into a private copy. Exactly one of the two fields must be
+// set; 1 to 4 keys, each at least 32 bytes, pairwise distinct. The error is ErrInvalid with a fixed text: it never carries key material.
+func cursorRing(c Config) ([][]byte, error) {
+	if (len(c.CursorKey) > 0) == (len(c.CursorKeys) > 0) {
+		return nil, ErrInvalid
+	}
+	src := c.CursorKeys
+	if len(c.CursorKey) > 0 {
+		src = [][]byte{c.CursorKey}
+	}
+	if len(src) > MaxCursorKeys {
+		return nil, ErrInvalid
+	}
+	ring := make([][]byte, 0, len(src))
+	for _, k := range src {
+		if len(k) < minCursorKeyBytes {
+			return nil, ErrInvalid
+		}
+		for _, o := range ring {
+			if hmac.Equal(o, k) {
+				return nil, ErrInvalid
+			}
+		}
+		ring = append(ring, slices.Clone(k))
+	}
+	return ring, nil
 }
 func (s *Service) source(p Principal, id string) (Connection, SourceContext, error) {
 	if !p.Identity.Valid() || !slices.Contains(p.Integrations, id) {
@@ -1030,7 +1066,7 @@ func (s *Service) keep(ctx context.Context, a Artifact, b []byte) (*Artifact, er
 }
 func (s *Service) encodeCursor(snap Snapshot, start int) string {
 	payload := snap.ID + ":" + Digest(snap.Owner) + ":" + snap.Prepared.QueryHash + ":" + strconv.Itoa(start)
-	h := hmac.New(sha256.New, s.key)
+	h := hmac.New(sha256.New, s.keys[0])
 	h.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }
@@ -1050,9 +1086,16 @@ func (s *Service) decodeCursor(token string, snap Snapshot) (int, error) {
 	if e != nil {
 		return 0, ErrInvalid
 	}
-	h := hmac.New(sha256.New, s.key)
-	h.Write(b)
-	if !hmac.Equal(sig, h.Sum(nil)) {
+	// Every key of the ring is evaluated, with no early exit on the first match, so that the time does not say which key signed.
+	matched := 0
+	for _, k := range s.keys {
+		h := hmac.New(sha256.New, k)
+		h.Write(b)
+		if hmac.Equal(sig, h.Sum(nil)) {
+			matched = 1
+		}
+	}
+	if matched != 1 {
 		return 0, ErrInvalid
 	}
 	fields := strings.Split(string(b), ":")

@@ -73,14 +73,25 @@ func dsnNames(dsn, name string) bool {
 	return false
 }
 
+// ParseDSN is the pool library's parse of a connection string whose failure never carries the string (S04-H). The library redacts the
+// password of a string it can read, but names a string it cannot read as it is, and a string that does not parse may be a password in the
+// wrong place. The refusal is ErrInvalid with a fixed text; the operator has the string in his own secret store.
+func ParseDSN(dsn string) (*pgxpool.Config, error) {
+	c, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("the connection string cannot be parsed (its text is not shown: it may hold a password); check its form, port and sslmode: %w", r.ErrInvalid)
+	}
+	return c, nil
+}
+
 var fixtureDatabases = []string{"reporting_test_s01", "reporting_test_s01_race"}
 
 // OpenProduction verifies the DSN, the schema, the profile and the role, in that order; any
 // failure is a refusal to start.
 func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (*Store, error) {
-	c, err := pgxpool.ParseConfig(cfg.DSN)
+	c, err := ParseDSN(cfg.DSN)
 	if err != nil {
-		return nil, fmt.Errorf("%v: %w", err, r.ErrInvalid)
+		return nil, err
 	}
 	if !cfg.InsecureTestOnly {
 		if slices.Contains(fixtureDatabases, c.ConnConfig.Database) {

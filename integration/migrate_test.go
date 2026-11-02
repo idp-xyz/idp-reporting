@@ -1088,6 +1088,8 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.assets)+(SELECT count(*) FROM reporting_s01.jobs)+(SELECT count(*) FROM reporting_s01.sweeps)").Scan(&after); e != nil || after != before {
 			t.Fatal("a refused sweep changed the store", before, after, e)
 		}
+		// The passwords of the roles are rotated (S04-H H3): the production opener and the sweep, with the proofs of what stays up.
+		credentialRotation(t, admin, v, snap.ID)
 		// With the fixture profile row back, the production path refuses the database.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile=$1", postgres.ProfileFixture); e != nil {
 			t.Fatal(e)

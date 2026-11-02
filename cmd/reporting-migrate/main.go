@@ -50,9 +50,9 @@ func run(args []string, out io.Writer) error {
 	if dsn == "" {
 		return errors.New("set REPORTING_STORE_DSN")
 	}
-	cfg, err := pgxpool.ParseConfig(dsn)
+	cfg, err := postgres.ParseDSN(dsn)
 	if err != nil {
-		return fmt.Errorf("REPORTING_STORE_DSN: %v: %w", err, r.ErrInvalid)
+		return fmt.Errorf("REPORTING_STORE_DSN: %w", err)
 	}
 	cfg.MaxConns = 2
 	cfg.ConnConfig.ConnectTimeout = 5 * time.Second
