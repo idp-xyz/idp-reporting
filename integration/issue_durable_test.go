@@ -819,9 +819,11 @@ func TestDurablePostgresIssues(t *testing.T) {
 		}
 		v.repo.Close()
 		p := fixtureAdmin(t)
-		// What 005 and 006 (S04-B) added goes too: the upgrade backfills the expiry column from the payloads, and the download after it
+		// What 005, 006 (S04-B) and 007 (S04-C: the policies) added goes too: the upgrade backfills the expiry column from the payloads, and the download after it
 		// is what checks that the backfilled column equals the payload's expiry as the store wrote it.
 		if _, e = p.Exec(ctx, `DELETE FROM reporting_s01.schema_migrations WHERE version>2;
+DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
+ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
 DROP TABLE reporting_s01.sweeps;
 DROP INDEX reporting_s01.assets_expires_at;
 ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;

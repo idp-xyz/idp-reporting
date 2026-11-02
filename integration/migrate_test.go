@@ -62,6 +62,34 @@ WHERE n.nspname='reporting_s01' AND c.relkind='r' AND a.attnum>0 AND NOT a.attis
 		fmt.Fprintf(&out, "index %s %s %s\n", table, name, def)
 	}
 	rows.Close()
+	// Row-level security (007): a table's flags are printed only where one is set, and a policy where one exists, so that the catalogs of
+	// 003 to 006, which have neither, are what they were.
+	rows, e = pool.Query(ctx, `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='reporting_s01' AND c.relkind='r' AND (c.relrowsecurity OR c.relforcerowsecurity) ORDER BY 1`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for rows.Next() {
+		var table string
+		var enabled, forced bool
+		if e := rows.Scan(&table, &enabled, &forced); e != nil {
+			t.Fatal(e)
+		}
+		fmt.Fprintf(&out, "rowsecurity %s enabled=%v forced=%v\n", table, enabled, forced)
+	}
+	rows.Close()
+	rows, e = pool.Query(ctx, `SELECT tablename, policyname, cmd, permissive, roles::text, coalesce(qual,''), coalesce(with_check,'') FROM pg_policies WHERE schemaname='reporting_s01' ORDER BY 1,2`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for rows.Next() {
+		var table, name, cmd, permissive, roles, qual, check string
+		if e := rows.Scan(&table, &name, &cmd, &permissive, &roles, &qual, &check); e != nil {
+			t.Fatal(e)
+		}
+		fmt.Fprintf(&out, "policy %s %s %s permissive=%s roles=%s using=%s check=%s\n", table, name, cmd, permissive, roles, qual, check)
+	}
+	rows.Close()
 	return out.String()
 }
 
@@ -85,7 +113,7 @@ func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	admin := fixtureAdmin(t)
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 6 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" {
+	if e != nil || len(known) != 7 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" || known[6].Name != "row_level_security" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	t.Run("round_trip_reproduces_the_catalog_exactly", func(t *testing.T) {
@@ -100,26 +128,26 @@ func TestPostgresMigrations(t *testing.T) {
 		if !strings.Contains(first, "constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))") || strings.Contains(first, "issue_numbers") || !strings.Contains(first, "column schema_migrations.checksum") {
 			t.Fatalf("unexpected catalog:\n%s", first)
 		}
-		// The catalogs of the latest version (6), of 5, 4 and 3 are committed: a later edit of an
+		// The catalogs of the latest version (7), of 6, 5, 4 and 3 are committed: a later edit of an
 		// earlier migration file (which the checksums would also flag) changes a fresh database and
 		// fails here.
 		if os.Getenv("REPORTING_WRITE_CATALOG") == "1" { // after a reviewed migration change only
-			if e := os.WriteFile("testdata/catalog_006.txt", []byte(first), 0o644); e != nil {
+			if e := os.WriteFile("testdata/catalog_007.txt", []byte(first), 0o644); e != nil {
 				t.Fatal(e)
 			}
 		}
-		want, e := os.ReadFile("testdata/catalog_006.txt")
+		want, e := os.ReadFile("testdata/catalog_007.txt")
 		if e != nil {
 			t.Fatal(e)
 		}
 		if string(want) != first {
-			t.Fatalf("the catalog differs from testdata/catalog_006.txt:\n%s", first)
+			t.Fatalf("the catalog differs from testdata/catalog_007.txt:\n%s", first)
 		}
 		if !strings.Contains(first, "column assets.expires_at") || !strings.Contains(first, "index assets assets_expires_at") || !strings.Contains(first, "column sweeps.artifacts") {
 			t.Fatalf("the retention schema (005, 006) is not in the catalog:\n%s", first)
 		}
 		st, e := postgres.Status(ctx, admin)
-		if e != nil || st.Current() != 6 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
+		if e != nil || st.Current() != 7 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
 			t.Fatalf("%+v %v", st, e)
 		}
 		for _, a := range st.Applied {
@@ -150,9 +178,9 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := postgres.Verify(ctx, admin, postgres.ProfileFixture); e != nil {
 			t.Fatal(e)
 		}
-		// Versions 5 and 4 are committed too: each down gives back exactly the catalog it left, 006 the schema without the ledger
-		// of the sweeps, 005 the schema without the expiry column and its index.
-		for _, v := range []int{5, 4} {
+		// Versions 6, 5 and 4 are committed too: each down gives back exactly the catalog it left, 007 the schema without the policies
+		// (006's), 006 the schema without the ledger of the sweeps, 005 the schema without the expiry column and its index.
+		for _, v := range []int{6, 5, 4} {
 			if e := postgres.Down(ctx, admin, v, "test", false); e != nil {
 				t.Fatal(v, "down with no rows to lose needs no acceptance:", e)
 			}
@@ -330,11 +358,11 @@ func TestPostgresMigrations(t *testing.T) {
 		// binary does not know, a gap, a profile at another version.
 		for _, c := range []struct{ name, tamper, restore, reason string }{
 			{"checksum", "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=2", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[1].Checksum + "' WHERE version=2", "version 2 was applied from a different file"},
-			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(7,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=7", "version 7 was applied by a newer binary"},
+			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(8,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=8", "version 8 was applied by a newer binary"},
 			{"gap", "DELETE FROM reporting_s01.schema_migrations WHERE version=2", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(2,'payload_digests','" + known[1].Checksum + "','test')", "gap before version 3"},
 			{"other name", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET name='issues' WHERE version=3", "under another name"},
 			{"fake legacy", "UPDATE reporting_s01.schema_migrations SET checksum='legacy' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[2].Checksum + "' WHERE version=3", "claims to be a legacy row"},
-			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=6", "profile says version 2"},
+			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=7", "profile says version 2"},
 			{"other name of 004", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=4", "UPDATE reporting_s01.schema_migrations SET name='source_confirmed_issue' WHERE version=4", "under another name"},
 		} {
 			before := catalog(t, admin)
@@ -464,9 +492,9 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&rows); e != nil || rows != 0 {
 			t.Fatal(rows, e)
 		}
-		want6, e := os.ReadFile("testdata/catalog_006.txt")
-		if e != nil || string(want6) != catalog(t, admin) {
-			t.Fatalf("the catalog after the remedy differs from testdata/catalog_006.txt (%v)", e)
+		want7, e := os.ReadFile("testdata/catalog_007.txt")
+		if e != nil || string(want7) != catalog(t, admin) {
+			t.Fatalf("the catalog after the remedy differs from testdata/catalog_007.txt (%v)", e)
 		}
 		// Documents numbered by a source product (S03-H) do not block it: they are what the
 		// migration leaves in place; and with them the migrator refuses nothing on the way up again.
@@ -587,13 +615,13 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
 			t.Fatal(e)
 		}
-		if want6, e := os.ReadFile("testdata/catalog_006.txt"); e != nil || string(want6) != catalog(t, admin) {
-			t.Fatalf("the catalog after the round trip differs from testdata/catalog_006.txt (%v)", e)
+		if want7, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want7) != catalog(t, admin) {
+			t.Fatalf("the catalog after the round trip differs from testdata/catalog_007.txt (%v)", e)
 		}
 	})
 	t.Run("concurrent_migrators_serialize_on_the_lock", func(t *testing.T) {
 		// Several rounds on a pool whose connections have seen the schema absent (a negative
-		// catalog cache entry): every migrator must end at version 6 with one ledger.
+		// catalog cache entry): every migrator must end at version 7 with one ledger.
 		const n = 6
 		for round := range 5 {
 			dropSchema(t, admin)
@@ -619,7 +647,7 @@ func TestPostgresMigrations(t *testing.T) {
 				}
 			}
 			st := must(postgres.Status(ctx, admin))
-			if st.Current() != 6 || len(st.Applied) != 6 || len(st.Problems) != 0 {
+			if st.Current() != 7 || len(st.Applied) != 7 || len(st.Problems) != 0 {
 				t.Fatalf("round %d: %+v", round, st)
 			}
 		}
@@ -654,7 +682,9 @@ func TestPostgresMigrations(t *testing.T) {
 	t.Run("legacy_database_without_a_ledger_is_bootstrapped", func(t *testing.T) {
 		// A database at profile version 2 made before S04-A: no ledger, no issue tables (the
 		// counters table that 003 made is not there at the latest version either).
-		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+		if _, e := admin.Exec(ctx, `DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
+ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
+DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 DROP TABLE reporting_s01.schema_migrations;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check; ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));
 ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check; ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));
@@ -662,7 +692,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 			t.Fatal(e)
 		}
 		st := must(postgres.Status(ctx, admin))
-		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 4 || len(st.Problems) != 0 {
+		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 5 || len(st.Problems) != 0 {
 			t.Fatalf("%+v", st)
 		}
 		if _, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false); !errors.Is(e, r.ErrDenied) {
@@ -674,13 +704,15 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 6 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum {
+		if st.Legacy || st.Current() != 7 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum || st.Applied[6].Checksum != known[6].Checksum {
 			t.Fatalf("%+v", st)
 		}
 		// The realistic pre-S04-A database: the old fixture at version 3 (S03-G's, with its counters
 		// table) without a ledger. The server refuses it for the right reason; initialising records
 		// three legacy rows and applies 004.
-		if _, e := admin.Exec(ctx, `DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+		if _, e := admin.Exec(ctx, `DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
+ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
+DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 DROP TABLE reporting_s01.schema_migrations;
 CREATE TABLE reporting_s01.issue_numbers (
   tenant text NOT NULL, integration text NOT NULL, last bigint NOT NULL CHECK(last >= 0),
@@ -698,11 +730,11 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 6 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
+		if st.Legacy || st.Current() != 7 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
 			t.Fatalf("%+v", st)
 		}
-		if want6, e := os.ReadFile("testdata/catalog_006.txt"); e != nil || string(want6) != catalog(t, admin) {
-			t.Fatalf("the bootstrapped database does not have the catalog of version 6 (%v)", e)
+		if want7, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want7) != catalog(t, admin) {
+			t.Fatalf("the bootstrapped database does not have the catalog of version 7 (%v)", e)
 		}
 		// A production store is never a bootstrap: those rows are refused there.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile='"+postgres.ProfileProduction+"'"); e != nil {
@@ -1060,6 +1092,7 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 			t.Fatal("production store opened on the fixture profile", e)
 		}
 	})
+	t.Run("row_level_security", func(t *testing.T) { rowLevelSecurity(t, admin) })
 	t.Run("production_dsn_rules", func(t *testing.T) {
 		for name, dsn := range map[string]string{
 			"plaintext":    "postgresql://app@db.example/reporting?sslmode=disable",

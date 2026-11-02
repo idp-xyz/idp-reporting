@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	r "idp.local/reporting/reporting"
 	"strings"
@@ -96,9 +97,11 @@ func Sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions) (r.SweepRe
 	grace := o.Grace.Microseconds()
 	complete := false
 	if o.DryRun {
-		if e = pool.QueryRow(ctx, countSweep, grace).Scan(&res.Artifacts, &res.Snapshots, &res.Jobs); e == nil {
-			complete = true
-		}
+		// A dry run reads the rows of every identity, so it too is a transaction of the worker scope (S04-C).
+		e = asWorker(ctx, pool, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, countSweep, grace).Scan(&res.Artifacts, &res.Snapshots, &res.Jobs)
+		})
+		complete = e == nil
 	} else {
 		for _, step := range []struct {
 			sql   string
@@ -139,7 +142,8 @@ func batches(ctx context.Context, pool *pgxpool.Pool, sql string, grace int64, l
 
 // batch is one transaction: the statement acts on at most limit rows, or on none.
 func batch(ctx context.Context, pool *pgxpool.Pool, sql string, grace int64, limit int) (int, error) {
-	tx, e := pool.Begin(ctx)
+	// The batch works on the rows of every identity: it is a transaction of the worker scope (S04-C), which row-level security needs.
+	tx, e := beginWorker(ctx, pool)
 	if e != nil {
 		return 0, e
 	}

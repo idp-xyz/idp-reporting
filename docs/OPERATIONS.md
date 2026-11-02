@@ -15,6 +15,9 @@ The schema is a sequence of embedded migrations, `storage/postgres/migrations/NN
 | 002 | payload_digests | `data_sha256` on jobs and assets (S01-B) | nothing (the digests are derived) |
 | 003 | issues | the issue kind on jobs and assets, `issue_numbers` (S03-G: the platform's own counters, version 3 only) | issue jobs, records and counters (refused unless accepted) |
 | 004 | source_confirmed_issue | drops `issue_numbers`: the source product, not the platform, numbers every document (S03-H, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md) | issue jobs and records (refused unless accepted: an S03-G binary could not read them), and recreates the empty `issue_numbers`; the up step is refused while issue jobs or records exist |
+| 005 | retention | `assets.expires_at` and its index (S04-B, "Retention") | nothing (the payload keeps the expiry) |
+| 006 | sweeps | the `sweeps` ledger (S04-B) | the ledger (refused while it has rows unless accepted) |
+| 007 | row_level_security | row-level security and the `identity` and `worker` policies on `jobs` and `assets` (S04-C, "Row-level security") | nothing (policies only) |
 
 The ledger `reporting_s01.schema_migrations` records every applied step with the SHA-256 of its up file,
 the time and who applied it. The `profile` row names the deployment kind (`production` or
@@ -59,7 +62,7 @@ PDFs stay in the store but can no longer be downloaded, their records being gone
 snapshots); then `up` applies 003 and 004. A store that never issued under S03-G migrates
 without ceremony. Qualification: a fresh database taken up to the latest, down to zero and up again has a
 catalog (columns, types, defaults, nullability, constraints, indexes) identical to the first, and 004 down gives
-back exactly the catalog of version 3 (integration/migrate_test.go, integration/testdata/catalog_00{3,4}.txt).
+back exactly the catalog of version 3 (integration/migrate_test.go, integration/testdata/catalog_00{3,4,5,6,7}.txt).
 
 ## Roles
 
@@ -75,6 +78,8 @@ Two roles, created by the DBA with their own login and password policy, and an o
   in effect, not the owner of the database and without CREATE on it (an owner can drop the database and set
   its parameters), no column-level grants anywhere in the schema. The ledger and the profile it only reads.
   Create the database as the DBA or the migrator, never as the application role.
+  Both it and the sweep role are subject to the row-level policies of 007 ("Row-level security", below): they see and write the rows of
+  the identity a transaction says it works on, and of every identity only in a worker's transaction.
 
 - the sweep role (optional, `roles --sweep-role NAME`) is what the scheduled retention sweep connects as: USAGE on
   the schema, SELECT on every table, UPDATE and DELETE on `assets` (UPDATE because PostgreSQL requires it for the row
@@ -272,6 +277,85 @@ an issue keeps its record, and what is gone is 404, never a server error or an i
 Not in this slice: object storage for artifacts, quotas, row-level security, backups, deleting private configuration
 stores, legal holds.
 
+## Row-level security (S04-C)
+
+Until S04-C the isolation of tenants was the service's alone: every store query names the owner (tenant, issuer,
+subject) in its predicate, and the application role is one role for every tenant. Migration 007 `row_level_security`
+(docs/S04C_SCOPE.md) adds the database's own refusal as defence in depth: a missing predicate in a future query, or a
+connection that forgot to say whose rows it works on, leaks nothing. **No context, no rows.**
+
+What it protects: the business rows, in `jobs` and `assets`, against the platform's own mistakes (a query written
+without its identity predicate, a code path that reuses a pooled connection, an UPDATE that would hand a row to another
+identity). What it does not protect against: a compromised server process, which can set any context itself. Against
+that stand the roles of S04-A (no DELETE, no DDL, no bypass) and the real identity provider; this is not a defence
+against an attacker holding the application role's credentials.
+
+How it works. Row-level security is `ENABLE`d, not `FORCE`d, on `jobs` and `assets`, with two permissive policies on each,
+for every command, to PUBLIC (USING and WITH CHECK are the same expression):
+
+```sql
+CREATE POLICY identity ON reporting_s01.<jobs|assets> AS PERMISSIVE FOR ALL TO PUBLIC
+  USING      (tenant = nullif(current_setting('reporting.tenant', true), '') AND issuer = nullif(current_setting('reporting.issuer', true), '') AND subject = nullif(current_setting('reporting.subject', true), ''))
+  WITH CHECK (tenant = nullif(current_setting('reporting.tenant', true), '') AND issuer = nullif(current_setting('reporting.issuer', true), '') AND subject = nullif(current_setting('reporting.subject', true), ''));
+CREATE POLICY worker ON reporting_s01.<jobs|assets> AS PERMISSIVE FOR ALL TO PUBLIC
+  USING      (current_setting('reporting.scope', true) = 'worker')
+  WITH CHECK (current_setting('reporting.scope', true) = 'worker');
+```
+
+A setting that is missing or empty makes the comparison NULL: no row is visible and none may be written. (A pooled
+connection that ran a transaction with the settings shows the empty string, not NULL, afterwards; that is what the
+`nullif` is for.) A write under a wrong context is refused by the database, SQLSTATE 42501 "new row violates row-level
+security policy", not by Go; an UPDATE or DELETE of a row the context cannot see touches no row.
+
+The settings, set by the store and by nothing else:
+
+- `reporting.tenant`, `reporting.issuer`, `reporting.subject`: every identity-scoped call (`Admit`, `Job`, `Cancel`,
+  `Snapshot`, `Artifact`, `Issue`, `Issues`) runs in one transaction that first sets the three with
+  `set_config(name, $n, true)` and then runs its statements. The values are parameters, never interpolated.
+- `reporting.scope = 'worker'`: every worker call (`Claim`, `Publish`, `Fail`, `ResolveFailure`) and every batch of the
+  sweep, dry runs included, sets it the same way. A worker works on the rows of every identity: `Claim` takes the
+  oldest job of any, `Publish` writes the assets under the job's owner, the sweep deletes across identities.
+
+The context is transaction-local only: it ends with the transaction, so a pooled connection carries none into the next
+call. `set_config(..., false)`, `SET` and `SET SESSION` do not appear in `storage/postgres` (a source test holds it to
+that, and to every statement of the store going through a context transaction). The memory store is unchanged.
+
+Which roles are subject to it. The application role and the sweep role: neither has BYPASSRLS (S04-A already refuses the
+attribute). The migrator owns the tables and, because the policies are not `FORCE`d, bypasses them, so migrations and
+their data checks (what a down step would discard) see every row; run `up`, `down` and `roles` as the migrator or the
+owner, never as a role that is not the owner. A superuser bypasses too. **The fixture path is a superuser connection**
+(`postgres.Open` against the throwaway fixture databases, the demo, the test suites that use it): the policies do not
+apply there, and nothing about tenant isolation is proved by a run on the fixture path; the PostgreSQL qualification
+proves it as the application role and the sweep role through the production path. `roles` grants nothing new: policies
+need no grant.
+
+What the server checks. `RoleProblems` and `SweeperProblems` (so `OpenProduction`, which refuses to start, and
+`reporting-migrate status`) report, for a store at version 7 or later, a problem that names the table when row-level
+security is not enabled on `jobs` or `assets`, when one of the two policies is missing, when a policy does not have the
+qualification above (compared as the database prints it, ignoring spaces, parentheses and casts), is not permissive for
+all commands to PUBLIC, or when another policy exists on those tables. An administrator's `DISABLE ROW LEVEL SECURITY`
+or a dropped policy leaves the schema ledger intact, so the ledger alone would not see it.
+
+Reverting: `reporting-migrate down --to 6` drops the policies and disables row-level security; no row is touched and no
+acceptance is needed. A store at version 6 upgrades with its rows in place; the application role then sees none of them
+until the new binary sets its context, so upgrade the binary and the schema together (the old binary cannot run on 007).
+
+Verifying (as any role that reads the catalog):
+
+```sql
+-- row-level security on the two tables with business rows, and not on the others
+SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
+ WHERE relnamespace = 'reporting_s01'::regnamespace AND relkind = 'r' ORDER BY relname;
+-- the policies: two per table, ALL, PERMISSIVE, {public}
+SELECT tablename, policyname, permissive, roles, cmd, qual, with_check FROM pg_policies WHERE schemaname = 'reporting_s01' ORDER BY 1, 2;
+-- what a connection with no context sees (the application role): 0 and 0
+SELECT (SELECT count(*) FROM reporting_s01.jobs), (SELECT count(*) FROM reporting_s01.assets);
+```
+
+Not in this slice: one role or connection per tenant, policies on the ledgers (`schema_migrations`, `sweeps`), the
+profile and `issue_numbers` (they carry no business rows), object storage, quotas, backups and restore, capacity, key
+lifecycle.
+
 ## Demo and tests
 
 `reporting-demo -initialize-fixture` applies the migrations and inserts the fixture profile through the
@@ -285,5 +369,8 @@ production path (with the test-only option that lifts TLS and the fixture name),
 whole lifecycle with and without CREATE on the database, and every forbidden statement is attempted and
 refused. The two test binaries share the fixture database, so the job runs packages one at a time.
 
-Not covered yet: row-level security (one application role for all tenants; isolation is the service's),
-object storage, backups and restore, capacity, key lifecycle.
+The row-level security qualification (S04-C, `row_level_security` in `TestPostgresMigrations`) creates its own migrator, application
+and sweep roles (`reporting_rls_*_t`) and proves the policies as the application role and the sweep role, with two identities of one
+tenant and a third of another; the fixture suites run as the superuser and do not exercise the policies.
+
+Not covered yet: object storage, backups and restore, capacity, key lifecycle.
