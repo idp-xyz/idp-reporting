@@ -71,7 +71,15 @@
     // The embed has nobody to sign in and must not take the focus from the product's page: it shows a card and waits for the parent's token.
     if(embedded){document.querySelector('.shell').hidden=true;if(embed)embed.forget();}else $('access-token').focus();
   }
+  // The quotas of an identity (S04-D): the notice names the quota and gives the number the server states in its capabilities.
+  const quotaNames=['jobs_in_flight','stored_results','admissions_per_hour'];
+  function validQuotas(q) {return !!q&&typeof q==='object'&&!Array.isArray(q)&&Object.keys(q).sort().join()===[...quotaNames].sort().join()&&quotaNames.every(k=>Number.isSafeInteger(q[k])&&q[k]>=1&&q[k]<=100000);}
+  function quotaMessage(name) {
+    const n=state.capabilities&&validQuotas(state.capabilities.quotas)?state.capabilities.quotas[name]:undefined,at=n===undefined?'':' ('+n+')';
+    return {jobs_in_flight:'已达到进行中任务上限'+at+'，请等待任务完成或取消后再试',stored_results:'已达到保留结果上限'+at+'，结果过期后自动释放',admissions_per_hour:'已达到每小时提交上限'+at+'，请稍后再试'}[name];
+  }
   function errorMessage(error) {
+    if(error.code==='QUOTA_EXCEEDED'&&error.status===429&&quotaNames.includes(error.quota))return quotaMessage(error.quota);
     if(error.status===401)return '访问令牌无效或已失效，请重新连接。';
     if(error.status===403)return error.code==='INSUFFICIENT_TOKEN_SCOPE'?'令牌缺少报表访问范围。':'当前身份无权访问，或原数据范围已被撤销。';
     if(error.status===404)return '未找到当前身份有权访问的资源；它也可能已过期。';
@@ -97,7 +105,8 @@
     const affectsResult=!context||(context.snapshot&&context.snapshot===state.snapshot);
     if(affectsResult&&error.code!=='TEMPLATE_NOT_PUBLISHED'&&([403,404,409,503].includes(error.status)||error.code==='INVALID_RESPONSE'))clearResult();
     notify((context?context.label+'：':'')+(context?.uncertain&&!error.status&&error.code!=='INVALID_RESPONSE'?context.uncertain:errorMessage(error)),'error');
-    if(embed)embed.error(embedCode(error));
+    // A quota refusal is the caller's own limit, not an error of the frame: the host is not told.
+    if(embed&&error.code!=='QUOTA_EXCEEDED')embed.error(embedCode(error));
   }
   async function readBounded(response,limit) {
     const declared=response.headers.get('Content-Length');
@@ -123,8 +132,14 @@
       const bytes=await readBounded(response,settings.binary?(8<<20):(2<<20));
       if(epoch!==state.epoch)throw new Stale();
       if(!response.ok) {
-        let code='REQUEST_FAILED',detail;try{const problem=JSON.parse(new TextDecoder().decode(bytes));if(typeof problem.error==='string')code=problem.error;if(window.reportingRefusal.valid(problem.detail))detail=problem.detail;}catch(_){}
+        let code='REQUEST_FAILED',detail,problem;try{problem=JSON.parse(new TextDecoder().decode(bytes));if(typeof problem.error==='string')code=problem.error;if(window.reportingRefusal.valid(problem.detail))detail=problem.detail;}catch(_){}
         if(response.status===401)throw new Unauthorized();
+        // A quota refusal (S04-D) is exactly {error:'QUOTA_EXCEEDED',quota:<one of the three>} with status 429; the code in any other shape, or a
+        // 429 with any other body, cannot be verified.
+        if(response.status===429||code==='QUOTA_EXCEEDED') {
+          if(response.status!==429||!problem||typeof problem!=='object'||Array.isArray(problem)||Object.keys(problem).sort().join()!=='error,quota'||code!=='QUOTA_EXCEEDED'||!quotaNames.includes(problem.quota))throw new Failure(0,'INVALID_RESPONSE');
+          const refusal=new Failure(429,'QUOTA_EXCEEDED');refusal.quota=problem.quota;throw refusal;
+        }
         throw new Failure(response.status,code,detail);
       }
       if(settings.binary) {
@@ -248,7 +263,7 @@
     try {
       const session=await request('/session');const caps=await request('/capabilities');
       if(epoch!==state.epoch)throw new Stale();
-      if(!session.identity||!['tenant','issuer','subject'].every(k=>typeof session.identity[k]==='string'&&session.identity[k])||!Array.isArray(session.integrations)||!session.integrations.length||session.integrations.length>32||!session.integrations.every(i=>typeof i==='string'&&i.length<=128)||!Array.isArray(caps.formats))throw new Failure(0,'INVALID_RESPONSE');
+      if(!session.identity||!['tenant','issuer','subject'].every(k=>typeof session.identity[k]==='string'&&session.identity[k])||!Array.isArray(session.integrations)||!session.integrations.length||session.integrations.length>32||!session.integrations.every(i=>typeof i==='string'&&i.length<=128)||!Array.isArray(caps.formats)||!validQuotas(caps.quotas))throw new Failure(0,'INVALID_RESPONSE');
       // The embed shows one integration, the one its address names (and must be one the token's identity has).
       const offered=embedded?session.integrations.filter(i=>i===embedRequest.integration):session.integrations;
       if(!offered.length)throw new Failure(403,'AUTH_SCOPE_DENIED');
@@ -257,7 +272,7 @@
       $('overview-products').textContent=String(session.integrations.length);$('overview-formats').textContent=caps.formats.map(f=>String(f).toUpperCase()).join(' / ');
       $('actor-label').textContent=session.identity.subject;$('tenant-label').textContent=session.identity.tenant;$('connection-label').textContent='API 已连接';$('connection-dot').className='status-dot connected';if(!embedded)$('logout').disabled=false;
       addDetails('identity-details',[['平台租户',session.identity.tenant],['当前主体',session.identity.subject],['发行方',session.identity.issuer],['产品连接',session.integrations.join('、')]]);
-      addDetails('capability-details',[['来源配置',caps.profile],['数据类别','合同模拟器 / 合成数据'],['查询组合',caps.query_shapes],['导出格式',caps.formats.join('、')],['生产准入',caps.production_approved===true?'已准入':'尚未准入']]);
+      addDetails('capability-details',[['来源配置',caps.profile],['数据类别','合同模拟器 / 合成数据'],['查询组合',caps.query_shapes],['导出格式',caps.formats.join('、')],['提交限额','进行中任务 '+caps.quotas.jobs_in_flight+' · 保留结果 '+caps.quotas.stored_results+' · 每小时提交 '+caps.quotas.admissions_per_hour],['生产准入',caps.production_approved===true?'已准入':'尚未准入']]);
       $('connection-overlay').hidden=true;document.querySelector('.shell').inert=false;busy(0);
       if(embedded){document.querySelector('.shell').hidden=false;showEmbedView();embed.expect(state.token);}else{openPage(location.hash.slice(1));$('main').focus();}
       state.starting=false;
@@ -433,7 +448,8 @@
     state.snapshot=id;state.cursor=page.next_cursor||'';state.page=targetPage;renderResult(page,query,{total:page.total_row_count});busy(0);
   }
   async function createSnapshot(m) {
-    const q=buildQuery();clearResult();const job=await submit('snapshot',q,{query:copy(q),integration:q.integration_id});if(!current(m))throw new Stale();
+    // The result on show is cleared once the submission is answered, or refused for any reason but a quota: a quota refusal leaves the page as it was.
+    const q=buildQuery();let job;try{job=await submit('snapshot',q,{query:copy(q),integration:q.integration_id});}catch(error){if(error.code!=='QUOTA_EXCEEDED')clearResult();throw error;}clearResult();if(!current(m))throw new Stale();
     notify('快照任务已提交，正在后台执行。');const done=await poll(job.job_id,m);if(!done)return;
     if(done.state==='succeeded'&&done.snapshot_id){await loadSnapshot(done.snapshot_id,q,m,true);if(current(m))notify('冻结快照已生成，可分页查看或导出。','success');}
     else notify(done.state==='cancelled'?'快照任务已取消。':'快照任务失败，请检查当前授权与查询范围。',done.state==='cancelled'?'':'error');

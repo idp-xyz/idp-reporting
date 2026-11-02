@@ -431,7 +431,7 @@ func TestGroupJobThatIsNotItsSnapshotsFailsWithoutCallingTheProduct(t *testing.T
 		if e := r.ValidateAdmission(crafted); e != nil {
 			t.Fatalf("%s: the crafted job is not a valid admission: %v", name, e)
 		}
-		if _, e := v.repo.Admit(ctx, crafted); e != nil {
+		if _, e := v.repo.Admit(ctx, crafted, r.Quotas{}); e != nil {
 			t.Fatal(name, e)
 		}
 		if ran, e := v.run(); !ran || !errors.Is(e, r.ErrIntegrity) {

@@ -9,7 +9,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | Method and path | Request / response |
 |---|---|
 | GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials |
-| GET /capabilities | Exact simulator capability profile; production_approved=false. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
+| GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
 | POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission |
@@ -429,3 +429,28 @@ What the API says, at each stage, for a job that succeeded:
 
 `expired` is present only when true and only on a job that succeeded; the console refuses any other value. A failed or
 cancelled job is reduced like any other once its own read's expiry plus the grace is past; its view does not change.
+
+## Quotas (S04-D, docs/S04D_SCOPE.md, docs/OPERATIONS.md "Quotas")
+
+Every identity (tenant, issuer, subject) is bounded in what it may hold: `jobs_in_flight` (queued and running jobs, default 8),
+`stored_results` (snapshots and artifacts not yet expired, default 64; an issue record never counts) and `admissions_per_hour` (jobs
+admitted in the last hour, default 120), all by the store's clock. `GET /capabilities` carries the numbers in force:
+
+```json
+"quotas": {"jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120}
+```
+
+A submission that would take the identity over one of them (`POST /snapshot-jobs`, `POST /exports`, `POST /issues`) is refused with
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+{"error":"QUOTA_EXCEEDED","quota":"jobs_in_flight"}
+```
+
+`quota` is one of `jobs_in_flight`, `stored_results`, `admissions_per_hour` (the first reached, in that order) and the body carries
+nothing else: no count, no limit, nothing of another identity. Nothing is admitted and there is no `Location`. The refusal is
+the identity's own state, so a later request may succeed: when a job finishes or is cancelled (`jobs_in_flight`), when results expire
+(`stored_results`), or as the hour passes (`admissions_per_hour`); `Retry-After: 60` is a fair wait, not a promise. A replay of an
+Idempotency-Key whose job exists is never refused by a quota (it answers the job as before), and a replay with a changed request is
+still 409 `IDEMPOTENCY_CONFLICT`. Reads, cancels, downloads and `POST /queries` are not subject to quotas.

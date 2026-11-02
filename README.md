@@ -1,3 +1,14 @@
+# IDP Reporting Platform · S04-D
+
+2026-11-01。配额（docs/S04D_SCOPE.md，docs/OPERATIONS.md “Quotas”，docs/API.md “Quotas”）：S03-H 审查的 N10 指出准入从不限量——任何通过准入的主体都能无限排队任务、把结果留到过期、想多快提交就多快。现在每个身份（租户、签发方、主体；不含 integration）在准入处受三项上限约束，两种存储一致。
+三项配额与默认值（可在界内修改，0 为默认）：`jobs_in_flight`（排队与执行中的任务，默认 8，1..1000）、`stored_results`（按存储时钟尚未过期的快照与产物，默认 64，1..100000；出具记录永不计，已过期的等清理、不计）、`admissions_per_hour`（按存储时钟最近一小时内准入的任务，默认 120，1..100000）。`reporting.Quotas` 在 `reporting.Config.Quotas`，`NewService` 对越界值返回 `ErrInvalid`；demo 有 `-quota-jobs`、`-quota-results`、`-quota-admissions`，同界，越界则启动失败。
+执行：`Repository.Admit(ctx, job, Quotas)` 在准入事务内、幂等重放判定之后、插入之前计数，所以已有幂等键的重放永不被配额拒绝，被拒的请求什么也不留下。PostgreSQL 先取按身份（租户、签发方、主体，各带长度前缀）散列的事务级咨询锁 `pg_advisory_xact_lock(hashtextextended(key, 0))`，同一身份的并发准入排队、不同身份互不等待，锁随事务结束；计数是三条带身份谓词的语句，时间只用数据库的 `clock_timestamp()`；内存存储在互斥锁下按同样规则计数。拒绝是 `reporting.ErrQuota`（`*QuotaError`，文本 “quota exceeded: <名称>”，不含数量或他人信息）。
+调用方所见：三条提交路由（`POST /snapshot-jobs`、`/exports`、`/issues`）回 429 `{"error":"QUOTA_EXCEEDED","quota":…}` 加 `Retry-After: 60`，不准入、无 Location；`GET /capabilities` 的 `quotas` 给出生效数字；控制台校验后用能力里的数字显示配额提示、保持页面原样，其他形状按无法验证的响应处理；嵌入页同样，且不向父页面发送（`reporting:error` 仍是封闭列表）。
+测试：两种存储共用的配额契约（`TestMemoryQuotaContract`，PostgreSQL 的 `TestDurablePostgresContract/quotas`：各配额在限额与超一；小时与过期按存储时钟；取消、失败、成功释放名额；出具记录与过期结果不计；已有键的重放在限额时成功、改了请求仍是冲突；同租户另一身份不受影响；每种任务都计；拒绝不准入；存储自身的默认与界）；PostgreSQL 并行准入（同一身份 32 个并行、限额 K 恰好准入 K；以 `pg_locks` 证明锁按身份、他人不等、事务结束即释放）与源码测试（只用数据库时钟、先锁后计数）；HTTP（三条路由的 429 形状与头、重放、能力）；DOM（每项配额的提示与数字、畸形体、能力缺失、导出被拒、真实服务限额为 1、嵌入页不上报）；`NewService` 与 demo 的越界拒绝。Go 无环境 316 项顶层测试通过（改动前 306）、跳过清单与 CI 一致，数据库与 Typst 全开 332 项通过、无跳过，普通与 race 都通过；DOM 164 项（改动前 158；无 Typst 145 项通过、19 项跳过，含 Typst 164 项全部通过；两个 DOM 夹具的 demo 以 `-quota-jobs 1000 -quota-results 100000 -quota-admissions 100000` 启动，因为整套测试共用一个身份）。
+不在本阶段：`POST /queries` 与读取的限流（那里没有准入；留给后续容量阶段）、按租户或按 integration 的配额、按字节的配额、与来源产品协商配额、对象存储、备份、容量、密钥生命周期。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S04-C
 
 2026-11-01。行级安全（docs/S04C_SCOPE.md，docs/OPERATIONS.md “Row-level security”）：此前租户隔离只靠服务——每条存储查询都把所有者（租户、签发方、主体）写进谓词，应用角色对所有租户是同一个角色；本阶段让数据库自己拒绝：没说明自己在处理谁的行的连接，看不到、也写不进任何业务行。这是纵深防御，防的是平台自己的错误（将来某条查询漏了谓词、某个连接忘了上下文），不防已被攻破的服务进程（它自己能设任何上下文；那一层由 S04-A 的角色与真实身份提供方负责）。没有上下文，就没有行。
@@ -6,8 +17,6 @@
 角色与启动：应用角色与清理角色都受策略约束（二者都没有 BYPASSRLS，S04-A 已拒绝该属性）；`roles` 不需新增授权。对版本不低于 7 的库，`RoleProblems` 与 `SweeperProblems` 新增：`jobs`、`assets` 未启用行级安全，或两条策略缺失、限定条件被改、命令或角色不是“全部命令、PUBLIC”、宽容性被改，或表上多出别的策略，都报出带表名的问题；`OpenProduction` 因此拒绝启动，`reporting-migrate status` 打印同样的问题（管理员的 `DISABLE ROW LEVEL SECURITY` 或删策略不动账本，只靠账本看不出）。
 测试（`TestPostgresMigrations/row_level_security`，自建迁移、应用、清理三个角色，经生产路径，同租户两个身份 A、B 与另一租户的 C，各经服务做出任务、快照、产物与出具记录）：故意犯错——去掉 `Job` 与 asset 读取语句里的身份谓词，在 A 的上下文下只返回 A 的行，同一语句以超级用户执行则返回所有人的行（策略缺失时失败的就是它）；无上下文（什么都没设、设为空串、只设一部分、别的范围）两个角色的 SELECT 都无行，INSERT 被 42501 拒绝，UPDATE 与 DELETE 不触及任何行，数据库内容摘要不变；A 的上下文下只见 A 的行（服务与裸 SQL），把行写成 B 或另一租户的（INSERT 或 UPDATE）被拒绝，B 的行读不到、改不了、取消不了、清理角色也删不掉，B 以 A 的任务、快照、产物、出具记录调用服务仍是“不存在”；工作范围：Claim 按受理顺序领取所有身份的任务，Publish 把资产写在任务所属身份名下，Fail 与 ResolveFailure 作用于任何身份的任务，清理跨身份删除而出具记录保留，没有范围设置的工作事务什么也领不到；调用之间不泄漏：单连接池里每一种调用与清理之后，探针看到的上下文设置不是值（NULL 或空串）；迁移 007 的往返与目录（`testdata/catalog_007.txt`，004、005、006 的目录逐字节不变，因为目录只在有标志或策略时才打印行级安全）、从有数据的版本 6 升级、`down --to 6`；关闭行级安全、删除或改动或增添策略都使 `OpenProduction` 拒绝（问题带表名）、`status` 打印、恢复后重新可开。Go 无环境 306 项顶层测试通过（改动前 305；新增源码测试一项，其余是 PostgreSQL 资格测试的子测试，跳过清单与 CI 一致，CI 无需改动），普通与 race 都通过；数据库与 Typst 全开 322 项通过、无跳过，PostgreSQL 全量普通与 race 都通过；DOM 与上一阶段相同（158 项，本阶段未改控制台）。
 不在本阶段：每租户一个角色或连接、账本上的策略、产物对象存储、配额、备份与恢复、容量、密钥生命周期。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S04-B
 

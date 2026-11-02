@@ -360,6 +360,8 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 func capabilities(service *r.Service, embedding bool) map[string]any {
 	view := map[string]any{"profile": "S01-B-contract-simulators", "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
 	view["embedding"] = embedding
+	q := service.Quotas()
+	view["quotas"] = map[string]int{r.QuotaJobsInFlight: q.JobsInFlight, r.QuotaStoredResults: q.StoredResults, r.QuotaAdmissionsPerHour: q.AdmissionsPerHour}
 	return view
 }
 
@@ -413,6 +415,9 @@ func send(w http.ResponseWriter, status int, v any) error {
 // row of a document check, which is the code a preview of that row would answer. ok is false for
 // an error the table does not know (EXECUTION_FAILED, 500).
 func classify(e error) (code string, status int, ok bool) {
+	if errors.Is(e, r.ErrQuota) {
+		return "QUOTA_EXCEEDED", 429, true
+	}
 	for _, candidate := range []struct {
 		err    error
 		status int
@@ -433,6 +438,12 @@ func problem(w http.ResponseWriter, e error, status int) {
 		status = mapped
 	}
 	body := map[string]any{"error": code}
+	// A quota refusal (S04-D) names the quota and nothing else, and says when to try again: admission looks at the last hour and at the
+	// jobs in flight, so a minute is a fair wait, not a promise.
+	if q := r.QuotaOf(e); ok && q != "" {
+		body["quota"] = q
+		w.Header().Set("Retry-After", "60")
+	}
 	// A layout or binding refusal says why and where (S03-J): a reason and names and indices, never a value.
 	if detail, found := doctemplates.DetailOf(e); found && ok {
 		body["detail"] = detail

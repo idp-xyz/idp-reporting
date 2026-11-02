@@ -101,6 +101,20 @@ func embedConfig(values []string, integrations []string) (*embedding.Config, err
 	return config, nil
 }
 
+// quotaConfig reads the -quota-* flags (S04-D): zero is the default of each, a value outside its bounds stops the start with the flag's
+// name and the bounds, before anything is opened.
+func quotaConfig(jobs, results, admissions int) (r.Quotas, error) {
+	for _, f := range []struct {
+		name     string
+		v, bound int
+	}{{"-quota-jobs", jobs, r.MaxJobsInFlight}, {"-quota-results", results, r.MaxStoredResults}, {"-quota-admissions", admissions, r.MaxAdmissionsPerHour}} {
+		if f.v < 0 || f.v > f.bound {
+			return r.Quotas{}, fmt.Errorf("%s must be 0 (the default) or between 1 and %d", f.name, f.bound)
+		}
+	}
+	return r.Quotas{JobsInFlight: jobs, StoredResults: results, AdmissionsPerHour: admissions}.Resolved()
+}
+
 func run() error {
 	profile := flag.String("profile", "", "required: contract-simulator")
 	listen := flag.String("listen", "127.0.0.1:7810", "loopback address only")
@@ -116,6 +130,9 @@ func run() error {
 	templateDir := flag.String("template-directory", "", "optional private single-process document template directory (0700)")
 	assetDir := flag.String("background-directory", "", "optional private immutable PNG background directory (0700); it also holds the private images of schema 2.1 templates, in its images subdirectory")
 	var embedOrigins []string
+	quotaJobs := flag.Int("quota-jobs", 0, "quota per identity: queued and running jobs (S04-D); 0 is the default, 8; 1..1000")
+	quotaResults := flag.Int("quota-results", 0, "quota per identity: snapshots and artifacts not yet expired (S04-D); 0 is the default, 64; 1..100000")
+	quotaAdmissions := flag.Int("quota-admissions", 0, "quota per identity: jobs admitted in the last hour (S04-D); 0 is the default, 120; 1..100000")
 	flag.Func("embed-origin", "repeatable integration=origin: a page of that origin may show the embed pages of that integration in a frame (ADR 0006); an https origin as https://host[:port], or http://127.0.0.1:port for a local product page", func(value string) error {
 		embedOrigins = append(embedOrigins, value)
 		return nil
@@ -130,6 +147,10 @@ func run() error {
 	}
 	if *sweepInterval < 0 {
 		return fmt.Errorf("-sweep-interval must be 0 (off) or positive")
+	}
+	quotas, e := quotaConfig(*quotaJobs, *quotaResults, *quotaAdmissions)
+	if e != nil {
+		return e
 	}
 	secret := os.Getenv("REPORTING_DEMO_TOKEN")
 	if len(secret) < 32 {
@@ -232,7 +253,7 @@ func run() error {
 		issuer = v
 	}
 	key := sha256.Sum256([]byte("reporting-demo-cursor-v1:" + secret))
-	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer})
+	s, e := r.NewService(r.Config{Repository: repo, Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: finance}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: shipment}}, CursorKey: key[:], Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas})
 	if e != nil {
 		return e
 	}

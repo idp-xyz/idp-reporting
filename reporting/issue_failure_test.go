@@ -278,7 +278,7 @@ func TestIssueJobWithARowBeyondItsSnapshotFailsWithoutCallingTheProduct(t *testi
 	if e := r.ValidateAdmission(crafted); e != nil {
 		t.Fatalf("the crafted job is not a valid admission: %v", e)
 	}
-	if _, e := v.repo.Admit(ctx, crafted); e != nil {
+	if _, e := v.repo.Admit(ctx, crafted, r.Quotas{}); e != nil {
 		t.Fatal(e)
 	}
 	// Run the good job first (it is older), then the crafted one.

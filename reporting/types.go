@@ -28,7 +28,63 @@ var (
 	// dies, or the job's own code cannot be recorded afterwards. The product can find the
 	// reservation by the job id.
 	ErrUnreconciled = errors.New("ISSUE_UNRECONCILED")
+	// ErrQuota: admission would take the identity over one of its quotas (S04-D). The error that carries it names the quota
+	// (QuotaOf) and nothing else.
+	ErrQuota = errors.New("quota exceeded")
 )
+
+// The names of the quotas (S04-D, docs/S04D_SCOPE.md D1): the words of the 429 answer, of the capabilities and of the console.
+const (
+	QuotaJobsInFlight      = "jobs_in_flight"
+	QuotaStoredResults     = "stored_results"
+	QuotaAdmissionsPerHour = "admissions_per_hour"
+)
+
+// QuotaError is ErrQuota naming the quota that was reached: its text carries the name, never a count or a value.
+type QuotaError struct{ Quota string }
+
+func (e *QuotaError) Error() string        { return ErrQuota.Error() + ": " + e.Quota }
+func (e *QuotaError) Is(target error) bool { return target == ErrQuota }
+
+// QuotaOf says which quota an error names, or "" when it is not a quota refusal.
+func QuotaOf(e error) string {
+	var q *QuotaError
+	if errors.As(e, &q) {
+		return q.Quota
+	}
+	return ""
+}
+
+// Quotas bound what one identity (tenant, issuer, subject) may hold at the store (S04-D). Zero is the default; a value outside its bounds
+// is refused by Resolved, so by NewService.
+type Quotas struct {
+	JobsInFlight      int // queued and running jobs: default 8, 1..1000
+	StoredResults     int // snapshots and artifacts not yet expired by the store's clock: default 64, 1..100000
+	AdmissionsPerHour int // jobs admitted in the last hour by the store's clock: default 120, 1..100000
+}
+
+const (
+	DefaultJobsInFlight      = 8
+	DefaultStoredResults     = 64
+	DefaultAdmissionsPerHour = 120
+	MaxJobsInFlight          = 1000
+	MaxStoredResults         = 100000
+	MaxAdmissionsPerHour     = 100000
+)
+
+// Resolved replaces each zero with its default and refuses (ErrInvalid) a value outside 1..its maximum.
+func (q Quotas) Resolved() (Quotas, error) {
+	one := func(v *int, def, max int) bool {
+		if *v == 0 {
+			*v = def
+		}
+		return *v >= 1 && *v <= max
+	}
+	if !one(&q.JobsInFlight, DefaultJobsInFlight, MaxJobsInFlight) || !one(&q.StoredResults, DefaultStoredResults, MaxStoredResults) || !one(&q.AdmissionsPerHour, DefaultAdmissionsPerHour, MaxAdmissionsPerHour) {
+		return Quotas{}, ErrInvalid
+	}
+	return q, nil
+}
 
 type Identity struct {
 	Tenant  string
@@ -353,6 +409,13 @@ type IssueResult struct {
 // ErrLease and changes nothing, and a code that is empty or ISSUE_UNRECONCILED itself is
 // ErrInvalid. It needs no lease: a failed job has none.
 //
+// Admit stores a job for its identity, or answers the job already stored under its key (a replay: never refused by a quota, the
+// answer is the job's view). Otherwise, in the same atomic step as the insert, it counts what the identity (tenant, issuer, subject; not
+// the integration) holds against the quotas it is given (S04-D, docs/S04D_SCOPE.md): queued and running jobs, snapshots and artifacts
+// whose expiry is still in the future by the store's clock (issue records never), and jobs admitted in the last hour by the store's clock.
+// A job over a quota is ErrQuota (a *QuotaError naming it), and nothing is stored. A zero field takes its default, a field out of bounds
+// is ErrInvalid.
+//
 // Sweep is the retention of S04-B (docs/S04B_SCOPE.md, SweepOptions): it deletes the artifacts, then the snapshots, whose expiry
 // plus the grace is past by the store's clock, never an issue record, never anything a queued or running job names, then reduces the
 // payload of the terminal jobs whose snapshot and artifact are gone; in bounded batches, each one transaction, and it returns counts only.
@@ -361,7 +424,7 @@ type IssueResult struct {
 // generation one higher), or nil when there is none. A job that cannot be decoded is not claimed: it is failed in the same transaction as
 // its claim, terminally, with UnreadableJobCode, and Claim goes on to the next job, so that nil still means that nothing is claimable.
 type Repository interface {
-	Admit(context.Context, Job) (Job, error)
+	Admit(context.Context, Job, Quotas) (Job, error)
 	Job(context.Context, Identity, string) (Job, error)
 	Cancel(context.Context, Identity, string) (Job, error)
 	Claim(context.Context, time.Duration) (*Claim, error)
@@ -387,6 +450,7 @@ type Config struct {
 	Writer      WorkbookWriter            // the default workbook format
 	Formats     map[string]WorkbookWriter // further export formats by name, such as "pdf"
 	Issuer      Issuer                    // renders issue jobs; without it issuing is unsupported
+	Quotas      Quotas                    // per-identity admission limits (S04-D); zero fields take the defaults
 	Now         func() time.Time
 }
 type RowsPage struct {

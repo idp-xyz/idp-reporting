@@ -144,3 +144,22 @@ func TestSweepLoopSweepsEveryIntervalLogsCountsOnlyAndStops(t *testing.T) {
 		}
 	}
 }
+
+// The -quota-* flags (S04-D): zero is the default, a value out of its bounds stops the start and names the flag.
+func TestQuotaFlagsStopTheStartOutsideTheirBounds(t *testing.T) {
+	q, err := quotaConfig(0, 0, 0)
+	if err != nil || q != (r.Quotas{JobsInFlight: 8, StoredResults: 64, AdmissionsPerHour: 120}) {
+		t.Fatalf("%+v %v", q, err)
+	}
+	if q, err = quotaConfig(1000, 100000, 1); err != nil || q != (r.Quotas{JobsInFlight: 1000, StoredResults: 100000, AdmissionsPerHour: 1}) {
+		t.Fatalf("%+v %v", q, err)
+	}
+	for _, c := range []struct {
+		jobs, results, admissions int
+		flag                      string
+	}{{-1, 0, 0, "-quota-jobs"}, {1001, 0, 0, "-quota-jobs"}, {0, -1, 0, "-quota-results"}, {0, 100001, 0, "-quota-results"}, {0, 0, -1, "-quota-admissions"}, {0, 0, 100001, "-quota-admissions"}} {
+		if _, err := quotaConfig(c.jobs, c.results, c.admissions); err == nil || !strings.Contains(err.Error(), c.flag) {
+			t.Fatalf("%+v: %v", c, err)
+		}
+	}
+}

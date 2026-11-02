@@ -274,7 +274,7 @@ SELECT at, dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, 
 What the views say after a sweep is in docs/API.md ("Retention"): a job keeps its state and ids and says `expired`,
 an issue keeps its record, and what is gone is 404, never a server error or an integrity failure.
 
-Not in this slice: object storage for artifacts, quotas, row-level security, backups, deleting private configuration
+Not in this slice: object storage for artifacts, quotas (S04-D), row-level security, backups, deleting private configuration
 stores, legal holds.
 
 ## Row-level security (S04-C)
@@ -353,8 +353,86 @@ SELECT (SELECT count(*) FROM reporting_s01.jobs), (SELECT count(*) FROM reportin
 ```
 
 Not in this slice: one role or connection per tenant, policies on the ledgers (`schema_migrations`, `sweeps`), the
-profile and `issue_numbers` (they carry no business rows), object storage, quotas, backups and restore, capacity, key
+profile and `issue_numbers` (they carry no business rows), object storage, quotas (S04-D), backups and restore, capacity, key
 lifecycle.
+
+## Quotas (S04-D)
+
+Admission asks the source product nothing about volume, so before S04-D any admitted principal could queue jobs, hold results
+until they expired, and submit as fast as it liked (N10 of docs/CODE_REVIEW_S03H.md). Each identity (tenant, issuer, subject; the
+integration is not part of it, so an identity's two products share its quotas) is now bounded at the place where admission happens
+(docs/S04D_SCOPE.md).
+
+What is counted, per identity, at the moment of an admission:
+
+| Quota | What it counts | Default | Bounds |
+|---|---|---|---|
+| `jobs_in_flight` | jobs of every kind (snapshot, export, issue) in state `queued` or `running` | 8 | 1..1000 |
+| `stored_results` | snapshots and artifacts the identity owns whose expiry is still in the future by the store's clock | 64 | 1..100000 |
+| `admissions_per_hour` | jobs admitted in the last hour by the store's clock, whatever became of them | 120 | 1..100000 |
+
+Rules that follow from it:
+
+- A job that is `succeeded`, `failed` or `cancelled` frees its in-flight slot. It still counts toward `admissions_per_hour` for the
+  hour after its admission.
+- An expired snapshot or artifact does not count: it waits for the retention sweep (docs/OPERATIONS.md "Retention") and the sweep
+  deleting it changes nothing about the count. A row whose expiry could not be read (NULL, which the sweep never deletes) is not
+  "in the future" and does not count. An issue record never counts: it is permanent and is not a result in this sense (the issued
+  document's artifact is, until it expires). A stored result bounds bytes too, as each is already bounded by `MaxResultBytes` and `MaxArtifactBytes`.
+- A replay of an existing Idempotency-Key is never refused by a quota: the job exists and the answer is its view. A replay with a
+  changed request is still `IDEMPOTENCY_CONFLICT`, not a quota refusal.
+- A refusal admits nothing and changes nothing. The check order, when more than one quota is reached, is `jobs_in_flight`,
+  `stored_results`, `admissions_per_hour`; the answer names the first.
+- Counts use the store's clock: on PostgreSQL `clock_timestamp()` in the counting statement, never the platform host's.
+
+Configuration. `reporting.Config.Quotas` (`reporting.Quotas{JobsInFlight, StoredResults, AdmissionsPerHour}`): zero takes the default,
+a value outside its bounds makes `NewService` return `ErrInvalid`. The demo takes `-quota-jobs`, `-quota-results` and `-quota-admissions`
+with the same meaning and bounds; an out-of-bounds value stops the start with the flag's name. The service hands the resolved values to
+`Repository.Admit(ctx, job, quotas)`, so the store applies exactly what the service was configured with; a store called directly with
+zero fields applies the defaults and refuses a value out of bounds (`ErrInvalid`).
+
+How it is made atomic. In the one transaction of `Admit` (which already sets the identity's row-level context, docs/OPERATIONS.md
+"Row-level security"), the PostgreSQL store takes a transaction-scoped advisory lock keyed on the identity, then settles a replay of the
+key, then counts, then inserts:
+
+```sql
+SELECT pg_advisory_xact_lock(hashtextextended($1, 0));  -- $1 = 'reporting.admit:' || length-prefixed tenant, issuer, subject
+SELECT EXISTS (SELECT 1 FROM reporting_s01.jobs WHERE tenant=$1 AND integration=$2 AND issuer=$3 AND subject=$4 AND kind=$5 AND idem_key=$6);
+-- only if no job has the key:
+SELECT
+ (SELECT count(*) FROM reporting_s01.jobs   WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND state IN ('queued','running')),
+ (SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp()),
+ (SELECT count(*) FROM reporting_s01.jobs   WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND created_at > clock_timestamp() - interval '1 hour');
+```
+
+Two admissions of one identity run one after the other (the second counts what the first committed); two identities never wait on
+each other; the lock ends with the transaction, committed or refused. The memory store counts under its mutex with the same rules.
+Under row-level security the statements see only the identity's own rows, which is what is wanted; the worker scope is not used for
+admission.
+
+Seeing an identity's usage. Counts only, never payloads (run as a role that can read the tables, not as an application connection
+without a context, which sees nothing):
+
+```sql
+SELECT count(*) FILTER (WHERE state IN ('queued','running')) AS jobs_in_flight,
+       count(*) FILTER (WHERE created_at > clock_timestamp() - interval '1 hour') AS admissions_last_hour
+  FROM reporting_s01.jobs WHERE tenant = :'tenant' AND issuer = :'issuer' AND subject = :'subject';
+SELECT count(*) AS stored_results FROM reporting_s01.assets
+ WHERE tenant = :'tenant' AND issuer = :'issuer' AND subject = :'subject' AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp();
+```
+
+What the caller sees: 429 `QUOTA_EXCEEDED` with the quota's name and `Retry-After: 60` (docs/API.md "Quotas"); `GET /capabilities` carries the
+numbers in force; the console names the quota (docs/CONSOLE.md). Interplay with retention: `stored_results` frees itself at expiry, not
+at deletion, so a slow or stopped sweep does not hold anyone at their limit; the jobs table keeps its rows (the hour count reads them),
+and an identity that wants room sooner waits for expiry or cancels what it no longer needs. A quota of `stored_results` smaller than a
+tenant's working set makes its users wait for expiry: size it with the 24-hour grace and the ten-minute source reads in mind.
+
+The counting statements read the identity's rows by the tenant prefix of existing indexes; no migration was added. An identity with a very
+long history of jobs makes the hour count scan more rows; watch admission latency and add an index on `(tenant, issuer, subject, created_at)`
+in a later migration if it matters.
+
+Not in this slice: rate limits on `POST /queries` and reads (no admission there; a later capacity slice), per-tenant or per-integration
+quotas, bytes-based quotas, quotas negotiated with the source product, object storage, backups, capacity, key lifecycle.
 
 ## Demo and tests
 
@@ -372,5 +450,7 @@ refused. The two test binaries share the fixture database, so the job runs packa
 The row-level security qualification (S04-C, `row_level_security` in `TestPostgresMigrations`) creates its own migrator, application
 and sweep roles (`reporting_rls_*_t`) and proves the policies as the application role and the sweep role, with two identities of one
 tenant and a third of another; the fixture suites run as the superuser and do not exercise the policies.
+
+The quota qualification (S04-D) runs inside `TestDurablePostgresContract` (`quotas`): the quota contract of both stores, parallel admissions of one identity (exactly the limit admit), and the identity-keyed lock watched in `pg_locks`; the same contract runs on the memory store in `TestMemoryQuotaContract`.
 
 Not covered yet: object storage, backups and restore, capacity, key lifecycle.

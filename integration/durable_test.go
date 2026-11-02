@@ -636,4 +636,5 @@ func TestDurablePostgresContract(t *testing.T) {
 			t.Fatal(len(result.Rows), result.Totals, v.source.ReadCalls(), e)
 		}
 	})
+	t.Run("quotas", durableQuotas)
 }

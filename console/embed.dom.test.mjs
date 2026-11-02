@@ -31,7 +31,7 @@ before(async()=>{
   const listener=createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
   url='http://127.0.0.1:'+port;
   const pdf=pdfConfigured?['-pdf-typst',process.env.REPORTING_TYPST,'-pdf-typst-sha256',process.env.REPORTING_TYPST_SHA256,'-pdf-fonts',process.env.REPORTING_PDF_FONTS]:[];
-  child=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(temporary,'layouts'),'-dashboard-directory',join(temporary,'dashboards'),'-template-directory',join(temporary,'templates'),'-background-directory',join(temporary,'backgrounds'),'-embed-origin',FINANCE+'='+HOST,'-embed-origin',SHIPMENT+'='+HOST,...pdf],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
+  child=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(temporary,'layouts'),'-dashboard-directory',join(temporary,'dashboards'),'-template-directory',join(temporary,'templates'),'-background-directory',join(temporary,'backgrounds'),'-embed-origin',FINANCE+'='+HOST,'-embed-origin',SHIPMENT+'='+HOST,'-quota-jobs','1000','-quota-results','100000','-quota-admissions','100000',...pdf],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
   child.stderr.resume();
   for(let i=0;i<100;i++){try{const r=await fetch(url+'/console/');if(r.ok)return;}catch(_){}if(child.exitCode!==null)throw new Error('Go fixture did not start');await sleep(30);}
   throw new Error('Go fixture startup timeout');
@@ -470,4 +470,24 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   // The token has one place to go in app.js: the Authorization header of attempt().
   const uses=[...appScript.matchAll(/state\.token/g)].length,headerUses=[...appScript.matchAll(/'Bearer '\+/g)].length;assert.equal(headerUses,1);assert.ok(uses>0);
   assert.equal(/location\.(search|hash)[^;]*token/i.test(appScript+embedScript),false);assert.equal(/history\.(push|replace)State/.test(embedScript),false);
+});
+
+// A quota refusal (S04-D) is the caller's own limit, not an error of the frame: the page names it for the user and tells the host nothing,
+// so that reporting:error stays the closed list of the frame's failures.
+test('the embed page shows a quota refusal and does not post it to the host',async()=>{
+  for(const quota of ['jobs_in_flight','stored_results','admissions_per_hour']){
+    const a=await embedPage({view:'report',resource:{dataset:DATASET.id+'@'+DATASET.version},intercept:async(path,options)=>{
+      if(path.endsWith('/snapshot-jobs')&&options.method==='POST')return new Response(JSON.stringify({error:'QUOTA_EXCEEDED',quota}),{status:429,headers:{'Content-Type':'application/json','Retry-After':'60'}});
+    }});
+    try{
+      a.give();await a.connected();await queried(a);
+      const before=a.sent.length;
+      a.click('snapshot');await until(()=>a.trace.some(t=>t.path.endsWith('/snapshot-jobs'))&&!a.$('notice').hidden&&!a.$('snapshot').disabled,'quota notice');
+      assert.match(a.$('notice').textContent,{jobs_in_flight:/已达到进行中任务上限 \(1000\)/,stored_results:/已达到保留结果上限 \(100000\)/,admissions_per_hour:/已达到每小时提交上限 \(100000\)/}[quota]);
+      assert.equal(a.messages('reporting:error').length,0,'no error code reaches the host');
+      assert.equal(JSON.stringify(a.sent.slice(before)).includes('quota'),false,'nothing about the quota reaches the host');
+      assert.equal(a.$('result-table-wrap').hidden,false,'the page stays as it was');
+      assert.equal(a.errors.length,0,a.errors.join('|'));
+    }finally{a.close();}
+  }
 });
