@@ -61,6 +61,6 @@ platform can review; the memory store and the fixture path keep working without 
 
 The database stops growing with files. A deployment needs a second service with its own credentials, backups and
 availability; a bucket that is down makes exports and issues fail (the job fails, an issue is voided, as any
-renderer failure today) and downloads answer UNAVAILABLE (503), never a wrong file. The qualification runs against
-MinIO (a throwaway server, as PostgreSQL's), locally and in CI; AWS S3 is not qualified by a test here and is
-listed as such. A later slice may move snapshots or add server-side encryption; this ADR does not.
+renderer failure today) and downloads answer UNAVAILABLE (503), never a wrong file. The qualification runs against a
+throwaway S3-compatible server, as PostgreSQL's: MinIO where an image is already present locally, versitygw in CI (MinIO's
+images are no longer publicly pullable, found at S04-E); AWS S3 is not qualified by a test here and is listed as such. A later slice may move snapshots or add server-side encryption; this ADR does not.

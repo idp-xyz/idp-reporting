@@ -560,8 +560,9 @@ download of it is `INTEGRITY_FAILURE`, and the bucket's versioning or backup is 
 
 A deployment gains a second service with its own credentials, availability and backup: a bucket that is down makes exports and issues fail (the job
 fails, an issue is voided) and downloads 503, never a wrong file. The row store and the bucket must be backed up in a way that keeps them consistent
-(a restored database whose bucket is older promises files that are not there; S04's backup slice owns that). The qualification runs against MinIO
-(a throwaway server, as PostgreSQL's), locally and in CI; **AWS S3 itself is not qualified by a test here.** The fixture's `ResetFixture` truncates
+(a restored database whose bucket is older promises files that are not there; S04's backup slice owns that). The qualification runs against a throwaway
+S3-compatible server, as PostgreSQL's (MinIO where one is already present locally; versitygw in CI, since MinIO's images are no
+longer publicly pullable from quay.io or Docker Hub); **AWS S3 itself is not qualified by a test here.** The fixture's `ResetFixture` truncates
 rows, not objects: a test that shares a bucket empties it first.
 
 Not in this slice: moving existing inline artifacts, snapshots in the object store, server-side encryption, bucket lifecycle rules, multipart
@@ -586,6 +587,6 @@ tenant and a third of another; the fixture suites run as the superuser and do no
 
 The quota qualification (S04-D) runs inside `TestDurablePostgresContract` (`quotas`): the quota contract of both stores, parallel admissions of one identity (exactly the limit admit), and the identity-keyed lock watched in `pg_locks`; the same contract runs on the memory store in `TestMemoryQuotaContract`.
 
-The object storage qualification (S04-E) runs inside `TestDurablePostgresContract` (`object_storage`: the contract of both object stores on the durable store, then what only it has to qualify) and in `TestMemoryObjectContract` (the memory store); both run the same contract, against `objects.Memory` and, when `REPORTING_OBJECT_STORE_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set, against a throwaway MinIO (`REPORTING_OBJECT_STORE_REQUIRE=1` makes a missing endpoint a failure, as `REPORTING_S01_REQUIRE_PG=1` does for PostgreSQL). `TestS3Objects` qualifies the client alone against the same server; the signing is qualified against the published examples of the AWS Signature Version 4 documentation without one. The CI postgres job starts the MinIO (the image pinned by digest) before the tests; the test creates the bucket `reporting-test-s04e` with a PUT bucket request, the one bucket-level call in the repository, in the test only (a source test holds it to that).
+The object storage qualification (S04-E) runs inside `TestDurablePostgresContract` (`object_storage`: the contract of both object stores on the durable store, then what only it has to qualify) and in `TestMemoryObjectContract` (the memory store); both run the same contract, against `objects.Memory` and, when `REPORTING_OBJECT_STORE_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set, against a throwaway S3-compatible server (`REPORTING_OBJECT_STORE_REQUIRE=1` makes a missing endpoint a failure, as `REPORTING_S01_REQUIRE_PG=1` does for PostgreSQL). `TestS3Objects` qualifies the client alone against the same server; the signing is qualified against the published examples of the AWS Signature Version 4 documentation without one. The CI postgres job starts versitygw (Apache-2.0, `versity/versitygw` pinned by digest; MinIO's images are no longer publicly pullable) before the tests; the test creates the bucket `reporting-test-s04e` with a PUT bucket request, the one bucket-level call in the repository, in the test only (a source test holds it to that).
 
 Not covered yet: backups and restore, capacity, key lifecycle.

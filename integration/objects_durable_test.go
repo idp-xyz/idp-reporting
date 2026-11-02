@@ -17,7 +17,7 @@ import (
 )
 
 // The object storage qualification of the durable store (S04-E): the contract of objects_test.go on PostgreSQL with objects.Memory and with a
-// throwaway MinIO, and what only the durable store has to qualify: what Publish takes, what the row must say, the ledger, a row that names an
+// throwaway S3-compatible server, and what only the durable store has to qualify: what Publish takes, what the row must say, the ledger, a row that names an
 // object that is not its own. A subtest of TestDurablePostgresContract.
 
 // objectStoreOf makes the raw object store of a world; now is the platform's clock of the world, which moves when the world ages.
@@ -25,7 +25,7 @@ type objectStoreOf func(t *testing.T, now func() time.Time) r.ObjectStore
 
 func memoryObjects(t *testing.T, now func() time.Time) r.ObjectStore { return objects.NewMemory(now) }
 
-// minioObjects is the throwaway server of the qualification, or a skip, or a failure when REPORTING_OBJECT_STORE_REQUIRE=1 (as the PostgreSQL
+// minioObjects is the throwaway S3-compatible server (MinIO locally, versitygw in CI) of the qualification, or a skip, or a failure when REPORTING_OBJECT_STORE_REQUIRE=1 (as the PostgreSQL
 // gate is). The bucket is created by the test, once, with the one bucket-level call; the objects of an earlier test are removed.
 func minioObjects(t *testing.T, _ func() time.Time) r.ObjectStore {
 	t.Helper()
@@ -34,7 +34,7 @@ func minioObjects(t *testing.T, _ func() time.Time) r.ObjectStore {
 		if os.Getenv("REPORTING_OBJECT_STORE_REQUIRE") == "1" {
 			t.Fatal("required object store endpoint and keys (REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY, _SECRET_KEY) missing")
 		}
-		t.Skip("S3 gate not run: set REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY and _SECRET_KEY (a throwaway MinIO)")
+		t.Skip("S3 gate not run: set REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY and _SECRET_KEY (a throwaway S3-compatible server)")
 	}
 	c, err := objects.NewS3(objects.S3{Endpoint: endpoint, Bucket: "reporting-test-s04e", Region: "us-east-1", AccessKey: access, SecretKey: secret, LoopbackHTTP: strings.HasPrefix(endpoint, "http://")})
 	if err != nil {
@@ -106,7 +106,7 @@ func newObjectsDurable(makeObjects objectStoreOf) func(*testing.T) *objWorld {
 }
 
 func durableObjectStorage(t *testing.T) {
-	for name, makeObjects := range map[string]objectStoreOf{"memory_objects": memoryObjects, "minio": minioObjects} {
+	for name, makeObjects := range map[string]objectStoreOf{"memory_objects": memoryObjects, "s3": minioObjects} {
 		t.Run(name, func(t *testing.T) {
 			world := newObjectsDurable(makeObjects)
 			t.Run("contract", func(t *testing.T) { runObjectContract(t, world) })

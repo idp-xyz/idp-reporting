@@ -183,7 +183,7 @@ func s3FromEnv(t *testing.T) *S3 {
 		if os.Getenv("REPORTING_OBJECT_STORE_REQUIRE") == "1" {
 			t.Fatal("required object store endpoint and keys (REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY, _SECRET_KEY) missing")
 		}
-		t.Skip("S3 gate not run: set REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY and _SECRET_KEY (a throwaway MinIO)")
+		t.Skip("S3 gate not run: set REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY and _SECRET_KEY (a throwaway S3-compatible server)")
 	}
 	c, err := NewS3(S3{Endpoint: endpoint, Bucket: "reporting-test-s04e", Region: "us-east-1", AccessKey: access, SecretKey: secret, LoopbackHTTP: strings.HasPrefix(endpoint, "http://")})
 	if err != nil {
@@ -197,7 +197,7 @@ func s3FromEnv(t *testing.T) *S3 {
 	return c
 }
 
-// TestS3Objects qualifies the client alone against a throwaway S3-compatible server (MinIO): the same contract Memory meets, and what only a
+// TestS3Objects qualifies the client alone against a throwaway S3-compatible server (MinIO locally, versitygw in CI): the same contract Memory meets, and what only a
 // real server can show: that it accepts the signatures, answers the statuses the client expects and refuses what it should.
 func TestS3Objects(t *testing.T) {
 	c := s3FromEnv(t)

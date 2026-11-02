@@ -282,7 +282,7 @@ encode(sha256(convert_to('{"ID":"kept","Query":{"filters":"secret"},"Prepared":{
 	objectSweep(t, admin, expect)
 }
 
-// objectSweep drives the operator's sweep with and without the object store flags (S04-E) against the throwaway MinIO: rows whose files are
+// objectSweep drives the operator's sweep with and without the object store flags (S04-E) against the throwaway S3-compatible server: rows whose files are
 // objects, the counts the command prints, the objects gone or left, and a bucket that cannot be reached stopping the sweep before it deletes a row.
 func objectSweep(t *testing.T, admin *pgxpool.Pool, expect func([]string, bool, ...string) string) {
 	t.Helper()

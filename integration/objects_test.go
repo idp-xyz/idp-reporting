@@ -18,7 +18,7 @@ import (
 )
 
 // The object storage contract of S04-E (docs/S04E_SCOPE.md E2-E4, E6; docs/ADR_0007_OBJECT_STORAGE.md), run on both stores and on both object
-// stores: the memory store and the durable store, objects.Memory and objects.S3 against a throwaway MinIO. A world is a service, a store and
+// stores: the memory store and the durable store, objects.Memory and objects.S3 against a throwaway S3-compatible server. A world is a service, a store and
 // an object store, with a clock that lets time pass for all three (as the retention harness does) and an object store that can be made to
 // fail the way a real one fails.
 
