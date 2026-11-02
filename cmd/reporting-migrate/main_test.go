@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	r "idp.local/reporting/reporting"
+	"idp.local/reporting/storage/objects"
 	"os"
 	"strings"
 	"testing"
@@ -45,9 +48,24 @@ func TestMigrateCommandArguments(t *testing.T) {
 		"sweep role as app":    {[]string{"roles", "--migrator-role", "a", "--app-role", "b", "--sweep-role", "b"}, "--sweep-role must be"},
 		"sweep role as owner":  {[]string{"roles", "--migrator-role", "a", "--app-role", "b", "--sweep-role", "a"}, "--sweep-role must be"},
 		"sweep role bad name":  {[]string{"roles", "--migrator-role", "a", "--app-role", "b", "--sweep-role", "Robert'; DROP"}, "--sweep-role must be"},
+		// The keys of the object store are the environment's alone (S04-E), refused before the store is even opened.
+		"secret key as a flag": {[]string{"sweep", "--object-store-secret-key=SECRETVALUE"}, "REPORTING_OBJECT_STORE_SECRET_KEY"},
+		"access key as a flag": {[]string{"sweep", "--object-store-access-key", "ACCESSVALUE"}, "REPORTING_OBJECT_STORE_ACCESS_KEY"},
+		"endpoint alone":       {[]string{"sweep", "--object-store-endpoint=https://s3.example.com"}, "-object-store-endpoint and -object-store-bucket together"},
+		"keys missing":         {[]string{"sweep", "--object-store-endpoint=https://s3.example.com", "--object-store-bucket=reports-bucket"}, "REPORTING_OBJECT_STORE_ACCESS_KEY"},
+		"http off loopback":    {[]string{"sweep", "--object-store-endpoint=http://s3.example.com", "--object-store-bucket=reports-bucket", "--object-store-loopback-http"}, "loopback"},
 	} {
-		if _, err := capture(t, c.args...); err == nil || !strings.Contains(err.Error(), c.want) {
+		keys := "AK0123456789"
+		if name == "keys missing" {
+			keys = ""
+		}
+		t.Setenv("REPORTING_OBJECT_STORE_ACCESS_KEY", keys)
+		t.Setenv("REPORTING_OBJECT_STORE_SECRET_KEY", keys)
+		_, err := capture(t, c.args...)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want %q", name, err, c.want)
+		} else if strings.Contains(err.Error(), "SECRETVALUE") || strings.Contains(err.Error(), "ACCESSVALUE") {
+			t.Errorf("%s: the refusal repeats a key: %v", name, err)
 		}
 	}
 	t.Setenv("REPORTING_STORE_DSN", "::")
@@ -88,11 +106,11 @@ func TestMigrateCommand(t *testing.T) {
 		}
 		return out
 	}
-	out := expect([]string{"status"}, false, "pending:  001 base", "pending:  003 issues", "pending:  004 source_confirmed_issue", "pending:  005 retention", "pending:  006 sweeps", "pending:  007 row_level_security")
+	out := expect([]string{"status"}, false, "pending:  001 base", "pending:  003 issues", "pending:  004 source_confirmed_issue", "pending:  005 retention", "pending:  006 sweeps", "pending:  007 row_level_security", "pending:  008 object_storage")
 	if strings.Contains(out, "applied:") {
 		t.Fatal(out)
 	}
-	expect([]string{"plan"}, false, "up   001 base", "up   003 issues", "up   004 source_confirmed_issue", "up   005 retention", "up   006 sweeps", "up   007 row_level_security")
+	expect([]string{"plan"}, false, "up   001 base", "up   003 issues", "up   004 source_confirmed_issue", "up   005 retention", "up   006 sweeps", "up   007 row_level_security", "up   008 object_storage")
 	expect([]string{"up", "--to", "2"}, false, "at version 002")
 	expect([]string{"init-profile", "contract-simulator-only"}, false, "profile contract-simulator-only")
 	expect([]string{"init-profile", "production"}, true, "already")
@@ -106,8 +124,8 @@ func TestMigrateCommand(t *testing.T) {
 		})
 	}
 	expect([]string{"roles", "--migrator-role", "reporting_cli_mig_t", "--app-role", "reporting_cli_app_t"}, false, "owned by reporting_cli_mig_t")
-	expect([]string{"up"}, false, "at version 007")
-	out = expect([]string{"status"}, false, "applied:  001 base", "applied:  003 issues", "applied:  004 source_confirmed_issue", "applied:  005 retention", "applied:  006 sweeps", "applied:  007 row_level_security", "the connected role is not the application role", "the connected role is not the sweep role")
+	expect([]string{"up"}, false, "at version 008")
+	out = expect([]string{"status"}, false, "applied:  001 base", "applied:  003 issues", "applied:  004 source_confirmed_issue", "applied:  005 retention", "applied:  006 sweeps", "applied:  007 row_level_security", "applied:  008 object_storage", "the connected role is not the application role", "the connected role is not the sweep role")
 	if strings.Contains(out, "pending:") {
 		t.Fatal(out)
 	}
@@ -128,12 +146,12 @@ func TestMigrateCommand(t *testing.T) {
 			t.Fatal("a restored store still reports row-level problems:", out)
 		}
 	}
-	expect([]string{"plan", "--to", "1"}, false, "down 007 row_level_security", "down 006 sweeps", "down 005 retention", "down 004 source_confirmed_issue", "down 003 issues", "down 002 payload_digests")
+	expect([]string{"plan", "--to", "1"}, false, "down 008 object_storage", "down 007 row_level_security", "down 006 sweeps", "down 005 retention", "down 004 source_confirmed_issue", "down 003 issues", "down 002 payload_digests")
 	expect([]string{"down"}, true, "explicit --to")
-	expect([]string{"down", "--to", "8"}, true, "outside")
+	expect([]string{"down", "--to", "9"}, true, "outside")
 	expect([]string{"up", "--to", "1"}, true, "wrong side")
 	expect([]string{"down", "--to", "2"}, false, "at version 002")
-	expect([]string{"plan"}, false, "up   003 issues", "up   004 source_confirmed_issue", "up   005 retention", "up   006 sweeps", "up   007 row_level_security")
+	expect([]string{"plan"}, false, "up   003 issues", "up   004 source_confirmed_issue", "up   005 retention", "up   006 sweeps", "up   007 row_level_security", "up   008 object_storage")
 	// 004 up is refused while S03-G's platform-numbered documents exist, with the remedy; the
 	// operator removes them with the down that accepts the loss and goes up.
 	expect([]string{"up", "--to", "3"}, false, "at version 003")
@@ -144,7 +162,7 @@ func TestMigrateCommand(t *testing.T) {
 	expect([]string{"status"}, false, "applied:  003 issues", "pending:  004 source_confirmed_issue")
 	expect([]string{"down", "--to", "2"}, true, "--accept-data-loss")
 	expect([]string{"down", "--to", "2", "--accept-data-loss"}, false, "at version 002")
-	expect([]string{"up"}, false, "at version 007")
+	expect([]string{"up"}, false, "at version 008")
 	if _, err := admin.Exec(ctx, "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=1"); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +173,7 @@ func TestMigrateCommand(t *testing.T) {
 	if _, err := admin.Exec(ctx, "DROP SCHEMA reporting_s01 CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	expect([]string{"up"}, false, "at version 007")
+	expect([]string{"up"}, false, "at version 008")
 	expect([]string{"init-profile", "contract-simulator-only"}, false)
 	retention(t, admin, dsn, expect)
 }
@@ -175,7 +193,7 @@ func retention(t *testing.T, admin *pgxpool.Pool, dsn string, expect func([]stri
 	// A store behind the binary is refused before anything is touched.
 	expect([]string{"down", "--to", "5"}, false, "at version 005")
 	expect([]string{"sweep"}, true, "reporting-migrate up")
-	expect([]string{"up"}, false, "at version 007")
+	expect([]string{"up"}, false, "at version 008")
 	for _, role := range []string{"reporting_cli_sweep_t"} {
 		exec("DROP ROLE IF EXISTS " + role + "; CREATE ROLE " + role + " LOGIN")
 		t.Cleanup(func() {
@@ -261,4 +279,95 @@ encode(sha256(convert_to('{"ID":"kept","Query":{"filters":"secret"},"Prepared":{
 	t.Setenv("REPORTING_STORE_DSN", as("reporting_cli_app_t"))
 	expect([]string{"sweep"}, true, "the application role never deletes")
 	t.Setenv("REPORTING_STORE_DSN", dsn)
+	objectSweep(t, admin, expect)
+}
+
+// objectSweep drives the operator's sweep with and without the object store flags (S04-E) against the throwaway MinIO: rows whose files are
+// objects, the counts the command prints, the objects gone or left, and a bucket that cannot be reached stopping the sweep before it deletes a row.
+func objectSweep(t *testing.T, admin *pgxpool.Pool, expect func([]string, bool, ...string) string) {
+	t.Helper()
+	ctx := context.Background()
+	endpoint, access, secret := os.Getenv("REPORTING_OBJECT_STORE_TEST_ENDPOINT"), os.Getenv("REPORTING_OBJECT_STORE_TEST_ACCESS_KEY"), os.Getenv("REPORTING_OBJECT_STORE_TEST_SECRET_KEY")
+	if endpoint == "" || access == "" || secret == "" {
+		if os.Getenv("REPORTING_OBJECT_STORE_REQUIRE") == "1" {
+			t.Fatal("required object store endpoint and keys missing")
+		}
+		t.Log("object store gate not run: set REPORTING_OBJECT_STORE_TEST_ENDPOINT, _ACCESS_KEY and _SECRET_KEY")
+		return
+	}
+	const bucket = "reporting-test-s04e"
+	client, err := objects.NewS3(objects.S3{Endpoint: endpoint, Bucket: bucket, Region: "us-east-1", AccessKey: access, SecretKey: secret, LoopbackHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = objects.CreateBucketForTests(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(objects.AccessKeyEnv, access)
+	t.Setenv(objects.SecretKeyEnv, secret)
+	flags := []string{"--object-store-endpoint=" + endpoint, "--object-store-bucket=" + bucket, "--object-store-loopback-http"}
+	with := func(args ...string) []string { return append(append([]string{"sweep"}, args...), flags...) }
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := admin.Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func(sql string, args ...any) (n int) {
+		t.Helper()
+		if err := admin.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	// Two expired artifacts whose files are objects, and a young object that no row names.
+	a, b, stray := r.NewID(), r.NewID(), r.NewID()
+	body := []byte("PK the file")
+	sum := sha256.Sum256(body)
+	for _, id := range []string{a, b, stray} {
+		if err = client.Put(ctx, r.ObjectKey(id), body, hex.EncodeToString(sum[:])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, id := range []string{a, b, stray} {
+			_ = client.Delete(context.Background(), r.ObjectKey(id))
+		}
+	})
+	for _, id := range []string{a, b} {
+		data := `{"ID":"` + id + `","SnapshotID":"gone","Object":"` + r.ObjectKey(id) + `"}`
+		exec(`INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256,expires_at)
+VALUES($1,'t','i','x','y','artifact',$2::jsonb,encode(sha256(convert_to($2::jsonb::text,'UTF8')),'hex'),clock_timestamp()-interval '48 hours')`, id, data)
+	}
+	held := func(id string) bool {
+		_, err := client.Get(ctx, r.ObjectKey(id), hex.EncodeToString(sum[:]), len(body))
+		return err == nil
+	}
+	// A bucket that is not there stops the sweep before a row is deleted, with the bucket's name and the status.
+	out, err := capture(t, "sweep", "--object-store-endpoint="+endpoint, "--object-store-bucket=reporting-test-s04e-absent", "--object-store-loopback-http")
+	if err == nil || !strings.Contains(err.Error(), `"reporting-test-s04e-absent"`) || !strings.Contains(err.Error(), "status 404") || strings.Contains(err.Error(), endpoint) || strings.Contains(err.Error(), secret) || count("SELECT count(*) FROM reporting_s01.assets WHERE id IN ($1,$2)", a, b) != 2 {
+		t.Fatalf("a bucket that cannot be reached: %v %q", err, out)
+	}
+	// A dry run counts the objects and deletes nothing; the young stray is not an orphan.
+	expect(with("--dry-run"), false, "dry run, would sweep: 2 artifacts", "objects: 2 would be deleted, 0 orphans would be deleted, 0 left for the next reconciliation")
+	if count("SELECT count(*) FROM reporting_s01.assets WHERE id IN ($1,$2)", a, b) != 2 || !held(a) || !held(b) || !held(stray) {
+		t.Fatal("a dry run deleted a row or an object")
+	}
+	// Without the flags the rows go and the objects wait, and the command says so.
+	exec(`UPDATE reporting_s01.assets SET expires_at = clock_timestamp()-interval '49 hours' WHERE id=$1`, a)
+	exec(`UPDATE reporting_s01.assets SET expires_at = clock_timestamp()+interval '1 hour' WHERE id=$1`, b)
+	expect([]string{"sweep"}, false, "swept: 1 artifacts", "objects: no object store configured, rows only; the files of 1 deleted artifacts that were in an object store, and any orphan, wait for a reconciliation")
+	if count("SELECT count(*) FROM reporting_s01.assets WHERE id=$1", a) != 0 || !held(a) {
+		t.Fatal("without the object store flags the row must go and the object stay")
+	}
+	// With them the row goes and then its object; the young stray and the unexpired artifact's object stay.
+	exec(`UPDATE reporting_s01.assets SET expires_at = clock_timestamp()-interval '48 hours' WHERE id=$1`, b)
+	expect(with(), false, "swept: 1 artifacts", "objects: 1 deleted, 0 orphans deleted, 0 left for the next reconciliation")
+	if count("SELECT count(*) FROM reporting_s01.assets WHERE id=$1", b) != 0 || held(b) || !held(stray) {
+		t.Fatalf("with the object store flags: row of b gone %v, object of b held %v, stray held %v", count("SELECT count(*) FROM reporting_s01.assets WHERE id=$1", b) == 0, held(b), held(stray))
+	}
+	// The ledger holds the counts and nothing that names an object.
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE NOT dry_run AND objects=1 AND orphans=0"); n != 1 {
+		t.Fatal("the ledger row of the sweep with the object store", n)
+	}
 }

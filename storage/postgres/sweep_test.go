@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -68,5 +69,47 @@ func TestAdmissionCountsByTheDatabasesClockUnderTheIdentitysLock(t *testing.T) {
 	insert := strings.Index(code, "v, err = admit(ctx, tx, j)")
 	if !(lock > 0 && lock < replay && replay < count && count < insert) {
 		t.Errorf("Admit does not take the lock, settle the replay, count and insert in that order (%d %d %d %d)", lock, replay, count, insert)
+	}
+}
+
+// The one place the platform host's clock decides anything in the store is the age of an object (S04-E): the clock that stamped an object is
+// the object store's, not the database's, so the reconciliation compares its time with the host's; the rows' expiries stay the database's
+// (TestSweepNeverDecidesByTheHostsClock). No other file of the package reads the host's clock, and objects.go reads it once, as the default of
+// a clock a test can replace (WithObjectClock).
+func TestOnlyTheAgeOfAnObjectIsJudgedByTheHostsClock(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatal(files, err)
+	}
+	uses := regexp.MustCompile(`time\.(Now|Since|Until)\b`)
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code := regexp.MustCompile(`(?m)//.*$`).ReplaceAllString(string(src), "")
+		found := uses.FindAllString(code, -1)
+		switch {
+		case f == "objects.go" && len(found) != 1:
+			t.Errorf("objects.go reads the host's clock %d times, want its one default", len(found))
+		case f != "objects.go" && len(found) != 0:
+			t.Errorf("%s reads the host's clock: %v", f, found)
+		}
+	}
+	// The row is deleted and committed before any object is: the delete of the objects follows the batch's commit in the same function.
+	src, err := os.ReadFile("sweep.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := regexp.MustCompile(`(?m)//.*$`).ReplaceAllString(string(src), "")
+	commit, del := strings.Index(code, "func artifactBatch("), strings.Index(code, "objects.Delete(ctx, key)")
+	if commit < 0 || del < 0 || strings.Contains(code[commit:strings.Index(code[commit:], "\n}\n")+commit], "Delete(") {
+		t.Error("an object is deleted inside the transaction that deletes the rows")
+	}
+	if !strings.Contains(code, "RETURNING d.id, coalesce(d.data->>'Object', '')") || !strings.Contains(code, "key == r.ObjectKey(id)") {
+		t.Error("the keys deleted are not those the batch returned for the rows it deleted, each checked against its row's own id")
 	}
 }

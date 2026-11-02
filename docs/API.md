@@ -377,7 +377,7 @@ id.
 
 Errors: invalid request 400; missing/invalid authentication 401; scope denied 403;
 owner-not-found 404; idempotency/integrity/lease conflict 409; unsupported shape
-422; budget 413; source authority unavailable 503; unclassified execution failure
+422; budget 413; source authority, or the object store (S04-E), unavailable 503; unclassified execution failure
 500. Raw SQL errors, source rows and credentials are never error response bodies.
 Missing/non-Bearer credentials receive the bare Bearer realm challenge; invalid
 Bearer tokens receive invalid_token. Verified mapped tokens without the required
@@ -454,3 +454,23 @@ the identity's own state, so a later request may succeed: when a job finishes or
 (`stored_results`), or as the hour passes (`admissions_per_hour`); `Retry-After: 60` is a fair wait, not a promise. A replay of an
 Idempotency-Key whose job exists is never refused by a quota (it answers the job as before), and a replay with a changed request is
 still 409 `IDEMPOTENCY_CONFLICT`. Reads, cancels, downloads and `POST /queries` are not subject to quotas.
+
+## Object storage (S04-E, docs/S04E_SCOPE.md, docs/OPERATIONS.md "Object storage")
+
+With an object store configured the file of an artifact is an object and the row keeps its metadata and its SHA-256. For a caller nothing is renamed and no
+view changes: the job view, `GET /issues` and `GET /capabilities` say nothing of where files live (no field, no word), and `GET /artifacts/{id}/content`
+answers what it always did (the file, its exact `Content-Length`, `X-Content-SHA256`, the media type and the name), after the same checks: the source
+product's current authority, the expiry, the identity's rows, and for an issued PDF the record it was issued under. What is new is only how a download
+can fail:
+
+- The object is not what the row says (another length, another SHA-256) or is missing: `409 {"error":"INTEGRITY_FAILURE"}`, never a file. The row's
+  SHA-256 and length are what every byte served is checked against, in the object store client and again in the service.
+- The object store cannot be reached: `503 {"error":"AUTHORITY_UNAVAILABLE"}` with `Retry-After: 10`. It is the code the source product's outage already
+  has (the 503 of this API is "an authority or store the platform depends on is unavailable, try again"); the body is that code and nothing else, with no
+  status of the store, no key and no endpoint. A source product's own outage keeps its 503 without a `Retry-After`.
+
+A job poll (`GET /jobs/{id}`) reads rows only: it answers 200 whether or not the object store is up, and does not read the object, so a job whose object was
+lost still shows `succeeded` and its download is the 409 above. An export or issue job whose file could not be put in the object store fails with
+`error_code: "EXECUTION_FAILED"` and publishes nothing (an issue job is voided at the source product like any failed one, S03-H); the job view is otherwise
+unchanged. An artifact stored before the object store was configured is served exactly as before. The console handles the 503 of a download as it handles
+every 503 (it needs no change).

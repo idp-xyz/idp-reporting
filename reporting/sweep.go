@@ -46,13 +46,26 @@ func (o SweepOptions) Resolved() (SweepOptions, error) {
 
 // SweepResult is what a sweep did, counts only: artifacts and snapshots deleted, job payloads reduced, and the transactions that
 // changed something. With DryRun they are what it would have done. A sweep that failed part way returns what it had done.
+//
+// With an object store (S04-E, docs/S04E_SCOPE.md E3) Objects is the objects deleted after the rows that named them, Orphans the objects the
+// reconciliation deleted (no asset row names them and they are older than the grace), and ObjectsLeft the objects of deleted rows that this
+// sweep did not delete, a delete that failed or no object store being configured: they wait for a reconciliation. Of a dry run, Orphans
+// is how many the reconciliation would delete and Objects how many the rows it would delete name.
 type SweepResult struct {
-	DryRun    bool
-	Artifacts int
-	Snapshots int
-	Jobs      int
-	Batches   int
+	DryRun      bool
+	Artifacts   int
+	Snapshots   int
+	Jobs        int
+	Batches     int
+	Objects     int
+	Orphans     int
+	ObjectsLeft int
 }
+
+// MinOrphanAge is the least age the reconciliation of the object store accepts for an object that no row names (S04-E): an object is put
+// before the row that names it is published, a worker that takes a minute for the two is slow but alive, and deleting that object would leave
+// a published row that promises nothing. A sweep's grace below it is raised to it for the reconciliation alone.
+const MinOrphanAge = 15 * time.Minute
 
 // Terminal says whether a job state is final.
 func Terminal(state string) bool {

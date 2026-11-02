@@ -52,7 +52,8 @@ var (
 	deleteArtifacts = `WITH ` + cutoff + `, picked AS (
 SELECT a.id FROM reporting_s01.assets a, c WHERE ` + artifactGoes("a") + `
 ORDER BY a.expires_at, a.id FOR UPDATE OF a SKIP LOCKED LIMIT $2)
-DELETE FROM reporting_s01.assets d USING picked WHERE d.id = picked.id AND d.kind = 'artifact'`
+DELETE FROM reporting_s01.assets d USING picked WHERE d.id = picked.id AND d.kind = 'artifact'
+RETURNING d.id, coalesce(d.data->>'Object', '')`
 
 	deleteSnapshots = `WITH ` + cutoff + `, picked AS (
 SELECT a.id FROM reporting_s01.assets a, c WHERE ` + snapshotGoes("a") + `
@@ -73,6 +74,7 @@ UPDATE reporting_s01.jobs u SET data = reduced.d, data_sha256 = encode(sha256(co
 	// are among the ones the sweep deletes.
 	countSweep = `WITH ` + cutoff + `
 SELECT (SELECT count(*) FROM reporting_s01.assets a, c WHERE ` + artifactGoes("a") + `),
+(SELECT count(*) FROM reporting_s01.assets a, c WHERE ` + artifactGoes("a") + ` AND a.data ? 'Object'),
 (SELECT count(*) FROM reporting_s01.assets a, c WHERE ` + snapshotGoes("a") + `),
 (SELECT count(*) FROM reporting_s01.jobs j, c WHERE ` + jobReducible + `
 AND (j.snapshot_id = '' OR NOT EXISTS (SELECT 1 FROM reporting_s01.assets s, c WHERE s.id = j.snapshot_id AND NOT COALESCE(` + snapshotGoes("s") + `, false)))
@@ -81,11 +83,19 @@ AND (j.artifact_id = '' OR NOT EXISTS (SELECT 1 FROM reporting_s01.assets a, c W
 
 const sweepLockTimeout = "10s"
 
-// Sweep runs one retention sweep on the store (see the comment of this file and r.SweepOptions). The connected role needs DELETE on
-// and UPDATE on assets (the row locks), UPDATE on jobs and INSERT on the sweeps ledger (the sweep role of `reporting-migrate roles`, or the
-// migrator); for a dry run, INSERT on the ledger alone. It refuses a store that is not at the binary's schema version. Whatever happens, a ledger row records the counts of
-// what was done, and the result carries them (also with the error of a sweep that failed part way).
+// Sweep runs one retention sweep on the store (see the comment of this file and r.SweepOptions) on its rows alone: the objects the deleted
+// artifacts named are not deleted (SweepWithObjects does that); they wait for a reconciliation, which the result counts as ObjectsLeft. The
+// connected role needs DELETE on and UPDATE on assets (the row locks), UPDATE on jobs and INSERT on the sweeps ledger (the sweep role of
+// `reporting-migrate roles`, or the migrator); for a dry run, INSERT on the ledger alone. It refuses a store that is not at the binary's schema
+// version. Whatever happens, a ledger row records the counts of what was done, and the result carries them (also with the error of a sweep that
+// failed part way).
 func Sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions) (r.SweepResult, error) {
+	return sweep(ctx, pool, o, nil, nil)
+}
+
+// sweep is Sweep with the object store (S04-E): after each batch of artifact rows commits, the objects those rows named are deleted, and a
+// fourth step reconciles the bucket against the rows (objects.go). now is the clock by which an object's age is judged.
+func sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions, objects r.ObjectStore, now func() time.Time) (r.SweepResult, error) {
 	o, e := o.Resolved()
 	res := r.SweepResult{DryRun: o.DryRun}
 	if e != nil {
@@ -96,31 +106,114 @@ func Sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions) (r.SweepRe
 	}
 	grace := o.Grace.Microseconds()
 	complete := false
+	left := map[string]bool{} // the keys this sweep meant to delete and could not: the reconciliation does not count them twice
 	if o.DryRun {
 		// A dry run reads the rows of every identity, so it too is a transaction of the worker scope (S04-C).
+		var named int
 		e = asWorker(ctx, pool, func(tx pgx.Tx) error {
-			return tx.QueryRow(ctx, countSweep, grace).Scan(&res.Artifacts, &res.Snapshots, &res.Jobs)
+			return tx.QueryRow(ctx, countSweep, grace).Scan(&res.Artifacts, &named, &res.Snapshots, &res.Jobs)
 		})
+		if objects != nil {
+			res.Objects = named
+		} else {
+			res.ObjectsLeft = named
+		}
+		if e == nil && objects != nil {
+			e = reconcile(ctx, pool, objects, now, o, left, &res)
+		}
 		complete = e == nil
 	} else {
-		for _, step := range []struct {
-			sql   string
-			count *int
-		}{{deleteArtifacts, &res.Artifacts}, {deleteSnapshots, &res.Snapshots}, {reduceJobs, &res.Jobs}} {
-			if e = batches(ctx, pool, step.sql, grace, o.Batch, step.count, &res.Batches); e != nil {
-				break
+		if e = artifactBatches(ctx, pool, grace, o.Batch, objects, left, &res); e == nil {
+			for _, step := range []struct {
+				sql   string
+				count *int
+			}{{deleteSnapshots, &res.Snapshots}, {reduceJobs, &res.Jobs}} {
+				if e = batches(ctx, pool, step.sql, grace, o.Batch, step.count, &res.Batches); e != nil {
+					break
+				}
 			}
+		}
+		if e == nil && objects != nil {
+			e = reconcile(ctx, pool, objects, now, o, left, &res)
 		}
 		complete = e == nil
 	}
 	// The ledger row is written even when the sweep was cut short (a cancelled context, a failed batch): what it already deleted is audit.
 	record, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if _, le := pool.Exec(record, `INSERT INTO reporting_s01.sweeps(dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-		o.DryRun, complete, int64(o.Grace/time.Second), o.Batch, res.Artifacts, res.Snapshots, res.Jobs, res.Batches); le != nil && e == nil {
+	if _, le := pool.Exec(record, `INSERT INTO reporting_s01.sweeps(dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches, objects, orphans) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		o.DryRun, complete, int64(o.Grace/time.Second), o.Batch, res.Artifacts, res.Snapshots, res.Jobs, res.Batches, res.Objects, res.Orphans); le != nil && e == nil {
 		e = fmt.Errorf("the sweep ran but its ledger row could not be written: %w", le)
 	}
 	return res, e
+}
+
+// artifactBatches deletes the expired artifacts in batches, as batches does, and after each batch commits deletes the objects the rows named
+// (ADR 0007 decision 4: the row first, then the object). The keys come from the batch's RETURNING; one that is not the key of its row's own id
+// is not ours to delete and is left alone. A delete that fails leaves the object for the reconciliation, and is counted, not relayed. Without an
+// object store the objects are left, and counted so.
+func artifactBatches(ctx context.Context, pool *pgxpool.Pool, grace int64, limit int, objects r.ObjectStore, left map[string]bool, res *r.SweepResult) error {
+	for {
+		n, keys, e := artifactBatch(ctx, pool, grace, limit)
+		if e != nil {
+			return e
+		}
+		res.Artifacts += n
+		if n > 0 {
+			res.Batches++
+		}
+		for _, key := range keys {
+			switch {
+			case objects == nil:
+				res.ObjectsLeft++
+			case objects.Delete(ctx, key) != nil:
+				res.ObjectsLeft++
+				left[key] = true
+			default:
+				res.Objects++
+			}
+		}
+		if n < limit {
+			return nil
+		}
+	}
+}
+
+// artifactBatch is one transaction of the artifact step: the rows deleted, and the keys of the objects they named.
+func artifactBatch(ctx context.Context, pool *pgxpool.Pool, grace int64, limit int) (int, []string, error) {
+	tx, e := beginWorker(ctx, pool)
+	if e != nil {
+		return 0, nil, e
+	}
+	defer rollback(ctx, tx)
+	if _, e = tx.Exec(ctx, "SET LOCAL lock_timeout = '"+sweepLockTimeout+"'"); e != nil {
+		return 0, nil, e
+	}
+	rows, e := tx.Query(ctx, deleteArtifacts, grace, limit)
+	if e != nil {
+		return 0, nil, e
+	}
+	n := 0
+	var keys []string
+	for rows.Next() {
+		var id, key string
+		if e = rows.Scan(&id, &key); e != nil {
+			rows.Close()
+			return 0, nil, e
+		}
+		n++
+		if key != "" && key == r.ObjectKey(id) {
+			keys = append(keys, key)
+		}
+	}
+	rows.Close()
+	if e = rows.Err(); e != nil {
+		return 0, nil, e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return 0, nil, e
+	}
+	return n, keys, nil
 }
 
 // batches runs one statement in transactions of at most limit rows each until a batch is short, adding the rows it changed to count.
@@ -200,5 +293,5 @@ has_table_privilege(current_user,'reporting_s01.jobs','UPDATE'), has_table_privi
 
 // Sweep is r.Repository's retention on the durable store.
 func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, error) {
-	return Sweep(ctx, s.pool, o)
+	return sweep(ctx, s.pool, o, s.objects, s.objectNow)
 }

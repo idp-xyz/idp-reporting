@@ -113,7 +113,7 @@ func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	admin := fixtureAdmin(t)
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 7 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" || known[6].Name != "row_level_security" {
+	if e != nil || len(known) != 8 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" || known[6].Name != "row_level_security" || known[7].Name != "object_storage" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	t.Run("round_trip_reproduces_the_catalog_exactly", func(t *testing.T) {
@@ -128,26 +128,26 @@ func TestPostgresMigrations(t *testing.T) {
 		if !strings.Contains(first, "constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))") || strings.Contains(first, "issue_numbers") || !strings.Contains(first, "column schema_migrations.checksum") {
 			t.Fatalf("unexpected catalog:\n%s", first)
 		}
-		// The catalogs of the latest version (7), of 6, 5, 4 and 3 are committed: a later edit of an
+		// The catalogs of the latest version (8), of 7, 6, 5, 4 and 3 are committed: a later edit of an
 		// earlier migration file (which the checksums would also flag) changes a fresh database and
 		// fails here.
 		if os.Getenv("REPORTING_WRITE_CATALOG") == "1" { // after a reviewed migration change only
-			if e := os.WriteFile("testdata/catalog_007.txt", []byte(first), 0o644); e != nil {
+			if e := os.WriteFile("testdata/catalog_008.txt", []byte(first), 0o644); e != nil {
 				t.Fatal(e)
 			}
 		}
-		want, e := os.ReadFile("testdata/catalog_007.txt")
+		want, e := os.ReadFile("testdata/catalog_008.txt")
 		if e != nil {
 			t.Fatal(e)
 		}
 		if string(want) != first {
-			t.Fatalf("the catalog differs from testdata/catalog_007.txt:\n%s", first)
+			t.Fatalf("the catalog differs from testdata/catalog_008.txt:\n%s", first)
 		}
 		if !strings.Contains(first, "column assets.expires_at") || !strings.Contains(first, "index assets assets_expires_at") || !strings.Contains(first, "column sweeps.artifacts") {
 			t.Fatalf("the retention schema (005, 006) is not in the catalog:\n%s", first)
 		}
 		st, e := postgres.Status(ctx, admin)
-		if e != nil || st.Current() != 7 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
+		if e != nil || st.Current() != 8 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
 			t.Fatalf("%+v %v", st, e)
 		}
 		for _, a := range st.Applied {
@@ -178,9 +178,10 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := postgres.Verify(ctx, admin, postgres.ProfileFixture); e != nil {
 			t.Fatal(e)
 		}
-		// Versions 6, 5 and 4 are committed too: each down gives back exactly the catalog it left, 007 the schema without the policies
-		// (006's), 006 the schema without the ledger of the sweeps, 005 the schema without the expiry column and its index.
-		for _, v := range []int{6, 5, 4} {
+		// Versions 7, 6, 5 and 4 are committed too: each down gives back exactly the catalog it left, 008 the schema without the two counts of
+		// the object store (007's), 007 the schema without the policies (006's), 006 the schema without the ledger of the sweeps, 005 the
+		// schema without the expiry column and its index.
+		for _, v := range []int{7, 6, 5, 4} {
 			if e := postgres.Down(ctx, admin, v, "test", false); e != nil {
 				t.Fatal(v, "down with no rows to lose needs no acceptance:", e)
 			}
@@ -358,11 +359,11 @@ func TestPostgresMigrations(t *testing.T) {
 		// binary does not know, a gap, a profile at another version.
 		for _, c := range []struct{ name, tamper, restore, reason string }{
 			{"checksum", "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=2", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[1].Checksum + "' WHERE version=2", "version 2 was applied from a different file"},
-			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(8,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=8", "version 8 was applied by a newer binary"},
+			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(9,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=9", "version 9 was applied by a newer binary"},
 			{"gap", "DELETE FROM reporting_s01.schema_migrations WHERE version=2", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(2,'payload_digests','" + known[1].Checksum + "','test')", "gap before version 3"},
 			{"other name", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET name='issues' WHERE version=3", "under another name"},
 			{"fake legacy", "UPDATE reporting_s01.schema_migrations SET checksum='legacy' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[2].Checksum + "' WHERE version=3", "claims to be a legacy row"},
-			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=7", "profile says version 2"},
+			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=8", "profile says version 2"},
 			{"other name of 004", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=4", "UPDATE reporting_s01.schema_migrations SET name='source_confirmed_issue' WHERE version=4", "under another name"},
 		} {
 			before := catalog(t, admin)
@@ -492,9 +493,9 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&rows); e != nil || rows != 0 {
 			t.Fatal(rows, e)
 		}
-		want7, e := os.ReadFile("testdata/catalog_007.txt")
-		if e != nil || string(want7) != catalog(t, admin) {
-			t.Fatalf("the catalog after the remedy differs from testdata/catalog_007.txt (%v)", e)
+		want8, e := os.ReadFile("testdata/catalog_008.txt")
+		if e != nil || string(want8) != catalog(t, admin) {
+			t.Fatalf("the catalog after the remedy differs from testdata/catalog_008.txt (%v)", e)
 		}
 		// Documents numbered by a source product (S03-H) do not block it: they are what the
 		// migration leaves in place; and with them the migrator refuses nothing on the way up again.
@@ -615,13 +616,14 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
 			t.Fatal(e)
 		}
-		if want7, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want7) != catalog(t, admin) {
-			t.Fatalf("the catalog after the round trip differs from testdata/catalog_007.txt (%v)", e)
+		if want8, e := os.ReadFile("testdata/catalog_008.txt"); e != nil || string(want8) != catalog(t, admin) {
+			t.Fatalf("the catalog after the round trip differs from testdata/catalog_008.txt (%v)", e)
 		}
 	})
+	t.Run("object_storage_step_adds_the_two_counts_and_refuses_to_lose_what_they_say", func(t *testing.T) { migration008(t, admin) })
 	t.Run("concurrent_migrators_serialize_on_the_lock", func(t *testing.T) {
 		// Several rounds on a pool whose connections have seen the schema absent (a negative
-		// catalog cache entry): every migrator must end at version 7 with one ledger.
+		// catalog cache entry): every migrator must end at version 8 with one ledger.
 		const n = 6
 		for round := range 5 {
 			dropSchema(t, admin)
@@ -647,7 +649,7 @@ func TestPostgresMigrations(t *testing.T) {
 				}
 			}
 			st := must(postgres.Status(ctx, admin))
-			if st.Current() != 7 || len(st.Applied) != 7 || len(st.Problems) != 0 {
+			if st.Current() != 8 || len(st.Applied) != 8 || len(st.Problems) != 0 {
 				t.Fatalf("round %d: %+v", round, st)
 			}
 		}
@@ -692,7 +694,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 			t.Fatal(e)
 		}
 		st := must(postgres.Status(ctx, admin))
-		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 5 || len(st.Problems) != 0 {
+		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 6 || len(st.Problems) != 0 {
 			t.Fatalf("%+v", st)
 		}
 		if _, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false); !errors.Is(e, r.ErrDenied) {
@@ -704,7 +706,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 7 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum || st.Applied[6].Checksum != known[6].Checksum {
+		if st.Legacy || st.Current() != 8 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum || st.Applied[6].Checksum != known[6].Checksum || st.Applied[7].Checksum != known[7].Checksum {
 			t.Fatalf("%+v", st)
 		}
 		// The realistic pre-S04-A database: the old fixture at version 3 (S03-G's, with its counters
@@ -730,11 +732,11 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 7 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
+		if st.Legacy || st.Current() != 8 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
 			t.Fatalf("%+v", st)
 		}
-		if want7, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want7) != catalog(t, admin) {
-			t.Fatalf("the bootstrapped database does not have the catalog of version 7 (%v)", e)
+		if want8, e := os.ReadFile("testdata/catalog_008.txt"); e != nil || string(want8) != catalog(t, admin) {
+			t.Fatalf("the bootstrapped database does not have the catalog of version 8 (%v)", e)
 		}
 		// A production store is never a bootstrap: those rows are refused there.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile='"+postgres.ProfileProduction+"'"); e != nil {
@@ -1256,4 +1258,111 @@ func currentDatabase(t *testing.T, pool *pgxpool.Pool) string {
 		t.Fatal(e)
 	}
 	return name
+}
+
+// migration008 qualifies the step of S04-E (docs/S04E_SCOPE.md E3): a store at version 7 with rows upgrades keeping them, the two counts of the
+// sweeps ledger default to 0, the catalog is the committed one, and the down step gives back the catalog of 007 exactly; it is refused while a
+// ledger row says objects were deleted or an artifact's file is an object (an older binary could not serve it), unless the loss is accepted.
+func migration008(t *testing.T, admin *pgxpool.Pool) {
+	ctx := context.Background()
+	dropSchema(t, admin)
+	if e := postgres.Up(ctx, admin, 7, "test"); e != nil {
+		t.Fatal(e)
+	}
+	if e := postgres.InitProfile(ctx, admin, postgres.ProfileFixture); e != nil {
+		t.Fatal(e)
+	}
+	if want, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want) != catalog(t, admin) {
+		t.Fatalf("the store at version 7 does not have the catalog of 007 (%v)", e)
+	}
+	if _, e := admin.Exec(ctx, "INSERT INTO reporting_s01.sweeps(dry_run,complete,grace_seconds,batch,artifacts,snapshots,jobs,batches) VALUES(false,true,86400,500,1,2,3,4)"); e != nil {
+		t.Fatal(e)
+	}
+	st := must(postgres.Status(ctx, admin))
+	if st.Current() != 7 || len(st.Pending) != 1 || st.Pending[0] != 8 {
+		t.Fatalf("%+v", st)
+	}
+	if plan, e := postgres.Plan(st, 8, postgres.Upward); e != nil || len(plan) != 1 || plan[0] != "up   008 object_storage" {
+		t.Fatal(plan, e)
+	}
+	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+		t.Fatal(e)
+	}
+	known, _ := postgres.Migrations()
+	st = must(postgres.Status(ctx, admin))
+	if st.Current() != 8 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Applied[7].Checksum != known[7].Checksum || st.Applied[7].Name != "object_storage" {
+		t.Fatalf("%+v", st)
+	}
+	at8 := catalog(t, admin)
+	if want, e := os.ReadFile("testdata/catalog_008.txt"); e != nil || string(want) != at8 {
+		t.Fatalf("the catalog at version 8 differs from testdata/catalog_008.txt (%v):\n%s", e, at8)
+	}
+	for _, want := range []string{"column sweeps.objects 11 bigint null=NO default=0", "column sweeps.orphans 12 bigint null=NO default=0", "constraint reporting_s01.sweeps sweeps_objects_check CHECK ((objects >= 0))", "constraint reporting_s01.sweeps sweeps_orphans_check CHECK ((orphans >= 0))"} {
+		if !strings.Contains(at8, want) {
+			t.Errorf("the catalog does not say %q:\n%s", want, at8)
+		}
+	}
+	// The row written before the step has no objects and no orphans, and is otherwise as it was.
+	if count(t, admin, "SELECT count(*) FROM reporting_s01.sweeps WHERE artifacts=1 AND snapshots=2 AND jobs=3 AND batches=4 AND objects=0 AND orphans=0") != 1 {
+		t.Fatal("the ledger row of version 7 is not carried over with 0 objects and 0 orphans")
+	}
+	if _, e := admin.Exec(ctx, "INSERT INTO reporting_s01.sweeps(dry_run,complete,grace_seconds,batch,artifacts,snapshots,jobs,batches,objects) VALUES(false,true,1,1,0,0,0,0,-1)"); e == nil {
+		t.Fatal("a negative count was accepted")
+	}
+	// Down with nothing the step would lose: no acceptance, the catalog of 007 exactly, the ledger row still there; up again, the same as before.
+	if e := postgres.Down(ctx, admin, 7, "test", false); e != nil {
+		t.Fatal("008 down with nothing to lose needs no acceptance:", e)
+	}
+	if want, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want) != catalog(t, admin) {
+		t.Fatalf("down from 008 does not give the catalog of 007 (%v)", e)
+	}
+	if count(t, admin, "SELECT count(*) FROM reporting_s01.sweeps") != 1 {
+		t.Fatal("008 down lost the ledger row")
+	}
+	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+		t.Fatal(e)
+	}
+	if catalog(t, admin) != at8 {
+		t.Fatal("the catalog differs after down and up")
+	}
+	// A ledger row that counts objects deleted is audit the step would lose.
+	if _, e := admin.Exec(ctx, "UPDATE reporting_s01.sweeps SET objects=2, orphans=1"); e != nil {
+		t.Fatal(e)
+	}
+	if e := postgres.Down(ctx, admin, 7, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 rows of the sweeps ledger that count objects deleted") || !strings.Contains(e.Error(), "--accept-data-loss") {
+		t.Fatal("008 down with a ledger row that counts objects accepted:", e)
+	}
+	if st := must(postgres.Status(ctx, admin)); st.Current() != 8 {
+		t.Fatal("a refused step moved the ledger", st.Current())
+	}
+	if _, e := admin.Exec(ctx, "UPDATE reporting_s01.sweeps SET objects=0, orphans=0"); e != nil {
+		t.Fatal(e)
+	}
+	// An artifact whose file is an object cannot be read by an older binary: the step is refused while one exists, and the row stays when the
+	// loss is accepted (it expires and is swept; its object waits for a reconciliation).
+	if _, e := admin.Exec(ctx, `INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256,expires_at) VALUES('0123456789abcdef0123456789abcdef','t','i','x','y','artifact','{"Object":"artifacts/0123456789abcdef0123456789abcdef"}','x',now())`); e != nil {
+		t.Fatal(e)
+	}
+	if e := postgres.Down(ctx, admin, 7, "test", false); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "1 artifacts whose files are in the object store") {
+		t.Fatal("008 down with an artifact whose file is an object accepted:", e)
+	}
+	if e := postgres.Down(ctx, admin, 7, "test", true); e != nil {
+		t.Fatal(e)
+	}
+	if count(t, admin, "SELECT count(*) FROM reporting_s01.assets") != 1 {
+		t.Fatal("008 down deleted the artifact")
+	}
+	if want, e := os.ReadFile("testdata/catalog_007.txt"); e != nil || string(want) != catalog(t, admin) {
+		t.Fatalf("down from 008 does not give the catalog of 007 (%v)", e)
+	}
+	if _, e := admin.Exec(ctx, "TRUNCATE reporting_s01.assets"); e != nil {
+		t.Fatal(e)
+	}
+	dropSchema(t, admin)
+	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+		t.Fatal(e)
+	}
+	if e := postgres.InitProfile(ctx, admin, postgres.ProfileFixture); e != nil {
+		t.Fatal(e)
+	}
 }

@@ -28,7 +28,7 @@ var fixtureDatabases = []string{"reporting_test_s01", "reporting_test_s01_race"}
 
 // OpenProduction verifies the DSN, the schema, the profile and the role, in that order; any
 // failure is a refusal to start.
-func OpenProduction(ctx context.Context, cfg ProductionConfig) (*Store, error) {
+func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (*Store, error) {
 	c, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("%v: %w", err, r.ErrInvalid)
@@ -57,7 +57,7 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig) (*Store, error) {
 	} else if len(problems) > 0 {
 		return fail(fmt.Errorf("the connected role is not the application role: %s: %w", strings.Join(problems, "; "), r.ErrDenied))
 	}
-	return &Store{pool: pool}, nil
+	return (&Store{pool: pool}).apply(opts), nil
 }
 
 // dataTables are the tables the application role reads and writes; the ledger, the profile and the sweeps ledger (S04-B) it only reads.

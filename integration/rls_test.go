@@ -10,6 +10,7 @@ import (
 	"idp.local/reporting/adapters/contractsim"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
+	"idp.local/reporting/storage/objects"
 	"idp.local/reporting/storage/postgres"
 	"os"
 	"strings"
@@ -786,6 +787,36 @@ func (w *rlsWorld) sweepAcrossIdentities(t *testing.T) {
 	if n := count(t, w.admin, "SELECT count(*) FROM reporting_s01.assets"); n != total {
 		t.Fatalf("a dry run deleted: %d assets of %d", n, total)
 	}
+	// The reconciliation of the object store (S04-E) looks assets up by id as the sweep role, in the worker scope: it sees the rows of every
+	// identity and of every kind. Objects named by the snapshots, artifacts and issue records of all three identities are old and kept; the one
+	// no row names is the orphan. Without the scope the lookup would see no row and every one of them would be an orphan.
+	bucket := objects.NewMemory(nil)
+	ids, e := w.admin.Query(ctx, "SELECT id FROM reporting_s01.assets")
+	if e != nil {
+		t.Fatal(e)
+	}
+	named := 0
+	for ids.Next() {
+		var id string
+		if e = ids.Scan(&id); e != nil {
+			t.Fatal(e)
+		}
+		bucket.Plant(r.ObjectKey(id), []byte("x"), time.Now().Add(-72*time.Hour))
+		named++
+	}
+	ids.Close()
+	orphan := r.ObjectKey(r.NewID())
+	bucket.Plant(orphan, []byte("x"), time.Now().Add(-72*time.Hour))
+	if named != total {
+		t.Fatalf("%d ids of %d assets", named, total)
+	}
+	recon, e := postgres.SweepWithObjects(ctx, w.sweep, r.SweepOptions{DryRun: true}, bucket, nil)
+	if e != nil || recon.Orphans != 1 || recon.Objects != 0 || recon.ObjectsLeft != 0 {
+		t.Fatalf("the reconciliation as the sweep role found %+v (%v), want exactly the one orphan among %d objects", recon, e, named+1)
+	}
+	if got := len(bucket.Keys()); got != named+1 {
+		t.Fatalf("a dry run deleted objects: %d left of %d", got, named+1)
+	}
 	res, e := postgres.Sweep(ctx, w.sweep, r.SweepOptions{Batch: 2})
 	if e != nil || res.Artifacts != artifacts || res.Snapshots != snapshots {
 		t.Fatalf("the sweep did %+v (%v)", res, e)
@@ -868,7 +899,7 @@ func (w *rlsWorld) policiesAreChecked(t *testing.T) {
 func migration007(t *testing.T, admin *pgxpool.Pool) {
 	ctx := context.Background()
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 7 || known[6].Name != "row_level_security" {
+	if e != nil || len(known) != 8 || known[6].Name != "row_level_security" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	dropSchema(t, admin)
@@ -888,17 +919,18 @@ func migration007(t *testing.T, admin *pgxpool.Pool) {
 		t.Fatal(e)
 	}
 	st := must(postgres.Status(ctx, admin))
-	if st.Current() != 6 || len(st.Pending) != 1 || st.Pending[0] != 7 {
+	if st.Current() != 6 || len(st.Pending) != 2 || st.Pending[0] != 7 || st.Pending[1] != 8 {
 		t.Fatalf("%+v", st)
 	}
 	if plan, e := postgres.Plan(st, 7, postgres.Upward); e != nil || len(plan) != 1 || plan[0] != "up   007 row_level_security" {
 		t.Fatal(plan, e)
 	}
-	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+	// The step alone: 008 (S04-E) is applied on top elsewhere.
+	if e := postgres.Up(ctx, admin, 7, "test"); e != nil {
 		t.Fatal(e)
 	}
 	st = must(postgres.Status(ctx, admin))
-	if st.Current() != 7 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Applied[6].Checksum != known[6].Checksum {
+	if st.Current() != 7 || len(st.Pending) != 1 || len(st.Problems) != 0 || st.Applied[6].Checksum != known[6].Checksum {
 		t.Fatalf("%+v", st)
 	}
 	if count(t, admin, "SELECT count(*) FROM reporting_s01.jobs") != 1 || count(t, admin, "SELECT count(*) FROM reporting_s01.assets") != 1 {
@@ -933,7 +965,7 @@ func migration007(t *testing.T, admin *pgxpool.Pool) {
 	if count(t, admin, "SELECT count(*) FROM reporting_s01.jobs") != 1 || count(t, admin, "SELECT count(*) FROM reporting_s01.assets") != 1 {
 		t.Fatal("007 down lost rows")
 	}
-	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+	if e := postgres.Up(ctx, admin, 7, "test"); e != nil {
 		t.Fatal(e)
 	}
 	if catalog(t, admin) != at7 {

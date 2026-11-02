@@ -3,10 +3,16 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	r "idp.local/reporting/reporting"
+	"idp.local/reporting/storage/objects"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -160,6 +166,124 @@ func TestQuotaFlagsStopTheStartOutsideTheirBounds(t *testing.T) {
 	}{{-1, 0, 0, "-quota-jobs"}, {1001, 0, 0, "-quota-jobs"}, {0, -1, 0, "-quota-results"}, {0, 100001, 0, "-quota-results"}, {0, 0, -1, "-quota-admissions"}, {0, 0, 100001, "-quota-admissions"}} {
 		if _, err := quotaConfig(c.jobs, c.results, c.admissions); err == nil || !strings.Contains(err.Error(), c.flag) {
 			t.Fatalf("%+v: %v", c, err)
+		}
+	}
+}
+
+// The object store at startup (S04-E, docs/S04E_SCOPE.md E5): the server starts only when HEAD bucket passes, and says which bucket and what
+// status when it does not; it never says the endpoint or a key; the memory store refuses the flags; no flag is the demo as it was.
+func TestTheObjectStoreMustAnswerBeforeTheServerStarts(t *testing.T) {
+	const access, secretKey = "AKIADEMOSTARTUP0001", "demo-startup-secret-0123456789abcdef"
+	var heads, others atomic.Int64
+	status := atomic.Int64{}
+	status.Store(200)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != "HEAD" || req.URL.Path != "/demo-bucket" || !strings.Contains(req.Header.Get("Authorization"), "Credential="+access+"/") {
+			others.Add(1)
+			w.WriteHeader(400)
+			return
+		}
+		heads.Add(1)
+		w.WriteHeader(int(status.Load()))
+	}))
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+	keys := map[string]string{objects.AccessKeyEnv: access, objects.SecretKeyEnv: secretKey}
+	getenv := func(k string) string { return keys[k] }
+	flags := func(args ...string) *objects.Flags {
+		fs := flag.NewFlagSet("demo", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		f := objects.Register(fs)
+		if err := fs.Parse(args); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	configured := flags("-object-store-endpoint="+server.URL, "-object-store-bucket=demo-bucket", "-object-store-loopback-http")
+	// Unconfigured: the demo as it was, and no request.
+	if store, err := openObjectStore(flags(), getenv, false); store != nil || err != nil {
+		t.Fatal(store, err)
+	}
+	if store, err := openObjectStore(flags(), getenv, true); store != nil || err != nil {
+		t.Fatal("-memory without the flags was refused", store, err)
+	}
+	// Reachable: the store, after one HEAD on the bucket.
+	store, err := openObjectStore(configured, getenv, false)
+	if err != nil || store == nil || heads.Load() != 1 {
+		t.Fatal(store, err, heads.Load())
+	}
+	// The bucket refused or missing, or the server gone: no store, a text with the bucket and the status, and nothing else.
+	for _, code := range []int{403, 404, 500} {
+		status.Store(int64(code))
+		_, err := openObjectStore(configured, getenv, false)
+		want := fmt.Sprintf(`the object store's bucket "demo-bucket" is not usable: HEAD bucket answered status %d`, code)
+		if err == nil || err.Error() != want {
+			t.Errorf("status %d: %v, want %q", code, err, want)
+		}
+	}
+	server.Close()
+	_, err = openObjectStore(configured, getenv, false)
+	if err == nil || err.Error() != `the object store's bucket "demo-bucket" is not usable: HEAD bucket got no answer` {
+		t.Errorf("a server that is gone: %v", err)
+	}
+	for _, e := range []error{err} {
+		for _, leak := range []string{host, "127.0.0.1", access, secretKey, "dial", "refused"} {
+			if strings.Contains(e.Error(), leak) {
+				t.Errorf("the startup refusal carries %q: %q", leak, e)
+			}
+		}
+	}
+	// Refused before any request: the memory store keeps content inline, a key missing, an endpoint off the loopback.
+	before := heads.Load()
+	if _, err := openObjectStore(configured, getenv, true); err == nil || !strings.Contains(err.Error(), "-memory") {
+		t.Errorf("-memory with the object store flags: %v", err)
+	}
+	if _, err := openObjectStore(configured, func(k string) string { return map[string]string{objects.AccessKeyEnv: access}[k] }, false); err == nil || strings.Contains(err.Error(), access) || !strings.Contains(err.Error(), objects.SecretKeyEnv) {
+		t.Errorf("a missing secret key: %v", err)
+	}
+	if _, err := openObjectStore(flags("-object-store-endpoint=http://10.0.0.5:9000", "-object-store-bucket=demo-bucket", "-object-store-loopback-http"), getenv, false); err == nil {
+		t.Error("an http endpoint off the loopback was accepted")
+	}
+	if heads.Load() != before || others.Load() != 0 {
+		t.Errorf("a refused configuration made requests: %d heads, %d others", heads.Load()-before, others.Load())
+	}
+}
+
+// The sweep loop logs the object store's counts (S04-E) when there are some, as counts, and a quiet sweep with no objects says nothing as before.
+func TestSweepLoopLogsTheObjectCountsAndOnlyCounts(t *testing.T) {
+	sweeper := &scriptedSweeper{
+		results: []r.SweepResult{{Artifacts: 2, Snapshots: 1, Jobs: 3, Objects: 2}, {Orphans: 4}, {ObjectsLeft: 1}, {}},
+		errs:    []error{nil, nil, errors.New("dial tcp 10.1.2.3:9000: bucket secret-bucket key artifacts/0123"), nil},
+	}
+	var mu sync.Mutex
+	var logged []string
+	logf := func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		logged = append(logged, fmt.Sprintf(format, args...))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); sweepLoop(ctx, sweeper, 5*time.Millisecond, logf) }()
+	for end := time.Now().Add(5 * time.Second); sweeper.calls() < 5 && time.Now().Before(end); time.Sleep(time.Millisecond) {
+	}
+	cancel()
+	<-done
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{
+		"retention sweep: 2 artifacts and 1 snapshots deleted, 3 job payloads reduced; objects: 2 deleted, 0 orphans deleted, 0 left for the next reconciliation",
+		"retention sweep: 0 artifacts and 0 snapshots deleted, 0 job payloads reduced; objects: 0 deleted, 4 orphans deleted, 0 left for the next reconciliation",
+		"retention sweep stopped; it had deleted 0 artifacts and 0 snapshots and reduced 0 job payloads; objects: 0 deleted, 0 orphans deleted, 1 left for the next reconciliation",
+	}
+	if fmt.Sprint(logged) != fmt.Sprint(want) {
+		t.Fatalf("logged %q, want %q", logged, want)
+	}
+	for _, line := range logged {
+		for _, leak := range []string{"10.1.2.3", "secret-bucket", "artifacts/0123"} {
+			if strings.Contains(line, leak) {
+				t.Fatalf("the log carries %q: %s", leak, line)
+			}
 		}
 	}
 }
