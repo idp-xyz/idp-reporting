@@ -175,7 +175,7 @@ jobs:
   pdf:
     name: PDF export and document previews with the pinned Typst, fonts and veraPDF
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45  # the checker alone takes ~6 minutes with the sample pack's corpus and 6,500 negative controls, veraPDF ~150 documents more
     env:
       # The Typst tests fail instead of skipping, in Go and in the console suite.
       REPORTING_PDF_REQUIRE: "1"
