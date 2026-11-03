@@ -1,3 +1,17 @@
+# IDP Reporting Platform · S06-B part 1
+
+2026-11-03。模板中心的服务端与渲染器部分（docs/S06B_SCOPE.md 的第一部分，B1–B4；第二部分转换 37 个样例，第三部分是模板中心页面）：页面预设、2.x 套印、抬高的元素上限、样例包与目录元数据的路由、每身份 64 个模板。
+
+- 页面预设（B1）：2.x 模板的 `page.preset`——`a4`（缺省，所有已存模板都是它）、`a4_landscape`、`a5`、`label_4x6in`、`label_100x150`、`label_100x100`。预设表只有一份，在 `doctemplates/schema2.go`（宽、高、安全区、横幅/印章条）；Typst 页面（`document.typ` 读 `data.json` 的页面尺寸，A4 不写该键所以字节不变）、版面、检查器（读测试写入的期望，没有自己的另一张表）、画布（`canvas.js` 里一份由测试与预设表比对的副本）都从它取数。出具印章条每个预设都有；窄条把最宽的合法印章在第一个 “ - ” 后折成两行（A5 8 pt，标签 6 pt），测试证明最宽的合法印章在每个预设里都放得下。1.x 仍只有 A4，带 `page` 被拒绝。
+- 2.x 套印（B2）：`page.print {offset_x, offset_y, variables_only, background?}`，语义同 1.x（偏移移动每个元素、表格与分页；底图在完整模式画在页面下、仅变量模式不画；仅变量模式去掉所有非变量——固定文字与固定条码、线、矩形、图片、表的线框与表头）。偏移须使打印内容仍在安全区内；底图须与预设同长宽比。预览、检查、出具与检查器两种模式都覆盖。
+- 上限（B3）：`MaxItems` 64→128、`MaxBandItems` 24→96，元素编号 e1–e128；在最坏模板（128 元素、单带 96）上重测：预览约 52 ms、出具前检查约 6 ms、最宽编号出具约 65 ms（预算 15 s），数字在 docs/CAPACITY.md。
+- 样例与目录（B4）：`doctemplates/samples/`（`embed.FS`）；`GET /document-templates/samples`、`GET …/samples/{kind}`、`POST …/samples/{kind}/previews`（用样例自带行、带 PREVIEW 横幅、无数据集）、`POST …/samples/{kind}/copy`（服务端按映射绑定、与保存同样校验并存为新模板第 1 版，未映射的槽位是字面量 `[标签]`）；`GET/PUT /document-templates/{id}/catalog`（领域、流程、收藏、归档、至多 16 个各至多 40 字的集合，`expected_revision` 冲突 409，读取某版本时服务端记 `last_opened`），列表带元数据；每身份模板上限 16→64（`privatedocs.OpenCap`，其余存储仍 16）。本部分的样例只有两个手写夹具 `_fixture_*.json`，第二部分以转换出的样例取代它们。
+- 为让共享校验用例两侧一致，`documents.js` 的 2.x 校验器随上限与 `page` 更新（限制、预设、套印），`canvas.js` 按预设画页面尺寸；页面中心 UI 不在本部分。
+
+测试：Go 无环境顶层测试 416 → 443 项通过（跳过 18 → 23，新增 5 项需 Typst，已加入 ci.yml 的三份跳过清单），带 Typst 的 Go 套件 458 项通过、跳过 8 项（需 PostgreSQL / S3 的既有项）；普通与 race（doctemplates、privatedocs、transport、export）都通过；DOM 186 项不变（无 Typst 166 通过、20 跳过，有 Typst 186/186，共享的 2.x 校验用例 323 → 347 条，两侧一致）；检查器对 78 份文档通过（改动前 76 份中的 70 份 PDF 与基线逐字节相同，其余 6 份本来就每次不同：随机记录号的印章与生成时间），golden.json 只新增 22 项。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S06-A
 
 2026-11-02。文档工作室（docs/S06A_SCOPE.md，docs/STUDIO.md，ADR 0008）：控制台的“文档模板设计器”页换成原型 `IDP_Reporting_Designer_UIUX_V3.0` 的全屏工作室——顶栏（可原地改名的模板名、状态徽标、版本、保存、预览与导出、发布）、五个页签的功能区、竖向工具栏与四个侧栏面板、带上下文条/标尺/区段标签/页码器/缩放的工作区、三个页签的检查器、状态栏，以及版本、发布前确认、帮助、纸张、区段、套打、插入选项、预览与导出、JSON、出具、模板选择、参数抽屉与数据抽屉。行为层不重写：每个工作室控件调用旧按钮调用的函数，或禁用并写明原因；新增会话内的剪贴板、格式刷、锁定与隐藏、网格、吸附开关、缩放、Space 平移，模板新增可选 `name`（≤ 80 字符，1.x 与 2.x，`doctemplates` 与控制台同一规则，共享用例 +10）。CSP 不变，无 `innerHTML`、无内联样式。

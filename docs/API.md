@@ -63,7 +63,12 @@ demo has the matching directories, and previews when it has the PDF flags:
 | POST /document-previews | `{config, snapshot_id, row_index}`; one A4 PDF/A-2b preview of the template bound to that frozen row and the whole-scope totals; `application/pdf`, `no-store`, `X-Content-SHA256` |
 | POST /document-checks | Sample check (S03-I, docs/S03I_SCOPE.md): `{config, snapshot_id, rows}` (1–50 distinct row indices) or `{config, snapshot_id, samples: "boundary"}`, never both; answers `200 {"rows": [{row_index, ok, code?, detail?, reasons?}]}` in row order, `no-store`, without rendering (`detail`: S03-J, below). Mounted with the previews when the renderer can check (the PDF writer can) |
 | GET, POST /document-templates | List authorized templates; save `{id, expected_version, config}` as a new immutable version |
-| GET /document-templates/{id}?version=N | One saved version, after current field authorization |
+| GET /document-templates/{id}?version=N | One saved version, after current field authorization; reading a version records the time as the template's `last_opened` |
+| GET, PUT /document-templates/{id}/catalog | The template centre's metadata of one template of the caller (S06-B): `{domain, flow, favourite, archived, collections, last_opened, revision}`. A template that never had any answers the empty one (`revision` 0, `collections` `[]`, `last_opened` `""`). `PUT` takes the whole object without `last_opened` and with `expected_revision`: `{domain, flow, favourite, archived, collections, expected_revision}`; a stale revision is 409, a name that is not valid 400 (a domain or flow of at most 40 characters on one line; at most 16 collections, distinct, each 1-40 characters, no control character, no space around it) and the answer is the stored object one `revision` on. `last_opened` is the server's: reading a version sets it and a `PUT` keeps it; neither it nor `revision` is changed by the other. Per identity: another identity's template is 404 |
+| GET /document-templates/samples | The sample pack (S06-B), the same for every signed-in identity: `[{kind, name, domain, flow, description, preset, schema_version, elements, fields}]`, no rows and no document |
+| GET /document-templates/samples/{kind} | One sample in full: the summary and `field_slots` (`{id, label, type, scope: document|row[, metric, scale]}`), `rows` (the sample's own rows, objects by slot id) and `document` (a 2.x document bound to no dataset: its text, code and table elements name slots in place of columns). 404 for a kind the pack lacks. Samples are read-only: no other method is routed |
+| POST /document-templates/samples/{kind}/previews | A PREVIEW-marked PDF/A-2b preview of the sample from its own rows; no body (or `{}`), no dataset, no authorization beyond a signed-in identity; `application/pdf`, `no-store`, `X-Content-SHA256`. Mounted where the preview renderer is |
+| POST /document-templates/samples/{kind}/copy | `{dataset: {integration_id, id, version}, name, mapping: {<slot id>: {"column": <dataset column>} or {"literal": <text>}}}`: binds the sample to the caller's dataset on the server and saves it as version 1 of a new template, answering the saved template as `POST /document-templates` does (201, `{id, version, config}`). A slot mapped to a column is that column (a document-scope slot named in the sample's group becomes a group field); a slot mapped to a literal is a literal text; **a slot not in the mapping is the literal `[<label>]`**. A table column whose slot is a literal (or unmapped) has no column to print: it is dropped and its width shared among the others (400 when none is left). An empty `name` is the sample's. The result is validated and authorized exactly as a save (a column the dataset lacks 403, a group field that is a metric or a group sum of a dimension as a save says, a literal a box cannot hold 400), stored in the caller's private store, which bounds it (64 templates per identity, 413 beyond) and starts in the sample's domain and flow in the catalogue; the platform's job and result quotas do not apply to templates |
 | GET, POST /document-templates/{id}/release | Release history; `{action: publish|withdraw, version, expected_revision}` |
 | GET /document-templates/{id}/published | The published version |
 | POST /document-templates/{id}/previews | `{version, snapshot_id, row_index}`; previews the stored version, never caller configuration |
@@ -488,8 +493,8 @@ HTTP/1.1 413 Request Entity Too Large
 | Routes | Bound |
 |---|---|
 | `POST /queries`, `POST /snapshot-jobs` | 64 KiB |
-| `POST /exports`, `POST /issues`, `POST /layouts/{id}/release`, `POST /dashboards/{id}/release`, `POST /document-templates/{id}/release` | 4 KiB |
-| `POST /layouts`, `POST /dashboards`, `POST /document-templates`, `POST /document-templates/{id}/previews`, `POST /document-previews`, `POST /document-checks`, `POST /document-backgrounds`, `POST /document-images` | 1 MiB (`MaxResultBytes`; an image or a background is base64 of at most 512 KiB, which fits) |
+| `POST /exports`, `POST /issues`, `POST /layouts/{id}/release`, `POST /dashboards/{id}/release`, `POST /document-templates/{id}/release`, `PUT /document-templates/{id}/catalog`, `POST /document-templates/samples/{kind}/previews` | 4 KiB |
+| `POST /layouts`, `POST /dashboards`, `POST /document-templates`, `POST /document-templates/samples/{kind}/copy`, `POST /document-templates/{id}/previews`, `POST /document-previews`, `POST /document-checks`, `POST /document-backgrounds`, `POST /document-images` | 1 MiB (`MaxResultBytes`; an image or a background is base64 of at most 512 KiB, which fits) |
 | `POST /jobs/{id}/cancel` | no body: one byte is read and a body is 400 |
 
 A body over the bound is 413 whether or not it declares its length; a body of exactly the bound is read and judged as before (a malformed one is
@@ -529,3 +534,31 @@ the API's security headers and `Cache-Control: no-store`; any other method is 40
 | GET /readyz | `200 {"status":"ready"}` when the store answers, its ledger is at the binary's version, the profile row is `production` and the connected role satisfies the application role's rules, the object store (when configured) answered its last check (cached 10 seconds), and the server is not draining. Otherwise `503 {"status":"not_ready","reason":"store"\|"schema"\|"roles"\|"object_store"\|"draining"}`; the body holds nothing else |
 
 `GET /capabilities` of the production server shows its `profile_label` in `profile` (`simulated:<label>` when a contract simulator is allowed) and keeps `production_approved: false`.
+
+## Page presets, the 2.x print profile and the limits of a 2.x template (S06-B)
+
+A 2.x template may carry `page: {preset?, print?}` (at least one key, written between `binding` and `group`). `preset` is one of the rows of
+`doctemplates.Presets`, the one table of the platform (the canvas, Typst and the checker take their numbers from it; the console's copy is
+compared with it by a test): the template without a preset is A4 portrait, as every template stored before S06-B is, and a 1.x template has none.
+
+| preset | page (mm) | safe region: left/right margin, top, bottom | banner strip (x, y, width x height) | stamp |
+|---|---|---|---|---|
+| `a4` (default) | 210 x 297 | 10, y 25-270 | 10, 10, 190 x 8 | 1 line, 8 pt |
+| `a4_landscape` | 297 x 210 | 10, y 25-183 | 10, 10, 277 x 8 | 1 line, 8 pt |
+| `a5` | 148 x 210 | 10, y 25-183 | 10, 10, 128 x 8 | 2 lines, 8 pt |
+| `label_4x6in` | 101.6 x 152.4 | 4, y 12-146.4 | 4, 3, 93.6 x 6 | 2 lines, 6 pt |
+| `label_100x150` | 100 x 150 | 4, y 12-144 | 4, 3, 92 x 6 | 2 lines, 6 pt |
+| `label_100x100` | 100 x 100 | 4, y 12-94 | 4, 3, 92 x 6 | 2 lines, 6 pt |
+
+The bands span the safe region's width (page width less both margins) and the stack of bands is held to its height; the issue stamp strip exists on
+every preset. Where the widest stamp the contract allows does not fit one line (a stamp is `ISSUED No. <number> - <time> - <id>`), it is broken after the
+first ` - ` into two lines that read, joined by a space, as the stamp; a test proves the widest legal stamp fits every preset. A background must have the
+aspect ratio of the template's preset (within 0.005; 210-1754 pixels each way).
+
+`page.print: {offset_x, offset_y, variables_only, background?: {id, sha256}}` (every key but `background` required) is the 1.x print profile for a 2.x
+template: the offsets (at most 10 mm, 0.1 mm grid) move every element, the table and its pages; the background is drawn under the page in full mode and left out
+when `variables_only` is true; **in a variables-only print everything that is not a variable is left out** (literal texts and codes, lines, rectangles, images; the
+table's rules, fills and header). The offset must leave everything printed inside the safe region, so a vertical offset needs room in the bands above or below the table.
+Previews, checks, issues and the checker cover both modes.
+
+`MaxItems` is 128 (64 before) and `MaxBandItems` 96 (24 before); element ids are `e1`-`e128`. docs/CAPACITY.md has the measured proofs.

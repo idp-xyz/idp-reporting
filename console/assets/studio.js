@@ -381,7 +381,7 @@ window.createReportingStudio=function(api){
    const list=$('st-rules');list.replaceChildren();const add=t=>list.append(node('li',t));
    add('安全区 x 10–200 · y 25–270 毫米，元素不得越界；10–18 毫米是横幅（出具印章）保留区。');
    if(S.schema&&S.schema.startsWith('2')){
-    add('每个模板至多 64 个元素；每带至多 24 个；元素编号 e1–e64。');add('同一带内的文本框、条码、二维码与图片不能重叠。');
+    add('每个模板至多 128 个元素；每带至多 96 个；元素编号 e1–e128。');add('同一带内的文本框、条码、二维码与图片不能重叠。');
     add('固定带高度 5–245 毫米（0.1 毫米步长）；明细带必有一个明细表，高度随页面伸展。');
     add(S.config&&S.config.group?'分组字段：'+S.config.group.fields.join('、')+'（每个不同取值一份文档；字段文本须是分组字段或组内取值一致）。':'无分组：整个快照一份文档；字段文本须在全部行取值相同。');
     add('分组合计需要当前结果中的指标字段；条码与二维码的值须在其字符集内。');

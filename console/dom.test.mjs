@@ -3175,7 +3175,7 @@ test('S06-A A4: the inspector is the page\'s or the element\'s, in the prototype
  cv.key(a,cv.item(a,text),'Escape');assert.equal(a.$('st-insp-title').textContent,'页面属性');
  // Rules: the template's constraints as the designer knows them.
  q(a,'[data-prop-tab="rules"]').click();assert.equal(a.$('st-ipanel-rules').hidden,false);assert.equal(a.$('st-ipanel-properties').hidden,true);const rules=qa(a,'#st-rules li').map(l=>l.textContent);
- assert.ok(rules.some(r=>/安全区 x 10–200/.test(r))&&rules.some(r=>/至多 64 个元素/.test(r))&&rules.some(r=>/不能重叠/.test(r))&&rules.some(r=>/明细带必有一个明细表/.test(r))&&rules.some(r=>/无分组：整个快照一份文档/.test(r)),rules.join('|'));
+ assert.ok(rules.some(r=>/安全区 x 10–200/.test(r))&&rules.some(r=>/至多 128 个元素/.test(r))&&rules.some(r=>/不能重叠/.test(r))&&rules.some(r=>/明细带必有一个明细表/.test(r))&&rules.some(r=>/无分组：整个快照一份文档/.test(r)),rules.join('|'));
  assert.equal(a.$('st-mark-refusal').disabled,true);assert.equal(a.$('st-refusal').textContent,'尚无。');
  // Check: the boundary samples' table with the old ids, and 重新检查 reaching the same button.
  q(a,'[data-prop-tab="check"]').click();assert.equal(a.$('st-ipanel-check').hidden,false);assert.equal(a.$('doc-check-wrap').closest('#st-ipanel-check')!==null,true);assert.equal(a.$('st-recheck').textContent.trim(),'重新检查');assert.match(a.$('st-issues').textContent,/当前版式与绑定检查通过/);

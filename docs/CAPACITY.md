@@ -236,3 +236,29 @@ Run the tool against a copy of your configuration's PostgreSQL (the guard allows
 `reporting_test_s01`), with `-sizes` at your expected table sizes and the number of tenants and identities you expect (`-tenants`, `-identities`). Look
 first at the admission p99 for the identity with the longest history and at the parallel cases for one identity, then at the sweep. The figure to size the pool
 from is the number of writers you expect on one identity times your latency to the database: they queue holding connections.
+
+## Raised template limits (S06-B part 1, B3)
+
+`MaxItems` rises from 64 to 128 and `MaxBandItems` from 24 to 96, so that the MAWB sample (72 fields in one band) and the B/L (52) fit. The proofs that
+depend on them were re-measured on the worst template the new limits allow (`TestTypstTheRaisedLimitsRenderCheckAndIssueWithinTheBudget`, the pinned Typst
+and fonts, one machine, WSL2, three runs): 128 elements, 96 of them in the document header, whose first is a text of the issue number across the band and the
+rest are fields and literals in a 3-column grid; a page header of 25 lines; a document footer with a Code 128 and five QR codes (level H) of the issue number;
+a table of 40 rows over two columns.
+
+| Step | Measured | Bound |
+|---|---|---|
+| Preview (`RenderWith`, layout and Typst, 3 pages, 42.9 KB) | 52-54 ms | 15 s (the render timeout `defaultTimeout`; a preview waits for a slot inside it) |
+| Pre-issue check over the widest legal number (`CheckIssueWith`, fonts only) | 6.1-6.9 ms | the worker's check before the product is asked for a number |
+| Issue with the widest legal number, 32 characters of the widest glyph (`IssueWith`) | 61-71 ms | the issue job's 15 s render |
+
+The worst-case proof itself is per element and does not depend on how many there are: a text, a Code 128 or a QR code that shows the issue number is proved
+for the widest (or longest) number its box can be given, which `TestTypstIssuesTheWidestLegalNumbers` sweeps to the tightest box the check accepts; that test is
+unchanged and passes. With 128 elements the check adds the elements' own cost only (about 6 ms here), so the old limits were not what the budget was spent on.
+
+The heaviest *samples* are the two hand-written fixtures of this part (`doctemplates/samples/_fixture_*.json`, 15 and 9 elements; preview 10-60 ms each in
+`TestTypstRendersEverySampleWithItsOwnRows`, written with the checker's evidence). The 37 converted samples are part 2's: it measures the heaviest of them here and,
+for a sample that does not fit the budget, converts it with fewer elements and says so.
+
+The per-identity template cap rises from 16 to 64 (docs/OPERATIONS.md): the file of an identity grows with it, bounded by the store's 8 MiB. A template of 128
+elements is about 25-30 KB canonical (64 KiB is the bound of one), so 64 templates of one version each is under 2 MB; the 20 versions a template may keep are what
+can reach 8 MiB first.

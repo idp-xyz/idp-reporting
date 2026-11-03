@@ -225,7 +225,7 @@ func (b *bandedLayout) barcode(pg *pageData, name string, it doctemplates.Item, 
 	if 2*tenths(it.Width) < 5*total {
 		return refuse(doctemplates.ReasonDoesNotFit, place, "pdf: a barcode needs modules narrower than the least a scanner reads")
 	}
-	left, boxTop := (bandX+it.X)*mm, top+it.Y*mm
+	left, boxTop := (b.x0+it.X)*mm, top+it.Y*mm
 	moduleW := it.Width * mm / float64(total)
 	symbolMM := float64(len(modules)) * it.Width / float64(total)
 	zone := 0.0
@@ -273,7 +273,7 @@ func (b *bandedLayout) qrcode(pg *pageData, name string, it doctemplates.Item, t
 	if tenths(it.Size) < 4*total {
 		return refuse(doctemplates.ReasonDoesNotFit, place, "pdf: a QR code needs modules narrower than the least a scanner reads")
 	}
-	left, boxTop := (bandX+it.X)*mm, top+it.Y*mm
+	left, boxTop := (b.x0+it.X)*mm, top+it.Y*mm
 	module := it.Size * mm / float64(total)
 	for row, modules := range matrix {
 		for _, run := range barcode.Runs(modules) {
@@ -300,7 +300,7 @@ func (b *bandedLayout) image(pg *pageData, name string, it doctemplates.Item, to
 	}
 	file := "image-" + hex.EncodeToString(sum[:8]) + "." + imageExtension(format)
 	b.page.Media[file] = data
-	x, y, dw, dh := contain((bandX+it.X)*mm, top+it.Y*mm, it.Width*mm, it.Height*mm, iw, ih)
+	x, y, dw, dh := contain((b.x0+it.X)*mm, top+it.Y*mm, it.Width*mm, it.Height*mm, iw, ih)
 	pg.Images = append(pg.Images, placedImage{File: file, X: x, Y: y, W: dw, H: dh})
 	return nil
 }
@@ -308,7 +308,7 @@ func (b *bandedLayout) image(pg *pageData, name string, it doctemplates.Item, to
 // probePage is an empty page of a document preview, for a render that is not a document of a template.
 func probePage(m *measurer) (*page, error) {
 	p := &page{Title: "Document preview", Fonts: m.families, Pages: []pageData{newPage(nil)},
-		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText, Fill: bannerFill}}
+		Banner: bannerFor(doctemplates.DefaultPreset.Strip)}
 	if _, err := m.width(bannerText, bannerSize, false); err != nil {
 		return nil, err
 	}

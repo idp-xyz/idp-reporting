@@ -178,9 +178,6 @@ func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Servic
 	if e != nil {
 		return e
 	}
-	if config.Print != nil && config.Print.Mode == "variables" {
-		background = nil
-	}
 	var pdf []byte
 	if config.Coded() {
 		// A 2.1 template draws images and codes, and may show the issue number, which a preview replaces with a placeholder.
@@ -208,11 +205,16 @@ func renderDocumentPreview(w http.ResponseWriter, req *http.Request, s *r.Servic
 	if e = authorizeDocument(req, s, p, config, assets); e != nil {
 		return e
 	}
+	return sendPreviewPDF(w, pdf)
+}
+
+// sendPreviewPDF answers a preview: the PDF, with its digest.
+func sendPreviewPDF(w http.ResponseWriter, pdf []byte) error {
 	digest := sha256.Sum256(pdf)
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", `attachment; filename="document-preview.pdf"`)
 	w.Header().Set("X-Content-SHA256", hex.EncodeToString(digest[:]))
 	w.WriteHeader(200)
-	_, e = w.Write(pdf)
+	_, e := w.Write(pdf)
 	return e
 }

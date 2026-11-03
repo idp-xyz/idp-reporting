@@ -48,6 +48,9 @@ type Document struct {
 	// instead. A 2.0 document is written by MarshalJSON in its own closed form.
 	Group *GroupSpec `json:"group,omitempty"`
 	Bands *Bands     `json:"bands,omitempty"`
+	// Page (S06-B) is the page preset and the overprint profile of a 2.x document; a 1.x document has none (it is A4 and
+	// has Print and Background of its own).
+	Page *Page `json:"page,omitempty"`
 }
 
 // MarshalJSON writes a 1.x document exactly as its fields have always been written and a 2.0 document
@@ -59,9 +62,10 @@ func (d Document) MarshalJSON() ([]byte, error) {
 			Kind    string     `json:"kind"`
 			Name    string     `json:"name,omitempty"`
 			Binding Binding    `json:"binding"`
+			Page    *Page      `json:"page,omitempty"`
 			Group   *GroupSpec `json:"group,omitempty"`
 			Bands   *Bands     `json:"bands"`
-		}{d.Schema, d.Kind, d.Name, d.Binding, d.Group, d.Bands})
+		}{d.Schema, d.Kind, d.Name, d.Binding, d.Page, d.Group, d.Bands})
 	}
 	type wire Document
 	return json.Marshal(wire(d))
@@ -92,7 +96,7 @@ func Validate(d Document) error {
 	if d.Banded() {
 		return validateBanded(d)
 	}
-	if d.Group != nil || d.Bands != nil {
+	if d.Group != nil || d.Bands != nil || d.Page != nil {
 		return r.ErrInvalid
 	}
 	b, e := json.Marshal(d)
@@ -252,7 +256,11 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 				return r.ErrInvalid
 			}
 		}
-	} else if fields["group"] != nil || fields["bands"] != nil {
+	} else if fields["group"] != nil || fields["bands"] != nil || fields["page"] != nil {
+		return r.ErrInvalid
+	}
+	// An explicit null is not a page.
+	if raw, present := fields["page"]; present && string(bytes.TrimSpace(raw)) == "null" {
 		return r.ErrInvalid
 	}
 	*d = Document(value)
@@ -286,5 +294,37 @@ func (b *BackgroundRef) UnmarshalJSON(data []byte) error {
 		return r.ErrInvalid
 	}
 	*b = BackgroundRef(value)
+	return nil
+}
+
+func (p *Page) UnmarshalJSON(data []byte) error {
+	type wire Page
+	var value wire
+	if e := r.DecodeStrict(bytes.NewReader(data), &value); e != nil {
+		return e
+	}
+	var fields map[string]json.RawMessage
+	if e := json.Unmarshal(data, &fields); e != nil || len(fields) == 0 {
+		return r.ErrInvalid
+	}
+	// The optional keys are written only when they are set: an explicit empty or null one is not canonical.
+	if (fields["preset"] != nil && value.Preset == "") || (fields["print"] != nil && value.Print == nil) {
+		return r.ErrInvalid
+	}
+	*p = Page(value)
+	return nil
+}
+
+func (p *PagePrint) UnmarshalJSON(data []byte) error {
+	type wire PagePrint
+	var value wire
+	if e := r.DecodeStrict(bytes.NewReader(data), &value); e != nil {
+		return e
+	}
+	var fields map[string]json.RawMessage
+	if e := json.Unmarshal(data, &fields); e != nil || fields["offset_x"] == nil || fields["offset_y"] == nil || fields["variables_only"] == nil || (fields["background"] != nil && value.Background == nil) {
+		return r.ErrInvalid
+	}
+	*p = PagePrint(value)
 	return nil
 }

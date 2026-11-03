@@ -134,9 +134,6 @@ func checkDocumentRows(w http.ResponseWriter, req *http.Request, s *r.Service, p
 	if e != nil {
 		return e
 	}
-	if config.Print != nil && config.Print.Mode == "variables" {
-		background = nil
-	}
 	answer := make([]checkRow, 0, len(picks))
 	for i, v := range picks {
 		if e = ctx.Err(); e != nil {

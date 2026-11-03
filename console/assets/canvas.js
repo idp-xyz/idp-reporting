@@ -18,6 +18,8 @@
 // than the table's minimum), document footer, with the page footer at the bottom of the region (y 270 mm). Every element
 // belongs to a band and its position is relative to the band's top-left corner (x 10 mm); the model below turns that into
 // page units for drawing, snapping, alignment and distribution, and back again when an element is written.
+// The page presets (S06-B): a copy of doctemplates.Presets, the one table of the platform; a Go test (doctemplates/preset_test.go) fails when this differs.
+window.reportingPresets=/*presets:begin*/[{"id":"a4","width":210,"height":297,"left":10,"top":25,"bottom":270,"strip":{"x":10,"y":10,"width":190,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a4_landscape","width":297,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":277,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a5","width":148,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":128,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":2}},{"id":"label_4x6in","width":101.6,"height":152.4,"left":4,"top":12,"bottom":146.4,"strip":{"x":4,"y":3,"width":93.6,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x150","width":100,"height":150,"left":4,"top":12,"bottom":144,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x100","width":100,"height":100,"left":4,"top":12,"bottom":94,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}}]/*presets:end*/;
 window.createReportingCanvas=function(ports){
  const NS='http://www.w3.org/2000/svg',SCALE=3,RULER=24,PAD=16,GUTTER=104,HANDLE=8,TOLERANCE=10,DRAG_PIXELS=3;
  const $=id=>document.getElementById(id);
@@ -26,7 +28,12 @@ window.createReportingCanvas=function(ports){
  const node=(tag,text,className)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;};
  const sources={literal:'固定文字',row:'行字段',total:'合计'},sources2={literal:'固定文字',field:'字段',group_sum:'分组合计',page:'页码文字',issue_number:'出具编号'};
  const bandNames=['page_header','document_header','detail','document_footer','page_footer'],FIXED=['page_header','document_header','document_footer','page_footer'],bandLabels=window.reportingRefusal.bandLabels;
- const SAFE_T=250,SAFE_B=2700,BAND_X=100,BAND_W=1900;
+ // The page being drawn: A4 portrait unless the template names a preset (setPage). Units: tenths of a millimetre for the safe region, millimetres for the page.
+ let SAFE_T=250,SAFE_B=2700,BAND_X=100,BAND_W=1900,PAGE_W=210,PAGE_H=297,PAGE_ID='a4',STRIP={x:10,y:10,width:190,height:8};
+ function setPage(d){
+  const pre=window.reportingPresets.find(x=>x.id===((d&&(d.schema_version==='2.0'||d.schema_version==='2.1')&&d.page&&d.page.preset)||'a4'))||window.reportingPresets[0];
+  PAGE_W=pre.width;PAGE_H=pre.height;PAGE_ID=pre.id;STRIP=pre.strip;SAFE_T=Math.round(pre.top*10);SAFE_B=Math.round(pre.bottom*10);BAND_X=Math.round(pre.left*10);BAND_W=Math.round((pre.width-2*pre.left)*10);
+ }
 
  // ---- the model: pure operations on a configuration, in 0.1 mm units ------------------------------
  const banded=d=>!!d&&(d.schema_version==='2.0'||d.schema_version==='2.1');
@@ -46,6 +53,7 @@ window.createReportingCanvas=function(ports){
  // Where each band is: its top and height. The detail band takes what the others leave of the safe region, but never less than
  // the table needs (ports.minDetail, 0.1 mm); the document footer follows it, so a footer that does not fit shows where it would hang.
  function geo(d){
+  setPage(d);
   const b=d.bands,h=n=>b[n]?U(b[n].height):0,ph=h('page_header'),dh=h('document_header'),df=h('document_footer'),pf=h('page_footer'),detail=Math.max(ports.minDetail(tableOf(d).font_size),SAFE_B-SAFE_T-ph-dh-pf-df);
   const g={page_header:{top:SAFE_T,h:ph},document_header:{top:SAFE_T+ph,h:dh},detail:{top:SAFE_T+ph+dh,h:detail},document_footer:{top:SAFE_T+ph+dh+detail,h:df},page_footer:{top:SAFE_B-pf,h:pf}};
   g.document_footer.over=!!b.document_footer&&g.document_footer.top+df>SAFE_B-pf;return g;
@@ -125,7 +133,7 @@ window.createReportingCanvas=function(ports){
   const made=[];
   for(const src of items(d).filter(i=>keys.includes(i.key)&&!i.table)){
    const used=new Set(items(d).map(i=>i.key));let n=1;while(used.has('e'+n))n++;
-   if(n>64)throw Error('最多64个元素。');
+   if(n>128)throw Error('最多128个元素。');
    const band=d.bands[src.band],H=U(band.height),e=src.ref,r=rect2(src),top=r.y-src.top,step=Math.max(r.h,10),texts=band.elements.filter(o=>boxed(o.type)&&o!==e).map(boxOf);
    let failure='',placed=false,tries=0,copy;
    for(let dy=step;top+dy+r.h<=H&&tries<20;dy++){
@@ -269,8 +277,8 @@ window.createReportingCanvas=function(ports){
   let top='',left='';
   for(let mm=0;mm<=300;mm+=5){
    const major=mm%10===0,len=major?9:4;
-   if(mm<=210){const x=RULER+mm*p;top+='M'+x+' '+RULER+'V'+(RULER-len);if(mm%label===0)out.push(svgEl('text',{class:'cv-ruler-text',x:x+2,y:11},String(mm)));}
-   if(mm<=297){const y=RULER+mm*p;left+='M'+RULER+' '+y+'H'+(RULER-len);if(mm%label===0&&mm>0)out.push(svgEl('text',{class:'cv-ruler-text',x:1,y:y-2},String(mm)));}
+   if(mm<=PAGE_W){const x=RULER+mm*p;top+='M'+x+' '+RULER+'V'+(RULER-len);if(mm%label===0)out.push(svgEl('text',{class:'cv-ruler-text',x:x+2,y:11},String(mm)));}
+   if(mm<=PAGE_H){const y=RULER+mm*p;left+='M'+RULER+' '+y+'H'+(RULER-len);if(mm%label===0&&mm>0)out.push(svgEl('text',{class:'cv-ruler-text',x:1,y:y-2},String(mm)));}
   }
   out.push(svgEl('path',{class:'cv-ruler-ticks',d:top+left}),svgEl('text',{class:'cv-ruler-text',x:1,y:11},'mm'));
   return out;
@@ -343,9 +351,9 @@ window.createReportingCanvas=function(ports){
    const band=d.bands[name];if(!band)continue;
    const b=g[name],fixed=name!=='detail',head=bandLabels[name]+' · '+(fixed?'':'约 ')+fmt(M(b.h))+' 毫米',note=fixed?(b.over?'放不下时移到新页':''):'随页面伸展';
    layers.page.append(svgEl('rect',{class:'cv-band cv-b-'+name+(b.over?' cv-over':'')+(marked&&marked.band===name?' cv-refused-band':'')+(extra.badBand===name?' cv-bad-band':''),'data-band-box':name,x:X(BAND_X),y:X(b.top),width:L(BAND_W),height:L(b.h)}));
-   layers.page.append(svgEl('line',{class:'cv-band-lead',x1:X(BAND_X+BAND_W),x2:X(2100)+GUTTER-6,y1:X(b.top),y2:X(b.top)}));
-   layers.tags.append(svgEl('text',{class:'cv-band-tag',x:X(2100)+6,y:X(b.top)+11},head));
-   if(note)layers.tags.append(svgEl('text',{class:'cv-band-note',x:X(2100)+6,y:X(b.top)+22},note));
+   layers.page.append(svgEl('line',{class:'cv-band-lead',x1:X(BAND_X+BAND_W),x2:X(PAGE_W*10)+GUTTER-6,y1:X(b.top),y2:X(b.top)}));
+   layers.tags.append(svgEl('text',{class:'cv-band-tag',x:X(PAGE_W*10)+6,y:X(b.top)+11},head));
+   if(note)layers.tags.append(svgEl('text',{class:'cv-band-note',x:X(PAGE_W*10)+6,y:X(b.top)+22},note));
    // The edge is two rectangles: the one the pointer grabs lies under the elements (an element or a line on the edge stays selectable), the one the keyboard reaches
    // comes after them in the tab order and takes no pointer events.
    if(fixed){
@@ -399,7 +407,7 @@ window.createReportingCanvas=function(ports){
  const bandShort={page_header:'页眉',document_header:'报表头',detail:'明细区',document_footer:'报表尾',page_footer:'页脚'};
  function chrome(d,p,X,L){
   const out=[],title=ports.title?ports.title():'';
-  out.push(svgEl('text',{class:'cv-heading',x:RULER,y:15},'第 1 页'+(title?' · '+title:'')),svgEl('text',{class:'cv-heading',x:RULER+210*p,y:15,'text-anchor':'end'},'A4 · 210 × 297 mm'));
+  out.push(svgEl('text',{class:'cv-heading',x:RULER,y:15},'第 1 页'+(title?' · '+title:'')),svgEl('text',{class:'cv-heading',x:RULER+PAGE_W*p,y:15,'text-anchor':'end'},(PAGE_ID==='a4'?'A4':PAGE_ID)+' · '+PAGE_W+' × '+PAGE_H+' mm'));
   if(!d)return out;
   const regions=banded(d)?(()=>{const g=geo(d);return bandNames.filter(n=>d.bands[n]).map(n=>[bandShort[n],g[n].top,g[n].h]);})():[['横幅',100,80],['正文',250,2450]];
   for(const [name,top,h] of regions){
@@ -409,21 +417,21 @@ window.createReportingCanvas=function(ports){
   return out;
  }
  // A 10 mm grid over the page, below the items.
- function gridPath(p){let d='';for(let mm=10;mm<210;mm+=10)d+='M'+(RULER+mm*p)+' '+RULER+'v'+297*p;for(let mm=10;mm<297;mm+=10)d+='M'+RULER+' '+(RULER+mm*p)+'h'+210*p;return d;}
+ function gridPath(p){let d='';for(let mm=10;mm<PAGE_W;mm+=10)d+='M'+(RULER+mm*p)+' '+RULER+'v'+PAGE_H*p;for(let mm=10;mm<PAGE_H;mm+=10)d+='M'+RULER+' '+(RULER+mm*p)+'h'+PAGE_W*p;return d;}
  function draw(view,extra){
-  const d=view||config;extra=extra||{};
+  const d=view||config;extra=extra||{};setPage(d);
   const active=document.activeElement,focusKey=focusAfter||(active&&host&&host.contains(active)&&active.getAttribute?(active.getAttribute('data-key')||(active.hasAttribute('data-col')?'col:'+active.getAttribute('data-col'):active.hasAttribute('data-band')?'band:'+active.getAttribute('data-band'):active.hasAttribute('data-end')?'end:'+active.getAttribute('data-end'):null)):null);focusAfter=null;
   // A 2.0 template has a gutter right of the page where each band is named: the labels never lie over an element.
-  const p=ppm(),W=Math.round(RULER+210*p+PAD+(d&&banded(d)?GUTTER:0)),H=Math.round(RULER+297*p+PAD),X=u=>RULER+u/10*p,L=u=>u/10*p;
+  const p=ppm(),W=Math.round(RULER+PAGE_W*p+PAD+(d&&banded(d)?GUTTER:0)),H=Math.round(RULER+PAGE_H*p+PAD),X=u=>RULER+u/10*p,L=u=>u/10*p;
   svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox','0 0 '+W+' '+H);
   for(const name of Object.keys(layers))layers[name].replaceChildren();
   layers.rulers.append(...rulers(p,W,H));layers.chrome.append(...chrome(d,p,X,L));
-  layers.page.append(svgEl('rect',{class:'cv-paper',x:RULER,y:RULER,width:210*p,height:297*p}));
+  layers.page.append(svgEl('rect',{class:'cv-paper',x:RULER,y:RULER,width:PAGE_W*p,height:PAGE_H*p}));
   if(!d){svg.setAttribute('aria-label','A4 文档画布：尚无模板');if(modeLine)modeLine.textContent=blank;return;}
   if(gridOn)layers.grid.append(svgEl('path',{class:'cv-gridline',d:gridPath(p)}));
-  svg.setAttribute('aria-label','A4 文档画布，单位毫米');
+  svg.setAttribute('aria-label',(PAGE_ID==='a4'?'A4':PAGE_ID)+' 文档画布，单位毫米');
   const two=banded(d);
-  layers.page.append(svgEl('rect',{class:'cv-strip',x:X(100),y:X(100),width:L(1900),height:L(80)}),svgEl('text',{class:'cv-strip-text',x:X(100)+6,y:X(100)+Math.min(L(80)-3,13)},'横幅 / 出具印章保留区（10–18 毫米，不可选）'),svgEl('rect',{class:'cv-safe',x:X(100),y:X(250),width:L(1900),height:L(2450)}),svgEl('text',{class:'cv-safe-text',x:X(2000)-4,y:two?X(250)-4:X(2700)-4,'text-anchor':'end'},'安全区 x 10–200 · y 25–270'));
+  layers.page.append(svgEl('rect',{class:'cv-strip',x:X(U(STRIP.x)),y:X(U(STRIP.y)),width:L(U(STRIP.width)),height:L(U(STRIP.height))}),svgEl('text',{class:'cv-strip-text',x:X(U(STRIP.x))+6,y:X(U(STRIP.y))+Math.min(L(U(STRIP.height))-3,13)},'横幅 / 出具印章保留区（'+STRIP.y+'–'+(STRIP.y+STRIP.height)+' 毫米，不可选）'),svgEl('rect',{class:'cv-safe',x:X(BAND_X),y:X(SAFE_T),width:L(BAND_W),height:L(SAFE_B-SAFE_T)}),svgEl('text',{class:'cv-safe-text',x:X(BAND_X+BAND_W)-4,y:two?X(SAFE_T)-4:X(SAFE_B)-4,'text-anchor':'end'},'安全区 x '+BAND_X/10+'–'+(BAND_X+BAND_W)/10+' · y '+SAFE_T/10+'–'+SAFE_B/10));
   const print=d.print||{mode:'full',offset_x:0,offset_y:0},ox=U(print.offset_x),oy=U(print.offset_y),lab=labels(),order=readingOrder(d),bad=new Set(extra.bad||[]);
   let edges=[];if(two)edges=drawBands(d,extra,p,X,L,order,bad,lab);else drawBoxes(d,extra,p,X,L,order,bad,lab);
   // The column a refusal names (S03-J): outlined over the table, whatever the pointer does; the band a refusal names (2.0) likewise.
@@ -454,9 +462,9 @@ window.createReportingCanvas=function(ports){
    const b=bounds(d,selection);layers.overlay.append(svgEl('rect',{class:'cv-bbox',x:X(b.l),y:X(b.t),width:L(b.r-b.l),height:L(b.b-b.t)}));
   }
   layers.overlay.append(...edges);
-  for(const u of (extra.guides&&extra.guides.x)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:X(u),x2:X(u),y1:RULER,y2:RULER+297*p}));
-  for(const u of (extra.guides&&extra.guides.y)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:RULER,x2:RULER+210*p,y1:X(u),y2:X(u)}));
-  if(dropMark)layers.guides.append(svgEl('path',{class:'cv-drop',d:'M'+(RULER+dropMark.x*p)+' '+RULER+'v'+297*p+'M'+RULER+' '+(RULER+dropMark.y*p)+'h'+210*p}));
+  for(const u of (extra.guides&&extra.guides.x)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:X(u),x2:X(u),y1:RULER,y2:RULER+PAGE_H*p}));
+  for(const u of (extra.guides&&extra.guides.y)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:RULER,x2:RULER+PAGE_W*p,y1:X(u),y2:X(u)}));
+  if(dropMark)layers.guides.append(svgEl('path',{class:'cv-drop',d:'M'+(RULER+dropMark.x*p)+' '+RULER+'v'+PAGE_H*p+'M'+RULER+' '+(RULER+dropMark.y*p)+'h'+PAGE_W*p}));
   if(extra.readout)layers.readout.append(svgEl('text',{class:'cv-readout'+(extra.message?' cv-bad':''),x:X(extra.readout.u),y:Math.max(X(extra.readout.v)-16,RULER+10)},extra.readout.text+(extra.message?'（将被拒绝）':'')));
   if(modeLine)modeLine.textContent=two?d.schema_version+' 分带模板：各带自上而下叠放在安全区内，明细带随页面伸展，元素位置相对于所在带 · '+(d.group?'分组 '+d.group.fields.join('、'):'无分组（整个快照一份文档）')+' · 画布显示版面，不显示数据，PDF 预览为准':(print.mode==='variables'?'变量层：只打印行字段、合计与明细表，固定文字灰显且不打印':'完整文本：打印全部文本框与明细表')+' · 整体偏移 '+fmt(print.offset_x)+' / '+fmt(print.offset_y)+' 毫米'+(ox||oy?'（虚线为偏移后的打印位置）':'')+' · 画布显示版面，不显示底稿与数据，PDF 预览为准';
   if(!view&&ports.drawn)ports.drawn();
@@ -704,7 +712,7 @@ window.createReportingCanvas=function(ports){
   setLocked(keys,on){for(const k of keys)on?locked.add(k):locked.delete(k);draw();syncToolbar();},locked:()=>[...locked],isLocked:k=>locked.has(k),
   setHidden(keys,on){for(const k of keys)on?hidden.add(k):hidden.delete(k);draw();},hidden:()=>[...hidden],
   // The page position in millimetres of a client point, or null outside the paper.
-  pageAt(cx,cy){if(!svg.getBoundingClientRect)return null;const r=svg.getBoundingClientRect(),x=(cx-r.left-RULER)/ppm(),y=(cy-r.top-RULER)/ppm();return x>=0&&x<=210&&y>=0&&y<=297?{x:Math.round(x*10)/10,y:Math.round(y*10)/10}:null;},
+  pageAt(cx,cy){if(!svg.getBoundingClientRect)return null;const r=svg.getBoundingClientRect(),x=(cx-r.left-RULER)/ppm(),y=(cy-r.top-RULER)/ppm();return x>=0&&x<=PAGE_W&&y>=0&&y<=PAGE_H?{x:Math.round(x*10)/10,y:Math.round(y*10)/10}:null;},
   dropAt(point){dropMark=point||null;draw();},
   scale:SCALE,
   origin:{x:RULER,y:RULER},

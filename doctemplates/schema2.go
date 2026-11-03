@@ -26,19 +26,15 @@ import (
 const (
 	SchemaBanded   = "2.0"
 	SchemaCoded    = "2.1" // 2.0 plus barcode, qrcode, image and the issue_number source (ADR 0005)
-	MaxItems       = 64    // elements in a template, the table included
-	MaxBandItems   = 24    // elements in one band
+	MaxItems       = 128   // elements in a template, the table included (64 until S06-B, which the 72 fields of the MAWB need)
+	MaxBandItems   = 96    // elements in one band (24 until S06-B)
 	MaxGroupFields = 3     // group fields
-	BandWidth      = 190   // millimetres: the safe region's width, which every band spans
+	BandWidth      = 190   // millimetres: the A4 safe region's width; every band spans its preset's (Preset.BandWidth)
 	MinBandHeight  = 5.0
 	// MaxTextRunes bounds the text of a literal or a bound value: one line, or wrapped.
 	MaxTextRunes     = 256
 	MaxWrapTextRunes = 1024
 	MaxLabelRunes    = 64
-	// The safe region's vertical extent in tenths of a millimetre.
-	safeTopTenths    = 250
-	safeBottomTenths = 2700
-	bandWidthTenths  = BandWidth * 10
 )
 
 // The band names, top to bottom.
@@ -503,6 +499,12 @@ func validateBanded(d Document) error {
 	if !d.Banded() || d.Kind != "document" || !validBinding(d.Binding) || len(d.Elements) != 0 || d.Print != nil || d.Background != nil || d.Table != nil || d.Bands == nil || d.Bands.Detail == nil {
 		return r.ErrInvalid
 	}
+	// The page (S06-B): a preset of the table below, and the overprint profile.
+	pre, ok := d.PagePreset()
+	if !ok || (d.Page != nil && !validPage(*d.Page)) {
+		return r.ErrInvalid
+	}
+	bw, safeHeight := pre.BandWidth(), tenths(pre.Bottom)-tenths(pre.Top)
 	if d.Group != nil {
 		if len(d.Group.Fields) < 1 || len(d.Group.Fields) > MaxGroupFields {
 			return r.ErrInvalid
@@ -524,7 +526,7 @@ func validateBanded(d Document) error {
 			continue
 		}
 		h := band.Band.Height
-		if !onGrid(h) || !inRange(h, MinBandHeight, float64(safeBottomTenths-safeTopTenths)/10) || band.Band.Elements == nil || len(band.Band.Elements) > MaxBandItems {
+		if !onGrid(h) || !inRange(h, MinBandHeight, float64(safeHeight)/10) || band.Band.Elements == nil || len(band.Band.Elements) > MaxBandItems {
 			return r.ErrInvalid
 		}
 		if band.Name != BandDocumentFooter {
@@ -546,7 +548,7 @@ func validateBanded(d Document) error {
 				return r.ErrInvalid
 			}
 			ids[it.ID] = true
-			if it.Type == TypeTable || !validItem(it, tenths(band.Band.Height), d.Coded()) {
+			if it.Type == TypeTable || !validItem(it, tenths(band.Band.Height), d.Coded(), bw) {
 				return r.ErrInvalid
 			}
 			// A text, a code and an image each own their box: the quiet zone of a code and the picture of an image are not
@@ -562,10 +564,13 @@ func validateBanded(d Document) error {
 	}
 	table := detail.Elements[0]
 	total++
-	if total > MaxItems || !validItemID(table.ID) || ids[table.ID] || validTable(table) != nil {
+	if total > MaxItems || !validItemID(table.ID) || ids[table.ID] || validTable(table, bw) != nil {
 		return r.ErrInvalid
 	}
-	if heights+MinDetailHeightTenths(table.FontSize) > safeBottomTenths-safeTopTenths {
+	if heights+MinDetailHeightTenths(table.FontSize) > safeHeight {
+		return r.ErrInvalid
+	}
+	if !overprintFits(d, pre) {
 		return r.ErrInvalid
 	}
 	b, e := json.Marshal(d)
@@ -602,16 +607,16 @@ func validItemID(id string) bool {
 
 // validItem checks a text, line, rectangle or, in a 2.1 document (coded), a barcode, QR code or image inside a band of the given
 // height (tenths).
-func validItem(it Item, bandHeight int, coded bool) bool {
+func validItem(it Item, bandHeight int, coded bool, bw float64) bool {
 	switch it.Type {
 	case TypeText:
-		return validText(it, bandHeight, coded)
+		return validText(it, bandHeight, coded, bw)
 	case TypeBarcode:
-		return coded && validBarcode(it, bandHeight)
+		return coded && validBarcode(it, bandHeight, bw)
 	case TypeQRCode:
-		return coded && validQRCode(it, bandHeight)
+		return coded && validQRCode(it, bandHeight, bw)
 	case TypeImage:
-		return coded && validImage(it, bandHeight)
+		return coded && validImage(it, bandHeight, bw)
 	case TypeLine:
 		pts := []float64{it.X1, it.Y1, it.X2, it.Y2}
 		for _, n := range pts {
@@ -619,7 +624,7 @@ func validItem(it Item, bandHeight int, coded bool) bool {
 				return false
 			}
 		}
-		return inRange(it.X1, 0, BandWidth) && inRange(it.X2, 0, BandWidth) && inRange(it.Y1, 0, float64(bandHeight)/10) && inRange(it.Y2, 0, float64(bandHeight)/10) &&
+		return inRange(it.X1, 0, bw) && inRange(it.X2, 0, bw) && inRange(it.Y1, 0, float64(bandHeight)/10) && inRange(it.Y2, 0, float64(bandHeight)/10) &&
 			(tenths(it.X1) != tenths(it.X2) || tenths(it.Y1) != tenths(it.Y2)) && strokeOK(it.Stroke, 0.25, 2)
 	case TypeRect:
 		for _, n := range []float64{it.X, it.Y, it.Width, it.Height} {
@@ -627,8 +632,8 @@ func validItem(it Item, bandHeight int, coded bool) bool {
 				return false
 			}
 		}
-		if !inRange(it.X, 0, BandWidth) || !inRange(it.Y, 0, float64(bandHeight)/10) || !inRange(it.Width, 0.1, BandWidth) || !inRange(it.Height, 0.1, float64(bandHeight)/10) ||
-			tenths(it.X)+tenths(it.Width) > bandWidthTenths || tenths(it.Y)+tenths(it.Height) > bandHeight || !strokeOK(it.Stroke, 0, 2) {
+		if !inRange(it.X, 0, bw) || !inRange(it.Y, 0, float64(bandHeight)/10) || !inRange(it.Width, 0.1, bw) || !inRange(it.Height, 0.1, float64(bandHeight)/10) ||
+			tenths(it.X)+tenths(it.Width) > tenths(bw) || tenths(it.Y)+tenths(it.Height) > bandHeight || !strokeOK(it.Stroke, 0, 2) {
 			return false
 		}
 		_, filled := fillLuma[it.Fill]
@@ -637,14 +642,14 @@ func validItem(it Item, bandHeight int, coded bool) bool {
 	return false
 }
 
-func validText(it Item, bandHeight int, coded bool) bool {
+func validText(it Item, bandHeight int, coded bool, bw float64) bool {
 	for _, n := range []float64{it.X, it.Y, it.Width, it.Height} {
 		if !onGrid(n) {
 			return false
 		}
 	}
-	if !inRange(it.X, 0, BandWidth) || !inRange(it.Y, 0, float64(bandHeight)/10) || !inRange(it.Width, 10, BandWidth) || !inRange(it.Height, 5, float64(bandHeight)/10) ||
-		tenths(it.X)+tenths(it.Width) > bandWidthTenths || tenths(it.Y)+tenths(it.Height) > bandHeight ||
+	if !inRange(it.X, 0, bw) || !inRange(it.Y, 0, float64(bandHeight)/10) || !inRange(it.Width, 10, bw) || !inRange(it.Height, 5, float64(bandHeight)/10) ||
+		tenths(it.X)+tenths(it.Width) > tenths(bw) || tenths(it.Y)+tenths(it.Height) > bandHeight ||
 		it.FontSize < 8 || it.FontSize > 28 || tenths(it.Height)*72 < it.FontSize*400 || (it.Align != "left" && it.Align != "center" && it.Align != "right") {
 		return false
 	}
@@ -668,13 +673,13 @@ func validText(it Item, bandHeight int, coded bool) bool {
 }
 
 // inBand reports a box whose position and size are on the grid and lie inside a band of the given height (tenths) and width.
-func inBand(x, y, w, h float64, bandHeight int) bool {
+func inBand(x, y, w, h float64, bandHeight int, bw float64) bool {
 	for _, n := range []float64{x, y, w, h} {
 		if !onGrid(n) {
 			return false
 		}
 	}
-	return inRange(x, 0, BandWidth) && inRange(y, 0, float64(bandHeight)/10) && tenths(x)+tenths(w) <= bandWidthTenths && tenths(y)+tenths(h) <= bandHeight
+	return inRange(x, 0, bw) && inRange(y, 0, float64(bandHeight)/10) && tenths(x)+tenths(w) <= tenths(bw) && tenths(y)+tenths(h) <= bandHeight
 }
 
 // validCodeValue checks where the value of a barcode or QR code comes from: a literal of at most max characters (a QR
@@ -694,8 +699,8 @@ func validCodeValue(it Item, maxRunes, maxBytes int) bool {
 
 // validBarcode: a Code 128 box in the band, its value, and, when it prints its value under the bars, the type size of that
 // line (the key is written only then). Whether the symbol fits the box at the least module width is the layout's.
-func validBarcode(it Item, bandHeight int) bool {
-	if !inBand(it.X, it.Y, it.Width, it.Height, bandHeight) || !inRange(it.Width, MinCodeBox, BandWidth) || !inRange(it.Height, MinBarHeight, float64(bandHeight)/10) || it.Symbology != SymbologyCode128 {
+func validBarcode(it Item, bandHeight int, bw float64) bool {
+	if !inBand(it.X, it.Y, it.Width, it.Height, bandHeight, bw) || !inRange(it.Width, MinCodeBox, bw) || !inRange(it.Height, MinBarHeight, float64(bandHeight)/10) || it.Symbology != SymbologyCode128 {
 		return false
 	}
 	if it.HumanReadable != (it.FontSize != 0) || (it.HumanReadable && (it.FontSize < 8 || it.FontSize > 28)) {
@@ -705,28 +710,28 @@ func validBarcode(it Item, bandHeight int) bool {
 }
 
 // validQRCode: a square box in the band, an error correction level and a value.
-func validQRCode(it Item, bandHeight int) bool {
-	return inBand(it.X, it.Y, it.Size, it.Size, bandHeight) && inRange(it.Size, MinCodeBox, BandWidth) && barcode.ValidECC(it.ECC) &&
+func validQRCode(it Item, bandHeight int, bw float64) bool {
+	return inBand(it.X, it.Y, it.Size, it.Size, bandHeight, bw) && inRange(it.Size, MinCodeBox, bw) && barcode.ValidECC(it.ECC) &&
 		validCodeValue(it, barcode.QRMaxBytes, barcode.QRMaxBytes)
 }
 
 // validImage: a box in the band and the reference of a private image; that the image exists, is the caller's and belongs to
 // the template's binding is checked where the template is authorized.
-func validImage(it Item, bandHeight int) bool {
-	return inBand(it.X, it.Y, it.Width, it.Height, bandHeight) && inRange(it.Width, MinImageBox, BandWidth) && inRange(it.Height, MinImageBox, float64(bandHeight)/10) &&
+func validImage(it Item, bandHeight int, bw float64) bool {
+	return inBand(it.X, it.Y, it.Width, it.Height, bandHeight, bw) && inRange(it.Width, MinImageBox, bw) && inRange(it.Height, MinImageBox, float64(bandHeight)/10) &&
 		it.Image != nil && validImageRef(*it.Image)
 }
 
 // validTable checks the detail table: a position and width in the band, a type size, and 1 to 12
 // distinct columns of at least 8 mm that add up to the width.
-func validTable(t Item) error {
-	if !onGrid(t.X) || !onGrid(t.Width) || !inRange(t.X, 0, BandWidth) || !inRange(t.Width, MinColumnWidth, BandWidth) || tenths(t.X)+tenths(t.Width) > bandWidthTenths ||
+func validTable(t Item, bw float64) error {
+	if !onGrid(t.X) || !onGrid(t.Width) || !inRange(t.X, 0, bw) || !inRange(t.Width, MinColumnWidth, bw) || tenths(t.X)+tenths(t.Width) > tenths(bw) ||
 		t.FontSize < MinTableFontSize || t.FontSize > MaxTableFontSize || len(t.Columns) < 1 || len(t.Columns) > MaxTableColumns {
 		return r.ErrInvalid
 	}
 	sum, seen := 0, map[string]bool{}
 	for _, c := range t.Columns {
-		if c.Field == "" || len(c.Field) > 128 || !utf8.ValidString(c.Field) || seen[c.Field] || !onGrid(c.Width) || !inRange(c.Width, MinColumnWidth, BandWidth) {
+		if c.Field == "" || len(c.Field) > 128 || !utf8.ValidString(c.Field) || seen[c.Field] || !onGrid(c.Width) || !inRange(c.Width, MinColumnWidth, bw) {
 			return r.ErrInvalid
 		}
 		if c.Align != "" && c.Align != "left" && c.Align != "center" && c.Align != "right" {
@@ -742,4 +747,199 @@ func validTable(t Item) error {
 		return r.ErrInvalid
 	}
 	return nil
+}
+
+// Page presets (S06-B). This table is the one truth about a page: the console's canvas (console/assets/canvas.js, whose copy a
+// test compares with it), the Typst page, the layout and the checker's expectations all take their numbers from it. A schema 2.x
+// template names a preset in page.preset; a template that does not is A4 portrait, as every template stored before S06-B is, and
+// a 1.x template is A4 always.
+//
+// Left is the safe region's left edge, which is also its distance from the right edge, so the bands span Width - 2 * Left. Top
+// and Bottom are its vertical extent, measured from the top of the page. The strip is the banner strip, where a preview prints
+// its banner and an issue its stamp: it is on every preset, so that a label carries the stamp too. A stamp is one line where the
+// strip is wide enough for the widest the contract allows at StampSize and StampLines lines where it is not (the line breaks
+// after the first " - "); a test proves the widest legal stamp fits every preset.
+const (
+	PresetA4           = "a4"
+	PresetA4Landscape  = "a4_landscape"
+	PresetA5           = "a5"
+	PresetLabel4x6in   = "label_4x6in"
+	PresetLabel100x150 = "label_100x150"
+	PresetLabel100x100 = "label_100x100"
+)
+
+// Strip is the banner strip of a page, in millimetres, with the type sizes (points) of the preview banner and of the issue stamp.
+type Strip struct {
+	X, Y, Width, Height float64
+	BannerSize          float64
+	StampSize           float64
+	StampLines          int
+}
+
+// Preset is a page size and its safe region, in millimetres.
+type Preset struct {
+	ID            string
+	Width, Height float64
+	Left          float64 // the safe region's left edge; the right edge is as far from the page's
+	Top, Bottom   float64 // the safe region's vertical extent
+	Strip         Strip
+}
+
+// BandWidth is the width every band of the preset spans: the safe region's.
+func (p Preset) BandWidth() float64 { return p.Width - 2*p.Left }
+
+// Presets lists the presets in the order a picker shows them; the first is the default.
+var Presets = []Preset{
+	{PresetA4, 210, 297, 10, 25, 270, Strip{10, 10, 190, 8, 10, 8, 1}},
+	{PresetA4Landscape, 297, 210, 10, 25, 183, Strip{10, 10, 277, 8, 10, 8, 1}},
+	{PresetA5, 148, 210, 10, 25, 183, Strip{10, 10, 128, 8, 10, 8, 2}},
+	{PresetLabel4x6in, 101.6, 152.4, 4, 12, 146.4, Strip{4, 3, 93.6, 6, 8, 6, 2}},
+	{PresetLabel100x150, 100, 150, 4, 12, 144, Strip{4, 3, 92, 6, 8, 6, 2}},
+	{PresetLabel100x100, 100, 100, 4, 12, 94, Strip{4, 3, 92, 6, 8, 6, 2}},
+}
+
+// PresetByID finds a preset; the empty id is the default, A4.
+func PresetByID(id string) (Preset, bool) {
+	if id == "" {
+		id = PresetA4
+	}
+	for _, p := range Presets {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return Preset{}, false
+}
+
+// Page is the page of a schema 2.x document: its preset and its overprint profile. Both are optional, one at least is present.
+type Page struct {
+	Preset string     `json:"preset,omitempty"`
+	Print  *PagePrint `json:"print,omitempty"`
+}
+
+// PagePrint is the overprint profile of a 2.x document, with the meaning of a 1.x print profile (S03-E, S03-H): the offset moves
+// every element, the background PNG is drawn under the page and, in variables-only mode, is omitted together with every
+// element that is not a variable (a literal text, a line, a rectangle, an image, a code of a literal) and the table's rules, fills and header.
+type PagePrint struct {
+	OffsetX       float64        `json:"offset_x"`
+	OffsetY       float64        `json:"offset_y"`
+	Background    *BackgroundRef `json:"background,omitempty"`
+	VariablesOnly bool           `json:"variables_only"`
+}
+
+// MaxPrintOffset is the largest overprint offset in either direction, in millimetres (the 1.x bound).
+const MaxPrintOffset = 10.0
+
+// PagePreset returns the preset of a document: A4 for a 1.x document and for a 2.x document without one; ok is false for a
+// preset the table does not hold.
+func (d Document) PagePreset() (Preset, bool) {
+	if d.Page == nil || !d.Banded() {
+		return DefaultPreset, true
+	}
+	return PresetByID(d.Page.Preset)
+}
+
+// DefaultPreset is the default preset.
+var DefaultPreset = Presets[0]
+
+// Overprint reports the print profile of a document of either family: the offsets, whether only the variables are printed, and
+// the background it names (nil for none). A document without a profile prints in full at offset zero.
+func (d Document) Overprint() (offsetX, offsetY float64, variablesOnly bool, background *BackgroundRef) {
+	if d.Banded() {
+		if d.Page != nil && d.Page.Print != nil {
+			p := d.Page.Print
+			return p.OffsetX, p.OffsetY, p.VariablesOnly, p.Background
+		}
+		return 0, 0, false, nil
+	}
+	if d.Print != nil {
+		return d.Print.OffsetX, d.Print.OffsetY, d.Print.Mode == "variables", d.Background
+	}
+	return 0, 0, false, d.Background
+}
+
+// BackgroundRefOf is the background a document names, of either family.
+func (d Document) BackgroundRefOf() *BackgroundRef {
+	_, _, _, b := d.Overprint()
+	return b
+}
+
+// OmittedInVariables reports an element that a variables-only print leaves out: everything that is not a variable.
+func OmittedInVariables(it Item) bool {
+	switch it.Type {
+	case TypeText:
+		return it.Source == SourceLiteral
+	case TypeBarcode, TypeQRCode:
+		return it.Source == SourceLiteral
+	}
+	return true // lines, rectangles, images
+}
+
+func validPage(p Page) bool {
+	if p.Preset == "" && p.Print == nil {
+		return false
+	}
+	if _, ok := PresetByID(p.Preset); !ok {
+		return false
+	}
+	if p.Print == nil {
+		return true
+	}
+	q := *p.Print
+	return grid(q.OffsetX) && grid(q.OffsetY) && math.Abs(q.OffsetX) <= MaxPrintOffset && math.Abs(q.OffsetY) <= MaxPrintOffset && (q.Background == nil || validBackgroundRef(*q.Background))
+}
+
+// overprintFits says whether the offset leaves everything the profile prints inside the safe region, as a 1.x profile does for the
+// boxes it moves: each element that is printed, and the table's region (the room between the bands above and below it, and the
+// document footer, which lies in it), shifted by the offset. A document without an offset fits.
+func overprintFits(d Document, pre Preset) bool {
+	ox, oy, variables, _ := d.Overprint()
+	if tenths(ox) == 0 && tenths(oy) == 0 {
+		return true
+	}
+	bw := tenths(pre.BandWidth())
+	height := func(b *Band) int {
+		if b == nil {
+			return 0
+		}
+		return tenths(b.Height)
+	}
+	ph, dh, df, pf := height(d.Bands.PageHeader), height(d.Bands.DocumentHeader), height(d.Bands.DocumentFooter), height(d.Bands.PageFooter)
+	top, bottom := tenths(pre.Top), tenths(pre.Bottom)
+	dx, dy := tenths(ox), tenths(oy)
+	// The table's region: from under the bands above to the top of the page footer (the document footer lies inside it).
+	t := d.Bands.Detail.Elements[0]
+	if tenths(t.X)+dx < 0 || tenths(t.X)+tenths(t.Width)+dx > bw || top+ph+dh+dy < top || bottom-pf+dy > bottom {
+		return false
+	}
+	// A band's top edge: the document footer's is anywhere in the table's region.
+	for _, band := range []struct {
+		b        *Band
+		low, hig int
+	}{{d.Bands.PageHeader, top, top}, {d.Bands.DocumentHeader, top + ph, top + ph}, {d.Bands.DocumentFooter, top + ph + dh, bottom - pf - df}, {d.Bands.PageFooter, bottom - pf, bottom - pf}} {
+		if band.b == nil {
+			continue
+		}
+		for _, it := range band.b.Elements {
+			if variables && OmittedInVariables(it) {
+				continue
+			}
+			x0, y0, x1, y1 := elementBox(it)
+			if x0+dx < 0 || x1+dx > bw || band.low+y0+dy < top || band.hig+y1+dy > bottom {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// elementBox is the box an element occupies in its band, in tenths of a millimetre: left, top, right, bottom.
+func elementBox(it Item) (x0, y0, x1, y1 int) {
+	if it.Type == TypeLine {
+		x0, x1 = min(tenths(it.X1), tenths(it.X2)), max(tenths(it.X1), tenths(it.X2))
+		y0, y1 = min(tenths(it.Y1), tenths(it.Y2)), max(tenths(it.Y1), tenths(it.Y2))
+		return
+	}
+	w, h := extent(it)
+	return tenths(it.X), tenths(it.Y), tenths(it.X) + tenths(w), tenths(it.Y) + tenths(h)
 }

@@ -55,8 +55,25 @@ func validBackgroundRef(ref BackgroundRef) bool {
 	b, e := hex.DecodeString(ref.SHA256)
 	return privatedocs.ValidID(ref.ID) && e == nil && len(b) == 32 && hex.EncodeToString(b) == ref.SHA256
 }
+
+// backgroundSize accepts the PNGs a page of some preset can be printed on: between 210 and 1754 pixels each way and the aspect
+// ratio of one of the presets within 0.005 (S06-B; before it only A4 portrait, 210-1240 by 297-1754, which this still holds).
+// Which preset a template's background must match is checked where a template names it (BackgroundMatchesPreset).
 func backgroundSize(w, h int) bool {
-	return w >= 210 && w <= 1240 && h >= 297 && h <= 1754 && math.Abs(float64(w)/float64(h)-210.0/297) < 0.005
+	if w < 210 || w > 1754 || h < 210 || h > 1754 {
+		return false
+	}
+	for _, p := range Presets {
+		if BackgroundMatchesPreset(p, w, h) {
+			return true
+		}
+	}
+	return false
+}
+
+// BackgroundMatchesPreset says whether a PNG of w by h pixels has the aspect ratio of the preset's page within 0.005.
+func BackgroundMatchesPreset(p Preset, w, h int) bool {
+	return h > 0 && math.Abs(float64(w)/float64(h)-p.Width/p.Height) < 0.005
 }
 func normalizePNG(data []byte) ([]byte, int, int, error) {
 	if len(data) == 0 || len(data) > MaxBackgroundBytes {

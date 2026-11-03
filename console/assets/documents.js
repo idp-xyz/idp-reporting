@@ -85,10 +85,47 @@ window.createReportingDocuments=function(ports){
  const printable=(s,wrap,limit)=>typeof s==='string'&&runes(s)<=limit&&!(wrap?/[\x00-\x09\x0b-\x1f\x7f]/:/[\x00-\x1f\x7f]/).test(s);
  const placeholders=s=>{const found=s.match(/\{pages\}|\{page\}/g)||[];return found.length>=1&&!/[{}]/.test(s.replace(/\{pages\}|\{page\}/g,''));};
  const minDetail=size=>Math.floor(((400+146*size)*4*254+7199)/7200);
+ // The page of the template under validation (S06-B): its preset's band width and the safe region's height, from window.reportingPresets (canvas.js), the copy of the platform's table.
+ let geo={bw:190,bwT:1900,safeH:2450};
+ const presetById=id=>(window.reportingPresets||[]).find(x=>x.id===id);
+ function validPage2(p){
+  if(!p||typeof p!=='object'||Array.isArray(p))return false;
+  const ks=Object.keys(p);if(ks.length<1||!ks.every(k=>k==='preset'||k==='print'))return false;
+  if(Object.hasOwn(p,'preset')&&(typeof p.preset!=='string'||!presetById(p.preset)))return false;
+  if(Object.hasOwn(p,'print')){
+   const q=p.print;if(!q||typeof q!=='object'||Array.isArray(q))return false;
+   const qk=Object.keys(q);if(!['offset_x','offset_y','variables_only'].every(k=>qk.includes(k))||!qk.every(k=>['offset_x','offset_y','variables_only','background'].includes(k)))return false;
+   if(typeof q.offset_x!=='number'||typeof q.offset_y!=='number'||!onGrid(q.offset_x)||!onGrid(q.offset_y)||Math.abs(q.offset_x)>10||Math.abs(q.offset_y)>10||typeof q.variables_only!=='boolean')return false;
+   if(Object.hasOwn(q,'background')&&!validBackground(q.background))return false;
+  }
+  return true;
+ }
+ // Whether the offset leaves everything the profile prints inside the safe region (Go: overprintFits).
+ function overprintFits2(d,pre){
+  const q=d.page&&d.page.print;if(!q)return true;
+  const dx=tenths(q.offset_x),dy=tenths(q.offset_y);if(dx===0&&dy===0)return true;
+  const h=n=>d.bands[n]?tenths(d.bands[n].height):0,ph=h('page_header'),dh=h('document_header'),df=h('document_footer'),pf=h('page_footer'),top=tenths(pre.top),bottom=tenths(pre.bottom),bw=geo.bwT;
+  const t=d.bands.detail.elements[0];
+  if(tenths(t.x)+dx<0||tenths(t.x)+tenths(t.width)+dx>bw||top+ph+dh+dy<top||bottom-pf+dy>bottom)return false;
+  const omitted=e=>e.type==='text'||e.type==='barcode'||e.type==='qrcode'?e.source==='literal':true;
+  const box=e=>{if(e.type==='line')return[Math.min(tenths(e.x1),tenths(e.x2)),Math.min(tenths(e.y1),tenths(e.y2)),Math.max(tenths(e.x1),tenths(e.x2)),Math.max(tenths(e.y1),tenths(e.y2))];const w=e.type==='qrcode'?e.size:e.width,hh=e.type==='qrcode'?e.size:e.height;return[tenths(e.x),tenths(e.y),tenths(e.x)+tenths(w),tenths(e.y)+tenths(hh)];};
+  for(const [name,low,high] of [['page_header',top,top],['document_header',top+ph,top+ph],['document_footer',top+ph+dh,bottom-pf-df],['page_footer',bottom-pf,bottom-pf]]){
+   if(!d.bands[name])continue;
+   for(const e of d.bands[name].elements){
+    if(q.variables_only&&omitted(e))continue;
+    const [x0,y0,x1,y1]=box(e);
+    if(x0+dx<0||x1+dx>bw||low+y0+dy<top||high+y1+dy>bottom)return false;
+   }
+  }
+  return true;
+ }
  function validate2(d){
   const fail=m=>{throw Error(m);};
   if(Object.hasOwn(d,'name')&&!nameOk(d.name))fail(NAME_RULE);
-  if(!keys(d,withName(d,d.group===undefined?['schema_version','kind','binding','bands']:['schema_version','kind','binding','group','bands']))||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||new TextEncoder().encode(JSON.stringify(d)).length>65536)fail('模板或当前数据集绑定无效，或超过64KiB。');
+  if(!keys(d,withName(d,['schema_version','kind','binding',...(d.page!==undefined?['page']:[]),...(d.group!==undefined?['group']:[]),'bands']))||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||new TextEncoder().encode(JSON.stringify(d)).length>65536)fail('模板或当前数据集绑定无效，或超过64KiB。');
+  if(d.page!==undefined&&!validPage2(d.page))fail('页面预设或套印设置无效。');
+  const pre=presetById((d.page&&d.page.preset)||'a4');if(!pre)fail('页面预设无效。');
+  geo={bw:pre.width-2*pre.left,bwT:tenths(pre.width-2*pre.left),safeH:tenths(pre.bottom)-tenths(pre.top)};
   const columns=new Set(result.columns.map(c=>c.id)),metrics=new Set((query.metrics||[]).map(m=>m.id)),dimensions=new Set(query.dimensions||[]),coded21=d.schema_version==='2.1';
   if(d.group!==undefined){
    const f=d.group?.fields;
@@ -101,11 +138,11 @@ window.createReportingDocuments=function(ports){
   let stack=0,total=0;const ids=new Set();
   for(const name of fixedBands){
    const band=b[name];if(band===undefined)continue;
-   if(!keys(band,['height','elements'])||!onGrid(band.height)||!inRange(band.height,5,245)||!Array.isArray(band.elements)||band.elements.length>24)fail(bandLabels[name]+'的高度须为5–245毫米（0.1毫米步长），至多24个元素。');
+   if(!keys(band,['height','elements'])||!onGrid(band.height)||!inRange(band.height,5,geo.safeH/10)||!Array.isArray(band.elements)||band.elements.length>96)fail(bandLabels[name]+'的高度须为5–'+geo.safeH/10+'毫米（0.1毫米步长），至多96个元素。');
    if(name!=='document_footer')stack+=tenths(band.height);
    total+=band.elements.length;
    for(const [i,e] of band.elements.entries()){
-    if(!e||typeof e!=='object'||Array.isArray(e)||typeof e.id!=='string'||!/^e(?:[1-9]|[1-5][0-9]|6[0-4])$/.test(e.id)||ids.has(e.id))fail('元素编号须为 e1–e64 且不重复。');
+    if(!e||typeof e!=='object'||Array.isArray(e)||typeof e.id!=='string'||!/^e(?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(e.id)||ids.has(e.id))fail('元素编号须为 e1–e128 且不重复。');
     ids.add(e.id);
     if(!Object.hasOwn(itemKeys,e.type)||e.type==='table'||(!coded21&&codedTypes.includes(e.type)))fail('元素类型只能是 text、line、rect'+(coded21?'、barcode、qrcode、image':'；条码、二维码与图片属于模板 2.1')+'。');
     if(!keys(e,keysOf(e)))fail(e.id+'：键缺失或多余。');
@@ -118,9 +155,10 @@ window.createReportingDocuments=function(ports){
   const detail=b.detail;
   if(!keys(detail,['elements'])||!Array.isArray(detail.elements)||detail.elements.length!==1||detail.elements[0]?.type!=='table')fail('明细带必须恰有一个明细表，且不含其他元素。');
   const t=detail.elements[0];total+=1;
-  if(total>64||!keys(t,itemKeys.table)||typeof t.id!=='string'||!/^e(?:[1-9]|[1-5][0-9]|6[0-4])$/.test(t.id)||ids.has(t.id)||!validTable2(t))fail('明细表或元素总数无效（至多64个元素；表宽、字号8–12点、1–12个不同的列，各列至少8毫米且之和等于表宽）。');
+  if(total>128||!keys(t,itemKeys.table)||typeof t.id!=='string'||!/^e(?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(t.id)||ids.has(t.id)||!validTable2(t))fail('明细表或元素总数无效（至多128个元素；表宽、字号8–12点、1–12个不同的列，各列至少8毫米且之和等于表宽）。');
   if(!t.columns.every(c=>columns.has(c.field)))fail('明细表列必须是当前授权结果的字段。');
-  if(stack+minDetail(t.font_size)>2450)fail('页眉、单据头与页脚的高度加上明细表的最小高度超出安全区。');
+  if(stack+minDetail(t.font_size)>geo.safeH)fail('页眉、单据头与页脚的高度加上明细表的最小高度超出安全区。');
+  if(!overprintFits2(d,pre))fail('套印偏移使元素或明细表超出安全区。');
  }
  // The value a barcode or a QR code takes: a literal (one line, 1 to 64 characters; a QR code's at most 256 bytes), a field of the group or the issue number.
  // Whether the symbology can encode it is the layout's to say, as the fonts' coverage is for a text.
@@ -130,16 +168,16 @@ window.createReportingDocuments=function(ports){
   if(e.source==='field')return e.text===''&&e.field.length>=1&&e.field.length<=128;
   return e.source==='issue_number'&&e.text===''&&e.field==='';
  }
- const inBand2=(x,y,w,h,height)=>[x,y,w,h].every(onGrid)&&inRange(x,0,190)&&inRange(y,0,height/10)&&tenths(x)+tenths(w)<=1900&&tenths(y)+tenths(h)<=height;
+ const inBand2=(x,y,w,h,height)=>[x,y,w,h].every(onGrid)&&inRange(x,0,geo.bw)&&inRange(y,0,height/10)&&tenths(x)+tenths(w)<=geo.bwT&&tenths(y)+tenths(h)<=height;
  const validRef2=r=>keys(r,['id','sha256'])&&hex(r.id,32)&&hex(r.sha256,64);
  function validItem2(e,height,coded){
   const H=height/10;
-  if(e.type==='barcode')return coded&&inBand2(e.x,e.y,e.width,e.height,height)&&inRange(e.width,10,190)&&inRange(e.height,5,H)&&e.symbology==='code128'&&typeof e.human_readable==='boolean'&&(e.human_readable?Number.isSafeInteger(e.font_size)&&e.font_size>=8&&e.font_size<=28:e.font_size===undefined)&&validCodeValue2(e,64,256);
-  if(e.type==='qrcode')return coded&&inBand2(e.x,e.y,e.size,e.size,height)&&inRange(e.size,10,190)&&eccLevels.includes(e.ecc)&&validCodeValue2(e,256,256);
-  if(e.type==='image')return coded&&inBand2(e.x,e.y,e.width,e.height,height)&&inRange(e.width,5,190)&&inRange(e.height,5,H)&&!!e.image&&typeof e.image==='object'&&validRef2(e.image);
-  if(e.type==='line')return[e.x1,e.y1,e.x2,e.y2].every(onGrid)&&inRange(e.x1,0,190)&&inRange(e.x2,0,190)&&inRange(e.y1,0,H)&&inRange(e.y2,0,H)&&(tenths(e.x1)!==tenths(e.x2)||tenths(e.y1)!==tenths(e.y2))&&quarter(e.stroke,0.25,2);
-  if(e.type==='rect')return[e.x,e.y,e.width,e.height].every(onGrid)&&inRange(e.x,0,190)&&inRange(e.y,0,H)&&inRange(e.width,0.1,190)&&inRange(e.height,0.1,H)&&tenths(e.x)+tenths(e.width)<=1900&&tenths(e.y)+tenths(e.height)<=height&&quarter(e.stroke,0,2)&&(fillNames.includes(e.fill)||e.fill==='none')&&(e.stroke>0||fillNames.includes(e.fill));
-  if(!['x','y','width','height'].every(k=>onGrid(e[k]))||!inRange(e.x,0,190)||!inRange(e.y,0,H)||!inRange(e.width,10,190)||!inRange(e.height,5,H)||tenths(e.x)+tenths(e.width)>1900||tenths(e.y)+tenths(e.height)>height||!Number.isSafeInteger(e.font_size)||e.font_size<8||e.font_size>28||tenths(e.height)*72<e.font_size*400||!['left','center','right'].includes(e.align)||typeof e.wrap!=='boolean'||typeof e.bold!=='boolean'||typeof e.text!=='string'||typeof e.field!=='string')return false;
+  if(e.type==='barcode')return coded&&inBand2(e.x,e.y,e.width,e.height,height)&&inRange(e.width,10,geo.bw)&&inRange(e.height,5,H)&&e.symbology==='code128'&&typeof e.human_readable==='boolean'&&(e.human_readable?Number.isSafeInteger(e.font_size)&&e.font_size>=8&&e.font_size<=28:e.font_size===undefined)&&validCodeValue2(e,64,256);
+  if(e.type==='qrcode')return coded&&inBand2(e.x,e.y,e.size,e.size,height)&&inRange(e.size,10,geo.bw)&&eccLevels.includes(e.ecc)&&validCodeValue2(e,256,256);
+  if(e.type==='image')return coded&&inBand2(e.x,e.y,e.width,e.height,height)&&inRange(e.width,5,geo.bw)&&inRange(e.height,5,H)&&!!e.image&&typeof e.image==='object'&&validRef2(e.image);
+  if(e.type==='line')return[e.x1,e.y1,e.x2,e.y2].every(onGrid)&&inRange(e.x1,0,geo.bw)&&inRange(e.x2,0,geo.bw)&&inRange(e.y1,0,H)&&inRange(e.y2,0,H)&&(tenths(e.x1)!==tenths(e.x2)||tenths(e.y1)!==tenths(e.y2))&&quarter(e.stroke,0.25,2);
+  if(e.type==='rect')return[e.x,e.y,e.width,e.height].every(onGrid)&&inRange(e.x,0,geo.bw)&&inRange(e.y,0,H)&&inRange(e.width,0.1,geo.bw)&&inRange(e.height,0.1,H)&&tenths(e.x)+tenths(e.width)<=geo.bwT&&tenths(e.y)+tenths(e.height)<=height&&quarter(e.stroke,0,2)&&(fillNames.includes(e.fill)||e.fill==='none')&&(e.stroke>0||fillNames.includes(e.fill));
+  if(!['x','y','width','height'].every(k=>onGrid(e[k]))||!inRange(e.x,0,geo.bw)||!inRange(e.y,0,H)||!inRange(e.width,10,geo.bw)||!inRange(e.height,5,H)||tenths(e.x)+tenths(e.width)>geo.bwT||tenths(e.y)+tenths(e.height)>height||!Number.isSafeInteger(e.font_size)||e.font_size<8||e.font_size>28||tenths(e.height)*72<e.font_size*400||!['left','center','right'].includes(e.align)||typeof e.wrap!=='boolean'||typeof e.bold!=='boolean'||typeof e.text!=='string'||typeof e.field!=='string')return false;
   if(e.source==='literal')return e.field===''&&printable(e.text,e.wrap,e.wrap?1024:256);
   if(e.source==='page')return e.field===''&&!e.wrap&&placeholders(e.text)&&printable(e.text,false,256);
   if(e.source==='field'||e.source==='group_sum')return e.text===''&&e.field.length>=1&&e.field.length<=128;
@@ -147,10 +185,10 @@ window.createReportingDocuments=function(ports){
   return false;
  }
  function validTable2(t){
-  if(!onGrid(t.x)||!onGrid(t.width)||!inRange(t.x,0,190)||!inRange(t.width,8,190)||tenths(t.x)+tenths(t.width)>1900||!Number.isSafeInteger(t.font_size)||t.font_size<8||t.font_size>12||!Array.isArray(t.columns)||t.columns.length<1||t.columns.length>12)return false;
+  if(!onGrid(t.x)||!onGrid(t.width)||!inRange(t.x,0,geo.bw)||!inRange(t.width,8,geo.bw)||tenths(t.x)+tenths(t.width)>geo.bwT||!Number.isSafeInteger(t.font_size)||t.font_size<8||t.font_size>12||!Array.isArray(t.columns)||t.columns.length<1||t.columns.length>12)return false;
   const seen=new Set();let sum=0;
   for(const c of t.columns){
-   if(!c||typeof c!=='object'||Array.isArray(c)||!Object.keys(c).every(k=>['field','width','align','label'].includes(k))||typeof c.field!=='string'||typeof c.width!=='number'||c.field.length<1||c.field.length>128||seen.has(c.field)||!onGrid(c.width)||!inRange(c.width,8,190))return false;
+   if(!c||typeof c!=='object'||Array.isArray(c)||!Object.keys(c).every(k=>['field','width','align','label'].includes(k))||typeof c.field!=='string'||typeof c.width!=='number'||c.field.length<1||c.field.length>128||seen.has(c.field)||!onGrid(c.width)||!inRange(c.width,8,geo.bw))return false;
    if(c.align!==undefined&&!['left','center','right'].includes(c.align))return false;
    if(c.label!==undefined&&(c.label===''||!printable(c.label,false,64)))return false;
    seen.add(c.field);sum+=tenths(c.width);
@@ -163,6 +201,7 @@ window.createReportingDocuments=function(ports){
   const bands={};
   for(const name of bandNames){const band=d.bands[name];if(band===undefined)continue;bands[name]=name==='detail'?{elements:band.elements.map(item)}:{height:band.height,elements:band.elements.map(item)};}
   const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}}};
+  if(d.page!==undefined){value.page={};if(d.page.preset!==undefined)value.page.preset=d.page.preset;if(d.page.print!==undefined){const q=d.page.print;value.page.print={offset_x:q.offset_x,offset_y:q.offset_y};if(q.background!==undefined)value.page.print.background={id:q.background.id,sha256:q.background.sha256};value.page.print.variables_only=q.variables_only;}}
   if(d.group!==undefined)value.group={fields:[...d.group.fields]};
   if(d.name!==undefined)value.name=d.name;
   value.bands=bands;return value;
@@ -182,7 +221,7 @@ window.createReportingDocuments=function(ports){
  }
  function saveServer(fresh){action(()=>{validate(config);const prior=!fresh&&saved&&sameBinding(saved.config)?saved:null,document=canonical(config);resetRelease();ports.exchange('/document-templates',{method:'POST',body:{id:prior?.id||'',expected_version:prior?.version||0,config:document}},v=>{serverEntry(v,prior?.id,(prior?.version||0)+1);if(JSON.stringify(canonical(v.config))!==JSON.stringify(document))throw Error('服务器保存内容不一致。');saved=v;publishedOpen=false;resetRelease();$('doc-server-status').textContent='已保存模板 '+v.id+' · 版本 '+v.version;},'模板保存');});}
  $('doc-server-save').addEventListener('click',()=>saveServer(false));$('doc-server-new').addEventListener('click',()=>saveServer(true));
- function listServer(then){action(()=>ports.exchange('/document-templates',undefined,values=>{if(!Array.isArray(values)||values.length>16||!values.every(v=>validID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw Error('无法验证模板列表。');$('doc-server-listing').replaceChildren();for(const v of values){const o=node('option',v.id+' · 最新版本 '+v.version);o.value=v.id;o.dataset.version=String(v.version);$('doc-server-listing').append(o);}$('doc-server-version').value=String(values[0]?.version||1);$('doc-server-status').textContent='当前身份可访问 '+values.length+' 个模板。';serverList=values;if(then)setTimeout(()=>then(values),0);},'模板列表'));}
+ function listServer(then){action(()=>ports.exchange('/document-templates',undefined,values=>{if(!Array.isArray(values)||values.length>64||!values.every(v=>validID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw Error('无法验证模板列表。');$('doc-server-listing').replaceChildren();for(const v of values){const o=node('option',v.id+' · 最新版本 '+v.version);o.value=v.id;o.dataset.version=String(v.version);$('doc-server-listing').append(o);}$('doc-server-version').value=String(values[0]?.version||1);$('doc-server-status').textContent='当前身份可访问 '+values.length+' 个模板。';serverList=values;if(then)setTimeout(()=>then(values),0);},'模板列表'));}
  $('doc-server-list').addEventListener('click',()=>listServer());
  $('doc-server-listing').addEventListener('change',()=>{$('doc-server-version').value=$('doc-server-listing').selectedOptions[0]?.dataset.version||'1';});
  // The console's button and the embed page (S03-N) open a server version the same way: through this one function and its checks.

@@ -348,6 +348,14 @@
   ],
   "pages": 2
  },
+ "limits_128.pdf": {
+  "first_rows": [
+   0,
+   2
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
  "mixed.pdf": {
   "first_rows": [
    0,
@@ -362,6 +370,179 @@
    0
   ],
   "pages": 1
+ },
+ "overprint_full_background.pdf": {
+  "first_rows": [
+   0,
+   35
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "overprint_full_background_offset.pdf": {
+  "first_rows": [
+   0,
+   35
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "overprint_full_offset.pdf": {
+  "first_rows": [
+   0,
+   35
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "overprint_label_variables.pdf": {
+  "first_rows": [
+   0,
+   14,
+   27,
+   40,
+   53
+  ],
+  "footer_page": 5,
+  "pages": 5
+ },
+ "overprint_landscape_background.pdf": {
+  "first_rows": [
+   0,
+   19,
+   37,
+   55
+  ],
+  "footer_page": 4,
+  "pages": 4
+ },
+ "overprint_variables_background.pdf": {
+  "first_rows": [
+   0,
+   35
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "overprint_variables_offset.pdf": {
+  "first_rows": [
+   0,
+   35
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "preset_a4.pdf": {
+  "first_rows": [
+   0,
+   37
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "preset_a4_issued.pdf": {
+  "first_rows": [
+   0,
+   37
+  ],
+  "footer_page": 2,
+  "pages": 2
+ },
+ "preset_a4_landscape.pdf": {
+  "first_rows": [
+   0,
+   21,
+   43
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_a4_landscape_issued.pdf": {
+  "first_rows": [
+   0,
+   21,
+   43
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_a5.pdf": {
+  "first_rows": [
+   0,
+   21,
+   43
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_a5_issued.pdf": {
+  "first_rows": [
+   0,
+   21,
+   43
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_label_100x100.pdf": {
+  "first_rows": [
+   0,
+   7,
+   15,
+   23,
+   31,
+   39
+  ],
+  "footer_page": 6,
+  "pages": 6
+ },
+ "preset_label_100x100_issued.pdf": {
+  "first_rows": [
+   0,
+   7,
+   15,
+   23,
+   31,
+   39
+  ],
+  "footer_page": 6,
+  "pages": 6
+ },
+ "preset_label_100x150.pdf": {
+  "first_rows": [
+   0,
+   16,
+   33
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_label_100x150_issued.pdf": {
+  "first_rows": [
+   0,
+   16,
+   33
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_label_4x6in.pdf": {
+  "first_rows": [
+   0,
+   17,
+   35
+  ],
+  "footer_page": 3,
+  "pages": 3
+ },
+ "preset_label_4x6in_issued.pdf": {
+  "first_rows": [
+   0,
+   17,
+   35
+  ],
+  "footer_page": 3,
+  "pages": 3
  },
  "punctuation.pdf": {
   "first_rows": [
@@ -391,6 +572,20 @@
    989
   ],
   "pages": 17
+ },
+ "sample_fixture_delivery_note.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
+ },
+ "sample_fixture_parcel_label.pdf": {
+  "first_rows": [
+   0
+  ],
+  "footer_page": 1,
+  "pages": 1
  },
  "wide.pdf": {
   "first_rows": [

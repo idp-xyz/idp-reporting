@@ -408,6 +408,53 @@ BANNER = "PREVIEW - NOT AN ISSUED DOCUMENT"
 BANNER_SIZE = 10  # the preview banner, in the strip at 10 mm, 10 mm
 STAMP_SIZE = 8  # the issue stamp: the same strip and left edge, at 8 pt so that every legal number fits
 STAMP_COLOUR = 0x132238  # the issue stamp is drawn in the text colour, never the banner's red
+STAMP_LEAD = 1.25  # the distance between the lines of a stamp a narrow strip breaks, in font sizes
+
+# The page a document is checked on (millimetres and points). A template that names no preset is A4 portrait, which is written here as
+# the contract of that case; a template that names one carries, in its expectation, the numbers of the platform's preset table
+# (doctemplates.Presets) as the Go tests write them: the checker never has a table of its own for another page. `use_page` makes the
+# page of the expectation under test the current one.
+A4_PAGE = {"preset": "a4", "width": 210, "height": 297, "left": 10, "top": 25, "bottom": 270,
+           "strip": {"x": 10, "y": 10, "width": 190, "height": 8, "banner_size": 10, "stamp_size": 8, "stamp_lines": 1}}
+PAGE = A4_PAGE
+PAGE_KEYS = {"preset", "width", "height", "left", "top", "bottom", "strip"}
+STRIP_KEYS = {"x", "y", "width", "height", "banner_size", "stamp_size", "stamp_lines"}
+
+
+def page_of(exp):
+    page = exp.get("page")
+    if page is None:
+        return A4_PAGE
+    if set(page) != PAGE_KEYS or set(page["strip"]) != STRIP_KEYS:
+        raise SystemExit(f"{exp.get('file')}: the page of the expectation is not a preset of the table")
+    return page
+
+
+def use_page(exp):
+    """Makes the page of the expectation the current one: its size and safe region, and where its bands start with the print offsets."""
+    global PAGE, BAND_X, SAFE_TOP, SAFE_BOTTOM
+    PAGE = page_of(exp)
+    BAND_X = PAGE["left"] + exp.get("offset_x", 0)
+    SAFE_TOP = PAGE["top"] + exp.get("offset_y", 0)
+    SAFE_BOTTOM = PAGE["bottom"] + exp.get("offset_y", 0)
+
+
+def strip_rect():
+    s = PAGE["strip"]
+    return pymupdf.Rect(s["x"] * MM, s["y"] * MM, (s["x"] + s["width"]) * MM, (s["y"] + s["height"]) * MM)
+
+
+def stamp_lines(stamp, lines):
+    """The lines of a stamp in a strip of that many lines: one, or two broken after the first " - " (so that they read, joined by a space, as the stamp)."""
+    if lines >= 2 and " - " in stamp:
+        i = stamp.index(" - ")
+        return [stamp[:i + 2], stamp[i + 3:]]
+    return [stamp]
+
+
+def free_point():
+    """A point on the page below the safe region, outside every box and the table, for the controls that add ink."""
+    return (PAGE["width"] / 2 * MM, (PAGE["height"] - 2) * MM)
 
 
 def clusters(text):
@@ -460,6 +507,7 @@ def check_document(directory, exp, font=None):
     document with a table has as many pages as its rows need; every page carries the banner,
     the text boxes and the background, and the table is checked across the pages."""
     problems = []
+    use_page(exp)
     metrics = faces(font)
     issue = exp.get("issue")
     if issue:
@@ -638,8 +686,8 @@ def check_page(directory, page, number, exp, metrics, region):
     the background; returns problems, the characters and the characters accounted for. Text
     inside the table region is left to check_table."""
     problems = []
-    if abs(page.rect.width - 210 * MM) > 0.1 or abs(page.rect.height - 297 * MM) > 0.1:
-        problems.append("the page is not A4 portrait")
+    if abs(page.rect.width - PAGE["width"] * MM) > 0.1 or abs(page.rect.height - PAGE["height"] * MM) > 0.1:
+        problems.append("the page is not A4 portrait" if PAGE is A4_PAGE else f"the page is not {PAGE['preset']} ({PAGE['width']} x {PAGE['height']} mm)")
     for f in page.get_fonts(full=True):
         if f[1] == "n/a" or f[2] == "Type3":
             problems.append(f"font {f[3]} is {f[2]}, embedded as {f[1]}")
@@ -655,13 +703,18 @@ def check_page(directory, page, number, exp, metrics, region):
             problems.append("a replacement character")
     used = set()
     issue = exp.get("issue")
-    strip = issue["stamp"] if issue else BANNER
-    wanted = [(strip, 10, 10, 190, STAMP_SIZE if issue else BANNER_SIZE, "left")] + [(e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
+    sp = PAGE["strip"]
+    # The strip: the preview's banner at its size, or the stamp at its size, broken over the lines the preset's strip has.
+    strip_size = sp["stamp_size"] if issue else sp["banner_size"]
+    strip_text = stamp_lines(issue["stamp"], sp["stamp_lines"]) if issue else [BANNER]
+    wanted = [(line, sp["x"], sp["y"] + k * STAMP_LEAD * strip_size / MM, sp["width"], strip_size, "left") for k, line in enumerate(strip_text)] + [
+        (e["text"], e["x"] + exp["offset_x"], e["y"] + exp["offset_y"], e["width"], e["size"], e["align"]) for e in exp["elements"]]
     if issue:
         text = "".join(c["c"] for c in sorted(chars, key=lambda c: (round(c["base"]), c["x0"])))
         if BANNER in text:
             problems.append("preview text on an issued document")
-        stamp = [c for c in chars if abs(c["base"] - (10 * MM + ASCENT * STAMP_SIZE)) <= 0.1 and c["c"].strip()]
+        bases = [sp["y"] * MM + ASCENT * strip_size + k * STAMP_LEAD * strip_size for k in range(len(strip_text))]
+        stamp = [c for c in chars if any(abs(c["base"] - base) <= 0.1 for base in bases) and c["c"].strip()]
         if any(c["color"] != STAMP_COLOUR for c in stamp):
             problems.append("the stamp is not in the text colour")
     for text, x, y, width, size, align in wanted:
@@ -685,8 +738,8 @@ def check_page(directory, page, number, exp, metrics, region):
         problems.append(f"{len(images)} images, expected {int(exp['background']) + exp.get('element_images', 0)}")
     for img in images if exp["background"] else []:
         w, h = img[2], img[3]
-        scale = min(210 * MM / w, 297 * MM / h)
-        x0, y0 = (210 * MM - w * scale) / 2, (297 * MM - h * scale) / 2
+        scale = min(PAGE["width"] * MM / w, PAGE["height"] * MM / h)
+        x0, y0 = (PAGE["width"] * MM - w * scale) / 2, (PAGE["height"] * MM - h * scale) / 2
         for rect in page.get_image_rects(img[0]):
             if max(abs(rect.x0 - x0), abs(rect.y0 - y0), abs(rect.x1 - x0 - w * scale), abs(rect.y1 - y0 - h * scale)) > 0.5:
                 problems.append(f"the background is drawn at {rect}, not fitted and centred")
@@ -1150,8 +1203,9 @@ def issue_pdf_corruptions(directory, exp, copy_with, text, font):
         previewed = copy_with("preview", lambda doc: None)
         preview_instead(previewed)
         yield "the preview in place of the issue", "preview text", previewed
-        yield "the banner text added", "preview text", copy_with("previewword", text(BANNER, (20 * MM, 285 * MM)))
-        strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
+        yield "the banner text added", "preview text", copy_with("previewword", text(BANNER, (PAGE["left"] * MM, (PAGE["height"] - 2) * MM)))
+        strip = strip_rect()
+        sp = PAGE["strip"]
         stamp_colour = (0x13 / 255, 0x22 / 255, 0x38 / 255)
 
         def restamp(doc):
@@ -1162,7 +1216,8 @@ def issue_pdf_corruptions(directory, exp, copy_with, text, font):
             i = exp["issue"]
             other = issue_stamp(another_number(i["number"]), i["issued_at"], i["issue_id"])
             p.insert_font(fontname="Fx", fontbuffer=font.buffer)
-            p.insert_text((10 * MM, 10 * MM + ASCENT * STAMP_SIZE), other, fontname="Fx", fontsize=STAMP_SIZE, color=stamp_colour)
+            for k, line in enumerate(stamp_lines(other, sp["stamp_lines"])):
+                p.insert_text((sp["x"] * MM, sp["y"] * MM + ASCENT * sp["stamp_size"] + k * STAMP_LEAD * sp["stamp_size"]), line, fontname="Fx", fontsize=sp["stamp_size"], color=stamp_colour)
         yield "the stamp redrawn with another number", "is not drawn on one line", copy_with("restamp", restamp)
 
         def unstamp_last(doc):
@@ -1268,7 +1323,7 @@ def document_pdf_corruptions(directory, exp, scratch, font_file=None):
     if not exp["background"]:
         yield "a shape outside the boxes", "outside the boxes", copy_with("outside", lambda doc: doc[0].draw_circle((105 * MM, 285 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
     yield "an extra page", "no total row" if exp.get("table") else "pages, expected one", copy_with("pages", lambda doc: doc.new_page())
-    yield "a smaller page", "not A4", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
+    yield "a smaller page", "the page is not", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
     yield "a value in a light colour", "light colour", copy_with("light", text("X", free, color=(0.9, 0.9, 0.9)))
     yield "a replacement character", "replacement character", copy_with("fffd", text("\ufffd", free))
 
@@ -1856,8 +1911,15 @@ def check_document2(directory, exp, font=None):
     header; the table is checked over its pages in the region each leaves it (the first page's starts under the
     document header); the document footer is under the table's total row, whole, on that page when it fits
     under it and on a page of its own, under the page header, when it does not. Lines and rectangles are
-    drawn as the template says, and nothing else is drawn. Returns problems and the layout summary."""
+    drawn as the template says, and nothing else is drawn. Returns problems and the layout summary.
+
+    The page is the preset the expectation names (A4 portrait when it names none): its size, its safe region and its strip are the
+    expectation's, which the Go tests write from the platform's preset table. With a print profile the bands, the table and every element
+    start at the profile's offsets, and in "variables" mode the table is the variable layer's (checked as for 1.x) and the elements that
+    are not variables are absent from the expectation, so that anything drawn for them is found as ink no element accounts for. With a
+    background, one picture per page is drawn under everything, fitted and centred in the page, and is the one picture no element owns."""
     problems = []
+    use_page(exp)
     metrics = faces(font)
     # An expectation with an "issue" record describes an issued group document (S03-K): the strip holds the record's
     # stamp on every page in place of the banner, the PDF is the one the record names, every date of the file is the
@@ -1890,9 +1952,9 @@ def check_document2(directory, exp, font=None):
     want_pages = footer["page"] if footer else table_pages
     if pages != want_pages or table_pages < 1 or table_pages > pages:
         return problems + [f"{pages} pages, expected {want_pages} ({table_pages} of them with the table)"], {"pages": pages}
-    shim = {"elements": [], "offset_x": 0, "offset_y": 0, "background": False, "issue": issue}
+    shim = {"elements": [], "offset_x": 0, "offset_y": 0, "background": exp.get("background", False), "background_file": exp.get("background_file"), "issue": issue}
     ph, dh, df, pf = heights2(exp)
-    strip = pymupdf.Rect(10 * MM, 10 * MM, 200 * MM, 18 * MM)
+    strip = strip_rect()
     table_pages_data, per_page = [], []
     for i, page in enumerate(doc):
         number = i + 1
@@ -1920,6 +1982,9 @@ def check_document2(directory, exp, font=None):
         banner_box = lambda d: d["fill"] is not None and max(abs(d["rect"].x0 - strip.x0), abs(d["rect"].x1 - strip.x1), abs(d["rect"].y0 - strip.y0), abs(d["rect"].y1 - strip.y1)) <= 0.1
         drawings = [d for d in page.get_drawings() if not banner_box(d)]
         pictures = page.get_image_info(xrefs=True)
+        if exp.get("background"):
+            # The background is the page's own picture (check_page has checked that it is fitted and centred); it is not an element's.
+            pictures = [pic for pic in pictures if pic["width"] * pic["height"] != max(q["width"] * q["height"] for q in pictures)] if len(pictures) > 1 else []
         for el, top in coded:
             if el["type"] == "image":
                 found, pictures = take_image(pictures, el, top)
@@ -1945,7 +2010,7 @@ def check_document2(directory, exp, font=None):
         leftover = [c for c in chars if c["n"] not in used and c["c"].strip()]
         if leftover:
             problems.append(f"page {number}: unexpected text {''.join(c['c'] for c in leftover)[:40]!r}")
-        if ink_outside(page, allowed):
+        if not exp.get("background") and ink_outside(page, allowed):
             problems.append(f"page {number}: ink outside the elements, the table and the banner")
     layout = {"pages": pages}
     ends = []
@@ -1977,6 +2042,8 @@ def exp_sum_has_separators(el):
 
 def document2_corruptions(exp):
     """Yields (what, corrupted expectation, what a problem must say) for each corruption of a 2.0 expectation that applies."""
+    use_page(exp)
+
     def changed(name, change, expected=""):
         e = copy.deepcopy(exp)
         change(e)
@@ -2093,9 +2160,12 @@ def document2_corruptions(exp):
     summed = next((j for j, c in enumerate(columns) if j > 0 and c["metric"]), None)
     if summed is not None and rows:
         yield changed("a table amount changed", lambda e: e["table"]["rows"][0].__setitem__(summed, "0.01"))
-    yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", columns[0]["label"] + "X"))
+    full_table = exp.get("mode", "full") == "full"  # a variables-only print draws no header: its label is not on the page
+    if full_table:
+        yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", columns[0]["label"] + "X"))
     yield changed("the table moved by 0.5 mm", lambda e: e["table"].__setitem__("x", t["x"] + 0.5))
-    if len(columns) > 1:
+    # In the variable layer a boundary between a left-aligned and a right-aligned column alone moves no text: two columns need the header.
+    if len(columns) > 1 and (full_table or len(columns) > 2):
         yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", columns[0]["width"] - 5), e["table"]["columns"][-1].__setitem__("width", columns[-1]["width"] + 5)))
         flip_column = {"left": "right", "right": "center", "center": "left"}
         current = columns[0].get("align") or ("right" if columns[0]["metric"] else "left")
@@ -2108,10 +2178,27 @@ def document2_corruptions(exp):
     yield changed("a table page more", lambda e: e.__setitem__("table_pages", exp["table_pages"] + 1), "")
     if exp["table_pages"] > 1:
         yield changed("a table page less", lambda e: e.__setitem__("table_pages", exp["table_pages"] - 1), "")
+    # The page of a preset (S06-B): the checker holds the template to the numbers of its own page, so each of them changed is found.
+    if exp.get("page"):
+        yield changed("the page's width changed", lambda e: e["page"].__setitem__("width", e["page"]["width"] + 10), "the page is not")
+        yield changed("the page's height changed", lambda e: e["page"].__setitem__("height", e["page"]["height"] + 10), "the page is not")
+        yield changed("the safe region's left edge moved by 1 mm", lambda e: e["page"].__setitem__("left", e["page"]["left"] + 1), "")
+        yield changed("the safe region's top moved by 1 mm", lambda e: e["page"].__setitem__("top", e["page"]["top"] + 1), "")
+        yield changed("the banner strip moved by 1 mm", lambda e: e["page"]["strip"].__setitem__("y", e["page"]["strip"]["y"] + 1), "")
+        yield changed("the strip's type size changed", lambda e: e["page"]["strip"].__setitem__("banner_size" if not exp.get("issue") else "stamp_size", 7), "")
+    # The print profile of a 2.x template (S06-B).
+    if exp.get("offset_x") or exp.get("offset_y"):
+        yield changed("the print offset dropped", lambda e: (e.__setitem__("offset_x", 0), e.__setitem__("offset_y", 0)), "")
+        yield changed("the print offset doubled", lambda e: (e.__setitem__("offset_x", 2 * exp.get("offset_x", 0)), e.__setitem__("offset_y", 2 * exp.get("offset_y", 0))), "")
+    if exp.get("mode") == "variables":
+        yield changed("the variables-only print taken for a full one", lambda e: e.__setitem__("mode", "full"), "")
+    if exp.get("background"):
+        yield changed("the background dropped from the expectation", lambda e: e.__setitem__("background", False), "images, expected")
 
 
 def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
     """Yields (what, what a problem must say, directory of the corrupted copy) for the PDF-level corruptions of a 2.0 document."""
+    use_page(exp)
     font = pymupdf.Font("cjk")
 
     def copy_with(name, change):
@@ -2120,6 +2207,8 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
         target = os.path.join(scratch, name)
         os.makedirs(target, exist_ok=True)
         doc.save(os.path.join(target, exp["file"]))
+        if exp.get("background_file"):
+            shutil.copy(os.path.join(directory, exp["background_file"]), target)
         return target
 
     def text(t, at, color=(0, 0, 0), embedded=True, size=10):
@@ -2158,7 +2247,8 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
         assert hit, f"{old!r} not in the content stream"
 
     pdf_point = lambda c, page: (c["x"], page.rect.height - c["base"])
-    free = (105 * MM, 285 * MM)
+    use_page(exp)
+    free = free_point()
     yield "extra text", "unexpected text", copy_with("extra", text("X", free))
     yield from issue_pdf_corruptions(directory, exp, copy_with, text, font)
     yield "a font that is not embedded", "embedded as n/a", copy_with("font", text("X", free, embedded=False))
@@ -2166,10 +2256,11 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
     yield "an extra page", "pages, expected", copy_with("pages", lambda doc: doc.new_page())
     if doc_pages(directory, exp) > 1:
         yield "the last page removed", "pages, expected", copy_with("lastpage", lambda doc: doc.delete_page(doc.page_count - 1))
-    yield "a smaller page", "not A4", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 500, 700)))
+    yield "a smaller page", "the page is not", copy_with("mediabox", lambda doc: doc[0].set_mediabox(pymupdf.Rect(0, 0, 0.8 * PAGE["width"] * MM, 0.8 * PAGE["height"] * MM)))
     yield "a value in a light colour", "light colour", copy_with("light", text("X", free, color=(0.9, 0.9, 0.9)))
     yield "a replacement character", "replacement character", copy_with("fffd", text("�", free))
-    yield "a shape outside the elements", "ink outside", copy_with("outside", lambda doc: doc[0].draw_circle((105 * MM, 285 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
+    if not exp.get("background"):
+        yield "a shape outside the elements", "ink outside", copy_with("outside", lambda doc: doc[0].draw_circle((free[0], free[1] - 3 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
     yield "text of another size in the table", "pt in the table", copy_with("tablesize", text("X", (region2(exp, 1).x0 + 20, region2(exp, 1).y1 - 3), size=14))
 
     def line_of(page, el, top):
@@ -2196,7 +2287,7 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
 
         def cover(doc):
             base = top + el["y"] * MM + ASCENT * el["size"]
-            doc[0].draw_rect(pymupdf.Rect(0, base - ASCENT * el["size"], 210 * MM, base + 0.3 * el["size"]), color=None, fill=(1, 1, 1), overlay=True)
+            doc[0].draw_rect(pymupdf.Rect(0, base - ASCENT * el["size"], PAGE["width"] * MM, base + 0.3 * el["size"]), color=None, fill=(1, 1, 1), overlay=True)
         yield "a text covered by a white box", "no ink", copy_with("cover", cover)
 
         def down(doc):
@@ -2219,7 +2310,10 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
     fills = [el["fill"] for band in exp["bands"] for el in band["elements"] if el["type"] == "rect" and el["fill"] != "none"]
     if fills:
         want = {"grey1": ".9607843 scn", "grey2": ".9098039 scn", "grey3": ".84313729 scn", "grey4": ".74509808 scn"}[fills[0]]
-        yield "a rectangle's fill turned white", "fill", copy_with("whitefill", lambda doc: rewrite(doc, want, "1 scn"))
+        # The page that draws the rectangle: the footer's page for a rectangle of the document footer (S06-B: it is not always the first).
+        rect_band = next(band["name"] for band in exp["bands"] for el in band["elements"] if el["type"] == "rect" and el["fill"] != "none")
+        rect_page = exp["footer"]["page"] - 1 if rect_band == "document_footer" and exp.get("footer") else 0
+        yield "a rectangle's fill turned white", "fill", copy_with("whitefill", lambda doc: rewrite(doc, want, "1 scn", rect_page))
 
         def cover_rect(doc):
             band, top = next((b, t) for b, t in bands_on_page2(exp, 1) for el in b["elements"] if el["type"] == "rect" and el["fill"] != "none")

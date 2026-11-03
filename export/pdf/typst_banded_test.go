@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -134,6 +135,39 @@ type bandedExpectation struct {
 	Table      map[string]any   `json:"table"`
 	TablePages int              `json:"table_pages"`
 	Footer     *footerExpect    `json:"footer,omitempty"`
+	// A template that names a page (S06-B): the preset's numbers from the platform's table, the print offsets, the mode and the background.
+	Page           *pageExpect `json:"page,omitempty"`
+	OffsetX        float64     `json:"offset_x,omitempty"`
+	OffsetY        float64     `json:"offset_y,omitempty"`
+	Mode           string      `json:"mode,omitempty"`
+	Background     bool        `json:"background,omitempty"`
+	BackgroundFile string      `json:"background_file,omitempty"`
+}
+
+// pageExpect is a preset as the checker reads it, taken from doctemplates.Presets and nowhere else.
+type pageExpect struct {
+	Preset string  `json:"preset"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Left   float64 `json:"left"`
+	Top    float64 `json:"top"`
+	Bottom float64 `json:"bottom"`
+	Strip  struct {
+		X          float64 `json:"x"`
+		Y          float64 `json:"y"`
+		Width      float64 `json:"width"`
+		Height     float64 `json:"height"`
+		BannerSize float64 `json:"banner_size"`
+		StampSize  float64 `json:"stamp_size"`
+		StampLines int     `json:"stamp_lines"`
+	} `json:"strip"`
+}
+
+func presetExpect(p doctemplates.Preset) *pageExpect {
+	e := &pageExpect{Preset: p.ID, Width: p.Width, Height: p.Height, Left: p.Left, Top: p.Top, Bottom: p.Bottom}
+	e.Strip.X, e.Strip.Y, e.Strip.Width, e.Strip.Height = p.Strip.X, p.Strip.Y, p.Strip.Width, p.Strip.Height
+	e.Strip.BannerSize, e.Strip.StampSize, e.Strip.StampLines = p.Strip.BannerSize, p.Strip.StampSize, p.Strip.StampLines
+	return e
 }
 
 type footerExpect struct {
@@ -171,15 +205,30 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 	if len(with) > 0 {
 		extras = with[0]
 	}
-	p, err := layOutWith(d, values, nil, table, newPlainMeasurer(w.fonts), coded{mode: extras.mode(), number: extras.Number, images: extras.Images})
+	p, err := layOutWith(d, values, extras.Background, table, newPlainMeasurer(w.fonts), coded{mode: extras.mode(), number: extras.Number, images: extras.Images})
 	if err != nil {
 		t.Fatal(err)
 	}
 	e := bandedExpectation{Kind: "document2", File: name + ".pdf", TablePages: len(p.Pages)}
+	ox, oy, variables, _ := d.Overprint()
+	if d.Page != nil {
+		pre, _ := d.PagePreset()
+		e.Page, e.OffsetX, e.OffsetY = presetExpect(pre), ox, oy
+		if variables {
+			e.Mode = "variables"
+		}
+		if p.Background {
+			e.Background, e.BackgroundFile = true, name+".background.png"
+		}
+	}
+	pageHeader := 0.0
+	if d.Bands.PageHeader != nil {
+		pageHeader = d.Bands.PageHeader.Height
+	}
 	if p.Footer != nil {
 		e.Footer = &footerExpect{Page: p.Footer.Page, Top: p.Footer.Top}
 		// A footer on a page of its own is not a table page.
-		if p.Footer.Page == len(p.Pages) && p.Footer.Top == (safeTop+d.Bands.PageHeader.Height)*mm && !pageHasTable(p.Pages[len(p.Pages)-1]) {
+		if p.Footer.Page == len(p.Pages) && math.Abs(p.Footer.Top-(safeTop+oy+pageHeader)*mm) < 1e-6 && !pageHasTable(p.Pages[len(p.Pages)-1]) {
 			e.TablePages--
 		}
 	}
@@ -192,6 +241,9 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 		}
 		items := []map[string]any{}
 		for _, it := range band.b.Elements {
+			if variables && doctemplates.OmittedInVariables(it) {
+				continue // a variables-only print does not draw it, and the checker finds ink for it as ink no element owns
+			}
 			el := bandedElement(it, values, extras)
 			if in, ok := sums[it.ID]; ok {
 				// The checker sums these itself and prints the sum as the table prints its totals.
@@ -221,7 +273,11 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 	}
 	e.Table = map[string]any{"id": t2.ID, "x": t2.X, "width": t2.Width, "size": t2.FontSize, "columns": columns, "rows": table.Rows, "totals": map[string]string{}}
 	b, _ := json.MarshalIndent(e, "", " ")
-	for file, content := range map[string][]byte{name + ".pdf": pdf, name + ".json": b} {
+	files := map[string][]byte{name + ".pdf": pdf, name + ".json": b}
+	if e.Background {
+		files[e.BackgroundFile] = extras.Background
+	}
+	for file, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, file), content, 0o644); err != nil {
 			t.Fatal(err)
 		}

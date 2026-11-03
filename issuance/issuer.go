@@ -103,8 +103,15 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	}
 	if banded {
 		doc, e := bindGroup(d, j, snap)
-		if e != nil || !d.Coded() {
+		if e != nil {
 			return doc, e
+		}
+		// A 2.x template may name a background in its overprint profile (S06-B), resolved as a 1.x one is.
+		if doc.background, e = i.resolveBackground(j.Owner.Identity, d); e != nil {
+			return document{}, e
+		}
+		if !d.Coded() {
+			return doc, nil
 		}
 		// The images a 2.1 template draws are resolved with the same authorization as a background: the owner's, of the
 		// template's binding, with the digest the template names.
@@ -121,19 +128,31 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	if e != nil {
 		return document{}, e
 	}
-	var background []byte
-	if d.Background != nil {
-		if i.assets == nil {
-			return document{}, r.ErrUnsupported
-		}
-		if background, e = i.assets.Resolve(j.Owner.Identity, d.Binding, *d.Background); e != nil {
-			return document{}, e
-		}
-	}
-	if d.Print != nil && d.Print.Mode == "variables" {
-		background = nil
+	background, e := i.resolveBackground(j.Owner.Identity, d)
+	if e != nil {
+		return document{}, e
 	}
 	return document{d: d, values: values, table: table, background: background}, nil
+}
+
+// resolveBackground returns the bytes of the background d names (1.x in the document, 2.x in page.print) with the owner's
+// authorization and the template's binding; a variables-only print draws none, though its reference is still resolved.
+func (i *Issuer) resolveBackground(owner r.Identity, d doctemplates.Document) ([]byte, error) {
+	ref := d.BackgroundRefOf()
+	if ref == nil {
+		return nil, nil
+	}
+	if i.assets == nil {
+		return nil, r.ErrUnsupported
+	}
+	background, e := i.assets.Resolve(owner, d.Binding, *ref)
+	if e != nil {
+		return nil, e
+	}
+	if _, _, variables, _ := d.Overprint(); variables {
+		return nil, nil
+	}
+	return background, nil
 }
 
 // resolveImages returns the bytes of each image element of d by element id.
@@ -157,7 +176,7 @@ func (i *Issuer) resolveImages(owner r.Identity, d doctemplates.Document) (map[s
 
 // bindGroup makes the document of a group job: the frozen group must be the verified snapshot's, whole, under
 // the template's own group fields, and its values and table are bound from the snapshot's rows, never from the
-// request. A schema 2.0 document has no background.
+// request. Its background, if any, is the caller's (resolveBackground).
 func bindGroup(d doctemplates.Document, j r.Job, snap r.Snapshot) (document, error) {
 	var fields []string
 	if d.Group != nil {

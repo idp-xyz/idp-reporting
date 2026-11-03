@@ -1,0 +1,1739 @@
+{
+ "keys": [
+  "idp-reporting-studio-v3.0"
+ ],
+ "templates": [
+  {
+   "id": "tmw031650kgdk",
+   "name": "客户往来对账单",
+   "kind": "statement",
+   "datasetId": "ledger",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 33,
+    "reportHeader": 62,
+    "reportFooter": 29,
+    "pageFooter": 10
+   },
+   "nodes": 14,
+   "types": {
+    "image": 1,
+    "text": 3,
+    "line": 1,
+    "field": 4,
+    "summary": 1,
+    "table": 1,
+    "signature": 2,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031651ouwc",
+   "name": "销售订单",
+   "kind": "order",
+   "datasetId": "orders",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 33,
+    "reportHeader": 62,
+    "reportFooter": 29,
+    "pageFooter": 10
+   },
+   "nodes": 14,
+   "types": {
+    "image": 1,
+    "text": 3,
+    "line": 1,
+    "field": 4,
+    "summary": 1,
+    "table": 1,
+    "signature": 2,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031651fn15",
+   "name": "出库装箱单",
+   "kind": "packing",
+   "datasetId": "warehouse",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 33,
+    "reportHeader": 62,
+    "reportFooter": 29,
+    "pageFooter": 10
+   },
+   "nodes": 14,
+   "types": {
+    "image": 1,
+    "text": 3,
+    "line": 1,
+    "field": 4,
+    "summary": 1,
+    "table": 1,
+    "signature": 2,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031651pfca",
+   "name": "MAWB 航空主运单 · 套打",
+   "kind": "mawb",
+   "datasetId": "mawb",
+   "mode": "variables",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 72,
+   "types": {
+    "field": 72
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031651t7kt",
+   "name": "USPS 快递面单 · 4×6",
+   "kind": "usps",
+   "datasetId": "usps",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 18,
+   "types": {
+    "field": 17,
+    "barcode": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031651zdgx",
+   "name": "FedEx 快递面单 · 4×6",
+   "kind": "fedex",
+   "datasetId": "fedex",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 20,
+   "types": {
+    "field": 18,
+    "barcode": 1,
+    "qr": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw0316516mro",
+   "name": "海运提单 B/L · 集装箱",
+   "kind": "bol",
+   "datasetId": "bol",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 52,
+   "types": {
+    "field": 52
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031652b0wq",
+   "name": "出口装箱单 · Packing List",
+   "kind": "exportPacking",
+   "datasetId": "exportPacking",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 25,
+    "reportHeader": 72,
+    "reportFooter": 47,
+    "pageFooter": 9
+   },
+   "nodes": 26,
+   "types": {
+    "text": 3,
+    "field": 18,
+    "line": 2,
+    "table": 1,
+    "signature": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031652zz4d",
+   "name": "形式发票 · Pro Forma Invoice",
+   "kind": "proforma",
+   "datasetId": "proforma",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 25,
+    "reportHeader": 72,
+    "reportFooter": 78,
+    "pageFooter": 9
+   },
+   "nodes": 41,
+   "types": {
+    "text": 11,
+    "field": 24,
+    "line": 3,
+    "table": 1,
+    "signature": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031653cdfz",
+   "name": "货物舱单 · Cargo Manifest",
+   "kind": "manifest",
+   "datasetId": "manifest",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 25,
+    "reportHeader": 72,
+    "reportFooter": 48,
+    "pageFooter": 9
+   },
+   "nodes": 22,
+   "types": {
+    "text": 3,
+    "field": 16,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw0316532oaz",
+   "name": "商业发票 · Commercial Invoice",
+   "kind": "commercial",
+   "datasetId": "commercial",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 25,
+    "reportHeader": 72,
+    "reportFooter": 78,
+    "pageFooter": 9
+   },
+   "nodes": 41,
+   "types": {
+    "text": 11,
+    "field": 24,
+    "line": 3,
+    "table": 1,
+    "signature": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031654y3fq",
+   "name": "原产地证书 · Certificate of Origin",
+   "kind": "origin",
+   "datasetId": "origin",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 25,
+    "reportHeader": 72,
+    "reportFooter": 48,
+    "pageFooter": 9
+   },
+   "nodes": 21,
+   "types": {
+    "text": 3,
+    "field": 15,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031654sh6l",
+   "name": "海运订舱委托 · Ocean Booking",
+   "kind": "booking",
+   "datasetId": "booking",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 25,
+    "reportHeader": 72,
+    "reportFooter": 48,
+    "pageFooter": 9
+   },
+   "nodes": 22,
+   "types": {
+    "text": 3,
+    "field": 16,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031654i0q2",
+   "name": "航空运单 · Air Waybill (MAWB)",
+   "kind": "mawb",
+   "datasetId": "mawb",
+   "mode": "variables",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 72,
+   "types": {
+    "field": 72
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031654rkp1",
+   "name": "WMS · 到货通知单 ASN",
+   "kind": "wmsAsn",
+   "datasetId": "wmsAsn",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031654cura",
+   "name": "WMS · 收货验收单",
+   "kind": "wmsReceive",
+   "datasetId": "wmsReceive",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031655152r",
+   "name": "WMS · 上架任务单",
+   "kind": "wmsPutaway",
+   "datasetId": "wmsPutaway",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031655hs29",
+   "name": "WMS · 库存余额表",
+   "kind": "wmsBalance",
+   "datasetId": "wmsBalance",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031655ld9m",
+   "name": "WMS · 库存流水表",
+   "kind": "wmsLedger",
+   "datasetId": "wmsLedger",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 2,
+    "field": 12,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031655a3es",
+   "name": "WMS · 库存状态表",
+   "kind": "wmsStatus",
+   "datasetId": "wmsStatus",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031655u47p",
+   "name": "WMS · 波次拣货单",
+   "kind": "wmsPick",
+   "datasetId": "wmsPick",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031655il0x",
+   "name": "WMS · 复核装箱单",
+   "kind": "wmsPack",
+   "datasetId": "wmsPack",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656e2iu",
+   "name": "WMS · 发货交接单",
+   "kind": "wmsDispatch",
+   "datasetId": "wmsDispatch",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw03165635ac",
+   "name": "WMS · 盲盘任务单",
+   "kind": "wmsCount",
+   "datasetId": "wmsCount",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656v82k",
+   "name": "WMS · 盘点差异表",
+   "kind": "wmsVariance",
+   "datasetId": "wmsVariance",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656g8cj",
+   "name": "WMS · 移库补货任务单",
+   "kind": "wmsTransfer",
+   "datasetId": "wmsTransfer",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656h3ok",
+   "name": "WMS · 商品标签",
+   "kind": "wmsSkuLabel",
+   "datasetId": "wmsSkuLabel",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 11,
+   "types": {
+    "text": 2,
+    "field": 8,
+    "barcode": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656ni9s",
+   "name": "WMS · 库位标签",
+   "kind": "wmsLocationLabel",
+   "datasetId": "wmsLocationLabel",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 11,
+   "types": {
+    "text": 2,
+    "field": 8,
+    "barcode": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656z99f",
+   "name": "WMS · 托盘标签",
+   "kind": "wmsPalletLabel",
+   "datasetId": "wmsPalletLabel",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 11,
+   "types": {
+    "text": 2,
+    "field": 8,
+    "barcode": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw0316568j3h",
+   "name": "WMS · 箱唛标签",
+   "kind": "wmsCartonLabel",
+   "datasetId": "wmsCartonLabel",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 5,
+    "reportHeader": 5,
+    "reportFooter": 5,
+    "pageFooter": 5
+   },
+   "nodes": 11,
+   "types": {
+    "text": 2,
+    "field": 8,
+    "barcode": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031656r525",
+   "name": "WMS · 退货收货单",
+   "kind": "wmsReturnReceipt",
+   "datasetId": "wmsReturnReceipt",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw0316567p6m",
+   "name": "WMS · 退货处理明细",
+   "kind": "wmsReturnDisposition",
+   "datasetId": "wmsReturnDisposition",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031657zrc7",
+   "name": "WMS · 收货差异跟踪表",
+   "kind": "wmsReceivingException",
+   "datasetId": "wmsReceivingException",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031657hwf9",
+   "name": "WMS · 出库异常跟踪表",
+   "kind": "wmsPickingException",
+   "datasetId": "wmsPickingException",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw0316574x52",
+   "name": "WMS · 破损异常处理表",
+   "kind": "wmsDamage",
+   "datasetId": "wmsDamage",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw031657iwvt",
+   "name": "WMS · 库龄与呆滞库存表",
+   "kind": "wmsAging",
+   "datasetId": "wmsAging",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 49,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  },
+  {
+   "id": "tmw03165783o5",
+   "name": "WMS · 作业进度与积压表",
+   "kind": "wmsBacklog",
+   "datasetId": "wmsBacklog",
+   "mode": "full",
+   "bands": {
+    "pageHeader": 27,
+    "reportHeader": 52,
+    "reportFooter": 33,
+    "pageFooter": 9
+   },
+   "nodes": 17,
+   "types": {
+    "text": 3,
+    "field": 11,
+    "line": 1,
+    "table": 1,
+    "pageNumber": 1
+   },
+   "versions": 1
+  }
+ ],
+ "sample": {
+  "id": "tmw031650kgdk",
+  "name": "客户往来对账单",
+  "archived": false,
+  "doc": {
+   "schema": "studio-uiux-2.6",
+   "name": "客户往来对账单",
+   "kind": "statement",
+   "datasetId": "ledger",
+   "page": {
+    "preset": "A4",
+    "width": 210,
+    "height": 297,
+    "orientation": "portrait",
+    "margins": {
+     "top": 14,
+     "bottom": 14,
+     "left": 18,
+     "right": 18
+    },
+    "mode": "full",
+    "offsetX": 0,
+    "offsetY": 0,
+    "background": "",
+    "opacity": 0.2
+   },
+   "bands": {
+    "pageHeader": 33,
+    "reportHeader": 62,
+    "reportFooter": 29,
+    "pageFooter": 10
+   },
+   "parameters": [
+    {
+     "id": "from",
+     "label": "开始日期",
+     "type": "date",
+     "required": false,
+     "value": ""
+    },
+    {
+     "id": "to",
+     "label": "结束日期",
+     "type": "date",
+     "required": false,
+     "value": ""
+    },
+    {
+     "id": "keyword",
+     "label": "搜索摘要",
+     "type": "string",
+     "required": false,
+     "value": ""
+    },
+    {
+     "id": "category",
+     "label": "业务类别",
+     "type": "select",
+     "required": false,
+     "value": ""
+    }
+   ],
+   "nodes": [
+    {
+     "id": "n1",
+     "type": "image",
+     "band": "pageHeader",
+     "name": "企业标识",
+     "x": 18,
+     "y": 7,
+     "w": 72,
+     "h": 12,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 10,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "image": ""
+    },
+    {
+     "id": "n2",
+     "type": "text",
+     "band": "pageHeader",
+     "name": "报表标题",
+     "x": 110,
+     "y": 3,
+     "w": 82,
+     "h": 13,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 22,
+      "color": "#30486d",
+      "bold": true,
+      "italic": false,
+      "align": "right",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "text": "客户往来对账单"
+    },
+    {
+     "id": "n3",
+     "type": "text",
+     "band": "pageHeader",
+     "name": "英文副标题",
+     "x": 110,
+     "y": 18,
+     "w": 82,
+     "h": 5,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 7.8,
+      "color": "#97a6be",
+      "bold": false,
+      "italic": false,
+      "align": "right",
+      "lineHeight": 1.4,
+      "letterSpace": 0.5
+     },
+     "text": "CUSTOMER STATEMENT"
+    },
+    {
+     "id": "n4",
+     "type": "line",
+     "band": "pageHeader",
+     "name": "页眉分隔线",
+     "x": 18,
+     "y": 31,
+     "w": 174,
+     "h": 0.3,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 10,
+      "color": "#adc0df",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     }
+    },
+    {
+     "id": "n5",
+     "type": "field",
+     "band": "reportHeader",
+     "name": "客户名称",
+     "x": 18,
+     "y": 5,
+     "w": 104,
+     "h": 13,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 11.5,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "field": "customer",
+     "scope": "meta",
+     "label": "客户名称",
+     "format": "text"
+    },
+    {
+     "id": "n6",
+     "type": "field",
+     "band": "reportHeader",
+     "name": "单据编号",
+     "x": 132,
+     "y": 5,
+     "w": 60,
+     "h": 13,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 10,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "field": "statement",
+     "scope": "meta",
+     "label": "单据编号",
+     "format": "text"
+    },
+    {
+     "id": "n7",
+     "type": "field",
+     "band": "reportHeader",
+     "name": "业务期间",
+     "x": 18,
+     "y": 22,
+     "w": 104,
+     "h": 11,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 9.5,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "field": "period",
+     "scope": "meta",
+     "label": "业务期间",
+     "format": "text"
+    },
+    {
+     "id": "n8",
+     "type": "field",
+     "band": "reportHeader",
+     "name": "结算币种",
+     "x": 132,
+     "y": 22,
+     "w": 60,
+     "h": 11,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 9.5,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "field": "currency",
+     "scope": "meta",
+     "label": "结算币种",
+     "format": "text"
+    },
+    {
+     "id": "n9",
+     "type": "summary",
+     "band": "reportHeader",
+     "name": "范围合计摘要",
+     "x": 18,
+     "y": 38,
+     "w": 174,
+     "h": 18,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 10,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     }
+    },
+    {
+     "id": "n10",
+     "type": "table",
+     "band": "detail",
+     "name": "动态明细表",
+     "x": 18,
+     "y": 0,
+     "w": 174,
+     "h": 80,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 8.5,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "rowsPerPage": 0,
+     "minRowHeight": 7,
+     "padding": 2,
+     "wrap": true,
+     "repeatHeader": true,
+     "striped": true,
+     "groupField": "",
+     "groupTotals": false,
+     "carry": true,
+     "subtotal": true,
+     "sortField": "",
+     "sortDirection": "asc",
+     "negativeRed": true,
+     "headerColor": "#edf1f9",
+     "columns": [
+      {
+       "field": "date",
+       "label": "记账日期",
+       "width": 23,
+       "align": "left",
+       "format": "auto"
+      },
+      {
+       "field": "ref",
+       "label": "单据编号",
+       "width": 34,
+       "align": "left",
+       "format": "auto"
+      },
+      {
+       "field": "desc",
+       "label": "业务摘要",
+       "width": 47,
+       "align": "left",
+       "format": "auto"
+      },
+      {
+       "field": "debit",
+       "label": "本期应收",
+       "width": 35,
+       "align": "right",
+       "format": "auto"
+      },
+      {
+       "field": "credit",
+       "label": "本期已收",
+       "width": 35,
+       "align": "right",
+       "format": "auto"
+      }
+     ]
+    },
+    {
+     "id": "n11",
+     "type": "text",
+     "band": "reportFooter",
+     "name": "单据说明",
+     "x": 18,
+     "y": 2,
+     "w": 174,
+     "h": 12,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 8,
+      "color": "#738198",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "text": "请核对以上业务明细，如有差异，请于收到本单后 5 个工作日内与我们联系。\n本单据为业务核对凭据，款项以实际到账及双方确认为准。"
+    },
+    {
+     "id": "n12",
+     "type": "signature",
+     "band": "reportFooter",
+     "name": "客户确认签章",
+     "x": 18,
+     "y": 19,
+     "w": 70,
+     "h": 7,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 10,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "text": "客户确认 / 签章"
+    },
+    {
+     "id": "n13",
+     "type": "signature",
+     "band": "reportFooter",
+     "name": "制单人签字",
+     "x": 122,
+     "y": 19,
+     "w": 70,
+     "h": 7,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 10,
+      "color": "#30486d",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "text": "制单人 / 日期"
+    },
+    {
+     "id": "n14",
+     "type": "pageNumber",
+     "band": "pageFooter",
+     "name": "页脚与页码",
+     "x": 18,
+     "y": 0,
+     "w": 174,
+     "h": 9,
+     "hidden": false,
+     "locked": false,
+     "group": "",
+     "style": {
+      "font": "sans",
+      "size": 7,
+      "color": "#788496",
+      "bold": false,
+      "italic": false,
+      "align": "left",
+      "lineHeight": 1.4,
+      "letterSpace": 0
+     },
+     "text": "远山贸易 · 业务往来核对",
+     "pattern": "第 {page} / {pages} 页"
+    }
+   ]
+  },
+  "versions": [
+   {
+    "v": 1,
+    "time": "示例初始版本",
+    "note": "标准示例模板",
+    "doc": {
+     "schema": "studio-uiux-2.6",
+     "name": "客户往来对账单",
+     "kind": "statement",
+     "datasetId": "ledger",
+     "page": {
+      "preset": "A4",
+      "width": 210,
+      "height": 297,
+      "orientation": "portrait",
+      "margins": {
+       "top": 14,
+       "bottom": 14,
+       "left": 18,
+       "right": 18
+      },
+      "mode": "full",
+      "offsetX": 0,
+      "offsetY": 0,
+      "background": "",
+      "opacity": 0.2
+     },
+     "bands": {
+      "pageHeader": 33,
+      "reportHeader": 62,
+      "reportFooter": 29,
+      "pageFooter": 10
+     },
+     "parameters": [
+      {
+       "id": "from",
+       "label": "开始日期",
+       "type": "date",
+       "required": false,
+       "value": ""
+      },
+      {
+       "id": "to",
+       "label": "结束日期",
+       "type": "date",
+       "required": false,
+       "value": ""
+      },
+      {
+       "id": "keyword",
+       "label": "搜索摘要",
+       "type": "string",
+       "required": false,
+       "value": ""
+      },
+      {
+       "id": "category",
+       "label": "业务类别",
+       "type": "select",
+       "required": false,
+       "value": ""
+      }
+     ],
+     "nodes": [
+      {
+       "id": "n1",
+       "type": "image",
+       "band": "pageHeader",
+       "name": "企业标识",
+       "x": 18,
+       "y": 7,
+       "w": 72,
+       "h": 12,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 10,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "image": ""
+      },
+      {
+       "id": "n2",
+       "type": "text",
+       "band": "pageHeader",
+       "name": "报表标题",
+       "x": 110,
+       "y": 3,
+       "w": 82,
+       "h": 13,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 22,
+        "color": "#30486d",
+        "bold": true,
+        "italic": false,
+        "align": "right",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "text": "客户往来对账单"
+      },
+      {
+       "id": "n3",
+       "type": "text",
+       "band": "pageHeader",
+       "name": "英文副标题",
+       "x": 110,
+       "y": 18,
+       "w": 82,
+       "h": 5,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 7.8,
+        "color": "#97a6be",
+        "bold": false,
+        "italic": false,
+        "align": "right",
+        "lineHeight": 1.4,
+        "letterSpace": 0.5
+       },
+       "text": "CUSTOMER STATEMENT"
+      },
+      {
+       "id": "n4",
+       "type": "line",
+       "band": "pageHeader",
+       "name": "页眉分隔线",
+       "x": 18,
+       "y": 31,
+       "w": 174,
+       "h": 0.3,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 10,
+        "color": "#adc0df",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       }
+      },
+      {
+       "id": "n5",
+       "type": "field",
+       "band": "reportHeader",
+       "name": "客户名称",
+       "x": 18,
+       "y": 5,
+       "w": 104,
+       "h": 13,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 11.5,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "field": "customer",
+       "scope": "meta",
+       "label": "客户名称",
+       "format": "text"
+      },
+      {
+       "id": "n6",
+       "type": "field",
+       "band": "reportHeader",
+       "name": "单据编号",
+       "x": 132,
+       "y": 5,
+       "w": 60,
+       "h": 13,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 10,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "field": "statement",
+       "scope": "meta",
+       "label": "单据编号",
+       "format": "text"
+      },
+      {
+       "id": "n7",
+       "type": "field",
+       "band": "reportHeader",
+       "name": "业务期间",
+       "x": 18,
+       "y": 22,
+       "w": 104,
+       "h": 11,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 9.5,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "field": "period",
+       "scope": "meta",
+       "label": "业务期间",
+       "format": "text"
+      },
+      {
+       "id": "n8",
+       "type": "field",
+       "band": "reportHeader",
+       "name": "结算币种",
+       "x": 132,
+       "y": 22,
+       "w": 60,
+       "h": 11,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 9.5,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "field": "currency",
+       "scope": "meta",
+       "label": "结算币种",
+       "format": "text"
+      },
+      {
+       "id": "n9",
+       "type": "summary",
+       "band": "reportHeader",
+       "name": "范围合计摘要",
+       "x": 18,
+       "y": 38,
+       "w": 174,
+       "h": 18,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 10,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       }
+      },
+      {
+       "id": "n10",
+       "type": "table",
+       "band": "detail",
+       "name": "动态明细表",
+       "x": 18,
+       "y": 0,
+       "w": 174,
+       "h": 80,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 8.5,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "rowsPerPage": 0,
+       "minRowHeight": 7,
+       "padding": 2,
+       "wrap": true,
+       "repeatHeader": true,
+       "striped": true,
+       "groupField": "",
+       "groupTotals": false,
+       "carry": true,
+       "subtotal": true,
+       "sortField": "",
+       "sortDirection": "asc",
+       "negativeRed": true,
+       "headerColor": "#edf1f9",
+       "columns": [
+        {
+         "field": "date",
+         "label": "记账日期",
+         "width": 23,
+         "align": "left",
+         "format": "auto"
+        },
+        {
+         "field": "ref",
+         "label": "单据编号",
+         "width": 34,
+         "align": "left",
+         "format": "auto"
+        },
+        {
+         "field": "desc",
+         "label": "业务摘要",
+         "width": 47,
+         "align": "left",
+         "format": "auto"
+        },
+        {
+         "field": "debit",
+         "label": "本期应收",
+         "width": 35,
+         "align": "right",
+         "format": "auto"
+        },
+        {
+         "field": "credit",
+         "label": "本期已收",
+         "width": 35,
+         "align": "right",
+         "format": "auto"
+        }
+       ]
+      },
+      {
+       "id": "n11",
+       "type": "text",
+       "band": "reportFooter",
+       "name": "单据说明",
+       "x": 18,
+       "y": 2,
+       "w": 174,
+       "h": 12,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 8,
+        "color": "#738198",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "text": "请核对以上业务明细，如有差异，请于收到本单后 5 个工作日内与我们联系。\n本单据为业务核对凭据，款项以实际到账及双方确认为准。"
+      },
+      {
+       "id": "n12",
+       "type": "signature",
+       "band": "reportFooter",
+       "name": "客户确认签章",
+       "x": 18,
+       "y": 19,
+       "w": 70,
+       "h": 7,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 10,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "text": "客户确认 / 签章"
+      },
+      {
+       "id": "n13",
+       "type": "signature",
+       "band": "reportFooter",
+       "name": "制单人签字",
+       "x": 122,
+       "y": 19,
+       "w": 70,
+       "h": 7,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 10,
+        "color": "#30486d",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "text": "制单人 / 日期"
+      },
+      {
+       "id": "n14",
+       "type": "pageNumber",
+       "band": "pageFooter",
+       "name": "页脚与页码",
+       "x": 18,
+       "y": 0,
+       "w": 174,
+       "h": 9,
+       "hidden": false,
+       "locked": false,
+       "group": "",
+       "style": {
+        "font": "sans",
+        "size": 7,
+        "color": "#788496",
+        "bold": false,
+        "italic": false,
+        "align": "left",
+        "lineHeight": 1.4,
+        "letterSpace": 0
+       },
+       "text": "远山贸易 · 业务往来核对",
+       "pattern": "第 {page} / {pages} 页"
+      }
+     ]
+    }
+   }
+  ],
+  "published": 1,
+  "updated": "示例基线",
+  "dirty": false
+ }
+}
