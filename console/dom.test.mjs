@@ -3462,7 +3462,8 @@ const cardButton=(card,label)=>[...card.querySelectorAll('button')].find(b=>(b.g
 const pick=(a,sel,value)=>{const e=libq(a,sel);e.value=value;e.dispatchEvent(new a.w.Event('change',{bubbles:true}));};
 const typeIn=(a,e,value)=>{e.value=value;e.dispatchEvent(new a.w.Event('input',{bubbles:true}));};
 const navButton=(a,label)=>libqa(a,'.catalog-sidebar .catalog-nav').find(b=>b.querySelector('span').textContent===label);
-const navCount=(a,label)=>Number(navButton(a,label).querySelector('b').textContent);
+// navCount is undefined while the sidebar is being re-rendered (the list refreshes after a conflict), so a wait on it retries instead of throwing.
+const navCount=(a,label)=>{const b=navButton(a,label);return b?Number(b.querySelector('b').textContent):undefined;};
 const dlg=a=>libq(a,'.overlay.open [role="dialog"]');
 const pressKey=(a,target,key,extra={})=>target.dispatchEvent(new a.w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...extra}));
 const dButton=(a,label)=>[...dlg(a).querySelectorAll('button')].find(b=>b.textContent.trim()===label);
