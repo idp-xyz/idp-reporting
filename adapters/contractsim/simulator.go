@@ -226,4 +226,8 @@ func sum(values []string, scale int) (string, error) {
 	return digits, nil
 }
 
+// IsSimulator says the adapter is a contract simulator: the production server refuses it unless its configuration allows simulators
+// explicitly (S05-A). An adapter of a real product does not have this method, or answers false.
+func (s *Simulator) IsSimulator() bool { return true }
+
 var _ r.Adapter = (*Simulator)(nil)

@@ -19,8 +19,15 @@ const (
 // included; wrap the API, not the console's static pages, as the demo does. The slot is given back when next returns, however it returns:
 // normally, with an error, with a panic, or when the client has gone (the handler sees its context cancelled and returns).
 func WithMaxInFlight(next http.Handler, n int) (http.Handler, error) {
+	h, _, e := WithMaxInFlightGauge(next, n)
+	return h, e
+}
+
+// WithMaxInFlightGauge is WithMaxInFlight that also returns the number of requests holding a slot at this moment, so that a host can show
+// (and a test prove) that every slot is given back once the server has drained.
+func WithMaxInFlightGauge(next http.Handler, n int) (http.Handler, func() int64, error) {
 	if next == nil || n < 0 || n > MaxMaxInFlight {
-		return nil, r.ErrInvalid
+		return nil, nil, r.ErrInvalid
 	}
 	if n == 0 {
 		n = DefaultMaxInFlight
@@ -44,5 +51,5 @@ func WithMaxInFlight(next http.Handler, n int) (http.Handler, error) {
 		}
 		defer running.Add(-1)
 		next.ServeHTTP(w, req)
-	}), nil
+	}), running.Load, nil
 }

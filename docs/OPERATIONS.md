@@ -5,6 +5,8 @@ artifacts, issue records (with the numbers and references the source product gav
 nothing since 004), the schema ledger and the profile row. Source product data never lives in it. This page is the operator's reference for the schema lifecycle and the roles; it is not a
 production admission (docs/s00/MIGRATION.md: that discussion follows S04).
 
+**Starting the server:** `reporting-server run -config FILE` (S05-A) is the production command; its configuration, secrets, endpoints, reload, shutdown, systemd unit, upgrade procedure and go-live checklist are in docs/DEPLOYMENT.md. Every place below that says "start the server" means that command (the demo is the contract-simulator fixture and is not a deployment).
+
 ## Schema lifecycle
 
 The schema is a sequence of embedded migrations, `storage/postgres/migrations/NNN_name.{up,down}.sql`:
@@ -111,7 +113,7 @@ superuser connections the destructive test resets need; a production store canno
 
 ## Workers and issue jobs
 
-A worker is a process that calls `Service.RunOne` in a loop (the demo runs one). Workers that share a store claim
+A worker is a process that calls `Service.RunOne` in a loop (the demo runs one; `reporting-server` runs `workers` of them, default 2, and stops them at a drain after the job in hand, docs/DEPLOYMENT.md "Shutdown"). Workers that share a store claim
 jobs from it by the database's clock, one lease at a time, and a claim is not filtered by what the worker can do:
 every worker sharing a store must therefore run with the same capabilities (the issuer, the document authority of
 each integration's adapter and the PDF renderer). A worker without one claims an issue job it cannot render and
@@ -238,7 +240,7 @@ a cancel holds is left for the next sweep, and it takes no advisory lock, so it 
 to wait on a migration. The grace (`--grace`, default 24 h, at most ten years) is a retention period: zero is read as
 the default by the service and refused by the command, and a negative or oversized value is refused, so that a
 slip can only keep data longer, never delete it sooner. The sweep refuses a store whose ledger is not at the binary's
-version and a role that lacks what it needs, before anything is changed. It is idempotent and returns counts only.
+version and a role that lacks what it needs, before anything is changed. It is idempotent and returns counts only. `reporting-server` has the same loop (`retention.sweep_interval`, off by default), but it connects as the application role, which never deletes, so there the sweep is refused and logged by its code: schedule `reporting-migrate sweep` (docs/DEPLOYMENT.md "The sweep").
 
 With an object store configured (S04-E, "Object storage" below) the artifact step also deletes, after each batch commits, the objects the deleted rows
 named, and a fourth step reconciles the bucket; the counts above gain `objects` and `orphans`.
@@ -601,7 +603,7 @@ gives the command that checks it, and gives the order of a restore (docs/S04F_SC
 4. Restore the bucket (or point the platform at the replica) so that its state is **not older than the database's**.
 5. `reporting-migrate status` (clean; apply `up` if steps are pending).
 6. `reporting-migrate verify-objects --deep --object-store-endpoint … --object-store-bucket …` (below). It must exit 0.
-7. Only then start the server. The workers claim the jobs whose leases have run out.
+7. Only then start the server (`reporting-server run`, docs/DEPLOYMENT.md; `/readyz` is 200 once the store and the bucket answer and the schema is right). The workers claim the jobs whose leases have run out.
 
 ### `verify-objects`
 
@@ -693,7 +695,7 @@ definition, not by who made it.
 ### Bounds
 
 - **Request bodies:** per route, 4 KiB, 64 KiB or 1 MiB, over which a request is 413 `REQUEST_TOO_LARGE` before it is parsed (docs/API.md "Limits").
-- **Requests in flight:** the demo's `-max-in-flight` (library: `httpapi.WithMaxInFlight`; default 128, 1..4096). Beyond it a request is 503 `OVERLOADED`
+- **Requests in flight:** the demo's `-max-in-flight` and the server's `max_in_flight` (library: `httpapi.WithMaxInFlight`; default 128, 1..4096). Beyond it a request is 503 `OVERLOADED`
   with `Retry-After: 1` and does no work. It is per process; a deployment behind several processes has that many times the bound. Choose it with the
   pool and the worker count in mind: a request in flight holds a connection only while its transaction runs, but a burst of admissions for one identity
   queues on the identity's lock holding one connection each.
@@ -790,8 +792,8 @@ A `Replace` that fails validation (a repeated `kid`, a short modulus, 17 keys, a
 changes nothing, so a rotation that fails half way leaves the previous configuration in force (`TestFailedReplaceLeavesThePreviousConfigurationInForce`): the caller must treat that error as "not rotated".
 An authentication that had already read the configuration completes under it, so the removal is effective at the next authentication, not at the instant of the call
 (`TestAnAuthenticationInFlightCompletesUnderTheOldConfiguration`). A token naming a `kid` that is not trusted is refused, and neither the error nor the HTTP answer names a key
-(`TestAnUntrustedKidIsRefusedWithoutNamingAKey`). `Replace` is a Go method; the repository ships no endpoint, signal handler or file watcher for it, so how the host reloads its configuration is the host's.
-The demo uses `DemoBearer`, not this verifier, so it has no issuer keys to log.
+(`TestAnUntrustedKidIsRefusedWithoutNamingAKey`). `Replace` is a Go method and the repository ships no endpoint or file watcher for it; the production server (S05-A) calls it on SIGHUP after re-reading `jwks_file` and `bindings_file`, logging the outcome by its code and the trusted `kid`s after a success (docs/DEPLOYMENT.md "Reload"; `TestReloadAppliesRotatedKeysAndBindingsAndKeepsTheOldOnesOnFailure`, `TestSIGHUPReloadsThroughTheCommand`, and a separate process in `internal/servertesthost`).
+The demo uses `DemoBearer`, not this verifier, so it has no issuer keys to log; `reporting-server` uses this verifier and logs the trusted `kid`s at start and after each reload.
 
 **Two different exposure windows, which must not be confused:**
 
@@ -886,7 +888,7 @@ This order is the platform's recommendation, not something a test establishes.
 ### Tested, and not
 
 Tested here: the ring and its rolling form, the issuer overlap, the failed `Replace`, the in-flight authentication, the two exposure windows' mechanics, the database passwords' effect on open and new connections (through the password-checking proxy above), the production opener's and the
-command's refusals, the object store's refusal of a key it does not accept. Not tested: a PostgreSQL that enforces passwords itself, the object store accepting two key pairs, a CA rotation (either), a two-role scheme, a reload mechanism for `Replace`, any age enforcement, the Typst pin update, the behaviour of a real IdP (docs/ACCESS_JWT.md: automatic discovery and emergency revocation wait for its contract).
+command's refusals, the object store's refusal of a key it does not accept. Not tested: a PostgreSQL that enforces passwords itself, the object store accepting two key pairs, a CA rotation (either), a two-role scheme, a real issuer's reload procedure (the server's SIGHUP reload is tested with a test issuer), any age enforcement, the Typst pin update, the behaviour of a real IdP (docs/ACCESS_JWT.md: automatic discovery and emergency revocation wait for its contract).
 
 ## Demo and tests
 
