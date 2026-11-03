@@ -69,6 +69,11 @@ func checkGroupRows(w http.ResponseWriter, req *http.Request, s *r.Service, p r.
 	if e = authorizeDocument(req, s, p, config, assets); e != nil {
 		return e
 	}
+	// The background a 2.x template names in its overprint profile, resolved as a 1.x one is (none in a variables-only print).
+	background, e := resolveDocumentBackground(p, config, assets)
+	if e != nil {
+		return e
+	}
 	// A 2.1 template draws images and may show the issue number: the check takes the images the caller owns and proves the layout for
 	// every number the product may assign.
 	var with doctemplates.Resolved
@@ -94,9 +99,9 @@ func checkGroupRows(w http.ResponseWriter, req *http.Request, s *r.Service, p r.
 			b := binds[gi]
 			result = &groupResult{err: b.refused}
 			if result.err == nil && resolved != nil {
-				result.err = resolved.CheckIssueWith(ctx, config, b.values, nil, b.table, with)
+				result.err = resolved.CheckIssueWith(ctx, config, b.values, background, b.table, with)
 			} else if result.err == nil {
-				result.err = checker.CheckIssue(ctx, config, b.values, nil, b.table)
+				result.err = checker.CheckIssue(ctx, config, b.values, background, b.table)
 			}
 			results[gi] = result
 		}

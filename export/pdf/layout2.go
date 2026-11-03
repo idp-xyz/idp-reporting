@@ -1,6 +1,10 @@
 package pdf
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"image/png"
 	"strconv"
 	"strings"
 	"unicode"
@@ -10,18 +14,13 @@ import (
 	r "idp.local/reporting/reporting"
 )
 
-// Schema 2.0 layout (ADR 0004, S03-J). A 2.0 document is a stack of bands inside the safe region
-// (x 10-200 mm, y 25-270 mm): the page header on every page, the document header under it on the
+// Schema 2.0 layout (ADR 0004, S03-J). A 2.0 document is a stack of bands inside the safe region of its page preset (A4: x 10-200 mm,
+// y 25-270 mm; doctemplates.Presets): the page header on every page, the document header under it on the
 // first page, the detail table in the space between, the page footer at the bottom of every page
 // and the document footer once, directly under the table's total row, kept whole. Go places every
 // glyph, rule and rectangle; Typst draws them. What does not fit is refused, never cut or moved.
 
 const (
-	// bandX is where every band starts: the left edge of the safe region, in millimetres.
-	bandX = 10.0
-	// safeTop and safeBottom are the safe region's vertical extent, in millimetres.
-	safeTop    = 25.0
-	safeBottom = 270.0
 	// fitEpsilon absorbs the rounding of sums of lengths in points when a band is compared with the
 	// space left on a page; it favours the fit by far less than anything a printer resolves.
 	fitEpsilon = 1e-6
@@ -47,24 +46,41 @@ type bandedLayout struct {
 	values map[string]string
 	c      coded
 	page   *page
+	// x0 is where every band starts, in millimetres: the left edge of the preset's safe region plus the overprint offset.
+	x0 float64
+	// variables is a variables-only print: what is not a variable is left out.
+	variables bool
 }
 
 // layOutBanded lays out a validated 2.0 document for the values bound by doctemplates.BindGroup and
 // the rows of that group: the pages with their texts, rules and rectangles in points. The table
 // paginates as in 1.3 (header on every page, carried-forward and carry-over rows, the total row,
 // exact sums) between the bands above and below it.
-func layOutBanded(d doctemplates.Document, values map[string]string, table *doctemplates.TableData, m *measurer, c coded) (*page, error) {
+func layOutBanded(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer, c coded) (*page, error) {
 	t := d.TableItem()
 	if t == nil || table == nil || len(table.Columns) != len(t.Columns) || len(table.Metric) != len(t.Columns) {
 		return nil, r.ErrInvalid
 	}
-	p := &page{Title: "Document preview", Fonts: m.families, Pages: []pageData{newPage(nil)},
-		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText, Fill: bannerFill}}
-	b := &bandedLayout{m: m, values: values, c: c, page: p}
+	pre, ok := d.PagePreset()
+	if !ok {
+		return nil, r.ErrInvalid
+	}
+	ox, oy, variables, ref := d.Overprint()
+	drawn, err := checkBackground2(pre, ref, variables, background)
+	if err != nil {
+		return nil, err
+	}
+	p := &page{Title: "Document preview", Fonts: m.families, Background: drawn, Pages: []pageData{newPage(nil)}, Banner: bannerFor(pre.Strip)}
+	if pre.ID != doctemplates.DefaultPreset.ID {
+		p.Page = &pageSize{Width: pre.Width, Height: pre.Height}
+	}
+	b := &bandedLayout{m: m, values: values, c: c, page: p, x0: pre.Left + ox, variables: variables}
+	// The overprint offset moves every element, the table and its pagination with them; the strip stays where it is.
+	safeTop, safeBottom := pre.Top+oy, pre.Bottom+oy
 	if d.Coded() {
 		p.Media = map[string][]byte{}
 	}
-	if _, err := m.width(bannerText, bannerSize, false); err != nil {
+	if _, err := m.width(bannerText, pre.Strip.BannerSize, false); err != nil {
 		return nil, err
 	}
 	height := func(band *doctemplates.Band) float64 {
@@ -76,7 +92,7 @@ func layOutBanded(d doctemplates.Document, values map[string]string, table *doct
 	ph, dh, df, pf := height(d.Bands.PageHeader), height(d.Bands.DocumentHeader), height(d.Bands.DocumentFooter), height(d.Bands.PageFooter)
 	// The detail band's room on each page: below the page header (and on the first page the
 	// document header) down to the page footer.
-	spec := tableSpec{size: float64(t.FontSize), full: true, left: (bandX + t.X) * mm, top: (safeTop + ph + dh) * mm, width: t.Width, band: doctemplates.BandDetail, element: t.ID}
+	spec := tableSpec{size: float64(t.FontSize), full: !variables, left: (b.x0 + t.X) * mm, top: (safeTop + ph + dh) * mm, width: t.Width, band: doctemplates.BandDetail, element: t.ID}
 	for _, c := range t.Columns {
 		spec.columns = append(spec.columns, specColumn{field: c.Field, width: c.Width, align: c.Align, label: c.Label})
 	}
@@ -146,6 +162,9 @@ func layOutBanded(d doctemplates.Document, values map[string]string, table *doct
 // lines as rules, rectangles as boxes. {page} and {pages} are filled in the page texts first.
 func (b *bandedLayout) place(pg *pageData, name string, band *doctemplates.Band, top float64, number, pages int) error {
 	for _, it := range band.Elements {
+		if b.variables && doctemplates.OmittedInVariables(it) {
+			continue
+		}
 		switch it.Type {
 		case doctemplates.TypeText:
 			var v string
@@ -194,13 +213,13 @@ func (b *bandedLayout) place(pg *pageData, name string, band *doctemplates.Band,
 				return err
 			}
 		case doctemplates.TypeLine:
-			pg.Rules = append(pg.Rules, rule{X0: (bandX + it.X1) * mm, Y0: top + it.Y1*mm, X1: (bandX + it.X2) * mm, Y1: top + it.Y2*mm, Stroke: it.Stroke})
+			pg.Rules = append(pg.Rules, rule{X0: (b.x0 + it.X1) * mm, Y0: top + it.Y1*mm, X1: (b.x0 + it.X2) * mm, Y1: top + it.Y2*mm, Stroke: it.Stroke})
 		case doctemplates.TypeRect:
 			fill := noFill
 			if luma, ok := doctemplates.FillLuma(it.Fill); ok {
 				fill = luma
 			}
-			pg.Boxes = append(pg.Boxes, frame{X: (bandX + it.X) * mm, Y: top + it.Y*mm, W: it.Width * mm, H: it.Height * mm, Stroke: it.Stroke, Fill: fill})
+			pg.Boxes = append(pg.Boxes, frame{X: (b.x0 + it.X) * mm, Y: top + it.Y*mm, W: it.Width * mm, H: it.Height * mm, Stroke: it.Stroke, Fill: fill})
 		}
 	}
 	return nil
@@ -216,7 +235,7 @@ func (b *bandedLayout) place(pg *pageData, name string, band *doctemplates.Band,
 func (b *bandedLayout) text(band string, it doctemplates.Item, v string) ([]glyph, error) {
 	place := doctemplates.Detail{Band: band, Element: it.ID}
 	size := float64(it.FontSize)
-	left, right := (bandX+it.X)*mm, (bandX+it.X+it.Width)*mm
+	left, right := (b.x0+it.X)*mm, (b.x0+it.X+it.Width)*mm
 	var lines []string
 	if it.Wrap {
 		// The line breaks and tabs a bound value may hold, as in table cells.
@@ -282,4 +301,27 @@ func (b *bandedLayout) text(band string, it doctemplates.Item, v string) ([]glyp
 		}
 	}
 	return out, nil
+}
+
+// checkBackground2 decides whether the page of a 2.x document is drawn on its background, as a 1.x document is: in full mode the
+// template's background must be given, the PNG it names (by digest) and of the page's aspect ratio; in a variables-only print or
+// without one none may be. It reports whether the background is drawn.
+func checkBackground2(pre doctemplates.Preset, ref *doctemplates.BackgroundRef, variables bool, background []byte) (bool, error) {
+	switch {
+	case len(background) > doctemplates.MaxBackgroundBytes:
+		return false, r.ErrBudget
+	case ref == nil && len(background) > 0, variables && len(background) > 0, ref != nil && !variables && len(background) == 0:
+		return false, r.ErrInvalid
+	case len(background) == 0:
+		return false, nil
+	}
+	sum := sha256.Sum256(background)
+	if hex.EncodeToString(sum[:]) != ref.SHA256 || !bytes.HasPrefix(background, pngSignature) {
+		return false, r.ErrIntegrity
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(background))
+	if err != nil || !doctemplates.BackgroundMatchesPreset(pre, cfg.Width, cfg.Height) {
+		return false, r.ErrInvalid
+	}
+	return true, nil
 }

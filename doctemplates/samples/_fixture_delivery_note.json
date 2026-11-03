@@ -1,0 +1,364 @@
+{
+ "kind": "_fixture_delivery_note",
+ "name": "送货单（测试夹具）",
+ "domain": "通用业务",
+ "flow": "送货",
+ "description": "S06-B 第一部分的测试夹具：A4 送货单，客户与地址分组，明细表带合计。第二部分以转换出的样例取代它。",
+ "fields": [
+  {
+   "id": "customer",
+   "label": "客户",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "address",
+   "label": "地址",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "order_no",
+   "label": "单号",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "item",
+   "label": "品名",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "quantity",
+   "label": "数量",
+   "type": "integer",
+   "scope": "row",
+   "metric": true
+  },
+  {
+   "id": "unit_price",
+   "label": "单价",
+   "type": "decimal",
+   "scope": "row",
+   "scale": 2
+  },
+  {
+   "id": "amount",
+   "label": "金额",
+   "type": "decimal",
+   "scope": "row",
+   "metric": true,
+   "scale": 2
+  }
+ ],
+ "rows": [
+  {
+   "customer": "华东贸易有限公司",
+   "address": "上海市浦东新区张江路 88 号",
+   "order_no": "DN202611020001",
+   "item": "铝合金型材 6063",
+   "quantity": "12",
+   "unit_price": "85.50",
+   "amount": "1026.00"
+  },
+  {
+   "customer": "华东贸易有限公司",
+   "address": "上海市浦东新区张江路 88 号",
+   "order_no": "DN202611020001",
+   "item": "不锈钢螺栓 M8",
+   "quantity": "300",
+   "unit_price": "0.45",
+   "amount": "135.00"
+  },
+  {
+   "customer": "华东贸易有限公司",
+   "address": "上海市浦东新区张江路 88 号",
+   "order_no": "DN202611020001",
+   "item": "橡胶密封圈 Φ40",
+   "quantity": "150",
+   "unit_price": "1.20",
+   "amount": "180.00"
+  },
+  {
+   "customer": "华东贸易有限公司",
+   "address": "上海市浦东新区张江路 88 号",
+   "order_no": "DN202611020001",
+   "item": "包装木箱 60x40x40",
+   "quantity": "6",
+   "unit_price": "32.00",
+   "amount": "192.00"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "group": {
+   "fields": [
+    "customer",
+    "address"
+   ]
+  },
+  "bands": {
+   "page_header": {
+    "height": 16,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "text",
+      "source": "literal",
+      "text": "送货单 Delivery note",
+      "field": "",
+      "wrap": false,
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 8,
+      "font_size": 14,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "page",
+      "text": "第 {page} / {pages} 页",
+      "field": "",
+      "wrap": false,
+      "x": 130,
+      "y": 0,
+      "width": 60,
+      "height": 7,
+      "font_size": 10,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e3",
+      "type": "line",
+      "x1": 0,
+      "y1": 14,
+      "x2": 190,
+      "y2": 14,
+      "stroke": 0.5
+     }
+    ]
+   },
+   "document_header": {
+    "height": 28,
+    "elements": [
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "literal",
+      "text": "客户：",
+      "field": "",
+      "wrap": false,
+      "x": 0,
+      "y": 2,
+      "width": 20,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e5",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "customer",
+      "wrap": false,
+      "x": 20,
+      "y": 2,
+      "width": 90,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e6",
+      "type": "text",
+      "source": "literal",
+      "text": "地址：",
+      "field": "",
+      "wrap": false,
+      "x": 0,
+      "y": 10,
+      "width": 20,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "address",
+      "wrap": false,
+      "x": 20,
+      "y": 10,
+      "width": 100,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "literal",
+      "text": "单号：",
+      "field": "",
+      "wrap": false,
+      "x": 0,
+      "y": 18,
+      "width": 20,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "order_no",
+      "wrap": false,
+      "x": 20,
+      "y": 18,
+      "width": 60,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e10",
+      "type": "barcode",
+      "source": "field",
+      "text": "",
+      "field": "order_no",
+      "x": 120,
+      "y": 2,
+      "width": 70,
+      "height": 14,
+      "symbology": "code128",
+      "human_readable": false
+     }
+    ]
+   },
+   "detail": {
+    "elements": [
+     {
+      "id": "e11",
+      "type": "table",
+      "x": 0,
+      "width": 190,
+      "font_size": 9,
+      "columns": [
+       {
+        "field": "item",
+        "width": 80,
+        "label": "品名"
+       },
+       {
+        "field": "quantity",
+        "width": 30,
+        "align": "right",
+        "label": "数量"
+       },
+       {
+        "field": "unit_price",
+        "width": 40,
+        "align": "right",
+        "label": "单价"
+       },
+       {
+        "field": "amount",
+        "width": 40,
+        "align": "right",
+        "label": "金额"
+       }
+      ]
+     }
+    ]
+   },
+   "document_footer": {
+    "height": 14,
+    "elements": [
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "literal",
+      "text": "合计金额：",
+      "field": "",
+      "wrap": false,
+      "x": 100,
+      "y": 3,
+      "width": 40,
+      "height": 7,
+      "font_size": 10,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "group_sum",
+      "text": "",
+      "field": "amount",
+      "wrap": false,
+      "x": 140,
+      "y": 3,
+      "width": 50,
+      "height": 7,
+      "font_size": 10,
+      "align": "right",
+      "bold": true
+     }
+    ]
+   },
+   "page_footer": {
+    "height": 10,
+    "elements": [
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "literal",
+      "text": "客户签收：",
+      "field": "",
+      "wrap": false,
+      "x": 0,
+      "y": 2,
+      "width": 60,
+      "height": 6,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "line",
+      "x1": 30,
+      "y1": 8,
+      "x2": 90,
+      "y2": 8,
+      "stroke": 0.25
+     }
+    ]
+   }
+  }
+ }
+}

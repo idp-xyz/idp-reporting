@@ -36,6 +36,8 @@ import (
 type evidenceExtras struct {
 	Number string
 	Images map[string][]byte
+	// Background is the PNG a 2.x profile draws under the page (S06-B).
+	Background []byte
 }
 
 func (e evidenceExtras) mode() numbering {

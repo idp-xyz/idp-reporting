@@ -182,6 +182,11 @@ Schema 2.1 (docs/API.md, ADR 0005) adds a third-party library to the formal rend
   deletion, as for backgrounds, and no new flag. A directory that held only backgrounds gains the subdirectory when the binary starts. The directory is
   per identity, up to 16 images per dataset and, as the shared store, 8 MiB per identity; images are content of the templates that name them, so back
   up the directory with the template directory. The service draws a probe page with every upload when it has the renderer.
+- **Templates per identity (S06-B).** An identity keeps at most **64** private document templates (16 until S06-B, so that the 37 samples can be copied; `doctemplates.MaxTemplates`);
+  the layouts, dashboards and images keep the 16 they had. A save or a sample copy beyond it is 413 `BUDGET_EXCEEDED`. The cap is the private store's and is not one of
+  the platform's quotas (those bound jobs and stored results). The file of an identity is still bounded by the store's 8 MiB, which a full 64 templates of many large versions can
+  reach before the count does: that too is 413. A store is never opened with a lower cap than it was written with (the file would read as corrupt), so the cap only rises.
+  The per-template catalogue metadata (favourite, archive, collections, last opened) lives in the same file and is backed up with it; `last_opened` is written on each read of a version.
 - The PDF checker (`scripts/check_pdf_export.py`, CI's pdf job) decodes every code with zxing-cpp 3.1.1 (Apache-2.0), pinned with its hash in
   `scripts/requirements-pdfcheck.txt` (the wheel for CPython 3.12 on x86-64 Linux; no other package is needed). A host that runs the checker
   needs it: `pip install --require-hashes --only-binary :all: --no-deps -r scripts/requirements-pdfcheck.txt`.

@@ -67,15 +67,25 @@ func WithDocumentAssets(fallback http.Handler, s *r.Service, auth Authenticate, 
 	return secured(mux), nil
 }
 
+// resolveDocumentBackground returns the bytes of the background a template names, for the caller and the template's binding (1.x names
+// it in the document, 2.x in page.print). A variables-only print draws none, but the template's reference is still authorized.
 func resolveDocumentBackground(p r.Principal, d doctemplates.Document, assets *doctemplates.Assets) ([]byte, error) {
-	if d.Background == nil {
+	ref := d.BackgroundRefOf()
+	if ref == nil {
 		return nil, nil
 	}
 	if assets == nil {
 		// A template naming a background on a deployment without a background store.
 		return nil, r.ErrUnsupported
 	}
-	return assets.Resolve(p.Identity, d.Binding, *d.Background)
+	background, e := assets.Resolve(p.Identity, d.Binding, *ref)
+	if e != nil {
+		return nil, e
+	}
+	if _, _, variables, _ := d.Overprint(); variables {
+		return nil, nil
+	}
+	return background, nil
 }
 
 // resolveDocumentImages returns the bytes of each image element of a 2.1 template by element id, for the caller and the template's

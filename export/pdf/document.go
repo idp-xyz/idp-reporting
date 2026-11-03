@@ -34,23 +34,58 @@ const (
 	ascent = 1.16
 	// fitMargin is room kept free at the end of a box: a value must be this much narrower.
 	fitMargin = 2.0
-	// The permanent banner, in millimetres and points.
+	// The permanent banner's text.
 	bannerText = "PREVIEW - NOT AN ISSUED DOCUMENT"
-	bannerX    = 10.0
-	bannerY    = 10.0
-	bannerW    = 190.0
-	bannerH    = 8.0
-	bannerSize = 10.0
-	// stampSize is the size of the issue stamp, which takes the banner's strip and left edge at
-	// 8 pt where the preview banner is 10 pt. At this size every stamp the contract allows fits
-	// the strip (a 32-character number of the widest glyphs ValidIssueNumber accepts, a record
-	// id of the widest hex digit and the widest time: TestTypstIssuesTheWidestLegalStamp), so
-	// that an issue never fails on its layout after the product reserved the number. The
-	// baseline is the strip's top plus ascent font sizes, as for any text.
-	stampSize = 8.0
+	// stampLead is the distance between the two lines of a stamp that a narrow strip breaks, in font sizes.
+	stampLead = 1.25
 	// The message of the template's width assertion, which fails a render in Typst.
 	widerThanMeasured = "reporting: a glyph is wider than measured"
 )
+
+// The A4 strip, in millimetres and points, from the preset table (doctemplates.Presets, the one truth about a page): the permanent
+// banner at bannerSize, and the issue stamp, which takes the strip and left edge at stampSize (8 pt, where the preview banner is
+// 10 pt). At this size every stamp the contract allows fits the strip (a 32-character number of the widest glyphs
+// ValidIssueNumber accepts, a record id of the widest hex digit and the widest time: TestTypstIssuesTheWidestLegalStamp), so that an
+// issue never fails on its layout after the product reserved the number. The baseline is the strip's top plus ascent font sizes,
+// as for any text. Another preset has its own strip (bannerFor, stampLines), proved the same way.
+var (
+	bannerX    = doctemplates.DefaultPreset.Strip.X
+	bannerY    = doctemplates.DefaultPreset.Strip.Y
+	bannerW    = doctemplates.DefaultPreset.Strip.Width
+	bannerH    = doctemplates.DefaultPreset.Strip.Height
+	bannerSize = doctemplates.DefaultPreset.Strip.BannerSize
+	stampSize  = doctemplates.DefaultPreset.Strip.StampSize
+)
+
+// bannerFor is the preview banner in a preset's strip.
+func bannerFor(s doctemplates.Strip) banner {
+	return banner{Left: s.X * mm, Top: s.Y * mm, Baseline: s.Y*mm + ascent*s.BannerSize, Width: s.Width * mm, Height: s.Height * mm, Size: s.BannerSize, Text: bannerText, Fill: bannerFill}
+}
+
+// stampLines breaks a stamp for a strip of the given number of lines: one line is the stamp; two break after the first " - ", so
+// that the lines read in order, joined by a space, are the stamp ("ISSUED No. 7 -" and "2026-10-28T06:12:03Z - <id>"). A stamp
+// without that separator stays on one line.
+func stampLines(stamp string, lines int) []string {
+	if lines >= 2 {
+		if i := strings.Index(stamp, " - "); i >= 0 {
+			return []string{stamp[:i+2], stamp[i+3:]}
+		}
+	}
+	return []string{stamp}
+}
+
+// pageSize is the size of a page that is not A4 portrait, in millimetres; A4 portrait leaves it out of data.json, which
+// is then what it has always been.
+type pageSize struct {
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+// bannerLine is a further line of a stamp: its text and baseline (points), at the banner's left edge and size.
+type bannerLine struct {
+	Text     string  `json:"text"`
+	Baseline float64 `json:"baseline"`
+}
 
 // glyph is one piece of text placed at the x the plain advances of the fonts give it, as pdfme
 // placed text: one grapheme cluster of a box value, or one line of a table cell; Typst checks
@@ -117,6 +152,8 @@ type banner struct {
 	Size     float64 `json:"size"`
 	Text     string  `json:"text"`
 	Fill     string  `json:"fill"` // the text colour: the preview's red or the issue stamp's text colour
+	// Extra are the lines after the first of a stamp in a narrow strip (S06-B); a stamp of one line has none.
+	Extra []bannerLine `json:"extra,omitempty"`
 }
 
 const (
@@ -130,6 +167,7 @@ type page struct {
 	Background  bool       `json:"background"` // drawn on every page
 	Pages       []pageData `json:"pages"`
 	Banner      banner     `json:"banner"`                 // on every page
+	Page        *pageSize  `json:"page,omitempty"`         // the page, when it is not A4 portrait
 	HeaderLines int        `json:"header_lines,omitempty"` // the table header's height in lines, for the checker
 	// Footer is where a 2.0 document's footer band was put, for the tests that record what the checker
 	// verifies; it is not part of data.json.
@@ -244,16 +282,25 @@ func (w *Writer) issuePageWith(d doctemplates.Document, values map[string]string
 	if err != nil {
 		return nil, err
 	}
-	width, err := m.width(stamp, stampSize, false)
-	if err != nil {
-		return nil, err
-	}
-	if width > bannerW*mm+0.05 {
-		return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
+	pre, _ := d.PagePreset()
+	strip := pre.Strip
+	lines := stampLines(stamp, strip.StampLines)
+	for k, line := range lines {
+		width, err := m.width(line, strip.StampSize, false)
+		if err != nil {
+			return nil, err
+		}
+		if width > strip.Width*mm+0.05 {
+			return nil, fmt.Errorf("pdf: the issue stamp does not fit its strip: %w", r.ErrUnsupported)
+		}
+		if k == 0 {
+			continue
+		}
+		p.Banner.Extra = append(p.Banner.Extra, bannerLine{Text: line, Baseline: strip.Y*mm + ascent*strip.StampSize + float64(k)*stampLead*strip.StampSize})
 	}
 	p.Title = "Issued document"
-	p.Banner.Text, p.Banner.Fill = stamp, stampFill
-	p.Banner.Size, p.Banner.Baseline = stampSize, bannerY*mm+ascent*stampSize
+	p.Banner.Text, p.Banner.Fill = lines[0], stampFill
+	p.Banner.Size, p.Banner.Baseline = strip.StampSize, strip.Y*mm+ascent*strip.StampSize
 	return p, nil
 }
 
@@ -274,7 +321,11 @@ func issueLayoutWith(d doctemplates.Document, values map[string]string, backgrou
 			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Element: e.ID}, "pdf: a value of an issued document holds the preview banner text")
 		}
 	}
+	_, _, variables, _ := d.Overprint()
 	for _, bi := range d.Items() {
+		if variables && doctemplates.OmittedInVariables(bi.Item) {
+			continue // a variables-only print leaves it out, as 1.x leaves out its literals
+		}
 		if (bi.Item.Type == doctemplates.TypeText || bi.Item.Type == doctemplates.TypeBarcode || bi.Item.Type == doctemplates.TypeQRCode) && strings.Contains(values[bi.Item.ID], bannerText) {
 			return nil, refuse(doctemplates.ReasonNotCovered, doctemplates.Detail{Band: bi.Band, Element: bi.Item.ID}, "pdf: a value of an issued document holds the preview banner text")
 		}
@@ -389,12 +440,9 @@ func layOutWith(d doctemplates.Document, values map[string]string, background []
 	if err := doctemplates.Validate(d); err != nil {
 		return nil, err
 	}
-	// A 2.x document is laid out by bands and has no background (layout2.go).
+	// A 2.x document is laid out by bands (layout2.go); its page is a preset and its background, if any, that of its profile.
 	if d.Banded() {
-		if len(background) > 0 {
-			return nil, r.ErrInvalid
-		}
-		return layOutBanded(d, values, table, m, c)
+		return layOutBanded(d, values, background, table, m, c)
 	}
 	profile := doctemplates.PrintProfile{Mode: "full"}
 	if d.Print != nil {
@@ -414,7 +462,7 @@ func layOutWith(d doctemplates.Document, values map[string]string, background []
 		}
 	}
 	p := &page{Title: "Document preview", Fonts: m.families, Background: len(background) > 0, Pages: []pageData{newPage(nil)},
-		Banner: banner{Left: bannerX * mm, Top: bannerY * mm, Baseline: bannerY*mm + ascent*bannerSize, Width: bannerW * mm, Height: bannerH * mm, Size: bannerSize, Text: bannerText, Fill: bannerFill}}
+		Banner: bannerFor(doctemplates.DefaultPreset.Strip)}
 	first := &p.Pages[0]
 	if _, err := m.width(bannerText, bannerSize, false); err != nil {
 		return nil, err

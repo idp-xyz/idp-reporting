@@ -97,7 +97,7 @@ func TestBackgroundPNGNormalizationAndBudgets(t *testing.T) {
 	defer assets.Close()
 	owner := r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}
 	binding := doctemplates.Binding{Integration: "finance", Dataset: r.Ref{ID: "d", Version: "v1"}}
-	for _, data := range [][]byte{[]byte("%PDF-1.7"), samplePNG(t, 209, 297), samplePNG(t, 210, 2980), samplePNG(t, 300, 300), make([]byte, doctemplates.MaxBackgroundBytes+1), samplePNG(t, 210, 297)[:40]} {
+	for _, data := range [][]byte{[]byte("%PDF-1.7"), samplePNG(t, 209, 297), samplePNG(t, 210, 2980), samplePNG(t, 300, 350), make([]byte, doctemplates.MaxBackgroundBytes+1), samplePNG(t, 210, 297)[:40]} {
 		if _, e := assets.Put(t.Context(), owner, binding, data); e == nil {
 			t.Fatal("accepted invalid image")
 		}

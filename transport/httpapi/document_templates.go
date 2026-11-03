@@ -6,12 +6,18 @@ import (
 	r "idp.local/reporting/reporting"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // WithDocumentTemplates mounts owner-private template metadata, independently of the optional PDF runtime.
 func WithDocumentTemplates(fallback http.Handler, service *r.Service, authenticate Authenticate, store *doctemplates.Store, renderer DocumentRenderer, assets *doctemplates.Assets) (http.Handler, error) {
 	if fallback == nil || service == nil || authenticate == nil || store == nil {
 		return nil, r.ErrInvalid
+	}
+	// The sample pack is embedded; a pack that does not load is a defect of the build and stops the mount.
+	pack, e := doctemplates.Samples()
+	if e != nil {
+		return nil, e
 	}
 	authorize := func(req *http.Request, p r.Principal, d doctemplates.Document) error {
 		return authorizeDocument(req, service, p, d, assets)
@@ -25,7 +31,7 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 	mountPrivateDocuments(mux, base, authenticate, store, authorize, func(req *http.Request, p r.Principal, d doctemplates.Document) error {
 		_, e := describeBinding(req, p, d.Binding)
 		return e
-	}, func(d doctemplates.Document) any { return d.Binding })
+	}, func(d doctemplates.Document) any { return d.Binding }, true)
 	if renderer != nil {
 		mux.HandleFunc("POST "+base+"/{id}/previews", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			var input struct {
@@ -134,7 +140,19 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			return send(w, 202, v)
 		}))
 	}
-	return secured(mux), nil
+	// The sample pack (S06-B). A template id is 32 hex digits, so "samples" is never one; its routes are in a mux of their own that
+	// the paths under document-templates/samples go to, because the patterns of the templates' own ids ({id}/release...) and
+	// of the samples ({kind}) overlap on a request none of them is more specific for.
+	samples := http.NewServeMux()
+	mountSamples(samples, base, authenticate, pack, service, store, renderer, assets, authorize, describeBinding)
+	handler, samplesHandler := secured(mux), secured(samples)
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if path := req.URL.Path; path == base+"/samples" || strings.HasPrefix(path, base+"/samples/") {
+			samplesHandler.ServeHTTP(w, req)
+			return
+		}
+		handler.ServeHTTP(w, req)
+	}), nil
 }
 
 // resolveIssueGroup finds the group of a 2.0 template that an issue request names, by its key values or by a row it

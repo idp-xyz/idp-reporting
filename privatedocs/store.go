@@ -34,6 +34,9 @@ type ReleaseState struct {
 type record[T any] struct {
 	Versions []Entry[T]     `json:"versions"`
 	Releases []ReleaseEvent `json:"releases"`
+	// Catalog is the template centre's metadata of the record (S06-B); a record that never had any does not write the key, so
+	// a file written before it reads and writes as it did.
+	Catalog *Catalog `json:"catalog,omitempty"`
 }
 type database[T any] struct {
 	Schema  int         `json:"schema_version"`
@@ -45,12 +48,23 @@ type Store[T any] struct {
 	closed   bool
 	validate func(T) error
 	binding  func(T) string
+	cap      int // records per identity
 }
 
 const maxFile = 8 << 20
 
+// DefaultCap is the number of records one identity may keep in a store unless the store was opened with another (OpenCap).
+const DefaultCap = 16
+
 func Open[T any](dir string, validate func(T) error, binding func(T) string) (*Store[T], error) {
-	if dir == "" || validate == nil || binding == nil {
+	return OpenCap(dir, DefaultCap, validate, binding)
+}
+
+// OpenCap is Open for a store that keeps at most cap records (1 to 1024) per identity: the 16 of DefaultCap are the bound of the
+// layouts, the dashboards and the images; the document templates keep 64 since S06-B. A store opened with a lower cap than
+// the file of an identity holds refuses to read it (integrity), so a cap is only ever raised.
+func OpenCap[T any](dir string, cap int, validate func(T) error, binding func(T) string) (*Store[T], error) {
+	if dir == "" || validate == nil || binding == nil || cap < 1 || cap > 1024 {
 		return nil, r.ErrInvalid
 	}
 	abs, e := filepath.Abs(dir)
@@ -71,7 +85,7 @@ func Open[T any](dir string, validate func(T) error, binding func(T) string) (*S
 	if e = f.Close(); e != nil {
 		return nil, e
 	}
-	return &Store[T]{dir: abs, validate: validate, binding: binding}, nil
+	return &Store[T]{dir: abs, validate: validate, binding: binding, cap: cap}, nil
 }
 func (s *Store[T]) Close() error {
 	s.mu.Lock()
@@ -150,11 +164,14 @@ func (s *Store[T]) read(owner r.Identity) ([]record[T], error) {
 		}
 		records = db.Records
 	}
-	if len(records) == 0 || len(records) > 16 {
+	if len(records) == 0 || len(records) > s.cap {
 		return nil, r.ErrIntegrity
 	}
 	ids := map[string]bool{}
 	for _, item := range records {
+		if item.Catalog != nil && validCatalog(*item.Catalog) != nil {
+			return nil, r.ErrIntegrity
+		}
 		versions := item.Versions
 		if len(versions) == 0 || len(versions) > 20 || item.Releases == nil || len(item.Releases) > 64 {
 			return nil, r.ErrIntegrity
@@ -242,7 +259,7 @@ func (s *Store[T]) Save(owner r.Identity, id string, expected int, d T) (Entry[T
 		if expected != 0 {
 			return Entry[T]{}, r.ErrInvalid
 		}
-		if len(all) >= 16 {
+		if len(all) >= s.cap {
 			return Entry[T]{}, r.ErrBudget
 		}
 		var b [16]byte
