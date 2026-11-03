@@ -20,9 +20,13 @@ window.reportingIssueGroup=(()=>{
 })();
 window.createReportingDocuments=function(ports){
  const $=id=>document.getElementById(id),node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
- let result=null,query=null,config=null,saved=null,release=null,backgrounds=[],publishedOpen=false,past=[],future=[],scope='',checks=null,images=[],imageUrls=new Map(),imagesAsked=false;
+ let serverList=[],result=null,query=null,config=null,saved=null,release=null,backgrounds=[],publishedOpen=false,past=[],future=[],scope='',checks=null,images=[],imageUrls=new Map(),imagesAsked=false;
  const HISTORY=200;
  const keys=(v,k)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===k.slice().sort().join(',');
+ // The template's display name (S06-A): optional, one line of 1 to 80 characters with no space around it, in every schema; the same rule as doctemplates.validName. It is for people and is not part of the layout.
+ const nameOk=n=>typeof n==='string'&&n.length>0&&[...n].length<=80&&!/[\x00-\x1f\x7f]/.test(n)&&n.trim()===n;
+ const withName=(d,list)=>d&&Object.hasOwn(d,'name')?[...list,'name']:list;
+ const NAME_RULE='模板名称须为 1–80 个字符，单行，前后不留空白。';
  // Schema 2.0 and 2.1 are one family: bands over row groups; 2.1 adds barcodes, QR codes, images and the issue number (ADR 0005).
  const is2=d=>d?.schema_version==='2.0'||d?.schema_version==='2.1';
  const binding=()=>({integration_id:query.integration_id,dataset:{id:query.dataset.id,version:query.dataset.version}});
@@ -31,7 +35,8 @@ window.createReportingDocuments=function(ports){
   if(Array.isArray(d?.elements)&&d.elements.length<1)throw Error('至少保留一个文本框。');
   if(Array.isArray(d?.elements)&&d.elements.length>24)throw Error('最多24个文本框。');
   const expected=d?.schema_version==='1.3'?(d.background===undefined?['schema_version','kind','binding','elements','print','table']:['schema_version','kind','binding','elements','print','background','table']):d?.schema_version==='1.2'?['schema_version','kind','binding','elements','print','background']:d?.schema_version==='1.1'?['schema_version','kind','binding','elements','print']:['schema_version','kind','binding','elements'];
-  if(!keys(d,expected)||!['1.0','1.1','1.2','1.3'].includes(d.schema_version)||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||!Array.isArray(d.elements)||d.elements.length<1||d.elements.length>24||new TextEncoder().encode(JSON.stringify(d)).length>65536)throw Error('模板或当前数据集绑定无效。');
+  if(d&&Object.hasOwn(d,'name')&&!nameOk(d.name))throw Error(NAME_RULE);
+  if(!keys(d,withName(d,expected))||!['1.0','1.1','1.2','1.3'].includes(d.schema_version)||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||!Array.isArray(d.elements)||d.elements.length<1||d.elements.length>24||new TextEncoder().encode(JSON.stringify(d)).length>65536)throw Error('模板或当前数据集绑定无效。');
   const grid=n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n*10-Math.round(n*10))<1e-7,units=n=>Math.round(n*10);
   if(d.schema_version!=='1.0'&&(!keys(d.print,['mode','offset_x','offset_y'])||!['full','variables'].includes(d.print.mode)||!grid(d.print.offset_x)||!grid(d.print.offset_y)||Math.abs(d.print.offset_x)>10||Math.abs(d.print.offset_y)>10))throw Error('套打模式或偏移无效；偏移限正负10毫米、步长0.1毫米。');
   if((d.schema_version==='1.2'||(d.schema_version==='1.3'&&d.background!==undefined))&&!validBackground(d.background))throw Error('底稿引用无效。');
@@ -57,7 +62,7 @@ window.createReportingDocuments=function(ports){
   for(const e of d.elements)if(units(t.x)<units(e.x)+units(e.width)&&units(e.x)<units(t.x)+units(t.width)&&units(t.y)<units(e.y)+units(e.height)&&units(e.y)<units(t.y)+units(t.height))throw Error('明细表不能与文本框重叠。');
  }
 
- function canonical(d){if(is2(d))return canonical2(d);const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}},elements:d.elements.map(e=>({id:e.id,source:e.source,field:e.field,text:e.text,x:e.x,y:e.y,width:e.width,height:e.height,font_size:e.font_size,align:e.align}))};if(d.schema_version!=='1.0')value.print={mode:d.print.mode,offset_x:d.print.offset_x,offset_y:d.print.offset_y};if(d.schema_version==='1.2'||(d.schema_version==='1.3'&&d.background))value.background={id:d.background.id,sha256:d.background.sha256};if(d.schema_version==='1.3')value.table={x:d.table.x,y:d.table.y,width:d.table.width,height:d.table.height,font_size:d.table.font_size,columns:d.table.columns.map(c=>({field:c.field,width:c.width}))};return value;}
+ function canonical(d){if(is2(d))return canonical2(d);const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}},elements:d.elements.map(e=>({id:e.id,source:e.source,field:e.field,text:e.text,x:e.x,y:e.y,width:e.width,height:e.height,font_size:e.font_size,align:e.align}))};if(d.schema_version!=='1.0')value.print={mode:d.print.mode,offset_x:d.print.offset_x,offset_y:d.print.offset_y};if(d.schema_version==='1.2'||(d.schema_version==='1.3'&&d.background))value.background={id:d.background.id,sha256:d.background.sha256};if(d.schema_version==='1.3')value.table={x:d.table.x,y:d.table.y,width:d.table.width,height:d.table.height,font_size:d.table.font_size,columns:d.table.columns.map(c=>({field:c.field,width:c.width}))};if(d.name!==undefined)value.name=d.name;return value;}
  const bandLabels=window.reportingRefusal.bandLabels;
  // ---- schema 2.0 (S03-J): bands over row groups. The same closed form as the server's validator (doctemplates.validateBanded) and the same shared cases. ----
  const bandNames=['page_header','document_header','detail','document_footer','page_footer'];
@@ -82,7 +87,8 @@ window.createReportingDocuments=function(ports){
  const minDetail=size=>Math.floor(((400+146*size)*4*254+7199)/7200);
  function validate2(d){
   const fail=m=>{throw Error(m);};
-  if(!keys(d,d.group===undefined?['schema_version','kind','binding','bands']:['schema_version','kind','binding','group','bands'])||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||new TextEncoder().encode(JSON.stringify(d)).length>65536)fail('模板或当前数据集绑定无效，或超过64KiB。');
+  if(Object.hasOwn(d,'name')&&!nameOk(d.name))fail(NAME_RULE);
+  if(!keys(d,withName(d,d.group===undefined?['schema_version','kind','binding','bands']:['schema_version','kind','binding','group','bands']))||d.kind!=='document'||!keys(d.binding,['integration_id','dataset'])||!keys(d.binding.dataset,['id','version'])||d.binding.integration_id!==query.integration_id||d.binding.dataset.id!==query.dataset.id||d.binding.dataset.version!==query.dataset.version||new TextEncoder().encode(JSON.stringify(d)).length>65536)fail('模板或当前数据集绑定无效，或超过64KiB。');
   const columns=new Set(result.columns.map(c=>c.id)),metrics=new Set((query.metrics||[]).map(m=>m.id)),dimensions=new Set(query.dimensions||[]),coded21=d.schema_version==='2.1';
   if(d.group!==undefined){
    const f=d.group?.fields;
@@ -158,32 +164,37 @@ window.createReportingDocuments=function(ports){
   for(const name of bandNames){const band=d.bands[name];if(band===undefined)continue;bands[name]=name==='detail'?{elements:band.elements.map(item)}:{height:band.height,elements:band.elements.map(item)};}
   const value={schema_version:d.schema_version,kind:d.kind,binding:{integration_id:d.binding.integration_id,dataset:{id:d.binding.dataset.id,version:d.binding.dataset.version}}};
   if(d.group!==undefined)value.group={fields:[...d.group.fields]};
+  if(d.name!==undefined)value.name=d.name;
   value.bands=bands;return value;
  }
 
  const sameBinding=d=>d?.binding?.integration_id===query?.integration_id&&d.binding.dataset.id===query.dataset.id&&d.binding.dataset.version===query.dataset.version;
  const validBackground=b=>keys(b,['id','sha256'])&&typeof b.id==='string'&&/^[a-f0-9]{32}$/.test(b.id)&&typeof b.sha256==='string'&&/^[a-f0-9]{64}$/.test(b.sha256);
  const validID=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
- function resetRelease(){release=null;$('doc-release-status').textContent='请先读取发布状态。';$('doc-release-history').replaceChildren();}
+ function resetRelease(){release=null;$('doc-release-status').textContent='请先读取发布状态。';$('doc-release-history').replaceChildren();touch();}
  function serverEntry(v,id,version){if(!v||!validID(v.id)||!Number.isSafeInteger(v.version)||v.version<1||v.version>20||(id&&v.id!==id)||(version&&v.version!==version))throw Error('无法验证服务器模板版本。');validate(v.config);return v;}
  function savedID(){if(!saved||!sameBinding(saved.config))throw Error('请先保存或打开当前数据集的服务器模板。');return saved.id;}
  function cleanSaved(){const id=savedID();if(JSON.stringify(canonical(config))!==JSON.stringify(canonical(saved.config)))throw Error('请先保存当前修改，再发布或按保存版本预览。');return id;}
  function showRelease(v){
   if(!keys(v,['revision','published_version','history'])||!Number.isSafeInteger(v.revision)||v.revision<0||v.revision>64||!Number.isSafeInteger(v.published_version)||v.published_version<0||v.published_version>20||!Array.isArray(v.history)||v.history.length!==v.revision)throw Error('无法验证模板发布状态。');
   let published=0;for(const [i,e] of v.history.entries()){if(!keys(e,['revision','action','version','at'])||e.revision!==i+1||!['publish','withdraw'].includes(e.action)||!Number.isSafeInteger(e.version)||(e.action==='publish'?(e.version<1||e.version>20):e.version!==0)||typeof e.at!=='string'||!Number.isFinite(Date.parse(e.at)))throw Error('无法验证发布历史。');published=e.action==='publish'?e.version:0;}
-  if(published!==v.published_version)throw Error('发布历史与指针不一致。');release=v;$('doc-release-status').textContent='发布修订 '+v.revision+' · '+(v.published_version?'已发布版本 '+v.published_version:'当前未发布');$('doc-release-history').replaceChildren();for(const e of v.history)$('doc-release-history').append(node('li','修订 '+e.revision+' · '+(e.action==='publish'?'发布版本 '+e.version:'撤回')+' · '+e.at));
+  if(published!==v.published_version)throw Error('发布历史与指针不一致。');release=v;$('doc-release-status').textContent='发布修订 '+v.revision+' · '+(v.published_version?'已发布版本 '+v.published_version:'当前未发布');$('doc-release-history').replaceChildren();for(const e of v.history)$('doc-release-history').append(node('li','修订 '+e.revision+' · '+(e.action==='publish'?'发布版本 '+e.version:'撤回')+' · '+e.at));touch();
  }
  function saveServer(fresh){action(()=>{validate(config);const prior=!fresh&&saved&&sameBinding(saved.config)?saved:null,document=canonical(config);resetRelease();ports.exchange('/document-templates',{method:'POST',body:{id:prior?.id||'',expected_version:prior?.version||0,config:document}},v=>{serverEntry(v,prior?.id,(prior?.version||0)+1);if(JSON.stringify(canonical(v.config))!==JSON.stringify(document))throw Error('服务器保存内容不一致。');saved=v;publishedOpen=false;resetRelease();$('doc-server-status').textContent='已保存模板 '+v.id+' · 版本 '+v.version;},'模板保存');});}
  $('doc-server-save').addEventListener('click',()=>saveServer(false));$('doc-server-new').addEventListener('click',()=>saveServer(true));
- $('doc-server-list').addEventListener('click',()=>action(()=>ports.exchange('/document-templates',undefined,values=>{if(!Array.isArray(values)||values.length>16||!values.every(v=>validID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw Error('无法验证模板列表。');$('doc-server-listing').replaceChildren();for(const v of values){const o=node('option',v.id+' · 最新版本 '+v.version);o.value=v.id;o.dataset.version=String(v.version);$('doc-server-listing').append(o);}$('doc-server-version').value=String(values[0]?.version||1);$('doc-server-status').textContent='当前身份可访问 '+values.length+' 个模板。';},'模板列表')));
+ function listServer(then){action(()=>ports.exchange('/document-templates',undefined,values=>{if(!Array.isArray(values)||values.length>16||!values.every(v=>validID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw Error('无法验证模板列表。');$('doc-server-listing').replaceChildren();for(const v of values){const o=node('option',v.id+' · 最新版本 '+v.version);o.value=v.id;o.dataset.version=String(v.version);$('doc-server-listing').append(o);}$('doc-server-version').value=String(values[0]?.version||1);$('doc-server-status').textContent='当前身份可访问 '+values.length+' 个模板。';serverList=values;if(then)setTimeout(()=>then(values),0);},'模板列表'));}
+ $('doc-server-list').addEventListener('click',()=>listServer());
  $('doc-server-listing').addEventListener('change',()=>{$('doc-server-version').value=$('doc-server-listing').selectedOptions[0]?.dataset.version||'1';});
  // The console's button and the embed page (S03-N) open a server version the same way: through this one function and its checks.
  function openServer(id,version){action(()=>{if(!validID(id)||!Number.isSafeInteger(version)||version<1||version>20)throw Error('请选择有效模板版本。');resetRelease();ports.exchange('/document-templates/'+id+'?version='+version,undefined,v=>{serverEntry(v,id,version);replaceTemplate(v.config);saved=v;resetRelease();$('doc-server-status').textContent='正在编辑模板 '+id+' · 版本 '+version;},'模板打开');});}
  $('doc-server-open').addEventListener('click',()=>openServer($('doc-server-listing').value,Number($('doc-server-version').value)));
- $('doc-release-read').addEventListener('click',()=>action(()=>{const id=savedID();resetRelease();ports.exchange('/document-templates/'+id+'/release',undefined,showRelease,'模板发布状态');}));
- function changeRelease(name){action(()=>{const id=name==='publish'?cleanSaved():savedID();if(!release)throw Error('请先刷新发布状态，冲突或结果未确认时必须重新读取。');if(name==='withdraw'&&!release.published_version)throw Error('当前没有发布版本。');const expected=release.revision,version=name==='publish'?saved.version:0;resetRelease();ports.exchange('/document-templates/'+id+'/release',{method:'POST',body:{action:name,version,expected_revision:expected}},v=>{if(v.revision!==expected+1||v.published_version!==version)throw Error('意外发布修订，请刷新核对。');showRelease(v);},'模板发布变更');});}
+ function readRelease(then){action(()=>{const id=savedID();resetRelease();ports.exchange('/document-templates/'+id+'/release',undefined,v=>{showRelease(v);if(then)setTimeout(then,0);},'模板发布状态');});}
+ $('doc-release-read').addEventListener('click',()=>readRelease());
+ // pick: a saved version other than the one open in the editor (the versions dialog); the editor's own content then does not matter.
+ function changeRelease(name,pick){action(()=>{const other=name==='publish'&&pick&&pick!==saved?.version,id=name==='publish'&&!other?cleanSaved():savedID();if(!release)throw Error('请先刷新发布状态，冲突或结果未确认时必须重新读取。');if(name==='withdraw'&&!release.published_version)throw Error('当前没有发布版本。');const expected=release.revision,version=name==='publish'?(pick||saved.version):0;resetRelease();ports.exchange('/document-templates/'+id+'/release',{method:'POST',body:{action:name,version,expected_revision:expected}},v=>{if(v.revision!==expected+1||v.published_version!==version)throw Error('意外发布修订，请刷新核对。');showRelease(v);},'模板发布变更');});}
  $('doc-release-publish').addEventListener('click',()=>changeRelease('publish'));$('doc-release-withdraw').addEventListener('click',()=>changeRelease('withdraw'));
- $('doc-published-open').addEventListener('click',()=>action(()=>{const id=savedID();resetRelease();ports.exchange('/document-templates/'+id+'/published',undefined,v=>{serverEntry(v,id);replaceTemplate(v.config);saved=v;publishedOpen=true;resetRelease();$('doc-server-status').textContent='已打开发布模板 '+id+' · 版本 '+v.version;},'发布模板打开');}));
+  function openPublishedOf(id){action(()=>{if(!validID(id))throw Error('请选择有效模板。');resetRelease();ports.exchange('/document-templates/'+id+'/published',undefined,v=>{serverEntry(v,id);replaceTemplate(v.config);saved=v;publishedOpen=true;resetRelease();$('doc-server-status').textContent='已打开发布模板 '+id+' · 版本 '+v.version;},'发布模板打开');});}
+ $('doc-published-open').addEventListener('click',()=>action(()=>openPublishedOf(savedID())));
  // The number is the source product's (1..32 of A-Za-z0-9._-, starting with a letter or digit): a string, present only on a succeeded record.
  const validNumber=n=>typeof n==='string'&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(n);
  function issuance(){previews();if(!ports.issuance())throw Error('服务端未启用正式出具。');}
@@ -224,7 +235,8 @@ window.createReportingDocuments=function(ports){
  }
  $('doc-issues-refresh').addEventListener('click',()=>action(()=>ports.exchange('/issues?limit=50',undefined,showIssues,'出具记录')));
  function previews(){if(!ports.previews())throw Error('服务端未启用 PDF 渲染，无法生成预览。');}
- $('doc-saved-pdf').addEventListener('click',()=>action(()=>{previews();const id=cleanSaved(),row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');ports.download({version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1},'/document-templates/'+id+'/previews',refusalFor());}));
+  function previewSaved(version){previews();const id=version?savedID():cleanSaved(),row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');ports.download({version:version||saved.version,snapshot_id:ports.snapshot(),row_index:row-1},'/document-templates/'+id+'/previews',refusalFor());}
+ $('doc-saved-pdf').addEventListener('click',()=>action(()=>previewSaved()));
  function action(fn){try{if(!ports.active()||!result)throw Error('请先查询当前授权数据并等待操作结束。');fn();}catch(e){$('doc-status').textContent=e.message;}}
  // Every applied change passes here. An edit is one undo step (an unchanged result is none, a refused one never gets here); opening or resetting a template replaces it and clears the history.
  function install(d,label){validate(d);const next=canonical(d);if(label===undefined){past=[];future=[];conversion=[];canvas.reset();}else if(config&&JSON.stringify(next)!==JSON.stringify(config)){past.push({config,label});if(past.length>HISTORY)past.shift();future=[];}config=next;publishedOpen=false;showChecks(null);render();$('doc-status').textContent='模板已更新；配置不含业务数据。';}
@@ -238,11 +250,17 @@ window.createReportingDocuments=function(ports){
  function edit(d,label){try{if(!ports.active()||!result)throw Error('请先查询当前授权数据并等待操作结束。');apply(d,label);return {ok:true};}catch(e){return {ok:false,message:e.message};}}
  function test(d){try{validate(d);return '';}catch(e){return e.message;}}
  function syncPrint(){$('doc-background-status').textContent=config?.background?'当前底稿 '+config.background.id+' · SHA256 '+config.background.sha256:'当前模板无底稿。';const p=config?.print||{mode:'full',offset_x:0,offset_y:0};$('doc-print-mode').value=p.mode;$('doc-offset-x').value=String(p.offset_x);$('doc-offset-y').value=String(p.offset_y);$('doc-print-status').textContent=is2(config)?'模板 '+config.schema_version+' · 分带版面（无套打层与底稿，预览仍含PREVIEW标记）':'模板 '+(config?.schema_version||'—')+' · '+(p.mode==='variables'?'变量层对位预览（仍含PREVIEW标记）':'完整文本预览')+' · 偏移 '+p.offset_x+' / '+p.offset_y+' mm';}
- const canvas=window.createReportingCanvas({image:ref=>imageUrl(ref),columns:()=>result?result.columns:[],metrics:()=>new Set((query?.metrics||[]).map(m=>m.id)),minDetail,edit,test,columnMinimum:(font,i,band)=>band?8:i===0?Math.max(8,labelMinimum[font]||0):8,canUndo:()=>past.length>0,canRedo:()=>future.length>0,selected:()=>renderProps()});
+ // The studio shell (studio.js) is optional: without it the designer is the same functions with no studio around them. It is told after every change (update) and after every draw of the canvas (drawn).
+ let studio=null;
+ const touch=()=>{if(studio)studio.update();};
+ const titleText=()=>config?.name||(saved?'模板 '+saved.id.slice(0,8):'未命名模板');
+ const canvas=window.createReportingCanvas({title:titleText,drawn:()=>{if(studio)studio.drawn();},clipboard:op=>({copy:clipCopy,cut:clipCut,paste:clipPaste})[op](),image:ref=>imageUrl(ref),columns:()=>result?result.columns:[],metrics:()=>new Set((query?.metrics||[]).map(m=>m.id)),minDetail,edit,test,columnMinimum:(font,i,band)=>band?8:i===0?Math.max(8,labelMinimum[font]||0):8,canUndo:()=>past.length>0,canRedo:()=>future.length>0,selected:()=>{renderProps();painterTarget();touch();}});
  // The place a refused preview names (the template cannot change while a preview is being made: edits wait for the operation to end).
  const refusalFor=()=>refused;
- function refused(detail){if(!window.reportingRefusal.valid(detail)||!config)return;$('doc-status').textContent='预览指出的位置：'+window.reportingRefusal.text(detail,labelsOf())+'。';canvas.mark(detail);}
- function render(){syncPrint();canvas.mark(null);const target=$('doc-elements'),two=is2(config);target.replaceChildren();for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=two;$('doc2-panel').hidden=!two;renderConvert();if(!config){canvas.show(null);renderBanded();return;}
+ function refused(detail){if(!window.reportingRefusal.valid(detail)||!config)return;$('doc-status').textContent='预览指出的位置：'+window.reportingRefusal.text(detail,labelsOf())+'。';canvas.mark(detail);lastRefusal=detail;touch();}
+ function render(){lastRefusal=null;renderCore();touch();}
+ let lastRefusal=null;
+ function renderCore(){syncPrint();canvas.mark(null);const target=$('doc-elements'),two=is2(config);target.replaceChildren();for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print','st-elements-one'])$(id).hidden=two;for(const id of ['doc2-panel','st-insert-two','st-props-two','st-table-two'])$(id).hidden=!two;renderConvert();if(!config){canvas.show(null);renderBanded();return;}
   // Panels follow the template: 1.x inputs, or the 2.0 groups, bands and elements.
   if(is2(config)){$('doc-table-status').textContent=config.schema_version+' 分带模板：明细表 '+tableOf2(config).columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。';canvas.show(config);renderBanded();return;}
   for(const e of config.elements){const item=node('div');item.className='designer-row';item.append(node('span',e.id+' · '+e.source+' · '+(e.source==='literal'?e.text:e.field)));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=e[k];input.setAttribute('aria-label',e.id+' '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.elements.find(v=>v.id===e.id)[k]=Number(input.value);if(k!=='font_size'&&!Number.isInteger(Number(input.value))&&d.schema_version==='1.0'){d.schema_version='1.1';d.print={mode:'full',offset_x:0,offset_y:0};}apply(d,'修改 '+e.id+' '+k);}));label.append(input);item.append(label);}const remove=node('button','移除');remove.type='button';remove.addEventListener('click',()=>action(()=>apply({...config,elements:config.elements.filter(v=>v.id!==e.id)},'移除 '+e.id)));item.append(remove);target.append(item);}
@@ -321,29 +339,56 @@ window.createReportingDocuments=function(ports){
   for(const x of [0,100])for(let y=0;y*10+h*10<=H;y++){const a=[x*10,y*10,w*10,h*10];if(!texts.some(t=>a[0]<t[0]+t[2]&&t[0]<a[0]+a[2]&&a[1]<t[1]+t[3]&&t[1]<a[1]+a[3]))return {x,y};}
   throw Error('带内没有放得下新'+what+'的空位：请先调高该带，或移动其他元素。');
  }
+ // The band a studio insert goes to when no point is given: the band of the selected element, else the band last used, else the one the insert options name.
+ let lastBand='';
+ const fixedNames=()=>bandOrder.filter(n=>config&&config.bands&&config.bands[n]);
+ function currentBand(){
+  const sel=canvas.selection(),hit=sel.length?elementOf(config,sel[0]):null;
+  if(hit&&hit.band!=='detail')return hit.band;
+  if(lastBand&&config.bands[lastBand])return lastBand;
+  const picked=$('doc2-add-band').value;return config.bands[picked]?picked:(fixedNames()[0]||'');
+ }
+ // The fixed band at a page point (millimetres), if any; and the point in that band's own frame.
+ function bandAtPoint(at){const g=canvas.ops.geo(config),y=Math.round(at.y*10);return fixedNames().find(n=>y>=g[n].top&&y<g[n].top+g[n].h)||'';}
+ function relToBand(name,at){const top=canvas.ops.geo(config)[name].top/10;return {x:Math.max(0,Math.round((at.x-10)*10)/10),y:Math.max(0,Math.round((at.y-top)*10)/10)};}
+ // The free place nearest a wanted one (a drop point, a copy's old place): every whole-millimetre position in the band where a box of this size overlaps no other
+ // text, code or image, the wanted place itself first when it is free.
+ function nearestSpot(band,w,h,want,what='文本框'){
+  const H=tenths(band.height),boxes=band.elements.filter(e=>boxedType(e.type)).map(e=>{const [ew,eh]=extentOf(e);return [tenths(e.x),tenths(e.y),tenths(ew),tenths(eh)];});
+  const maxX=Math.floor(1900-w*10)/10,maxY=Math.floor((H-h*10))/10;
+  if(maxX<0||maxY<0)throw Error('带内没有放得下新'+what+'的空位：请先调高该带，或移动其他元素。');
+  const free=(x,y)=>{const a=[tenths(x),tenths(y),tenths(w),tenths(h)];return !boxes.some(t=>a[0]<t[0]+t[2]&&t[0]<a[0]+a[2]&&a[1]<t[1]+t[3]&&t[1]<a[1]+a[3]);};
+  const cx=Math.min(maxX,Math.max(0,want.x)),cy=Math.min(maxY,Math.max(0,want.y));
+  if(free(cx,cy))return {x:cx,y:cy};
+  let best=null;
+  for(let y=0;y<=maxY;y++)for(let x=0;x<=maxX;x++){if(!free(x,y))continue;const d=(x-cx)**2+(y-cy)**2;if(!best||d<best.d)best={x,y,d};}
+  if(!best)throw Error('带内没有放得下新'+what+'的空位：请先调高该带，或移动其他元素。');
+  return {x:best.x,y:best.y};
+ }
  const sourceOf={literal:'literal',field:'field',sum:'group_sum',page:'page'};
- function add2(kind){
+ function add2(kind,opts){
+  const o=opts||{};
   action(()=>{
-   only2();const name=$('doc2-add-band').value,d=clone(config),band=d.bands[name];if(!band)throw Error('请先添加并选择一个带。');
+   only2();const name=(o.at?bandAtPoint(o.at):'')||(o.studio||o.at?currentBand():$('doc2-add-band').value),d=clone(config),band=d.bands[name],rel=o.at?relToBand(name,o.at):null,spot=(w,h,what)=>rel?nearestSpot(band,w,h,rel,what):freeSpot(band,w,h,what);if(!band)throw Error('请先添加并选择一个带。');
    const id=freeId(d),H=tenths(band.height),metricIds=(query.metrics||[]).map(m=>m.id);let e;
-   if(kind==='line')e={id,type:'line',x1:0,y1:H/10,x2:190,y2:H/10,stroke:0.5};
-   else if(kind==='rect')e={id,type:'rect',x:0,y:0,width:60,height:Math.min(10,H/10),stroke:0.5,fill:'none'};
+   if(kind==='line')e=rel?{id,type:'line',x1:Math.min(130,rel.x),y1:Math.min(H/10,rel.y),x2:Math.min(130,rel.x)+60,y2:Math.min(H/10,rel.y),stroke:0.5}:{id,type:'line',x1:0,y1:H/10,x2:190,y2:H/10,stroke:0.5};
+   else if(kind==='rect'){const rh=Math.min(10,H/10);e={id,type:'rect',x:rel?Math.min(130,rel.x):0,y:rel?Math.min(H/10-rh,rel.y):0,width:60,height:rh,stroke:0.5,fill:'none'};}
    else if(kind==='barcode'||kind==='qrcode'){
-    const source=$('doc2-code-source').value,typed=$('doc2-text').value,chosen=$('doc2-field').value,w=kind==='qrcode'?24:80,h=kind==='qrcode'?24:18,spot=freeSpot(band,w,h,'元素');
-    const base={id,type:kind,source,text:source==='literal'?(typed||(kind==='barcode'?'INV-0001':'https://example.invalid/')):'',field:source==='field'?chosen:'',x:spot.x,y:spot.y};
+    const source=o.source||$('doc2-code-source').value,typed=o.text!==undefined?o.text:$('doc2-text').value,chosen=o.field||$('doc2-field').value,w=kind==='qrcode'?24:80,h=kind==='qrcode'?24:18,at=spot(w,h,'元素');
+    const base={id,type:kind,source,text:source==='literal'?(typed||(kind==='barcode'?'INV-0001':'https://example.invalid/')):'',field:source==='field'?chosen:'',x:at.x,y:at.y};
     e=kind==='qrcode'?{...base,size:w,ecc:'M'}:{...base,width:w,height:h,symbology:'code128',human_readable:false};
    }else if(kind==='image'){
     const pick=images.find(v=>v.id===$('doc2-image-listing').value);if(!pick)throw Error('请先上传或读取私有图片，并在列表中选择一张。');
-    const w=40,h=Math.min(H/10,Math.max(5,Math.round(w*pick.height/pick.width*10)/10)),spot=freeSpot(band,w,h,'元素');
-    e={id,type:'image',x:spot.x,y:spot.y,width:w,height:h,image:{id:pick.id,sha256:pick.sha256}};
+    const w=40,h=Math.min(H/10,Math.max(5,Math.round(w*pick.height/pick.width*10)/10)),at=spot(w,h,'元素');
+    e={id,type:'image',x:at.x,y:at.y,width:w,height:h,image:{id:pick.id,sha256:pick.sha256}};
    }else if(kind==='number'){
-    const size=H>=60?10:8,h=size===10?6:5,spot=freeSpot(band,60,h,'元素');
-    e={id,type:'text',source:'issue_number',text:'',field:'',wrap:false,x:spot.x,y:spot.y,width:60,height:h,font_size:size,align:'left',bold:false};
+    const size=H>=60?10:8,h=size===10?6:5,at=spot(60,h,'元素');
+    e={id,type:'text',source:'issue_number',text:'',field:'',wrap:false,x:at.x,y:at.y,width:60,height:h,font_size:size,align:'left',bold:false};
    }else{
-    const size=H>=60?10:8,h=size===10?6:5,w=kind==='page'?60:80,spot=freeSpot(band,w,h),typed=$('doc2-text').value,chosen=$('doc2-field').value,field=kind==='sum'&&!metricIds.includes(chosen)?metricIds[0]||chosen:chosen;
-    e={id,type:'text',source:sourceOf[kind],text:kind==='literal'?(typed||'固定文字'):kind==='page'?(/\{pages?\}/.test(typed)?typed:'Page {page} of {pages}'):'',field:kind==='field'||kind==='sum'?field:'',wrap:false,x:spot.x,y:spot.y,width:w,height:h,font_size:size,align:'left',bold:false};
+    const size=H>=60?10:8,h=size===10?6:5,w=kind==='page'?60:80,at=spot(w,h),typed=o.text!==undefined?o.text:$('doc2-text').value,chosen=o.field||$('doc2-field').value,field=kind==='sum'&&!metricIds.includes(chosen)?metricIds[0]||chosen:chosen;
+    e={id,type:'text',source:sourceOf[kind],text:kind==='literal'?(typed||'固定文字'):kind==='page'?(/\{pages?\}/.test(typed)?typed:'Page {page} of {pages}'):'',field:kind==='field'||kind==='sum'?field:'',wrap:false,x:at.x,y:at.y,width:w,height:h,font_size:size,align:'left',bold:false};
    }
-   band.elements.push(e);upgrade(d);apply(d,'添加 '+id);canvas.select([id]);
+   band.elements.push(e);upgrade(d);apply(d,'添加 '+id);lastBand=name;canvas.select([id]);
   });
  }
  for(const kind of ['literal','field','sum','page','line','rect','barcode','qrcode','image','number'])$('doc2-add-'+kind).addEventListener('click',()=>add2(kind));
@@ -386,14 +431,14 @@ window.createReportingDocuments=function(ports){
   const sel=canvas.selection();
   if(sel.length!==1){reconcile(box,[node('p',sel.length?'已选择 '+sel.length+' 项：属性一次编辑一个元素，请只选一项。':'在画布上点击一个元素，这里列出它的每个属性。')]);return;}
   const hit=elementOf(config,sel[0]);if(!hit){reconcile(box,[]);return;}
-  const {band,e}=hit,id=e.id,grid=node('div'),set=(key,v)=>edit2('修改 '+id+' '+key,d=>{elementOf(d,id).e[key]=v;}),num=(key,step)=>wrapped(propLabels[key]||key,numberInput('doc2-p-'+key,e[key],step||'0.1',v=>set(key,v)));
-  grid.className='cv2-grid';
+  const {band,e}=hit,id=e.id,G={pos:node('div'),content:node('div'),text:node('div'),border:node('div')},fl=(t,c,k)=>wrapped(t,c,k||'field-label'),set=(key,v)=>edit2('修改 '+id+' '+key,d=>{elementOf(d,id).e[key]=v;}),num=(key,step)=>fl(propLabels[key]||key,numberInput('doc2-p-'+key,e[key],step||'0.1',v=>set(key,v)));
+  for(const g of Object.values(G))g.className='form-grid';
   const head=node('p',id+' · '+bandLabels[band]+' · '+(e.type==='text'?'文本（'+sourceLabels[e.source]+'）':{line:'线',rect:'矩形',table:'明细表',barcode:'条码 Code 128',qrcode:'二维码',image:'图片'}[e.type]));head.id='doc2-p-title';
   out.push(head);
   if(e.type==='table'){out.push(node('p','明细表的位置、宽度、字号和各列在下方“明细表”区域编辑。'));reconcile(box,out,id);return;}
-  grid.append(wrapped('所在带',selectInput('doc2-p-band',bandOrder.filter(n=>config.bands[n]).map(n=>[n,bandLabels[n]]),band,v=>edit2('移动 '+id+' 到'+bandLabels[v],d=>{const h=elementOf(d,id);if(h.band===v)return;d.bands[h.band].elements.splice(d.bands[h.band].elements.indexOf(h.e),1);d.bands[v].elements.push(h.e);}))));
+  G.pos.append(fl('所在带',selectInput('doc2-p-band',bandOrder.filter(n=>config.bands[n]).map(n=>[n,bandLabels[n]]),band,v=>edit2('移动 '+id+' 到'+bandLabels[v],d=>{const h=elementOf(d,id);if(h.band===v)return;d.bands[h.band].elements.splice(d.bands[h.band].elements.indexOf(h.e),1);d.bands[v].elements.push(h.e);}))));
   if(e.type==='text'){
-   grid.append(wrapped('来源',selectInput('doc2-p-source',Object.entries(sourceLabels),e.source,v=>edit2('修改 '+id+' 来源',d=>{
+   G.content.append(fl('来源',selectInput('doc2-p-source',Object.entries(sourceLabels),e.source,v=>edit2('修改 '+id+' 来源',d=>{
     const x=elementOf(d,id).e,metricIds=(query.metrics||[]).map(m=>m.id),first=result.columns[0]?.id||'';
     x.source=v;
     if(v==='literal'){x.field='';x.text=x.text||'固定文字';}
@@ -401,41 +446,42 @@ window.createReportingDocuments=function(ports){
     else if(v==='issue_number'){x.text='';x.field='';x.wrap=false;}
     else{x.text='';x.field=v==='group_sum'&&!metricIds.includes(x.field)?metricIds[0]||x.field:(x.field||first);}
    }))));
-   if(e.source==='literal'||e.source==='page')grid.append(wrapped('文字',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=e.source==='page'?256:1024;i.addEventListener('change',()=>set('text',i.value));})));
-   else if(e.source!=='issue_number')grid.append(wrapped('字段',selectInput('doc2-p-field',result.columns.filter(c=>e.source!=='group_sum'||(query.metrics||[]).some(m=>m.id===c.id)).map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
-   for(const key of ['x','y','width','height'])grid.append(num(key));
-   grid.append(num('font_size','1'),wrapped('align',selectInput('doc2-p-align',Object.entries(alignLabels),e.align,v=>set('align',v))),wrapped('自动换行（wrap）',checkInput('doc2-p-wrap',e.wrap,v=>set('wrap',v)),'cv2-check'),wrapped('粗体（bold）',checkInput('doc2-p-bold',e.bold,v=>set('bold',v)),'cv2-check'));
+   if(e.source==='literal'||e.source==='page')G.content.append(fl('文字',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=e.source==='page'?256:1024;i.addEventListener('change',()=>set('text',i.value));})));
+   else if(e.source!=='issue_number')G.content.append(fl('字段',selectInput('doc2-p-field',result.columns.filter(c=>e.source!=='group_sum'||(query.metrics||[]).some(m=>m.id===c.id)).map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
+   for(const key of ['x','y','width','height'])G.pos.append(num(key));
+   G.text.append(num('font_size','1'),fl('align',selectInput('doc2-p-align',Object.entries(alignLabels),e.align,v=>set('align',v))),fl('自动换行（wrap）',checkInput('doc2-p-wrap',e.wrap,v=>set('wrap',v)),'cv2-check toggle-row'),fl('粗体（bold）',checkInput('doc2-p-bold',e.bold,v=>set('bold',v)),'cv2-check toggle-row'));
   }else if(e.type==='barcode'||e.type==='qrcode'){
    // The value: a literal, a field of the group or the issue number (the platform prints a placeholder in a preview, proves the fit for every number
    // before issuing and prints the product's in the issue).
-   grid.append(wrapped('值的来源',selectInput('doc2-p-source',Object.entries(codeSources),e.source,v=>edit2('修改 '+id+' 来源',d=>{
+   G.content.append(fl('值的来源',selectInput('doc2-p-source',Object.entries(codeSources),e.source,v=>edit2('修改 '+id+' 来源',d=>{
     const x=elementOf(d,id).e;x.source=v;
     if(v==='literal'){x.field='';x.text=x.text||(x.type==='barcode'?'INV-0001':'https://example.invalid/');}
     else if(v==='field'){x.text='';x.field=x.field||result.columns[0]?.id||'';}
     else{x.text='';x.field='';}
    }))));
-   if(e.source==='literal')grid.append(wrapped('值（文字）',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=256;i.addEventListener('change',()=>set('text',i.value));})));
-   else if(e.source==='field')grid.append(wrapped('字段',selectInput('doc2-p-field',result.columns.map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
+   if(e.source==='literal')G.content.append(fl('值（文字）',ctl('input','doc2-p-text',i=>{i.value=e.text;i.maxLength=256;i.addEventListener('change',()=>set('text',i.value));})));
+   else if(e.source==='field')G.content.append(fl('字段',selectInput('doc2-p-field',result.columns.map(c=>[c.id,c.label+'（'+c.id+'）']),e.field,v=>set('field',v))));
    if(e.type==='barcode'){
-    for(const key of ['x','y','width','height'])grid.append(num(key));
-    grid.append(wrapped('在条下印出值（human_readable）',checkInput('doc2-p-human',e.human_readable,v=>edit2('修改 '+id+' 印出值',d=>{const x=elementOf(d,id).e;x.human_readable=v;if(v)x.font_size=x.font_size||9;else delete x.font_size;})),'cv2-check'));
-    if(e.human_readable)grid.append(num('font_size','1'));
+    for(const key of ['x','y','width','height'])G.pos.append(num(key));
+    G.text.append(fl('在条下印出值（human_readable）',checkInput('doc2-p-human',e.human_readable,v=>edit2('修改 '+id+' 印出值',d=>{const x=elementOf(d,id).e;x.human_readable=v;if(v)x.font_size=x.font_size||9;else delete x.font_size;})),'cv2-check toggle-row'));
+    if(e.human_readable)G.text.append(num('font_size','1'));
    }else{
-    for(const key of ['x','y','size'])grid.append(num(key));
-    grid.append(wrapped('纠错级别（ecc）',selectInput('doc2-p-ecc',eccLevels.map(l=>[l,l]),e.ecc,v=>set('ecc',v))));
+    for(const key of ['x','y','size'])G.pos.append(num(key));
+    G.content.append(fl('纠错级别（ecc）',selectInput('doc2-p-ecc',eccLevels.map(l=>[l,l]),e.ecc,v=>set('ecc',v))));
    }
   }else if(e.type==='image'){
-   for(const key of ['x','y','width','height'])grid.append(num(key));
+   for(const key of ['x','y','width','height'])G.pos.append(num(key));
    // The picture: one of the caller's private images of this dataset; the template holds its id and digest and the picture is drawn contained in the box.
    const known=images.some(v=>v.id===e.image.id&&v.sha256===e.image.sha256),pairs=[...(known?[]:[[e.image.id,e.image.id.slice(0,8)+'…（当前引用）']]),...images.map(v=>[v.id,imageText(v)])];
-   grid.append(wrapped('图片',selectInput('doc2-p-image',pairs,e.image.id,v=>edit2('修改 '+id+' 图片',d=>{const pick=images.find(w=>w.id===v);if(!pick)throw Error('列表中没有这张图片。');elementOf(d,id).e.image={id:pick.id,sha256:pick.sha256};}))));
+   G.content.append(fl('图片',selectInput('doc2-p-image',pairs,e.image.id,v=>edit2('修改 '+id+' 图片',d=>{const pick=images.find(w=>w.id===v);if(!pick)throw Error('列表中没有这张图片。');elementOf(d,id).e.image={id:pick.id,sha256:pick.sha256};}))));
   }else if(e.type==='line'){
-   for(const key of ['x1','y1','x2','y2'])grid.append(num(key));grid.append(num('stroke','0.25'));
+   for(const key of ['x1','y1','x2','y2'])G.pos.append(num(key));G.border.append(num('stroke','0.25'));
   }else{
-   for(const key of ['x','y','width','height'])grid.append(num(key));
-   grid.append(num('stroke','0.25'),wrapped('fill',selectInput('doc2-p-fill',Object.entries(fillLabels),e.fill,v=>set('fill',v))));
+   for(const key of ['x','y','width','height'])G.pos.append(num(key));
+   G.border.append(num('stroke','0.25'),fl('fill',selectInput('doc2-p-fill',Object.entries(fillLabels),e.fill,v=>set('fill',v))));
   }
-  out.push(grid,ctl('div',null,d=>{d.className='cv2-actions';d.append(buttonOf('doc2-p-delete','删除此元素',()=>edit2('删除 '+id,x=>{const h=elementOf(x,id);x.bands[h.band].elements.splice(x.bands[h.band].elements.indexOf(h.e),1);})));}));
+  const section=(title,g)=>{if(!g.childNodes.length)return null;const sec=node('div'),h=node('h3',title);sec.className='prop-section';sec.append(h,g);return sec;};
+  out.push(...[section('位置与尺寸',G.pos),section('内容',G.content),section('文字',G.text),section('边框',G.border)].filter(Boolean),ctl('div',null,d=>{d.className='cv2-actions prop-section';d.append(buttonOf('doc2-p-delete','删除此元素',()=>edit2('删除 '+id,x=>{const h=elementOf(x,id);x.bands[h.band].elements.splice(x.bands[h.band].elements.indexOf(h.e),1);})));}));
   reconcile(box,out,id);
  }
  // The table: place, width (the columns scale with it), type size, and its columns: field, width, header label, alignment, order.
@@ -511,7 +557,7 @@ window.createReportingDocuments=function(ports){
   if(p&&(p.offset_x!==0||p.offset_y!==0))notes.push('警告：整体偏移 '+p.offset_x+' / '+p.offset_y+' 毫米不属于 2.0，已丢弃；文本位置按偏移前的位置转换。');
   if(d.background)notes.push('警告：底稿引用不属于 2.0，已丢弃；2.0 预览不叠加底稿。');
   if(t)notes.push('明细表的“高”不属于 2.0：明细带占满上下各带留下的页面空间，续页从页眉带下方开始。');
-  return {config:{schema_version:'2.0',kind:'document',binding:clone(d.binding),bands},notes};
+  return {config:{schema_version:'2.0',kind:'document',...(d.name!==undefined?{name:d.name}:{}),binding:clone(d.binding),bands},notes};
  }
  let conversion=[];
  function renderConvert(){
@@ -529,7 +575,15 @@ window.createReportingDocuments=function(ports){
  function removeTable(){only1x();if(!config.table)return;const d={...config,schema_version:config.background?'1.2':'1.1'};delete d.table;apply(d,'移除明细表');}
  function addTable(){action(()=>{only1x();const chosen=[...$('doc-table-columns').selectedOptions].map(o=>o.value);if(chosen.length<1||chosen.length>12)throw Error('请选择1–12个明细表字段。');const width=Number($('doc-table-width').value),size=Number($('doc-table-font').value),first=chosen.length===1?width:Math.max(labelMinimum[size]||42,Math.floor(width*10/chosen.length)/10),rest=chosen.length-1,each=rest?Math.floor((width-first)*10/rest)/10:0;const columns=chosen.map((field,i)=>({field,width:i===0?first:i===chosen.length-1?Math.round((width-first-each*(rest-1))*10)/10:each}));const table={x:Number($('doc-table-x').value),y:Number($('doc-table-y').value),width,height:Number($('doc-table-height').value),font_size:Number($('doc-table-font').value),columns};const d={...config,schema_version:'1.3',print:config.print||{mode:'full',offset_x:0,offset_y:0},table};if(!config.background)delete d.background;apply(d,'添加明细表');});}
  $('doc-table-add').addEventListener('click',addTable);$('doc-table-remove').addEventListener('click',()=>action(removeTable));
- function add(source){action(()=>{only1x();const used=new Set(config.elements.map(e=>e.id));let n=1;while(used.has('n'+n))n++;const e={id:'n'+n,source,field:source==='literal'?'':$('doc-field').value,text:source==='literal'?$('doc-text').value:'',x:10,y:25+config.elements.length*15,width:190,height:10,font_size:12,align:'left'};apply({...config,elements:[...config.elements,e]},'添加 '+e.id);});}
+ // A free place for a 1.x box: the first y (0.1 mm) from the safe region's top where it overlaps no other box or the table.
+ function freeY1(x,w,h,from){
+  const hit=y=>[...config.elements.map(e=>[e.x,e.y,e.width,e.height]),...(config.table?[[config.table.x,config.table.y,config.table.width,config.table.height]]:[])].some(t=>tenths(x)<tenths(t[0])+tenths(t[2])&&tenths(t[0])<tenths(x)+tenths(w)&&y<tenths(t[1])+tenths(t[3])&&tenths(t[1])<y+tenths(h));
+  for(let y=Math.max(250,tenths(from));y+tenths(h)<=2700;y++)if(!hit(y))return y/10;
+  throw Error('页面上没有放得下新文本框的空位。');
+ }
+ function add(source,opts){action(()=>{only1x();const o=opts||{},used=new Set(config.elements.map(e=>e.id));let n=1;while(used.has('n'+n))n++;
+  const w=o.at?90:190,x=o.at?Math.min(110,Math.max(10,Math.round(o.at.x*10)/10)):10,y=o.at?freeY1(x,w,10,Math.min(260,o.at.y)):o.studio?freeY1(x,w,10,25):25+config.elements.length*15;
+  const picked=o.field||$('doc-field').value,metricIds=(query.metrics||[]).map(m=>m.id),e={id:'n'+n,source,field:source==='literal'?'':(source==='total'&&o.studio&&!metricIds.includes(picked)?metricIds[0]||picked:picked),text:source==='literal'?(o.text!==undefined?o.text:$('doc-text').value||(o.studio?'固定文字':'')):'',x,y,width:w,height:10,font_size:12,align:'left'};apply({...config,elements:[...config.elements,e]},'添加 '+e.id);if(o.studio||o.at)canvas.select([e.id]);});}
  $('doc-add-text').addEventListener('click',()=>add('literal'));$('doc-add-row').addEventListener('click',()=>add('row'));$('doc-add-total').addEventListener('click',()=>add('total'));
  $('doc-reset').addEventListener('click',()=>action(()=>replaceTemplate({schema_version:'1.0',kind:'document',binding:binding(),elements:[{id:'n1',source:'literal',field:'',text:'Document preview',x:10,y:25,width:190,height:12,font_size:18,align:'left'}]})));
  $('doc-print-apply').addEventListener('click',()=>action(()=>{only1x();apply({...config,schema_version:schemaFor(config,config.schema_version==='1.2'?'1.2':'1.1'),print:{mode:$('doc-print-mode').value,offset_x:Number($('doc-offset-x').value),offset_y:Number($('doc-offset-y').value)}},'套打设置');}));
@@ -552,7 +606,8 @@ window.createReportingDocuments=function(ports){
    last=r.row_index;
   }
  }
- function showChecks(v,request){
+ function showChecks(v,request){showChecksCore(v,request);touch();}
+ function showChecksCore(v,request){
   const body=$('doc-check-body'),wrap=$('doc-check-wrap'),line=$('doc-check-status');
   body.replaceChildren();wrap.hidden=true;
   if(v===null){if(checks)line.textContent='模板或快照已变化，上一次的检查结果已作废；请重新检查样本。';checks=null;return;}
@@ -572,6 +627,229 @@ window.createReportingDocuments=function(ports){
   wrap.hidden=!v.rows.length;
  }
  $('doc-check').addEventListener('click',()=>action(()=>{previews();validate(config);if(!ports.snapshot())throw Error('请先生成/打开冻结快照，再检查样本。');const body={config:JSON.parse(JSON.stringify(config)),snapshot_id:ports.snapshot(),samples:'boundary'};$('doc-check-status').textContent='正在检查样本…';ports.check(body,v=>showChecks(v,body));}));
- return {openServer,clear(logout=false){past=[];future=[];conversion=[];$('doc2-panel').hidden=true;for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=false;$('doc-convert').hidden=true;$('doc-convert-status').textContent='尚无当前授权模板。';$('doc-convert-notes').replaceChildren();for(const id of ['doc2-group','doc2-bands','doc2-table','doc2-props','doc2-add-band','doc2-field','doc2-col-field'])$(id).replaceChildren();scope='';checks=null;$('doc-check-body').replaceChildren();$('doc-check-wrap').hidden=true;$('doc-check-status').textContent='检查样本：用当前模板检查冻结快照的首行、末行与各行字段最长/最短的行，不渲染 PDF。';$('doc-check').hidden=true;canvas.clear();backgrounds=[];$('doc-background-file').value='';$('doc-background-listing').replaceChildren();images=[];imageUrls=new Map();imagesAsked=false;$('doc-image-file').value='';$('doc2-image-listing').replaceChildren();$('doc-image-status').textContent='尚无当前授权模板。';$('doc-background-status').textContent='尚无当前授权模板。';$('doc-pdf').hidden=$('doc-saved-pdf').hidden=true;$('doc-issue').hidden=true;publishedOpen=false;$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent='正式出具需要已发布模板、冻结快照与行号。';resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('doc-print-mode').value='full';$('doc-offset-x').value='0';$('doc-offset-y').value='0';$('doc-print-status').textContent='尚无当前授权模板。';$('doc-server-listing').replaceChildren();$('doc-server-version').value='1';$('doc-server-status').textContent='查询当前授权结果后可使用服务器模板。';$('doc-elements').replaceChildren();$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc-table-status').textContent='无明细表。';$('doc-json').value='';$('doc-text').value='';$('doc-row').value='1';$('doc-status').textContent='先查询当前授权数据；生成PDF需冻结快照。';},refresh(value,q){resetRelease();result=value;query=q;images=[];imageUrls=new Map();imagesAsked=false;$('doc2-image-listing').replaceChildren();$('doc-image-status').textContent='图片按需读取：模板含图片时自动读取，也可点“读取私有图片”。';if(saved&&!sameBinding(saved.config))saved=null;$('doc-server-status').textContent=saved?'正在编辑模板 '+saved.id+' · 版本 '+saved.version:'未关联服务器模板。';const key=JSON.stringify([q,ports.snapshot()]);if(key!==scope){past=[];future=[];scope=key;}
-try{validate(config);}catch{past=[];future=[];conversion=[];config={schema_version:'1.0',kind:'document',binding:binding(),elements:[{id:'n1',source:'literal',field:'',text:'Document preview',x:10,y:25,width:190,height:12,font_size:18,align:'left'}]};}$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc2-field').replaceChildren();for(const c of value.columns){const o=node('option',c.label);o.value=c.id;$('doc-field').append(o);const p=node('option',c.label);p.value=c.id;$('doc-table-columns').append(p);const f=node('option',c.label+'（'+c.id+'）');f.value=c.id;$('doc2-field').append(f);}render();$('doc-pdf').hidden=$('doc-saved-pdf').hidden=$('doc-check').hidden=!ports.previews();$('doc-issue').hidden=!ports.issuance();$('doc-status').textContent=ports.previews()?'单页文本模板；生成PDF需当前冻结快照，行号为快照全局行号。':'单页文本模板；服务端未启用 PDF 渲染，不提供预览。';}};
+ // ---- the studio's functions (S06-A): each one is the function an old button called, or a new one built on the same apply/validate/undo path ----
+ const status=text=>{$('doc-status').textContent=text;};
+ const dirty=()=>!!config&&!!saved&&sameBinding(saved.config)&&JSON.stringify(canonical(config))!==JSON.stringify(canonical(saved.config));
+ const own=()=>!!saved&&sameBinding(saved.config);
+ // The published version as far as this session knows: the release pointer once it was read, or the published version the editor opened.
+ const pointer=()=>!own()?0:publishedOpen?saved.version:(release?release.published_version:0);
+ function badge(){
+  if(!own())return '草稿';
+  const pub=pointer(),text=pub&&pub===saved.version?'已发布 v'+pub:'已保存 v'+saved.version;
+  return text+(dirty()?'·有未保存修改':'');
+ }
+ const slot=()=>!own()||dirty()?'未保存的修改':pointer()&&pointer()===saved.version?'已发布':'已保存';
+ const countOf=d=>!d?0:is2(d)?bandNames.reduce((n,b)=>n+(d.bands[b]?.elements.length||0),0):d.elements.length+(d.table?1:0);
+ // The designer's own reading of the template: the validator's refusal, the boundary samples that failed, the place the last preview refused.
+ function issues(){
+  const out=[];
+  if(!config||!result||!query)return out;
+  try{validate(config);}catch(e){out.push({title:'模板不符合规则',detail:e.message});}
+  if(checks)for(const r of checks.rows)if(!r.ok)out.push({title:'第 '+(r.row_index+1)+' 行不通过 · '+r.code,detail:(checkCodes[r.code]||'')+(r.detail?' · '+window.reportingRefusal.text(r.detail,labelsOf()):''),mark:r.detail});
+  if(lastRefusal)out.push({title:'预览指出的位置',detail:window.reportingRefusal.text(lastRefusal,labelsOf()),mark:lastRefusal});
+  return out;
+ }
+ // Rename in place: an empty name removes it (the studio then shows the template's number). The result is '' or the refusal.
+ function rename(value){
+  if(!config||!result||!query||!ports.active())return '请先查询当前授权数据并等待操作结束。';
+  const v=value.trim(),d=clone(config);
+  if(v==='')delete d.name;else d.name=v;
+  if(v!==''&&!nameOk(v))return NAME_RULE;
+  let failure='';
+  action(()=>{try{validate(d);}catch(e){failure=e.message;throw e;}if(JSON.stringify(canonical(d))!==JSON.stringify(canonical(config)))apply(d,'重命名');});
+  return failure;
+ }
+ // ---- insert: the library's cards, the ribbon's tools and a drop on the page ----
+ function insert(kind,opts){
+  const o={...(opts||{}),studio:true};let result2='';
+  action(()=>{
+   if(is2(config)){
+    if(kind==='table'){canvas.select([tableOf2(config).id]);return;}
+    if(kind==='signature'){addSignature(o);return;}
+    const map={text:'literal',field:'field',aggregate:'sum',summary:'sum',line:'line',rect:'rect',image:'image',barcode:'barcode',qr:'qrcode',pageNumber:'page'};
+    if(!map[kind])throw Error('这个组件不受支持。');
+    add2(map[kind],o);return;
+   }
+   const map={text:'literal',field:'row',aggregate:'total',summary:'total'};
+   if(kind==='table'){if(config.table)canvas.select(['table']);else result2='table-options';return;}
+   if(!map[kind])throw Error('1.x 模板不支持这个组件：先转换为 2.0 分带模板（页面 › 区段设置）。');
+   add(map[kind],o);
+  });
+  return result2;
+ }
+ // 签章栏: a rectangle with the literal "签章" in it; signatures and stamps belong to a later phase.
+ function addSignature(o){
+  only2();
+  const name=(o.at?bandAtPoint(o.at):'')||currentBand(),d=clone(config),band=d.bands[name];if(!band)throw Error('请先添加并选择一个带。');
+  const rel=o.at?relToBand(name,o.at):{x:0,y:0},H=tenths(band.height)/10,h=Math.min(14,H);
+  const at=nearestSpot(band,60,h,rel,'签章栏'),rect={id:freeId(d),type:'rect',x:at.x,y:at.y,width:60,height:h,stroke:0.5,fill:'none'};
+  band.elements.push(rect);
+  const text={id:freeId(d),type:'text',source:'literal',text:'签章',field:'',wrap:false,x:at.x+2,y:at.y+Math.max(0,Math.round((h-8)/2*10)/10),width:56,height:Math.min(8,h),font_size:10,align:'center',bold:false};
+  band.elements.push(text);upgrade(d);apply(d,'添加签章栏');lastBand=name;canvas.select([rect.id,text.id]);
+ }
+ // A field of the data panel: a field text; with the table selected, a column of it.
+ function insertField(field,detail,at){
+  action(()=>{
+   if(is2(config)&&detail&&canvas.selection().length===1&&canvas.selection()[0]===tableOf2(config).id){
+    if(![...$('doc2-col-field').options].some(o=>o.value===field))throw Error('这个字段已经是明细表的列。');
+    $('doc2-col-field').value=field;$('doc2-col-add').click();return;
+   }
+   if(is2(config))add2('field',{studio:true,field,at});else add('row',{studio:true,field,at});
+  });
+ }
+ // ---- the clipboard: elements of the template, kept for this session (no data, no storage) ----
+ let clip=null;
+ function picked(){
+  const sel=canvas.selection();
+  return is2(config)?sel.map(k=>elementOf(config,k)).filter(h=>h&&h.e.type!=='table'):sel.map(k=>config.elements.find(e=>e.id===k)).filter(Boolean);
+ }
+ function clipCopy(){
+  if(!config||!result)return false;
+  const hits=picked();
+  if(!hits.length){status('没有可复制的项目：请先选择元素（明细表不能复制）。');return false;}
+  clip={two:is2(config),items:hits.map(h=>is2(config)?{band:h.band,e:clone(h.e)}:{e:clone(h)})};
+  status('已复制 '+hits.length+' 项（模板内剪贴板，只在本次会话；不含数据）。');touch();return true;
+ }
+ function clipCut(){
+  if(!clipCopy())return false;
+  const ids=picked().map(h=>is2(config)?h.e.id:h.id);
+  if(is2(config))edit2('剪切',d=>{for(const id of ids){const h=elementOf(d,id);d.bands[h.band].elements.splice(d.bands[h.band].elements.indexOf(h.e),1);}});
+  else action(()=>apply({...config,elements:config.elements.filter(e=>!ids.includes(e.id))},'剪切'));
+  return true;
+ }
+ // Each copy goes to the nearest free place of the current band (a 1.x copy: of the page), under the lowest free id.
+ function clipPaste(){
+  action(()=>{
+   if(!clip)throw Error('剪贴板是空的：先复制或剪切项目。');
+   if(clip.two!==is2(config))throw Error('剪贴板里的项目来自 '+(clip.two?'2.0':'1.x')+' 模板，不能粘贴到'+(is2(config)?' 2.0 ':' 1.x ')+'模板。');
+   const made=[];
+   if(is2(config)){
+    const d=clone(config),name=currentBand(),band=d.bands[name];if(!band)throw Error('请先添加并选择一个带。');
+    const H=tenths(band.height)/10;
+    for(const item of clip.items){
+     const e=clone(item.e),same=item.band===name;e.id=freeId(d);
+     if(boxedType(e.type)){const [w,h]=extentOf(e),at=nearestSpot(band,w,h,same?{x:e.x,y:e.y}:{x:0,y:0});e.x=at.x;e.y=at.y;}
+     else if(e.type==='rect'){const x=same?Math.min(190-e.width,e.x+2):0,y=same?Math.min(Math.max(0,H-e.height),e.y+2):0;e.x=x;e.y=y;}
+     else if(e.type==='line'){const w=Math.abs(e.x2-e.x1),h=Math.abs(e.y2-e.y1),x0=Math.min(e.x1,e.x2),y0=Math.min(e.y1,e.y2),nx=same?Math.min(190-w,x0+2):0,ny=same?Math.min(Math.max(0,H-h),y0+2):0;e.x1+=nx-x0;e.x2+=nx-x0;e.y1+=ny-y0;e.y2+=ny-y0;}
+     band.elements.push(e);made.push(e.id);
+    }
+    upgrade(d);apply(d,'粘贴');lastBand=name;canvas.select(made);return;
+   }
+   const d=clone(config);
+   for(const item of clip.items){
+    const used=new Set(d.elements.map(e=>e.id));let n=1;while(used.has('n'+n))n++;
+    if(n>24)throw Error('最多24个文本框。');
+    const e={...clone(item.e),id:'n'+n},h=tenths(e.height),taken=[...d.elements.map(o=>[o.x,o.y,o.width,o.height]),...(d.table?[[d.table.x,d.table.y,d.table.width,d.table.height]]:[])];
+    const cand=[];for(let y=250;y+h<=2700;y++)if(!taken.some(t=>tenths(e.x)<tenths(t[0])+tenths(t[2])&&tenths(t[0])<tenths(e.x)+tenths(e.width)&&y<tenths(t[1])+tenths(t[3])&&tenths(t[1])<y+h))cand.push(y);
+    cand.sort((a,b)=>Math.abs(a-tenths(item.e.y))-Math.abs(b-tenths(item.e.y))||a-b);
+    let placed=false,failure='';
+    for(const y of cand.slice(0,40)){e.y=y/10;const probe=clone({...d,elements:[...d.elements,e]});failure=test(canvas.ops.settle(probe));if(!failure){placed=true;break;}}
+    if(!placed)throw Error(failure||'页面上没有放得下副本的空位。');
+    d.elements.push(e);made.push(e.id);
+   }
+   apply(canvas.ops.settle(d),'粘贴');canvas.select(made);
+  });
+ }
+ // ---- the format painter: font size, alignment, bold and wrap of the selected text, to the next element clicked; one shot ----
+ let painter=null;
+ function painterStart(){
+  if(painter){painter=null;touch();status('格式刷已取消。');return false;}
+  const hits=picked();
+  const text=hits.length===1?(is2(config)?(hits[0].e.type==='text'?hits[0].e:null):hits[0]):null;
+  if(!text){status('格式刷需要先选择一个文本元素。');touch();return false;}
+  painter={from:text.id,font_size:text.font_size,align:text.align,bold:text.bold,wrap:text.wrap};touch();
+  status('格式刷：点击要套用格式的文本（字号、对齐'+(is2(config)?'、粗体、换行':'')+'），只用一次。');return true;
+ }
+ function painterTarget(){
+  const sel=canvas.selection();
+  if(!painter||!config||sel.length!==1||sel[0]===painter.from)return;
+  const p=painter,id=sel[0];painter=null;
+  const set=x=>{x.font_size=p.font_size;x.align=p.align;if(is2(config)){x.bold=p.bold;if(x.source==='literal'||x.source==='field')x.wrap=p.wrap;}};
+  if(is2(config)){
+   const hit=elementOf(config,id);
+   if(!hit||hit.e.type!=='text'){status('格式刷只作用于文本元素；已取消。');return;}
+   edit2('格式刷',d=>set(elementOf(d,id).e));
+  }else{
+   const e=config.elements.find(v=>v.id===id);
+   if(!e){status('格式刷只作用于文本框；已取消。');return;}
+   action(()=>{const d=clone(config);set(d.elements.find(v=>v.id===id));apply(d,'格式刷');});
+  }
+ }
+ // The text styles of the resources panel: a size (and weight) or an alignment, for the selected texts.
+ function styleSelected(patch){
+  const ids=picked().map(h=>is2(config)?h.e.id:h.id);
+  if(!ids.length){status('请先选择文本元素。');return;}
+  if(is2(config))edit2('文字样式',d=>{for(const id of ids){const e=elementOf(d,id).e;if(e.type!=='text')continue;if(patch.font_size)e.font_size=patch.font_size;if(patch.bold!==undefined)e.bold=patch.bold;if(patch.align)e.align=patch.align;}});
+  else action(()=>{const d=clone(config);for(const id of ids){const e=d.elements.find(v=>v.id===id);if(patch.font_size)e.font_size=patch.font_size;if(patch.align)e.align=patch.align;}apply(d,'文字样式');});
+ }
+ // ---- versions, publication and the template list ----
+ let latest=0,versionCache=new Map(),chooserRows=[],pages=1,previewed=false;
+ function loadVersions(then){
+  action(()=>{
+   if(!own())throw Error('请先保存或打开当前数据集的服务器模板。');
+   listServer(values=>{const mine=values.find(v=>v.id===saved.id);latest=mine?mine.version:saved.version;readRelease(()=>{touch();if(then)then();});});
+  });
+ }
+ function fetchVersion(n,then){
+  action(()=>{
+   const id=savedID();
+   if(versionCache.has(id+':'+n)){then(versionCache.get(id+':'+n));return;}
+   ports.exchange('/document-templates/'+id+'?version='+n,undefined,v=>{serverEntry(v,id,n);versionCache.set(id+':'+n,v);setTimeout(()=>then(v),0);},'模板版本');
+  });
+ }
+ // The saved version goes into the editor as an unsaved change (one undo step); the published pointer does not move and nothing is saved.
+ function restoreVersion(n){
+  fetchVersion(n,v=>action(()=>{apply(v.config,'恢复到版本 v'+n);status('已把保存版本 v'+n+' 载入编辑器，是未保存的修改；发布指针不变。');}));
+ }
+ // The templates of this identity with what the chooser shows: the latest version's name and data set, the published version.
+ function loadChooser(then){
+  chooserRows=[];
+  listServer(values=>{
+   const rows=values.map(v=>({id:v.id,versions:v.version,name:'',binding:null,published:0,known:false}));chooserRows=rows;touch();
+   const step=i=>{
+    if(i>=rows.length){touch();if(then)then();return;}
+    const row=rows[i];
+    action(()=>ports.exchange('/document-templates/'+row.id+'?version='+row.versions,undefined,v=>{
+     const c=v&&v.config;
+     if(v&&v.id===row.id&&c&&typeof c==='object'&&keys(c.binding,['integration_id','dataset'])&&(c.name===undefined||nameOk(c.name))){row.name=c.name||'';row.binding={integration_id:c.binding.integration_id,dataset:{id:c.binding.dataset.id,version:c.binding.dataset.version}};row.known=true;}
+     setTimeout(()=>action(()=>ports.exchange('/document-templates/'+row.id+'/release',undefined,r=>{if(r&&Number.isSafeInteger(r.published_version)&&r.published_version>=0&&r.published_version<=20)row.published=r.published_version;touch();setTimeout(()=>step(i+1),0);},'模板发布状态')),0);
+    },'模板'));
+   };
+   step(0);
+  });
+ }
+ // ---- what the studio reads ----
+ function sampleJSON(){
+  if(!result)return null;
+  const rows=result.rows.slice(0,100).map(r=>Object.fromEntries(result.columns.map((c,i)=>[c.id,r[i]])));
+  return {kind:'snapshot_sample',dataset:query?{id:query.dataset.id,version:query.dataset.version}:null,columns:result.columns.map(c=>({id:c.id,label:c.label,type:c.type})),row_count:result.rows.length,rows};
+ }
+ const api={
+  canvas,bandLabels,nameOk,NAME_RULE,touch,
+  cachedVersion:n=>{const v=saved&&versionCache.get(saved.id+':'+n);return v?{count:countOf(v.config),dataset:v.config.binding.dataset.id+'@'+v.config.binding.dataset.version,schema:'schema '+v.config.schema_version}:null;},
+  state(){
+   return {ready:!!config&&!!result&&!!query,config,result,query,saved:own()?saved:null,release,pointer:pointer(),published:publishedOpen,dirty:dirty(),badge:badge(),slot:slot(),name:titleText(),named:!!config?.name,count:countOf(config),issues:issues(),checks,
+    snapshot:ports.snapshot(),pages,previewed,previews:ports.previews(),issuance:ports.issuance(),active:ports.active(),clip:!!clip,painter:!!painter,undo:past.length,redo:future.length,refusal:lastRefusal,latest,chooser:chooserRows,serverList,
+    bands:is2(config)?fixedNames():[],schema:config?config.schema_version:'',table:!!config&&(is2(config)||!!config.table)};
+  },
+  insert,insertField,rename,pdfPages(n){pages=n;previewed=true;touch();},clipboard:{copy:clipCopy,cut:clipCut,paste:clipPaste},painter:{toggle:painterStart},styleSelected,
+  loadVersions,fetchVersion,restoreVersion,loadChooser,readRelease,openPublishedOf,listServer,
+  previewVersion:n=>action(()=>previewSaved(n)),
+  publish:n=>changeRelease('publish',n),
+  withdraw:()=>changeRelease('withdraw'),
+  validateNow(){const list=issues();status(list.length?'版式检查未通过：'+list[0].detail:'版式检查通过：模板符合当前数据集的全部规则；边界样本与 PDF 预览另行检查。');touch();return list;},
+  sample:sampleJSON,
+  // The bands (a 1.x template: the boxes and the table) with their elements in reading order: top to bottom, then left to right.
+  elementsOf:()=>{
+   if(!config)return [];
+   const top=e=>e.type==='line'?Math.min(e.y1,e.y2):e.y,left=e=>e.type==='line'?Math.min(e.x1,e.x2):e.x,order=(x,y)=>top(x)-top(y)||left(x)-left(y);
+   const row=e=>({key:e.id,type:e.type||'text',source:e.source,text:e.text,field:e.field});
+   if(is2(config))return bandNames.filter(n=>config.bands[n]).map(n=>({band:n,items:[...config.bands[n].elements].sort(order).map(row)}));
+   return [{band:'elements',items:[...config.elements].sort(order).map(row)},...(config.table?[{band:'table',items:[{key:'table',type:'table'}]}]:[])];
+  },
+  labels:labelsOf,
+ };
+ studio=window.createReportingStudio?window.createReportingStudio(api):null;
+ return {openServer,pdfPages:n=>api.pdfPages(n),clear(logout=false){past=[];future=[];conversion=[];$('doc2-panel').hidden=true;for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print'])$(id).hidden=false;$('doc-convert').hidden=true;$('doc-convert-status').textContent='尚无当前授权模板。';$('doc-convert-notes').replaceChildren();for(const id of ['doc2-group','doc2-bands','doc2-table','doc2-props','doc2-add-band','doc2-field','doc2-col-field'])$(id).replaceChildren();scope='';checks=null;$('doc-check-body').replaceChildren();$('doc-check-wrap').hidden=true;$('doc-check-status').textContent='检查样本：用当前模板检查冻结快照的首行、末行与各行字段最长/最短的行，不渲染 PDF。';$('doc-check').hidden=true;canvas.clear();backgrounds=[];$('doc-background-file').value='';$('doc-background-listing').replaceChildren();images=[];imageUrls=new Map();imagesAsked=false;$('doc-image-file').value='';$('doc2-image-listing').replaceChildren();$('doc-image-status').textContent='尚无当前授权模板。';$('doc-background-status').textContent='尚无当前授权模板。';$('doc-pdf').hidden=$('doc-saved-pdf').hidden=true;$('doc-issue').hidden=true;publishedOpen=false;$('doc-issues-body').replaceChildren();$('doc-issues-wrap').hidden=true;$('doc-issue-status').textContent='正式出具需要已发布模板、冻结快照与行号。';resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('doc-print-mode').value='full';$('doc-offset-x').value='0';$('doc-offset-y').value='0';$('doc-print-status').textContent='尚无当前授权模板。';$('doc-server-listing').replaceChildren();$('doc-server-version').value='1';$('doc-server-status').textContent='查询当前授权结果后可使用服务器模板。';$('doc-elements').replaceChildren();$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc-table-status').textContent='无明细表。';$('doc-json').value='';$('doc-text').value='';$('doc-row').value='1';$('doc-status').textContent='先查询当前授权数据；生成PDF需冻结快照。';clip=null;painter=null;versionCache=new Map();chooserRows=[];latest=0;serverList=[];pages=1;previewed=false;if(studio)studio.reset(logout);},refresh(value,q){resetRelease();result=value;query=q;images=[];imageUrls=new Map();imagesAsked=false;$('doc2-image-listing').replaceChildren();$('doc-image-status').textContent='图片按需读取：模板含图片时自动读取，也可点“读取私有图片”。';if(saved&&!sameBinding(saved.config))saved=null;$('doc-server-status').textContent=saved?'正在编辑模板 '+saved.id+' · 版本 '+saved.version:'未关联服务器模板。';const key=JSON.stringify([q,ports.snapshot()]);if(key!==scope){past=[];future=[];scope=key;pages=1;previewed=false;}
+try{validate(config);}catch{past=[];future=[];conversion=[];config={schema_version:'1.0',kind:'document',binding:binding(),elements:[{id:'n1',source:'literal',field:'',text:'Document preview',x:10,y:25,width:190,height:12,font_size:18,align:'left'}]};}$('doc-field').replaceChildren();$('doc-table-columns').replaceChildren();$('doc2-field').replaceChildren();for(const c of value.columns){const o=node('option',c.label);o.value=c.id;$('doc-field').append(o);const p=node('option',c.label);p.value=c.id;$('doc-table-columns').append(p);const f=node('option',c.label+'（'+c.id+'）');f.value=c.id;$('doc2-field').append(f);}render();$('doc-pdf').hidden=$('doc-saved-pdf').hidden=$('doc-check').hidden=!ports.previews();$('doc-issue').hidden=!ports.issuance();$('doc-status').textContent=ports.previews()?'单页文本模板；生成PDF需当前冻结快照，行号为快照全局行号。':'单页文本模板；服务端未启用 PDF 渲染，不提供预览。';touch();}};
 };

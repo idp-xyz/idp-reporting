@@ -34,8 +34,11 @@ type PrintProfile struct {
 	OffsetY float64 `json:"offset_y"`
 }
 type Document struct {
-	Schema     string         `json:"schema_version"`
-	Kind       string         `json:"kind"`
+	Schema string `json:"schema_version"`
+	Kind   string `json:"kind"`
+	// Name is the template's display name (S06-A): optional, at most 80 characters, one line, with nothing around it.
+	// It is for people and is not part of the layout: nothing that renders or checks a document reads it.
+	Name       string         `json:"name,omitempty"`
 	Binding    Binding        `json:"binding"`
 	Elements   []Element      `json:"elements"`
 	Print      *PrintProfile  `json:"print,omitempty"`
@@ -54,10 +57,11 @@ func (d Document) MarshalJSON() ([]byte, error) {
 		return json.Marshal(struct {
 			Schema  string     `json:"schema_version"`
 			Kind    string     `json:"kind"`
+			Name    string     `json:"name,omitempty"`
 			Binding Binding    `json:"binding"`
 			Group   *GroupSpec `json:"group,omitempty"`
 			Bands   *Bands     `json:"bands"`
-		}{d.Schema, d.Kind, d.Binding, d.Group, d.Bands})
+		}{d.Schema, d.Kind, d.Name, d.Binding, d.Group, d.Bands})
 	}
 	type wire Document
 	return json.Marshal(wire(d))
@@ -72,7 +76,19 @@ func Canonical(d Document) ([]byte, error) {
 	return json.Marshal(d)
 }
 
+// MaxNameRunes is the longest template name.
+const MaxNameRunes = 80
+
+// validName says whether a template name is acceptable: empty (none), or valid UTF-8 of one to MaxNameRunes characters on one line
+// without control characters and without space around it.
+func validName(n string) bool {
+	return n == "" || (utf8.ValidString(n) && len([]rune(n)) <= MaxNameRunes && !hasControls(n) && strings.TrimSpace(n) == n)
+}
+
 func Validate(d Document) error {
+	if !validName(d.Name) {
+		return r.ErrInvalid
+	}
 	if d.Banded() {
 		return validateBanded(d)
 	}

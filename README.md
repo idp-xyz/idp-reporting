@@ -1,3 +1,11 @@
+# IDP Reporting Platform · S06-A
+
+2026-11-02。文档工作室（docs/S06A_SCOPE.md，docs/STUDIO.md，ADR 0008）：控制台的“文档模板设计器”页换成原型 `IDP_Reporting_Designer_UIUX_V3.0` 的全屏工作室——顶栏（可原地改名的模板名、状态徽标、版本、保存、预览与导出、发布）、五个页签的功能区、竖向工具栏与四个侧栏面板、带上下文条/标尺/区段标签/页码器/缩放的工作区、三个页签的检查器、状态栏，以及版本、发布前确认、帮助、纸张、区段、套打、插入选项、预览与导出、JSON、出具、模板选择、参数抽屉与数据抽屉。行为层不重写：每个工作室控件调用旧按钮调用的函数，或禁用并写明原因；新增会话内的剪贴板、格式刷、锁定与隐藏、网格、吸附开关、缩放、Space 平移，模板新增可选 `name`（≤ 80 字符，1.x 与 2.x，`doctemplates` 与控制台同一规则，共享用例 +10）。CSP 不变，无 `innerHTML`、无内联样式。
+
+测试：DOM 套件 167 → 186 项（无 Typst：148 → 166 通过，跳过 19 → 20，新增的 1 项需 Typst；有 Typst：186/186），Go 套件全过；真实浏览器脚本 `scripts/browser_studio_s06a.mjs`（41 项检查、与原型并排的 7 个状态、1280/768/390 的亮暗截图，在 `evidence/s06a/`）。保真由人对截图判断；偏离清单与理由见 docs/STUDIO.md。不在本片：模板中心页、样本包、向导（S06-B），其余控制台页（S06-C）。
+
+以下为此前阶段历史说明：
+
 # IDP Reporting Platform · S05-A
 
 2026-11-02。生产服务器（docs/S05A_SCOPE.md，docs/DEPLOYMENT.md）：此前仓库里唯一的服务器是 `cmd/reporting-demo`（演示令牌、只连受保护的夹具库、必须带 `-profile contract-simulator`），运维手册的“启动服务器”没有对应命令。本阶段写出生产组合：包 `idp.local/reporting/server` 与命令 `cmd/reporting-server`（`check-config`、`run`、`version`），把严格的配置文件、来自文件与环境的密钥、宿主注册的适配器变成一个运行的服务器。**不含任何真实来源产品的适配器**，也不给出生产准入：`GET /capabilities` 仍是 `production_approved: false`，配置里没有可改它的字段。
@@ -11,8 +19,6 @@
 测试：新增顶层测试 36 项（`server` 包 32 项：配置拒绝与不含密钥、名字像密钥的字段、命令无法触及仅测试用选项、文件权限与符号链接、公共文件、绑定文件、签发方文件文本、启动拒绝逐步与顺序与回收、真实 TLS 与真实 RS256 令牌的全程会话、重载与 SIGHUP、就绪原因与对象存储缓存与探测不排队、排空三种情形、退出码、清理与工作者日志、panic 值不入日志、check-config、命令用法、示例配置、受门控的 `TestServerAgainstPostgres`（含对象存储子测试）；`internal/servertesthost` 1 项：独立进程；`httpapi` 3 项，含数据类别头随档案变化 `TestDataClassFollowsTheProfile` 与默认值测试），含对 goroutine 与在途名额的核算。无环境的 Go 套件 415 项通过（改动前 380）、跳过 18 项（新增 `TestServerAgainstPostgres`，两份跳过清单已更新）；数据库、S3 兼容服务与 Typst 全开 433 项通过、无跳过（改动前 397）；DOM 167 项通过（未改）；普通与 race 都通过。
 
 不在本阶段：任何真实来源产品的适配器、真实身份提供方（发现、紧急撤销）、生产准入、systemd 之外的容器与编排清单、指标与追踪端点、证书自动续期、除签发方文件外的任何热重载。
-
-以下为此前阶段历史说明：
 
 # IDP Reporting Platform · S04-H
 

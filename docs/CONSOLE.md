@@ -3,6 +3,8 @@
 界面由现有 Go 服务直接提供，地址 /console/。无需 Node、npm 或前端构建即可
 运行已编译的服务。Node/jsdom 仅用于开发测试。当前数据和身份仍是合同模拟器。
 
+> S06-A：文档模板设计器页现在是全屏“文档工作室”（docs/STUDIO.md 有区域到函数的地图与偏离清单）。下文描述的按钮与面板仍然存在、id 不变，只是被重新安排到工作室的功能区、侧栏、检查器与对话框里。
+
 ## 本机启动
 
     go build -o bin/reporting-demo ./cmd/reporting-demo
