@@ -1,0 +1,63 @@
+// Screenshots of the prototype (served from WSL over loopback) and of the running console, for a side-by-side gap list. No dependencies.
+import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
+import {createServer} from 'node:http';
+import {join} from 'node:path';
+const [,, outDir, tokenFile, protoFile] = process.argv;
+mkdirSync(outDir, {recursive: true});
+const token = readFileSync(tokenFile, 'utf8').trim();
+const proto = readFileSync(protoFile);
+const srv = createServer((req, res) => { res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}); res.end(proto); });
+await new Promise(r => srv.listen(7899, '127.0.0.1', r));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const list = await (await fetch('http://127.0.0.1:9336/json/list')).json();
+const target = list.find(t => t.type === 'page');
+const ws = new WebSocket(target.webSocketDebuggerUrl); let nextId = 1; const pending = new Map();
+ws.onmessage = ev => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { const {res, rej} = pending.get(m.id); pending.delete(m.id); m.error ? rej(new Error(m.error.message)) : res(m.result); } };
+await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('ws')); });
+const send = (method, params = {}) => new Promise((res, rej) => { const id = nextId++; pending.set(id, {res, rej}); ws.send(JSON.stringify({id, method, params})); setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error('timeout ' + method)); } }, 30000); });
+const ev = async expr => { const r = await send('Runtime.evaluate', {expression: expr, awaitPromise: true, returnByValue: true}); if (r.exceptionDetails) throw new Error(r.exceptionDetails.text + ' ' + (r.exceptionDetails.exception?.description || '')); return r.result.value; };
+const waitFor = async (expr, limit = 15000) => { const end = Date.now() + limit; while (Date.now() < end) { if (await ev(expr).catch(() => false)) return; await sleep(150); } throw new Error('not reached: ' + expr); };
+const shot = async name => { const d = (await send('Page.captureScreenshot', {format: 'png'})).data; writeFileSync(join(outDir, name + '.png'), Buffer.from(d, 'base64')); console.log('shot', name); };
+const click = sel => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return false;e.click();return true;})()`);
+const esc = async () => { await ev(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`); await ev(`document.activeElement&&document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`); await sleep(300); };
+await send('Page.enable'); await send('Runtime.enable');
+await send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 900, deviceScaleFactor: 1, mobile: false});
+// --- prototype
+await send('Page.navigate', {url: 'http://127.0.0.1:7899/'});
+await waitFor(`document.readyState==='complete'&&!!document.querySelector('.ribbon-tabs')`); await sleep(800);
+await shot('proto-01-design');
+for (const [tab, n] of [['insert', '02'], ['data', '03'], ['page', '04'], ['check', '05']]) { await click(`[data-ribbon="${tab}"]`); await sleep(400); await shot(`proto-${n}-ribbon-${tab}`); }
+await click('[data-ribbon="design"]');
+for (const [side, n] of [['data', '06'], ['structure', '07'], ['resources', '08']]) { await click(`.toolrail [data-side="${side}"]`); await sleep(400); await shot(`proto-${n}-side-${side}`); }
+await click('.toolrail [data-side="components"]');
+await click('[data-act="versions"]'); await sleep(500); await shot('proto-09-versions'); await esc();
+await click('.toolrail [data-act="library"]'); await sleep(600); await shot('proto-10-library'); await esc();
+await click('[data-act="commands"]'); await sleep(500); await shot('proto-11-commands'); await esc();
+const protoText = await ev(`(()=>{const t=[];for(const b of document.querySelectorAll('.ribbon-tabs button,.toolrail button,.topbar button,.ribbon-tools button'))t.push(b.textContent.trim()||b.getAttribute('aria-label')||b.title);return t.filter(Boolean).join(' | ');})()`);
+writeFileSync(join(outDir, 'proto-controls.txt'), protoText);
+// --- console
+const base = 'http://127.0.0.1:7811';
+await send('Page.navigate', {url: base + '/console/'});
+await waitFor(`document.readyState==='complete'&&!!document.getElementById('access-token')`); await sleep(400);
+await shot('console-00-login');
+await ev(`(()=>{const i=document.getElementById('access-token');i.focus();i.value=${JSON.stringify(token)};i.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('connect-form').requestSubmit();})()`);
+await waitFor(`document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`); await sleep(500);
+await shot('console-01-overview');
+const open = async name => { await ev(`document.querySelector('[data-page="${name}"]').click()`); await sleep(500); };
+await open('catalog'); await shot('console-02-catalog');
+await open('workspace');
+await ev(`(()=>{const i=document.getElementById('query-companies');i.value='company_demo';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+await sleep(200); await shot('console-03-workspace-empty');
+await click('#snapshot');
+await waitFor(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`, 30000); await sleep(500);
+await shot('console-04-workspace-snapshot');
+await open('dashboard'); await shot('console-05-dashboard');
+await open('documents'); await sleep(800); await shot('console-06-documents');
+await ev(`window.scrollTo(0, document.body.scrollHeight/3)`); await sleep(300); await shot('console-07-documents-scrolled');
+await ev(`window.scrollTo(0, 2*document.body.scrollHeight/3)`); await sleep(300); await shot('console-08-documents-scrolled-2');
+await ev(`window.scrollTo(0,0)`);
+await open('tasks'); await shot('console-09-tasks');
+await open('system'); await shot('console-10-system');
+const consoleText = await ev(`(()=>{const t=[];for(const b of document.querySelectorAll('[data-page], section button, main button'))t.push(b.textContent.trim());return [...new Set(t.filter(Boolean))].join(' | ');})()`);
+writeFileSync(join(outDir, 'console-controls.txt'), consoleText);
+ws.close(); srv.close(); console.log('done');
