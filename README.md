@@ -26,6 +26,12 @@
 
 以下为此前阶段历史说明：
 
+# IDP Reporting Platform · S06-B part 3
+
+2026-11-03。模板中心页面、新建模板向导与字段映射对话框（docs/S06B_SCOPE.md B8–B10；区域到函数的地图、偏离清单与决定见 docs/STUDIO.md“模板中心”）：`console/assets/library.js`、`library.css`，控制台导航“模板中心”，工作室的面包屑、字标与左侧栏去往该页；本身份的模板（收藏、最近使用、归档、业务域/流程、集合，均经目录路由与 `expected_revision`）、37 个只读样例（预览、复制到我的模板的字段映射）、向导、导入。嵌入页不受影响。列表路由新增 `name`、`schema_version`、`preset`、`published_version`（不打开模板，不改 `last_opened`）。
+
+测试：DOM 188 → 202（有 Typst 202/202；无 Typst 182 通过、20 跳过），Go 无环境 474 通过、25 跳过（新增 1 项）；真实浏览器脚本 `scripts/browser_library_s06b.mjs` 41/41（证据 `evidence/s06b/library/`）。
+
 # IDP Reporting Platform · S06-A
 
 2026-11-02。文档工作室（docs/S06A_SCOPE.md，docs/STUDIO.md，ADR 0008）：控制台的“文档模板设计器”页换成原型 `IDP_Reporting_Designer_UIUX_V3.0` 的全屏工作室——顶栏（可原地改名的模板名、状态徽标、版本、保存、预览与导出、发布）、五个页签的功能区、竖向工具栏与四个侧栏面板、带上下文条/标尺/区段标签/页码器/缩放的工作区、三个页签的检查器、状态栏，以及版本、发布前确认、帮助、纸张、区段、套打、插入选项、预览与导出、JSON、出具、模板选择、参数抽屉与数据抽屉。行为层不重写：每个工作室控件调用旧按钮调用的函数，或禁用并写明原因；新增会话内的剪贴板、格式刷、锁定与隐藏、网格、吸附开关、缩放、Space 平移，模板新增可选 `name`（≤ 80 字符，1.x 与 2.x，`doctemplates` 与控制台同一规则，共享用例 +10）。CSP 不变，无 `innerHTML`、无内联样式。

@@ -453,7 +453,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   const consoleIds=new Set(idsOf(indexHtml)),embedIds=new Set(idsOf(embedHtml));
   assert.equal(new Set(idsOf(embedHtml)).size,idsOf(embedHtml).length,'an id is used twice in the embed page');
   // Everything the shared scripts look up is there, except what the embed must not have: the token form, the logout, the navigation of the pages it leaves out.
-  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-tasks','page-system'];
+  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system'];
   assert.deepEqual([...consoleIds].filter(id=>!embedIds.has(id)).sort(),notInEmbed.sort());
   assert.deepEqual([...embedIds].filter(id=>!consoleIds.has(id)).sort(),['embed-inert','embed-retry','embed-state']);
   for(const html of [embedHtml]){const lower=html.toLowerCase();for(const banned of ['<style',' style=',' onclick=',' onload=',' onerror=','javascript:','<iframe','<form','<a '])assert.equal(lower.includes(banned),false,'the embed page contains '+banned);assert.equal([...html.matchAll(/<script/g)].length,[...html.matchAll(/<script src="\/console\/[a-z]+\.js" defer>/g)].length);}
@@ -507,6 +507,22 @@ test('the embedded studio: the query form is in its start card, the wordmark is 
     assert.deepEqual(a.messages('reporting:event').map(m=>[m.name,m.template_id,m.version]),[['published',id,1]]);assert.equal(a.$('st-state').textContent,'已发布 v1');
     // The parameters drawer takes the form over from the start card and gives it back.
     a.$('st-ctx-params').click();assert.equal(a.$('st-query-slot').contains(a.w.document.querySelector('.query-panel')),true);a.w.document.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('st-start').contains(a.w.document.querySelector('.query-panel')),true,'it goes back where it was');
+    assert.equal(a.errors.length,0,a.errors.join('|'));
+  }finally{a.close();}
+});
+
+// S06-B part 3: the template centre is a page of the console only. The embed page has no page for it, loads none of its code, shares no new section
+// (the sections above are still byte for byte the console's), and its studio keeps the template chooser as the crumb's way to other templates.
+test('the embed page is not touched by the template centre: no page, no script, no stylesheet, and the crumb still opens the chooser',async()=>{
+  assert.equal(/page-library|library\.(js|css)/.test(embedHtml),false);assert.equal(/library\.(js|css)/.test(indexHtml),true);assert.match(indexHtml,/id="page-library"/);
+  const section=(html,id)=>{const start=html.indexOf('<section class="page" id="'+id+'"');assert.ok(start>=0,id);return html.slice(start,html.indexOf('</section>',start)+10);};
+  for(const id of ['page-workspace','page-dashboard','page-documents'])assert.equal(section(embedHtml,id),section(indexHtml,id),id+' differs from the console\'s');
+  assert.equal(/createReportingLibrary|openPage\('library'\)/.test(embedScript),false);
+  const id=await seedTemplate('Centre-free title');
+  const a=await embedPage({view:'document-designer',resource:{template:id}});try{
+    assert.equal(a.w.createReportingLibrary,undefined);assert.equal(a.$('page-library'),null);
+    a.give();await a.connected();await queried(a);await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'template opened');
+    a.$('st-crumb').click();assert.equal(a.$('st-d-chooser').classList.contains('open'),true,'with no centre in the embed, the crumb opens the template chooser');
     assert.equal(a.errors.length,0,a.errors.join('|'));
   }finally{a.close();}
 });

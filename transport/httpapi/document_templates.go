@@ -31,7 +31,13 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 	mountPrivateDocuments(mux, base, authenticate, store, authorize, func(req *http.Request, p r.Principal, d doctemplates.Document) error {
 		_, e := describeBinding(req, p, d.Binding)
 		return e
-	}, func(d doctemplates.Document) any { return d.Binding }, true)
+	}, func(d doctemplates.Document) any { return d.Binding }, func(d doctemplates.Document) map[string]any {
+		preset := ""
+		if pre, ok := d.PagePreset(); ok {
+			preset = pre.ID
+		}
+		return map[string]any{"name": d.Name, "schema_version": d.Schema, "preset": preset}
+	}, true)
 	if renderer != nil {
 		mux.HandleFunc("POST "+base+"/{id}/previews", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			var input struct {

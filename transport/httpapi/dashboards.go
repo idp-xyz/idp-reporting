@@ -69,6 +69,6 @@ func WithDashboards(fallback http.Handler, service *r.Service, authenticate Auth
 	mountPrivateDocuments(mux, base, authenticate, store, authorize, func(req *http.Request, p r.Principal, d dashboards.Document) error {
 		_, e := describeBinding(req, p, d.Binding)
 		return e
-	}, func(d dashboards.Document) any { return d.Binding })
+	}, func(d dashboards.Document) any { return d.Binding }, nil)
 	return secured(mux), nil
 }

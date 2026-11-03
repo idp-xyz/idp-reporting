@@ -1,5 +1,5 @@
 // Software DOM + real loopback Go HTTP tests; this is NOT browser/visual QA.
-import {test,before,after} from 'node:test';
+import {test,describe,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdtemp,rm,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -17,6 +17,7 @@ const dashboardScript=await readFile(join(root,'console/assets/dashboard.js'),'u
 const canvasScript=await readFile(join(root,'console/assets/canvas.js'),'utf8');
 const studioScript=await readFile(join(root,'console/assets/studio.js'),'utf8');
 const documentsScript=await readFile(join(root,'console/assets/documents.js'),'utf8');
+const libraryScript=await readFile(join(root,'console/assets/library.js'),'utf8');
 const token=randomBytes(32).toString('hex');
 const artifactDir=process.env.REPORTING_S03A_EVIDENCE_DIR;
 const pdfConfigured=['REPORTING_TYPST','REPORTING_TYPST_SHA256','REPORTING_PDF_FONTS'].every(k=>process.env[k]);
@@ -51,7 +52,7 @@ function app(intercept){
   w.URL.revokeObjectURL=id=>blobs.delete(id);
   w.HTMLAnchorElement.prototype.click=function(){if(this.download){const blob=blobs.get(this.href);downloads.push({name:this.download,blob});}};
   w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}return fetch(url+path,options);};
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(script);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(libraryScript);w.eval(documentsScript);w.eval(script);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
   const click=id=>$(id).click();
@@ -3202,6 +3203,8 @@ test('S06-A A4: the check tab shows the boundary samples with their rows, codes 
 
 test('S06-A A5: every dialog is a labelled modal dialog: focus goes in, Tab stays inside, Esc and the backdrop close it, and the focus goes back to the control that opened it',async()=>{const a=await designer();try{
  to2(a);const d=a.w.document;
+ // The crumb opens the template centre in the console; the chooser's own act is what an embed page's crumb has, so it is set here (S06-B part 3).
+ q(a,'#st-crumb').dataset.act='chooser';
  const cases=[['help','#st-help','设计说明与操作帮助'],['page','#st-page-settings','纸张与页边距'],['bands','#st-bands','区段设置'],['print','#st-print-settings','底稿、偏移与预印纸套打'],['insert','#st-insert-options','插入选项'],['preview','#previewButton','预览与导出'],['json','#st-export-json','模板JSON'],['issue','#st-tool-issue','正式出具与出具记录'],['versions','#st-versions','版本历史与发布指针'],['publish','#st-publish','发布前确认'],['chooser','#st-crumb','模板中心'],['query','#st-ctx-params','参数与筛选'],['rows','#st-ctx-data','数据预览与字段契约']];
  const tabKey=(shift)=>{const ev=new a.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:shift,bubbles:true,cancelable:true});d.activeElement.dispatchEvent(ev);return ev.defaultPrevented;};
  const focusables=id=>[...dialogOf(a,id).querySelectorAll('.dialog button,.dialog input,.dialog select,.dialog textarea,.dialog summary')].filter(e=>!e.disabled&&e.tabIndex>=0&&!e.closest('[hidden]'));
@@ -3282,7 +3285,7 @@ test('S06-A A1/A5: the template\'s name is editable in place and validated like 
  a.$('st-pub-confirm').click();try{await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'published v1');}catch(e){throw new Error(e.message+' | '+a.$('notice').textContent+' | '+a.$('doc-status').textContent+' | '+a.$('doc-release-status').textContent+' | '+JSON.stringify(a.trace.slice(-4)));}assert.equal(a.$('st-state').textContent,'已保存 v2','the editor\'s v2 is no longer the published one');
  a.click('doc-release-withdraw');await until(()=>a.$('doc-release-status').textContent.includes('当前未发布')&&!a.$('preview').disabled,'withdrawn');
  // The template chooser: the identity's templates with their names, versions, published version and data set; open one.
- q(a,'#st-crumb').click();try{await until(()=>qa(a,'#st-chooser-body tr').some(r=>r.textContent.includes('客户往来对账单')&&r.cells[4].textContent!=='…')&&!a.$('preview').disabled,'chooser rows',15000);}catch(e){throw new Error(e.message+' | '+a.$('st-chooser-status').textContent+' | '+qa(a,'#st-chooser-body tr').map(r=>r.textContent).join(' / ')+' | '+a.$('notice').textContent+a.$('doc-status').textContent);}
+ q(a,'#st-crumb').dataset.act='chooser';q(a,'#st-crumb').click();try{await until(()=>qa(a,'#st-chooser-body tr').some(r=>r.textContent.includes('客户往来对账单')&&r.cells[4].textContent!=='…')&&!a.$('preview').disabled,'chooser rows',15000);}catch(e){throw new Error(e.message+' | '+a.$('st-chooser-status').textContent+' | '+qa(a,'#st-chooser-body tr').map(r=>r.textContent).join(' / ')+' | '+a.$('notice').textContent+a.$('doc-status').textContent);}
  const row=qa(a,'#st-chooser-body tr').find(r=>r.cells[1].title===id);assert.ok(row);assert.deepEqual([row.cells[0].textContent,row.cells[2].textContent,row.cells[3].textContent,row.cells[4].textContent],['客户往来对账单 当前','2','—','receivables.aging@1.0.0']);
  assert.deepEqual([...row.cells[5].querySelectorAll('button')].map(b=>b.textContent+(b.getAttribute('aria-disabled')==='true'?':'+b.title:'')),['打开','打开已发布版本:尚无已发布版本']);
  assert.deepEqual(['st-chooser-new','st-chooser-import','st-chooser-refresh'].map(i=>a.$(i).textContent.trim()),['新建','导入JSON','刷新列表']);
@@ -3290,7 +3293,7 @@ test('S06-A A1/A5: the template\'s name is editable in place and validated like 
  // A template without a name shows 模板 and the first eight characters of its number.
  const noName=cv.tpl(a);delete noName.name;cv.load(a,noName);assert.equal(a.$('st-name').textContent,'模板 '+id.slice(0,8));
  // 新建: the default template (the old reset).
- q(a,'#st-crumb').click();a.$('st-chooser-new').click();assert.equal(cv.tpl(a).elements[0].text,'Document preview');assert.equal(isOpen(a,'chooser'),false);
+ q(a,'#st-crumb').dataset.act='chooser';q(a,'#st-crumb').click();a.$('st-chooser-new').click();assert.equal(cv.tpl(a).elements[0].text,'Document preview');assert.equal(isOpen(a,'chooser'),false);
  assert.equal(a.errors.length,0,a.errors.join('|'));
  }finally{a.close();}});
 
@@ -3436,3 +3439,415 @@ test('S06-B: a form (no detail band) is drawn and validated without a detail reg
  a.click('doc2-detail-add');assert.ok(cv.tpl(a).bands.detail);a.click('doc2-detail-remove');assert.equal(cv.tpl(a).bands.detail,undefined);
  assert.equal(a.errors.length,0,a.errors.join('|'));
  }finally{a.close();}});
+
+// ======================================================================================================================================
+// S06-B part 3: the template centre, the new-template wizard and the mapping dialog (console/assets/library.js, docs/STUDIO.md "模板中心").
+// The identity of every test in this file is the same, so each test seeds templates with its own tag and compares with the server's listing.
+// ======================================================================================================================================
+const REST='/api/reporting/v1';
+const rest=(path,options={})=>fetch(url+REST+path,{...options,headers:{Authorization:'Bearer '+token,...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});
+const libq=(a,sel)=>a.$('page-library').querySelector(sel),libqa=(a,sel)=>[...a.$('page-library').querySelectorAll(sel)];
+const tagOf=()=>randomBytes(3).toString('hex');
+async function seedTemplate(binding,name,catalog,extra={}){
+ const config={schema_version:'1.0',kind:'document',...(name?{name}:{}),binding,elements:[{id:'n1',source:'literal',field:'',text:'seed',x:10,y:25,width:190,height:12,font_size:18,align:'left'}],...extra};
+ const made=await rest('/document-templates',{method:'POST',body:JSON.stringify({id:'',expected_version:0,config})});assert.equal(made.status,201);const id=(await made.json()).id;
+ if(catalog){const put=await rest('/document-templates/'+id+'/catalog',{method:'PUT',body:JSON.stringify({domain:'',flow:'',favourite:false,archived:false,collections:[],...catalog,expected_revision:0})});assert.equal(put.status,200);}
+ return id;
+}
+const listing=async()=>(await rest('/document-templates')).json();
+async function centre(a){q(a,'[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&libqa(a,'.sample-card').length>=37&&!a.$('lib-count').textContent.includes('读取'),'the centre is listed',12000);}
+const ownCards=a=>libqa(a,'ul[aria-label="我的模板"] .catalog-card');
+const ownCard=(a,name)=>ownCards(a).find(c=>c.getAttribute('aria-label')===name);
+const cardButton=(card,label)=>[...card.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent).startsWith(label));
+const pick=(a,sel,value)=>{const e=libq(a,sel);e.value=value;e.dispatchEvent(new a.w.Event('change',{bubbles:true}));};
+const typeIn=(a,e,value)=>{e.value=value;e.dispatchEvent(new a.w.Event('input',{bubbles:true}));};
+const navButton=(a,label)=>libqa(a,'.catalog-sidebar .catalog-nav').find(b=>b.querySelector('span').textContent===label);
+const navCount=(a,label)=>Number(navButton(a,label).querySelector('b').textContent);
+const dlg=a=>libq(a,'.overlay.open [role="dialog"]');
+const pressKey=(a,target,key,extra={})=>target.dispatchEvent(new a.w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...extra}));
+const dButton=(a,label)=>[...dlg(a).querySelectorAll('button')].find(b=>b.textContent.trim()===label);
+
+// The identity of this file's server is shared by every test above, and a private store holds 64 templates per identity: the centre's tests run against a
+// server of their own (the same binary, its own memory and directories) so that what the earlier tests saved neither fills the cap nor the lists.
+describe('S06-B part 3: the template centre (a server of its own)',()=>{
+let mainUrl,second;
+before(async()=>{
+  mainUrl=url;
+  const dir=join(temporary,'centre');await mkdir(dir,{recursive:true});
+  const listener=createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
+  const pdf=pdfConfigured?['-pdf-typst',process.env.REPORTING_TYPST,'-pdf-typst-sha256',process.env.REPORTING_TYPST_SHA256,'-pdf-fonts',process.env.REPORTING_PDF_FONTS]:[];
+  second=spawn(join(temporary,'reporting-demo'),['-profile','contract-simulator','-memory','-listen','127.0.0.1:'+port,'-layout-directory',join(dir,'layouts'),'-dashboard-directory',join(dir,'dashboards'),'-template-directory',join(dir,'templates'),'-background-directory',join(dir,'backgrounds'),'-quota-jobs','1000','-quota-results','100000','-quota-admissions','100000',...pdf],{cwd:root,env:{...process.env,REPORTING_DEMO_TOKEN:token},stdio:['ignore','ignore','pipe']});
+  second.stderr.resume();
+  const next='http://127.0.0.1:'+port;
+  for(let i=0;i<100;i++){try{const r=await fetch(next+'/console/');if(r.ok){url=next;return;}}catch(_){}if(second.exitCode!==null)throw new Error('the centre\'s server did not start');await sleep(30);}
+  throw new Error('the centre\'s server startup timeout');
+});
+after(async()=>{url=mainUrl;if(second&&second.exitCode===null){second.kill('SIGTERM');await new Promise(resolve=>second.once('exit',resolve));}});
+
+test('S06-B C1: the template centre is a console page with the prototype\'s regions and labels, counts that agree with the server, and nothing in the browser\'s storage',async()=>{const a=await designer();try{
+ const binding=cv.tpl(a).binding,tag=tagOf();
+ const w1=await seedTemplate(binding,'WMS出库-'+tag,{domain:'仓储 WMS',flow:'出库',favourite:true,collections:['客户A-'+tag]});
+ const w2=await seedTemplate(binding,'',{domain:'国际贸易',flow:'贸易单证'});
+ const w3=await seedTemplate(binding,'归档的-'+tag,{domain:'通用业务',flow:'财务',archived:true});
+ // The navigation entry and the page.
+ assert.equal(q(a,'[data-page="library"]').textContent.trim().endsWith('模板中心'),true);
+ await centre(a);
+ const d=a.w.document;assert.equal(d.body.classList.contains('library-on'),true);assert.equal(d.body.classList.contains('studio-on'),false);
+ const text=s=>libq(a,s).textContent.replace(/\s+/g,' ').trim();
+ assert.match(text('.wordmark'),/^IDP REPORTING\s*TEMPLATE WORKSPACE$/);
+ assert.deepEqual(libqa(a,'.library-header .btn').map(b=>b.textContent.trim()),['返回设计器','数据中心','新建模板']);
+ assert.equal(text('.library-eyebrow'),'DOCUMENT OPERATIONS');assert.equal(text('h1'),'模板中心');assert.equal(text('.catalog-top p'),'从业务流程找到模板，再选择版式、数据和版本。');
+ assert.deepEqual(libqa(a,'.catalog-caption').map(c=>c.textContent.trim()),['快速访问','业务域全部','自定义集合']);
+ assert.deepEqual(libqa(a,'.catalog-sidebar .catalog-nav').slice(0,4).map(b=>b.querySelector('span').textContent),['全部模板','我的收藏','最近使用','归档']);
+ assert.deepEqual(libqa(a,'.catalog-sidebar .catalog-nav').slice(4,8).map(b=>b.querySelector('span').textContent),['仓储 WMS','运输 / 货代','国际贸易','通用业务']);
+ assert.match(text('.catalog-footnote'),/业务域 → 流程用于稳定分类。/);
+ assert.deepEqual(libqa(a,'.catalog-stats span').map(s=>s.textContent),['可用模板','业务域']);
+ assert.equal(libq(a,'input[type=search]').getAttribute('placeholder'),'搜索名称、业务流程、集合或编码…');assert.equal(libq(a,'#lib-import').textContent.trim(),'导入模板');
+ assert.deepEqual(libqa(a,'.catalog-filters select').map(s=>s.getAttribute('aria-label')),['业务流程','模板状态','模板排序']);
+ assert.deepEqual([...libq(a,'select[aria-label="模板状态"]').options].map(o=>o.text),['全部状态','草稿','已发布','已归档']);
+ assert.deepEqual([...libq(a,'select[aria-label="模板排序"]').options].map(o=>o.text),['名称','最近打开','最近更新']);
+ assert.deepEqual(libqa(a,'.catalog-view button').map(b=>b.getAttribute('aria-label')),['列表视图','卡片视图']);
+ // The counts are the server's: compare with the raw listing.
+ const raw=await listing(),act=raw.filter(t=>!t.catalog.archived);
+ assert.equal(navCount(a,'全部模板'),act.length);assert.equal(navCount(a,'我的收藏'),act.filter(t=>t.catalog.favourite).length);assert.equal(navCount(a,'最近使用'),act.filter(t=>t.catalog.last_opened).length);assert.equal(navCount(a,'归档'),raw.length-act.length);
+ const samples=await (await rest('/document-templates/samples')).json();assert.equal(samples.length,37);
+ for(const dom of ['仓储 WMS','运输 / 货代','国际贸易','通用业务'])assert.equal(navCount(a,dom),act.filter(t=>t.catalog.domain===dom).length+samples.filter(s=>s.domain===dom).length,dom);
+ assert.equal(navCount(a,'仓储 WMS')>=24+1,true);
+ assert.equal(libq(a,'.catalog-stats strong').textContent,String(act.length));
+ assert.equal(a.$('lib-count').textContent,act.length+' 个结果 · 显示 1–'+Math.min(24,act.length));
+ // A card: the name (or "模板 <id 前八位>"), domain / flow / preset, the badge, the saved versions, the star, 分类, 复制, 归档, 编辑.
+ const c1=ownCard(a,'WMS出库-'+tag);assert.ok(c1);
+ assert.equal(c1.querySelector('.catalog-name').textContent,'WMS出库-'+tag);assert.equal(c1.querySelector('.catalog-subtitle').textContent.replace(/\s+/g,''),'仓储WMS/出库·A4·210×297mm');
+ assert.equal(c1.querySelector('.catalog-state .pill').textContent,'草稿');assert.equal(c1.querySelector('.catalog-state small').textContent,'1 个保存版本');
+ assert.equal(c1.querySelector('.catalog-star').getAttribute('aria-pressed'),'true');assert.equal(c1.querySelector('.catalog-star').textContent,'★');assert.equal(c1.querySelector('.catalog-tags').textContent,'集合：客户A-'+tag);
+ assert.deepEqual([...c1.querySelectorAll('.catalog-card-actions button')].map(b=>b.getAttribute('aria-label')||b.textContent),['取消收藏 WMS出库-'+tag,'分类 WMS出库-'+tag,'复制模板 WMS出库-'+tag,'归档模板 WMS出库-'+tag,'编辑 WMS出库-'+tag]);
+ assert.ok(ownCard(a,'模板 '+w2.slice(0,8)),'a template without a name is called 模板 <id 前八位>');
+ assert.equal(ownCard(a,'归档的-'+tag),undefined,'an archived template is not under 全部模板');
+ // Collections are listed with counts; the archive is its own list with 恢复 and a disabled name.
+ assert.equal(navCount(a,'客户A-'+tag),1);
+ navButton(a,'归档').click();assert.equal(text('h1'),'归档模板');const arc=ownCard(a,'归档的-'+tag);assert.ok(arc);assert.equal(arc.querySelector('.catalog-name').disabled,true);assert.equal(arc.querySelector('.catalog-state .pill').textContent,'已归档');assert.deepEqual([...arc.querySelectorAll('.catalog-card-actions button')].map(b=>b.getAttribute('aria-label')||b.textContent).slice(-1),['恢复 归档的-'+tag]);
+ assert.equal(libq(a,'.sample-section').hidden,true,'samples are never in the archive');
+ navButton(a,'我的收藏').click();assert.equal(text('h1'),'我的收藏');assert.equal(libq(a,'.sample-section').hidden,true,'samples are never favourites');assert.ok(ownCard(a,'WMS出库-'+tag));
+ navButton(a,'全部模板').click();assert.equal(libq(a,'.sample-section').hidden,false);
+ // Four domains of samples, each with its count.
+ assert.deepEqual(libqa(a,'.sample-group h3').map(h=>h.textContent),['仓储 WMS · 24','运输 / 货代 · 7','国际贸易 · 4','通用业务 · 2']);
+ assert.equal(a.w.localStorage.length,0);assert.equal(a.w.sessionStorage.length,0);assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C2: search, the filters, the sort, the views and the pages work on the identity\'s templates and the samples',async()=>{const a=await designer();try{
+ const binding=cv.tpl(a).binding,tag=tagOf();
+ const ids={};
+ ids.b=await seedTemplate(binding,'乙-'+tag,{domain:'仓储 WMS',flow:'入库',collections:['项目-'+tag]});
+ ids.a=await seedTemplate(binding,'甲-'+tag,{domain:'仓储 WMS',flow:'出库'});
+ ids.c=await seedTemplate(binding,'丙-'+tag,{domain:'运输 / 货代',flow:'海运'});
+ // 丙 is published, so the status filter has both sides.
+ const rel=await rest('/document-templates/'+ids.c+'/release',{method:'POST',body:JSON.stringify({action:'publish',version:1,expected_revision:0})});assert.equal(rel.status,200);
+ await centre(a);
+ const names=()=>ownCards(a).map(c=>c.getAttribute('aria-label')).filter(n=>n.endsWith('-'+tag));
+ const sampleNames=()=>libqa(a,'.sample-card .catalog-name').map(n=>n.textContent);
+ // Search: name, flow, collection, id; samples answer too.
+ const search=libq(a,'input[type=search]');
+ typeIn(a,search,tag);assert.deepEqual(names(),['丙-'+tag,'甲-'+tag,'乙-'+tag].sort((x,y)=>new Intl.Collator('zh-CN').compare(x,y)),'by name (sorted 名称)');
+ typeIn(a,search,'项目-'+tag);assert.deepEqual(names(),['乙-'+tag],'by collection');
+ typeIn(a,search,ids.c);assert.deepEqual(names(),['丙-'+tag],'by id');
+ typeIn(a,search,'海运 '+tag);assert.deepEqual(names(),['丙-'+tag],'by flow and name: every word must match');
+ typeIn(a,search,'海运');assert.ok(sampleNames().length>=1&&sampleNames().every(n=>/提单|订舱|舱单/.test(n)||true));assert.equal(libqa(a,'.sample-card').every(c=>c.querySelector('.catalog-subtitle').textContent.includes('海运')),true,'samples are searched by flow too');
+ typeIn(a,search,'没有这样的模板-'+tag);assert.equal(ownCards(a).length,0);assert.match(libq(a,'.empty-state').textContent,/没有匹配的模板/);assert.equal(a.$('lib-count').textContent,'0 个结果');
+ libq(a,'.empty-state .btn').click();assert.equal(search.value,'');assert.ok(ownCards(a).length>=3);
+ // Filters: flow, status; the flow list follows the domain.
+ typeIn(a,search,tag);
+ navButton(a,'仓储 WMS').click();assert.deepEqual(names().sort(),['乙-'+tag,'甲-'+tag].sort());assert.equal(libq(a,'h1').textContent,'仓储 WMS');
+ assert.deepEqual([...libq(a,'select[aria-label="业务流程"]').options].map(o=>o.text).slice(0,4),['全部流程','入库','库存','出库']);
+ pick(a,'select[aria-label="业务流程"]','出库');assert.deepEqual(names(),['甲-'+tag]);assert.equal(libqa(a,'.sample-card').every(c=>c.querySelector('.catalog-subtitle').textContent.includes('出库')),true);
+ pick(a,'select[aria-label="业务流程"]','');navButton(a,'仓储 WMS').click();assert.equal(names().length,3);
+ pick(a,'select[aria-label="模板状态"]','published');assert.deepEqual(names(),['丙-'+tag]);assert.equal(libq(a,'.sample-section').hidden,true,'a status filter has no samples');assert.equal(ownCard(a,'丙-'+tag).querySelector('.catalog-state .pill').textContent,'已发布 v1');assert.equal(ownCard(a,'丙-'+tag).querySelector('.catalog-state .pill').classList.contains('green'),true);
+ pick(a,'select[aria-label="模板状态"]','draft');assert.deepEqual(names().sort(),['乙-'+tag,'甲-'+tag].sort());
+ pick(a,'select[aria-label="模板状态"]','all');
+ // Collections filter by their nav entry.
+ navButton(a,'项目-'+tag).click();assert.deepEqual(names(),['乙-'+tag]);assert.equal(libq(a,'.sample-section').hidden,true);assert.equal(libq(a,'.catalog-results .pill').textContent,'集合：项目-'+tag);navButton(a,'项目-'+tag).click();assert.equal(names().length,3);
+ // Sort 最近打开: opening a template (reading a version) records it; the order follows.
+ assert.equal((await rest('/document-templates/'+ids.a+'?version=1')).status,200);await new Promise(r=>setTimeout(r,5));assert.equal((await rest('/document-templates/'+ids.b+'?version=1')).status,200);
+ libq(a,'.library-header .btn').click();// 返回设计器, then back
+ assert.equal(a.$('page-library').hidden,true);q(a,'[data-page="library"]').click();await until(()=>names().length===3&&['乙-','甲-'].every(n=>ownCard(a,n+tag).querySelector('.catalog-state small').textContent.includes('最近')),'reloaded');
+ pick(a,'select[aria-label="模板排序"]','recent');assert.deepEqual(names().slice(0,2),['乙-'+tag,'甲-'+tag],'most recently opened first');
+ navButton(a,'最近使用').click();assert.equal(libq(a,'h1').textContent,'最近使用');assert.deepEqual(names().slice(0,2),['乙-'+tag,'甲-'+tag]);assert.equal(ownCard(a,'丙-'+tag),undefined);
+ navButton(a,'全部模板').click();pick(a,'select[aria-label="模板排序"]','updated');assert.equal(names().length,3);pick(a,'select[aria-label="模板排序"]','name');
+ // The views: list and grid.
+ assert.equal(libq(a,'.catalog-items').classList.contains('is-list'),true);libq(a,'[aria-label="卡片视图"]').click();assert.equal(libq(a,'.catalog-items').classList.contains('is-grid'),true);assert.equal(libq(a,'[aria-label="卡片视图"]').getAttribute('aria-pressed'),'true');assert.equal(libq(a,'[aria-label="列表视图"]').getAttribute('aria-pressed'),'false');libq(a,'[aria-label="列表视图"]').click();
+ // Pages: with 12 per page and more than 12 templates (seeded here), the result line and the pager say which.
+ typeIn(a,search,'');const total=(await listing()).filter(t=>!t.catalog.archived).length;
+ if(total>12){pick(a,'select[aria-label="每页模板数"]','12');assert.equal(a.$('lib-count').textContent,total+' 个结果 · 显示 1–12');assert.match(libq(a,'.catalog-pagination').textContent,/第 1 \/ \d+ 页/);libq(a,'.catalog-pagination .btn:last-of-type').click();assert.equal(a.$('lib-count').textContent,total+' 个结果 · 显示 13–'+Math.min(total,24));}
+ else assert.equal(a.$('lib-count').textContent,total+' 个结果 · 显示 1–'+total);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C3: the cards\' actions go to the catalogue with the revision they read, and a stale revision is refused and refreshed',async()=>{
+ const puts=[];
+ const a=await designer(async(path,options)=>{if(options&&options.method==='PUT'&&/\/catalog$/.test(path))puts.push(JSON.parse(options.body));});try{
+ const binding=cv.tpl(a).binding,tag=tagOf();
+ const id=await seedTemplate(binding,'卡-'+tag,{domain:'通用业务',flow:'销售'});
+ await centre(a);
+ const name='卡-'+tag,serverCatalog=async()=>(await (await rest('/document-templates/'+id+'/catalog')).json());
+ // Favourite: one PUT with expected_revision 1 (the seed's), the whole object, then the star is pressed and the count moves.
+ const favs=navCount(a,'我的收藏');
+ cardButton(ownCard(a,name),'收藏').click();await until(()=>ownCard(a,name).querySelector('.catalog-star').getAttribute('aria-pressed')==='true','starred');
+ assert.deepEqual(puts.at(-1),{domain:'通用业务',flow:'销售',favourite:true,archived:false,collections:[],expected_revision:1});
+ assert.equal(navCount(a,'我的收藏'),favs+1);assert.equal((await serverCatalog()).favourite,true);assert.equal((await serverCatalog()).revision,2);
+ assert.equal(libq(a,'.catalog-star[data-focus="star'+id+'"]').isConnected,true);
+ // The focus stays on the star after the list is rebuilt.
+ cardButton(ownCard(a,name),'取消收藏').focus();cardButton(ownCard(a,name),'取消收藏').click();await until(()=>ownCard(a,name).querySelector('.catalog-star').getAttribute('aria-pressed')==='false','unstarred');
+ assert.equal(a.w.document.activeElement.getAttribute('aria-label'),'收藏 '+name,'focus returns to the rebuilt star');
+ // 分类: a dialog with the domain, the flow and the collections; save writes one PUT.
+ cardButton(ownCard(a,name),'分类').click();
+ const d=dlg(a);assert.ok(d);assert.equal(d.getAttribute('aria-modal'),'true');assert.equal(d.getAttribute('aria-labelledby'),'lib-d-classify-title');assert.equal(a.w.document.getElementById('lib-d-classify-title').textContent,'分类 · '+name);
+ assert.equal(a.w.document.activeElement.closest('[role=dialog]'),d,'focus is inside the dialog');assert.equal(libq(a,'.library-shell').inert,true,'the page behind is inert');
+ const sel=[...d.querySelectorAll('select')];sel[0].value='运输 / 货代';sel[0].dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.deepEqual([...sel[1].options].map(o=>o.text),['未指定','航空运输','海运','快递面单']);sel[1].value='海运';
+ const fresh=d.querySelector('input[type=text]');fresh.value=' 前后有空白';dButton(a,'添加').click();assert.match(d.querySelector('[role=alert]').textContent,/前后不留空白/);assert.equal(d.querySelector('[role=alert]').hidden,false);
+ fresh.value='集合-'+tag;dButton(a,'添加').click();assert.equal([...d.querySelectorAll('input[type=checkbox]')].find(c=>c.value==='集合-'+tag).checked,true);
+ dButton(a,'保存分类').click();await until(()=>!dlg(a)&&ownCard(a,name).querySelector('.catalog-subtitle').textContent.includes('海运'),'classified');
+ assert.deepEqual(puts.at(-1),{domain:'运输 / 货代',flow:'海运',favourite:false,archived:false,collections:['集合-'+tag],expected_revision:3});
+ assert.deepEqual(await serverCatalog(),{domain:'运输 / 货代',flow:'海运',favourite:false,archived:false,collections:['集合-'+tag],last_opened:'',revision:4});
+ assert.equal(navCount(a,'集合-'+tag),1);assert.equal(a.w.document.activeElement.getAttribute('aria-label'),'分类 '+name,'focus returns to the opener');assert.equal(libq(a,'.library-shell').inert,false);
+ // Esc closes a dialog without writing.
+ const before=puts.length;cardButton(ownCard(a,name),'分类').click();pressKey(a,dlg(a),'Escape');assert.equal(dlg(a),null);assert.equal(puts.length,before);
+ // A stale revision (the catalogue changed behind the page): 409, the list is refreshed and the notice says so; the next press works.
+ const put=await rest('/document-templates/'+id+'/catalog',{method:'PUT',body:JSON.stringify({domain:'运输 / 货代',flow:'海运',favourite:false,archived:false,collections:['集合-'+tag,'别处-'+tag],expected_revision:4})});assert.equal(put.status,200);
+ cardButton(ownCard(a,name),'收藏').click();await until(()=>!a.$('notice').hidden&&a.$('notice').textContent.includes('别处改过'),'conflict told');
+ await until(()=>navCount(a,'别处-'+tag)===1,'refreshed');assert.equal((await serverCatalog()).favourite,false);
+ cardButton(ownCard(a,name),'收藏').click();await until(()=>ownCard(a,name).querySelector('.catalog-star').getAttribute('aria-pressed')==='true','starred after the refresh');assert.equal(puts.at(-1).expected_revision,5);
+ // Archive: leaves 全部模板, is in 归档, and 恢复 brings it back.
+ cardButton(ownCard(a,name),'归档模板').click();await until(()=>!ownCard(a,name),'archived');assert.match(a.$('notice').textContent,/已归档/);assert.equal((await serverCatalog()).archived,true);
+ navButton(a,'归档').click();assert.ok(ownCard(a,name));cardButton(ownCard(a,name),'恢复').click();await until(()=>!ownCard(a,name),'restored');navButton(a,'全部模板').click();assert.ok(ownCard(a,name));assert.equal((await serverCatalog()).archived,false);
+ // 复制: a new template (the same layout and dataset, "副本"), the catalogue copied except the favourite.
+ const count=(await listing()).length;cardButton(ownCard(a,name),'复制模板').click();await until(()=>ownCard(a,name+' 副本'),'duplicated',8000);
+ const after=await listing();assert.equal(after.length,count+1);const dup=after.find(t=>t.name===name+' 副本');assert.deepEqual([dup.catalog.domain,dup.catalog.flow,dup.catalog.favourite,dup.catalog.collections.includes('集合-'+tag)],['运输 / 货代','海运',false,true]);assert.equal(dup.version,1);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C4: 编辑 opens the latest version in the studio, and without a snapshot or on another dataset the card says why',async()=>{
+ let rewrite=false;
+ const a=app(async(path,options)=>{if(rewrite&&path===REST+'/document-templates'&&(options?.method||'GET')==='GET'){const r=await fetch(url+path,options);const v=await r.json();for(const t of v)t.binding.dataset.id='other.dataset';return new Response(JSON.stringify(v),{headers:{'Content-Type':'application/json'}});}});try{
+ await a.login();const tag=tagOf();
+ a.configure();const [dsID,dsVersion]=a.$('query-dataset').value.split('@'),binding={integration_id:a.$('query-product').value,dataset:{id:dsID,version:dsVersion}};
+ const id=await seedTemplate(binding,'编辑-'+tag,{domain:'通用业务',flow:'财务'});
+ // No result yet: the centre lists and classifies, but nothing opens, and the page says why.
+ q(a,'[data-page="library"]').click();await until(()=>ownCard(a,'编辑-'+tag),'listed without a snapshot',10000);
+ const edit=cardButton(ownCard(a,'编辑-'+tag),'编辑');assert.equal(edit.getAttribute('aria-disabled'),'true');assert.match(edit.title,/冻结快照/);
+ assert.match(libq(a,'.catalog-notice-line').textContent,/冻结快照/);
+ edit.click();assert.match(a.$('notice').textContent,/冻结快照/);assert.equal(a.$('page-documents').hidden,true);assert.equal(a.$('page-library').hidden,false);
+ // 新建模板 can be opened (the samples can be read) but step 3 needs the data set.
+ // With a result: 编辑 opens the latest version in the studio.
+ libqa(a,'.library-header .btn').find(b=>b.textContent.trim()==='数据中心').click();assert.equal(a.$('page-catalog').hidden,false);assert.equal(a.$('page-library').hidden,true);assert.equal(a.w.document.body.classList.contains('library-on'),false);
+ a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');
+ q(a,'[data-page="library"]').click();await until(()=>ownCard(a,'编辑-'+tag)&&!libq(a,'.catalog-notice-line').textContent,'with a result');
+ cardButton(ownCard(a,'编辑-'+tag),'编辑').click();await until(()=>!a.$('page-documents').hidden&&a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'opened in the studio');
+ assert.equal(a.w.document.body.classList.contains('studio-on'),true);assert.equal(a.$('st-name').textContent,'编辑-'+tag);assert.equal(a.$('page-library').hidden,true);
+ // The crumb, the rail and the wordmark of the studio open the centre; 返回设计器 returns with the same template.
+ for(const sel of ['#st-crumb','#st-wordmark','#st-rail-library']){q(a,sel).click();assert.equal(a.$('page-library').hidden,false,sel);assert.equal(a.$('page-documents').hidden,true);libqa(a,'.library-header .btn')[0].click();assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('st-name').textContent,'编辑-'+tag);}
+ // The name button of the card opens the same way; and the opened version is recorded as the last opened.
+ q(a,'#st-crumb').click();navButton(a,'最近使用').click();await until(()=>ownCard(a,'编辑-'+tag),'the opened template is in 最近使用');
+ // Another data set: the card's reason differs.
+ rewrite=true;libq(a,'.library-header .btn').click();q(a,'[data-page="library"]').click();await until(()=>ownCards(a).length&&ownCards(a).every(c=>cardButton(c,'编辑').getAttribute('aria-disabled')==='true'),'every card is on another data set '+libq(a,'.catalog-results').textContent+'|'+libq(a,'.catalog-items').textContent.slice(0,200)+'|'+a.$('notice').textContent);
+ assert.match(cardButton(ownCards(a)[0],'编辑').title,/绑定的数据集与当前快照的数据集不同/);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C5: 复制到我的模板 maps each field slot to a column or a literal, pre-filled by name and type, and opens the saved copy in the studio',async()=>{
+ const bodies=[];
+ const a=await designer(async(path,options)=>{if(options&&options.method==='POST'&&/\/samples\/[a-z0-9_]+\/copy$/.test(path))bodies.push({path,body:JSON.parse(options.body)});});try{
+ const tag=tagOf();await centre(a);
+ const kind='order',detail=await (await rest('/document-templates/samples/'+kind)).json();
+ // Samples: read-only cards, a preview and a copy; the pack's 37 are in four domains.
+ const card=libqa(a,'.sample-card').find(c=>c.getAttribute('aria-label')==='示例 '+detail.name);assert.ok(card);
+ assert.equal(card.querySelector('.catalog-state .pill').textContent,'示例 · 只读');assert.deepEqual([...card.querySelectorAll('.catalog-card-actions button')].map(b=>b.textContent.trim()),['预览','复制到我的模板']);
+ assert.equal(card.querySelector('[aria-label^="收藏"]'),null,'a sample has no star');assert.equal(card.querySelector('[aria-label^="归档"]'),null,'and no archive');
+ card.querySelector('.btn.primary').click();
+ await until(()=>dlg(a),'the mapping dialog');const d=dlg(a);
+ assert.equal(a.w.document.getElementById(d.getAttribute('aria-labelledby')).textContent,'复制到我的模板 · '+detail.name);assert.equal(d.getAttribute('aria-modal'),'true');
+ assert.equal(a.w.document.activeElement.closest('[role=dialog]'),d);
+ // The dataset of the current snapshot is shown, the name defaults to the sample's, every slot is a row of the table.
+ const b=cv.tpl(a).binding;assert.ok(d.textContent.includes(b.dataset.id+'@'+b.dataset.version));
+ const name=d.querySelector('input[type=text]');assert.equal(name.value,detail.name);assert.equal(name.maxLength,80);
+ const rows=[...d.querySelectorAll('tbody tr')];assert.equal(rows.length,detail.field_slots.length);
+ assert.deepEqual(rows.map(r=>r.querySelector('th small').textContent),detail.field_slots.map(f=>f.id));
+ assert.deepEqual(rows.map(r=>r.cells[1].textContent),detail.field_slots.map(f=>f.scope==='row'?'明细':'单据'));
+ const sels=rows.map(r=>r.querySelector('select')),lits=rows.map(r=>r.querySelector('input'));
+ assert.ok(sels.every(s=>s.getAttribute('aria-label').startsWith('「')));assert.equal([...sels[0].options][0].text,'字面文字');
+ // Pre-filled: at least one slot is on a column; no column is used twice; an unmapped slot shows its literal "[label]".
+ const chosen=sels.map(s=>s.value).filter(Boolean);assert.ok(chosen.length>=1,'some slot is pre-filled by name or type');assert.equal(new Set(chosen).size,chosen.length,'no column twice');
+ sels.forEach((s,i)=>{if(!s.value){assert.equal(lits[i].hidden,false);assert.equal(lits[i].value,'['+detail.field_slots[i].label+']');}else assert.equal(lits[i].hidden,true);});
+ // Change one: the first mapped slot to a literal, the first literal slot (if any) stays.
+ const k=sels.findIndex((s,i)=>!s.value&&detail.field_slots[i].scope==='document');assert.ok(k>=0);sels[k].value='';sels[k].dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(lits[k].hidden,false);typeIn(a,lits[k],'固定-'+tag);
+ // A bad name is refused where it is typed, before any request.
+ name.value=' 坏名';dButton(a,'复制并进入设计器').click();assert.equal(d.querySelector('[role=alert]').hidden,false);assert.equal(bodies.length,0);
+ name.value='订单-'+tag;
+ dButton(a,'复制并进入设计器').click();
+ await until(()=>!a.$('page-documents').hidden&&a.$('doc-server-status').textContent.includes('正在编辑模板 '),'opened in the studio',10000);
+ assert.equal(bodies.length,1);const sent=bodies[0].body;
+ assert.deepEqual(Object.keys(sent).sort(),['dataset','mapping','name']);assert.deepEqual(sent.dataset,{integration_id:b.integration_id,id:b.dataset.id,version:b.dataset.version});assert.equal(sent.name,'订单-'+tag);
+ assert.deepEqual(Object.keys(sent.mapping).sort(),detail.field_slots.map(f=>f.id).sort());assert.deepEqual(sent.mapping[detail.field_slots[k].id],{literal:'固定-'+tag});
+ for(const [i,f] of detail.field_slots.entries())if(i!==k)assert.deepEqual(sent.mapping[f.id],sels[i].value?{column:sels[i].value}:{literal:'['+f.label+']'},f.id);
+ // The server has it as an ordinary template of this identity, in the sample's domain and flow; the studio shows it by name.
+ const all=await listing();const mine=all.find(t=>t.name==='订单-'+tag);assert.ok(mine);assert.equal(mine.version,1);assert.deepEqual([mine.catalog.domain,mine.catalog.flow,mine.catalog.favourite,mine.catalog.archived],[detail.domain,detail.flow,false,false]);
+ assert.equal(a.$('st-name').textContent,'订单-'+tag);assert.ok(JSON.stringify(cv.tpl(a)).includes('固定-'+tag));assert.equal(a.$('doc-server-status').textContent,'正在编辑模板 '+mine.id+' · 版本 1');
+ assert.equal(a.w.document.body.classList.contains('studio-on'),true);
+ // The sample is unchanged and the copy is in the centre next time (the list is read again when the page opens).
+ q(a,'#st-crumb').click();await until(()=>ownCard(a,'订单-'+tag),'the copy is listed');assert.equal(libqa(a,'.sample-card').length,37);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C5b: a refused copy (the identity\'s cap, a column it may not read) is told and keeps the dialog',async()=>{
+ const a=await designer(async(path,options)=>{if(options&&options.method==='POST'&&/\/samples\/[a-z0-9_]+\/copy$/.test(path)){const code=a.__refuse;if(code)return new Response(JSON.stringify({error:code==='413'?'BUDGET_EXCEEDED':'ACCESS_DENIED'}),{status:Number(code),headers:{'Content-Type':'application/json'}});}});try{
+ await centre(a);
+ for(const [status,expected] of [['413',/64 个模板/],['403',/无权使用所选的某个字段/]]){
+  a.__refuse=status;libqa(a,'.sample-card .btn.primary')[0].click();await until(()=>dlg(a),'dialog');dButton(a,'复制并进入设计器').click();
+  await until(()=>a.$('notice').textContent.match(expected),'refusal told '+status);assert.equal(a.$('page-documents').hidden,true);assert.ok(dlg(a),'the dialog stays open for another try');assert.equal(dButton(a,'复制并进入设计器').disabled,false);
+  pressKey(a,dlg(a),'Escape');assert.equal(dlg(a),null);
+ }
+ // The real server refuses a table with no column to print (every slot a literal): 400, told in words, the dialog stays.
+ a.__refuse=null;pressKey(a,dlg(a)||a.w.document.body,'Escape');libqa(a,'.sample-card .btn.primary')[0].click();await until(()=>dlg(a),'dialog');
+ for(const s of dlg(a).querySelectorAll('tbody select')){s.value='';s.dispatchEvent(new a.w.Event('change',{bubbles:true}));}
+ dButton(a,'复制并进入设计器').click();await until(()=>/名称或映射不被接受/.test(a.$('notice').textContent),'400 told');assert.ok(dlg(a));assert.equal(a.$('page-documents').hidden,true);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+const radio=(a,value)=>dlg(a).querySelector('input[type=radio][value="'+value+'"]');
+const choose=(a,value)=>{const r=radio(a,value);assert.ok(r,'radio '+value);r.checked=true;r.dispatchEvent(new a.w.Event('change',{bubbles:true}));};
+const stepNames=a=>[...dlg(a).querySelectorAll('.steps .step')].map(s=>s.textContent);
+
+test('S06-B C6: the new-template wizard goes 业务流程, 版式, 数据, 名称 and creates a copy of a sample or a blank template on a page preset, then opens it in the studio',async()=>{
+ const posts=[];
+ const a=await designer(async(path,options)=>{if(options&&options.method==='POST'&&/\/document-templates(\/samples\/[a-z0-9_]+\/copy)?$/.test(path))posts.push({path,body:JSON.parse(options.body)});});try{
+ const tag=tagOf();await centre(a);
+ const samples=await (await rest('/document-templates/samples')).json(),outbound=samples.filter(s=>s.domain==='仓储 WMS'&&s.flow==='出库');assert.ok(outbound.length>=2);
+ const opener=a.$('lib-new');opener.focus();opener.click();
+ let d=dlg(a);assert.ok(d);assert.equal(d.getAttribute('aria-modal'),'true');assert.equal(a.w.document.getElementById(d.getAttribute('aria-labelledby')).textContent,'创建一份新的业务模板');
+ assert.deepEqual(stepNames(a),['1业务流程','2版式','3数据','4名称']);assert.equal(d.querySelector('.step.current').textContent,'1业务流程');
+ // Step 1: the four domains with their flows, and 空白模板. Nothing chosen: refused in words.
+ assert.deepEqual([...d.querySelectorAll('fieldset legend')].map(l=>l.textContent),['仓储 WMS','运输 / 货代','国际贸易','通用业务','不属于任何流程']);
+ assert.equal(d.querySelectorAll('input[type=radio][name="lib-flow"]').length,9+3+1+3+1);
+ dButton(a,'下一步').click();assert.equal(d.querySelector('[role=alert]').hidden,false);assert.match(d.querySelector('[role=alert]').textContent,/请选择一个业务流程/);assert.equal(d.querySelector('.step.current').textContent,'1业务流程');
+ // Esc closes it without creating anything, and the focus goes back to 新建模板.
+ pressKey(a,d,'Escape');assert.equal(dlg(a),null);assert.equal(a.w.document.activeElement,opener);assert.equal(posts.length,0);
+ // The focus is trapped: Tab from the last control goes to the first, Shift+Tab from the first to the last.
+ opener.click();d=dlg(a);const focusables=[...d.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')].filter(e=>!e.closest('[hidden]'));
+ focusables.at(-1).focus();pressKey(a,focusables.at(-1),'Tab');assert.equal(a.w.document.activeElement,focusables[0]);pressKey(a,focusables[0],'Tab',{shiftKey:true});assert.equal(a.w.document.activeElement,focusables.at(-1));
+ // Step 1 to 2: 仓储 WMS / 出库 offers its samples and the blank template.
+ choose(a,'仓储 WMS|出库');dButton(a,'下一步').click();assert.equal(d.querySelector('.step.current').textContent,'2版式');assert.equal(d.querySelector('.step.done').textContent,'✓业务流程');
+ const layouts=[...d.querySelectorAll('input[name="lib-layout"]')];assert.deepEqual(layouts.map(i=>i.value),[...outbound.map(s=>s.kind),'blank']);assert.equal(layouts[0].checked,true,'the first sample is chosen');
+ const pickSample=outbound[1];choose(a,pickSample.kind);
+ dButton(a,'下一步').click();assert.equal(d.querySelector('.step.current').textContent,'3数据');
+ // Step 3: the data set and the mapping table of the chosen sample, pre-filled.
+ await until(()=>d.querySelector('tbody tr'),'mapping table');const detail=await (await rest('/document-templates/samples/'+pickSample.kind)).json();
+ assert.equal(d.querySelectorAll('tbody tr').length,detail.field_slots.length);const b=cv.tpl(a).binding;assert.ok(d.textContent.includes(b.dataset.id+'@'+b.dataset.version));
+ const sels=[...d.querySelectorAll('tbody select')];const touched=sels.findIndex(s=>!s.value);if(touched>=0){const lit=d.querySelectorAll('tbody tr')[touched].querySelector('input');typeIn(a,lit,'文字-'+tag);}
+ // Back keeps the choices; forward again.
+ dButton(a,'上一步').click();assert.equal(d.querySelector('.step.current').textContent,'2版式');assert.equal(radio(a,pickSample.kind).checked,true);dButton(a,'下一步').click();await until(()=>d.querySelector('tbody tr'),'mapping table again');
+ if(touched>=0)assert.equal(d.querySelectorAll('tbody tr')[touched].querySelector('input').value,'文字-'+tag,'the mapping survives going back');
+ dButton(a,'下一步').click();assert.equal(d.querySelector('.step.current').textContent,'4名称');
+ // Step 4: the name defaults to the sample's; the summary says what will happen.
+ const name=d.querySelector('#lib-wizard-name');assert.equal(name.value,pickSample.name);assert.match(d.querySelector('dl').textContent,/业务流程仓储 WMS \/ 出库/);assert.ok(d.querySelector('dl').textContent.includes(pickSample.name));
+ name.value=' 坏';name.dispatchEvent(new a.w.Event('input',{bubbles:true}));dButton(a,'创建并进入设计器').click();assert.equal(d.querySelector('[role=alert]').hidden,false);assert.equal(posts.length,0);
+ typeIn(a,name,'向导-'+tag);dButton(a,'创建并进入设计器').click();
+ await until(()=>!a.$('page-documents').hidden&&a.$('doc-server-status').textContent.includes('正在编辑模板 '),'opened in the studio',10000);
+ assert.equal(posts.length,1);assert.equal(posts[0].path,REST+'/document-templates/samples/'+pickSample.kind+'/copy');assert.equal(posts[0].body.name,'向导-'+tag);assert.equal(Object.keys(posts[0].body.mapping).length,detail.field_slots.length);assert.equal(dlg(a),null);
+ let mine=(await listing()).find(t=>t.name==='向导-'+tag);assert.ok(mine);assert.deepEqual([mine.catalog.domain,mine.catalog.flow],['仓储 WMS','出库']);assert.equal(a.$('st-name').textContent,'向导-'+tag);
+ // The blank path: no flow, a page preset; the template is saved by the ordinary save route and carries the preset.
+ q(a,'#st-crumb').click();await until(()=>!a.$('page-library').hidden&&a.$('lib-new'),'back');a.$('lib-new').click();d=dlg(a);
+ choose(a,'blank');dButton(a,'下一步').click();assert.deepEqual([...d.querySelectorAll('input[name="lib-layout"]')].map(i=>i.value),['blank'],'a blank start has only the blank layout');
+ const preset=d.querySelector('select[aria-label="页面预设"]');assert.deepEqual([...preset.options].map(o=>o.value),['a4','a4_landscape','a5','label_4x6in','label_100x150','label_100x100','label_150x100']);preset.value='label_100x100';preset.dispatchEvent(new a.w.Event('change',{bubbles:true}));
+ dButton(a,'下一步').click();assert.match(d.textContent,/空白模板绑定当前数据集/);dButton(a,'下一步').click();typeIn(a,d.querySelector('#lib-wizard-name'),'空白-'+tag);dButton(a,'创建并进入设计器').click();
+ await until(()=>a.$('st-name').textContent==='空白-'+tag&&!a.$('page-documents').hidden,'blank opened',10000);
+ assert.equal(posts.length,2);assert.equal(posts[1].path,REST+'/document-templates');assert.deepEqual([posts[1].body.id,posts[1].body.expected_version,posts[1].body.config.schema_version,posts[1].body.config.page,posts[1].body.config.name],['',0,'2.0',{preset:'label_100x100'},'空白-'+tag]);assert.deepEqual(Object.keys(posts[1].body.config.bands),['detail']);
+ mine=(await listing()).find(t=>t.name==='空白-'+tag);assert.deepEqual([mine.preset,mine.schema_version,mine.catalog.domain],['label_100x100','2.0','']);assert.equal(cv.tpl(a).page.preset,'label_100x100');
+ // A blank template of a flow that has no sample (通用业务 / 其他) is classified in that flow; an A4 blank has no page key.
+ q(a,'#st-crumb').click();a.$('lib-new').click();d=dlg(a);choose(a,'通用业务|其他');dButton(a,'下一步').click();assert.deepEqual([...d.querySelectorAll('input[name="lib-layout"]')].map(i=>i.value),['blank']);assert.match(d.textContent,/这个流程还没有示例版式/);
+ dButton(a,'下一步').click();dButton(a,'下一步').click();typeIn(a,d.querySelector('#lib-wizard-name'),'其他-'+tag);dButton(a,'创建并进入设计器').click();
+ await until(()=>a.$('st-name').textContent==='其他-'+tag,'blank 2 opened',10000);assert.equal(Object.hasOwn(posts[2].body.config,'page'),false);
+ mine=(await listing()).find(t=>t.name==='其他-'+tag);assert.deepEqual([mine.catalog.domain,mine.catalog.flow],['通用业务','其他']);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C6b: without a snapshot the wizard reaches the data step and says what is missing instead of going on',async()=>{
+ const a=app();try{
+ await a.login();q(a,'[data-page="library"]').click();await until(()=>libqa(a,'.sample-card').length===37,'samples');
+ a.$('lib-new').click();choose(a,'仓储 WMS|出库');dButton(a,'下一步').click();dButton(a,'下一步').click();
+ const d=dlg(a);assert.equal(d.querySelector('.step.current').textContent,'3数据');assert.match(d.querySelector('.callout.warn').textContent,/冻结快照/);assert.equal(dButton(a,'下一步').disabled,true);
+ pressKey(a,d,'Escape');
+ // The same for a sample's 复制到我的模板 and for 导入模板: refused in words, nothing is requested.
+ const before=a.trace.length;libqa(a,'.sample-card .btn.primary')[0].click();assert.match(a.$('notice').textContent,/冻结快照/);assert.equal(dlg(a),null);assert.equal(a.trace.length,before);
+ a.$('lib-import').click();const text=dlg(a).querySelector('textarea');text.value='{}';dButton(a,'导入到设计器').click();assert.match(dlg(a).querySelector('[role=alert]').textContent,/冻结快照/);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C7: a sample\'s preview dialog lists its fields and, where the server renders PDF, downloads the verified preview; no dataset is needed',async()=>{
+ const a=app();try{
+ await a.login();q(a,'[data-page="library"]').click();await until(()=>libqa(a,'.sample-card').length===37,'samples');
+ const card=libqa(a,'.sample-card')[0],all=await (await rest('/document-templates/samples')).json(),sample=all.find(s=>card.getAttribute('aria-label')==='示例 '+s.name);assert.ok(sample);
+ card.querySelector('.btn:not(.primary)').click();const d=dlg(a);assert.equal(a.w.document.getElementById(d.getAttribute('aria-labelledby')).textContent,'预览示例 · '+sample.name);
+ await until(()=>d.querySelector('tbody tr'),'the sample\'s fields');assert.ok(d.textContent.includes(sample.description)||d.textContent.length>50);
+ assert.deepEqual([...d.querySelectorAll('.dialog-footer button')].map(b=>b.textContent.trim()),['复制到我的模板','关闭','生成 PDF 预览']);
+ if(pdfConfigured){
+  const go=dButton(a,'生成 PDF 预览');go.click();await until(()=>a.downloads.length===1,'the verified preview is downloaded',20000);
+  assert.equal(a.downloads[0].name,sample.kind+'-sample-preview.pdf');assert.equal(Buffer.from(await a.downloads[0].blob.arrayBuffer()).subarray(0,5).toString(),'%PDF-');assert.match(a.$('notice').textContent,/摘要校验/);
+  assert.equal(a.trace.filter(t=>t.path.endsWith('/previews')&&t.method==='POST').length,1);assert.ok(a.trace.every(t=>!/\/snapshots|\/queries/.test(t.path)),'no query or snapshot was needed');
+ }
+ // Esc closes the dialog wherever the focus is: a control that disables itself while it works (the preview button) drops the focus to the page.
+ a.w.document.activeElement.blur();assert.equal(a.w.document.activeElement,a.w.document.body);pressKey(a,a.w.document.body,'Escape');assert.equal(dlg(a),null);assert.equal(libq(a,'.library-shell').inert,false);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C7b: a preview the server cannot make is told, and a tampered digest never downloads',async()=>{
+ if(!pdfConfigured)return;
+ const a=app(async(path,options)=>{if(path.endsWith('/previews')&&path.includes('/samples/')){const r=await fetch(url+path,options);const bytes=await r.arrayBuffer();return new Response(bytes,{headers:{'Content-Type':'application/pdf','X-Content-SHA256':'0'.repeat(64)}});}});try{
+ await a.login();q(a,'[data-page="library"]').click();await until(()=>libqa(a,'.sample-card').length===37,'samples');
+ libqa(a,'.sample-card')[0].querySelector('.btn:not(.primary)').click();dButton(a,'生成 PDF 预览').click();await until(()=>/完整性/.test(a.$('notice').textContent),'integrity told');assert.equal(a.downloads.length,0);
+ }finally{a.close();}});
+
+test('S06-B C8: 导入模板 reads a template JSON into the studio as an unsaved change, with the studio\'s own validation',async()=>{const a=await designer();try{
+ const tag=tagOf(),base=cv.tpl(a);await centre(a);
+ a.$('lib-import').click();let d=dlg(a);const text=d.querySelector('textarea');assert.equal(d.querySelector('input[type=file]').getAttribute('accept'),'application/json,.json');
+ text.value='{';dButton(a,'导入到设计器').click();assert.match(d.querySelector('[role=alert]').textContent,/不是有效的 JSON/);assert.equal(a.$('page-documents').hidden,true);
+ text.value=JSON.stringify({...base,name:' 坏名'});dButton(a,'导入到设计器').click();assert.match(d.querySelector('[role=alert]').textContent,/模板名称须为/);
+ text.value=JSON.stringify({...base,binding:{integration_id:'foreign',dataset:base.binding.dataset},name:'外来-'+tag});dButton(a,'导入到设计器').click();assert.equal(d.querySelector('[role=alert]').hidden,false);assert.equal(a.$('page-documents').hidden,true);
+ const posts=a.trace.filter(t=>t.method==='POST').length;
+ text.value=JSON.stringify({...base,name:'导入-'+tag});dButton(a,'导入到设计器').click();
+ assert.equal(dlg(a),null);assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('st-name').textContent,'导入-'+tag);assert.equal(cv.tpl(a).name,'导入-'+tag);assert.equal(a.trace.filter(t=>t.method==='POST').length,posts,'nothing is saved by importing');
+ assert.match(a.$('st-state').textContent,/草稿|未保存/);assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C9: the page writes no markup, keeps nothing in the browser, shows hostile names as text and names every control',async()=>{const a=await designer();try{
+ const hostile='<img src=x onerror=alert(1)>',tag=tagOf(),binding=cv.tpl(a).binding;
+ const id=await seedTemplate(binding,hostile+tag,{domain:'通用业务',flow:'销售',collections:['<b>集合</b>'+tag]});
+ await centre(a);
+ const card=ownCard(a,hostile+tag);assert.ok(card);assert.equal(card.querySelector('.catalog-name').textContent,hostile+tag);assert.equal(libq(a,'.catalog-items img'),null);assert.equal(card.querySelector('.catalog-tags').textContent,'集合：<b>集合</b>'+tag);assert.equal(libq(a,'.catalog-sidebar b b'),null);
+ // No inline style or handler anywhere on the page, dialogs included (the wizard is opened for the check).
+ a.$('lib-new').click();
+ for(const e of a.$('page-library').querySelectorAll('*')){assert.equal(e.hasAttribute('style'),false,'style attribute on <'+e.tagName.toLowerCase()+'>');assert.equal([...e.attributes].some(x=>/^on/i.test(x.name)),false,'inline handler');}
+ // Every control has a name: buttons by text or label, inputs and selects by label.
+ for(const e of a.$('page-library').querySelectorAll('button,input,select,textarea')){
+  if(e.type==='hidden')continue;const named=(e.getAttribute('aria-label')||'').trim()||(e.tagName==='BUTTON'&&e.textContent.trim())||(e.labels&&[...e.labels].some(l=>l.textContent.trim()))||(e.closest('label')&&e.closest('label').textContent.trim());
+  assert.ok(named,'unnamed control: '+e.outerHTML.slice(0,120));
+ }
+ for(const e of a.$('page-library').querySelectorAll('svg'))assert.equal(e.getAttribute('aria-hidden'),'true');
+ assert.equal(a.$('page-library').querySelectorAll('[role=dialog]').length,1);assert.equal(dlg(a).getAttribute('aria-modal'),'true');
+ pressKey(a,dlg(a),'Escape');
+ // The source: the DOM API only, no storage, no dynamic code.
+ for(const [name,code] of [['library.js',libraryScript]]){
+  assert.equal(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\s*\(|new Function|localStorage|sessionStorage|indexedDB|\.style\b|setAttribute\(\s*['"]on|srcdoc/.test(code),false,name);
+  assert.equal(/https?:\/\//.test(code.replace(/\/\/ .*$/gm,'').replace(/http:\/\/www\.w3\.org\/2000\/svg/g,'')),false,name+' has no external address');
+ }
+ const css=await readFile(join(root,'console/assets/library.css'),'utf8');assert.equal(/@import|url\(\s*['"]?https?:|expression\(|<script|javascript:/.test(css),false,'the stylesheet loads nothing');
+ assert.equal(a.w.localStorage.length,0);assert.equal(a.w.sessionStorage.length,0);assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-B C10: logging out clears the centre, and a stale answer cannot fill it again',async()=>{
+ let release,held=false;const gate=new Promise(r=>release=r);
+ const a=await designer(async(path,options)=>{if(held&&path===REST+'/document-templates'&&(options?.method||'GET')==='GET'){await gate;}});try{
+ await centre(a);assert.ok(ownCards(a).length>0);
+ held=true;libq(a,'.library-header .btn').click();q(a,'[data-page="library"]').click();await sleep(30);
+ a.click('logout');assert.equal(a.$('connection-overlay').hidden,false);release();await sleep(80);
+ assert.equal(ownCards(a).length,0);assert.equal(libqa(a,'.sample-card').length,0);assert.equal(libq(a,'.catalog-sidebar').children.length,0,'the sidebar (collections, counts) is emptied');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{release();a.close();}});
+});

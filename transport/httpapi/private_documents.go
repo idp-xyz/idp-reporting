@@ -13,7 +13,7 @@ import (
 //
 // With catalogue (the document templates, S06-B) the listing carries each template's catalogue metadata, reading a version records
 // when it was opened, and GET and PUT /{id}/catalog read and replace the metadata.
-func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate Authenticate, store *privatedocs.Store[T], authorize func(*http.Request, r.Principal, T) error, authorizeBinding func(*http.Request, r.Principal, T) error, binding func(T) any, catalogue ...bool) {
+func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate Authenticate, store *privatedocs.Store[T], authorize func(*http.Request, r.Principal, T) error, authorizeBinding func(*http.Request, r.Principal, T) error, binding func(T) any, summary func(T) map[string]any, catalogue ...bool) {
 	withCatalog := len(catalogue) > 0 && catalogue[0]
 	mux.HandleFunc("GET "+base, authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		all, e := store.List(p.Identity)
@@ -35,6 +35,15 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 				return e
 			}
 			item := map[string]any{"id": entry.ID, "version": entry.Version, "binding": binding(entry.Layout)}
+			if summary != nil {
+				// What a card shows (S06-B part 3), read from the latest version without opening it (opening records last_opened).
+				for k, v := range summary(entry.Layout) {
+					item[k] = v
+				}
+				if state, e := store.Release(p.Identity, entry.ID); e == nil {
+					item["published_version"] = state.PublishedVersion
+				}
+			}
 			if withCatalog {
 				item["catalog"] = catalogView(catalogs[entry.ID])
 			}

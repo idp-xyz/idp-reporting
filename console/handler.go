@@ -15,7 +15,7 @@ import (
 	r "idp.local/reporting/reporting"
 )
 
-//go:embed assets/index.html assets/embed.html assets/app.js assets/dashboard.js assets/documents.js assets/canvas.js assets/studio.js assets/embed.js assets/styles.css assets/studio.css assets/embed.css
+//go:embed assets/index.html assets/embed.html assets/app.js assets/dashboard.js assets/documents.js assets/canvas.js assets/studio.js assets/library.js assets/embed.js assets/styles.css assets/studio.css assets/library.css assets/embed.css
 var assets embed.FS
 
 // policy is the console's Content-Security-Policy with the given frame-ancestors source list: 'none' for every page of the
@@ -54,7 +54,7 @@ func HandlerWithEmbedding(api http.Handler, embed *embedding.Config) (http.Handl
 	})
 	mux.HandleFunc("GET /console/", func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/console/", "/console/index.html", "/console/app.js", "/console/dashboard.js", "/console/documents.js", "/console/canvas.js", "/console/studio.js", "/console/embed.js", "/console/styles.css", "/console/studio.css", "/console/embed.css":
+		case "/console/", "/console/index.html", "/console/app.js", "/console/dashboard.js", "/console/documents.js", "/console/canvas.js", "/console/studio.js", "/console/library.js", "/console/embed.js", "/console/styles.css", "/console/studio.css", "/console/library.css", "/console/embed.css":
 			w.Header().Set("Content-Security-Policy", policy("'none'"))
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
