@@ -177,3 +177,33 @@ func TestBindRefusesValuesThePreviewCannotPrint(t *testing.T) {
 		t.Errorf("DEL in a literal: %v", e)
 	}
 }
+
+// The template name (S06-A) is optional, at most 80 characters on one line with no space around it, in every schema, and it is
+// written back exactly as it was read; an absent name writes no key, so that every earlier template has the bytes it always had.
+func TestTemplateNameIn1x(t *testing.T) {
+	d := document()
+	before, _ := json.Marshal(d)
+	if strings.Contains(string(before), `"name"`) {
+		t.Fatal("a template without a name writes a name key", string(before))
+	}
+	for _, name := range []string{"对账单", strings.Repeat("字", 80), "Invoice · 发票 (2)"} {
+		d.Name = name
+		if e := doctemplates.Validate(d); e != nil {
+			t.Fatalf("%q: %v", name, e)
+		}
+		canonical, e := doctemplates.Canonical(d)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var back doctemplates.Document
+		if json.Unmarshal(canonical, &back) != nil || back.Name != name {
+			t.Fatalf("%q came back as %q", name, back.Name)
+		}
+	}
+	for _, name := range []string{strings.Repeat("字", 81), "a\nb", "a\x07", " a", "a ", " ", "\xff"} {
+		d.Name = name
+		if doctemplates.Validate(d) == nil {
+			t.Fatalf("%q accepted", name)
+		}
+	}
+}

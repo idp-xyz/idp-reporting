@@ -1,0 +1,556 @@
+{
+ "when": "2026-11-03T05:01:52.586Z",
+ "checks": [
+  {
+   "name": "the studio replaces the console shell on the documents page",
+   "ok": true
+  },
+  {
+   "name": "the invoice is converted to a 2.0 template",
+   "ok": true
+  },
+  {
+   "name": "a card inserts one element into the band of the selected element",
+   "ok": true
+  },
+  {
+   "name": "the new element is selected",
+   "ok": true
+  },
+  {
+   "name": "a drag from the library inserts under the pointer, in the band there",
+   "ok": true
+  },
+  {
+   "name": "no drop marker or drag state is left behind",
+   "ok": true
+  },
+  {
+   "name": "two elements are selected",
+   "ok": true
+  },
+  {
+   "name": "align right puts both on the same right edge",
+   "ok": true
+  },
+  {
+   "name": "the lock shows on the canvas and in the ribbon",
+   "ok": true
+  },
+  {
+   "name": "a locked element is not moved by the mouse or the keys",
+   "ok": true
+  },
+  {
+   "name": "unlocked, it moves again",
+   "ok": true
+  },
+  {
+   "name": "Ctrl+C and Ctrl+V on the canvas make one copy in the same band",
+   "ok": true
+  },
+  {
+   "name": "the grid overlay is on the page",
+   "ok": true
+  },
+  {
+   "name": "the zoom control sets 150 %",
+   "ok": true
+  },
+  {
+   "name": "fit width leaves no horizontal scroll in the work area",
+   "ok": true
+  },
+  {
+   "name": "a click on a layer selects it on the canvas",
+   "ok": true
+  },
+  {
+   "name": "the check lists rows with their results in the inspector's check tab",
+   "ok": true
+  },
+  {
+   "name": "预览与导出 is the server's PDF and the pager tells its pages",
+   "ok": true
+  },
+  {
+   "name": "the badge says 已保存 v2 after the save",
+   "ok": true
+  },
+  {
+   "name": "the badge says 已发布 v2 after the confirmation",
+   "ok": true
+  },
+  {
+   "name": "the versions dialog marks the published pointer",
+   "ok": true
+  },
+  {
+   "name": "the name is set in place and is in the template",
+   "ok": true
+  },
+  {
+   "name": "the help dialog takes the focus and traps Tab",
+   "ok": true
+  },
+  {
+   "name": "Esc closes the dialog and the focus is back on the opener",
+   "ok": true
+  },
+  {
+   "name": "1440 px light: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "1280 px light: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "768 px light: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "768 px light: the side panel is a drawer opened from the rail",
+   "ok": true
+  },
+  {
+   "name": "768 px light: the inspector is a drawer opened from the toolbar",
+   "ok": true
+  },
+  {
+   "name": "390 px light: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "390 px light: the side panel is a drawer opened from the rail",
+   "ok": true
+  },
+  {
+   "name": "390 px light: the inspector is a bottom sheet opened from the toolbar",
+   "ok": true
+  },
+  {
+   "name": "1440 px dark: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "1280 px dark: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "768 px dark: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "768 px dark: the side panel is a drawer opened from the rail",
+   "ok": true
+  },
+  {
+   "name": "768 px dark: the inspector is a drawer opened from the toolbar",
+   "ok": true
+  },
+  {
+   "name": "390 px dark: no horizontal overflow",
+   "ok": true
+  },
+  {
+   "name": "390 px dark: the side panel is a drawer opened from the rail",
+   "ok": true
+  },
+  {
+   "name": "390 px dark: the inspector is a bottom sheet opened from the toolbar",
+   "ok": true
+  },
+  {
+   "name": "every visible text of the studio meets 4.5:1 in both schemes, in every tab, panel and dialog measured",
+   "ok": true
+  }
+ ],
+ "evidence": {
+  "check_rows": [
+   [
+    "第 1 行",
+    "通过",
+    "首行、行数最多的分组、行数最少的分组、e2 最长、e2 最短、列 账龄区间 最长的单元格、列 客户 最长的单元格"
+   ],
+   [
+    "第 2 行",
+    "通过",
+    "e5 最短"
+   ],
+   [
+    "第 3 行",
+    "通过",
+    "末行、列 应收余额 最长的单元格、e5 最长"
+   ]
+  ],
+  "rename_probe": {
+   "open": [],
+   "inert": false,
+   "at": "st-name",
+   "hidden": false
+  },
+  "contrast": {
+   "1440-light-design": {
+    "total": 82,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-insert": {
+    "total": 90,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-data": {
+    "total": 86,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-page": {
+    "total": 83,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-check": {
+    "total": 85,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-rail-data": {
+    "total": 79,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-rail-structure": {
+    "total": 71,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-rail-resources": {
+    "total": 76,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-inspector-rules": {
+    "total": 87,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-inspector-check": {
+    "total": 82,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-inspector-props": {
+    "total": 124,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-versions": {
+    "total": 151,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-help": {
+    "total": 141,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-chooser": {
+    "total": 199,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-publish": {
+    "total": 141,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-preview": {
+    "total": 138,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-bands": {
+    "total": 147,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-light-dialog-insert-options": {
+    "total": 143,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-design": {
+    "total": 123,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-insert": {
+    "total": 131,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-data": {
+    "total": 127,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-page": {
+    "total": 124,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-check": {
+    "total": 126,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-rail-data": {
+    "total": 120,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-rail-structure": {
+    "total": 112,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-rail-resources": {
+    "total": 117,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-inspector-rules": {
+    "total": 85,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-inspector-check": {
+    "total": 80,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-inspector-props": {
+    "total": 123,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-versions": {
+    "total": 150,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-help": {
+    "total": 140,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-chooser": {
+    "total": 198,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-publish": {
+    "total": 140,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-preview": {
+    "total": 137,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-bands": {
+    "total": 147,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-light-dialog-insert-options": {
+    "total": 143,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-design": {
+    "total": 123,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-insert": {
+    "total": 131,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-data": {
+    "total": 127,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-page": {
+    "total": 124,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-check": {
+    "total": 126,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-rail-data": {
+    "total": 120,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-rail-structure": {
+    "total": 112,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-rail-resources": {
+    "total": 117,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-inspector-rules": {
+    "total": 85,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-inspector-check": {
+    "total": 80,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-inspector-props": {
+    "total": 123,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-versions": {
+    "total": 150,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-help": {
+    "total": 140,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-chooser": {
+    "total": 198,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-publish": {
+    "total": 140,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-preview": {
+    "total": 137,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-bands": {
+    "total": 147,
+    "failing": 0,
+    "worst": []
+   },
+   "1440-dark-dialog-insert-options": {
+    "total": 143,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-design": {
+    "total": 123,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-insert": {
+    "total": 131,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-data": {
+    "total": 127,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-page": {
+    "total": 124,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-check": {
+    "total": 126,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-rail-data": {
+    "total": 120,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-rail-structure": {
+    "total": 112,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-rail-resources": {
+    "total": 117,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-inspector-rules": {
+    "total": 85,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-inspector-check": {
+    "total": 80,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-inspector-props": {
+    "total": 123,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-versions": {
+    "total": 150,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-help": {
+    "total": 140,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-chooser": {
+    "total": 198,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-publish": {
+    "total": 140,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-preview": {
+    "total": 137,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-bands": {
+    "total": 147,
+    "failing": 0,
+    "worst": []
+   },
+   "1280-dark-dialog-insert-options": {
+    "total": 143,
+    "failing": 0,
+    "worst": []
+   }
+  }
+ }
+}

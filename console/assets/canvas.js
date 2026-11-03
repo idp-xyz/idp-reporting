@@ -151,6 +151,7 @@ window.createReportingCanvas=function(ports){
  // Snapping: the candidates are the moving feature's positions (the first is the one the grid takes);
  // an edge or centre of another item within 1 mm wins over the grid and shows a guide.
  function snapAxis(cands,targets,grid){
+  if(!snapOn)return {adj:0,guides:[]};
   let best=null;for(const c of cands)for(const t of targets){const dist=Math.abs(t-c);if(dist<=TOLERANCE&&(!best||dist<best.dist))best={dist,adj:t-c};}
   const adj=best?best.adj:Math.round(cands[0]/grid)*grid-cands[0];
   return {adj,guides:best?[...new Set(targets.filter(t=>cands.some(c=>Math.abs(c+adj-t)<=0.5)))]:[]};
@@ -222,10 +223,12 @@ window.createReportingCanvas=function(ports){
 
  // ---- state and elements ----------------------------------------------------------------------------
  let config=null,selection=[],zoom=100,drag=null,palette=null,focusAfter=null,marked=null;
+ // Session-only view state (S06-A): locked and hidden items are not in the template; the grid overlay, the snapping switch and the drop marker of a library drag.
+ const locked=new Set(),hidden=new Set();let gridOn=false,snapOn=true,dropMark=null;
  const host=$('doc-canvas-host'),statusLine=$('doc-canvas-status'),live=$('doc-canvas-live'),modeLine=$('doc-canvas-mode');
  const svg=svgEl('svg',{class:'cv-svg',role:'group','aria-label':'A4 文档画布，单位毫米','aria-describedby':'doc-canvas-help',tabindex:'-1'});
- const layers={};for(const name of ['rulers','page','bands','shapes','items','overlay','guides','tags','readout']){layers[name]=svgEl('g',{class:'cv-'+name});svg.append(layers[name]);}
- layers.tags.setAttribute('aria-hidden','true');layers.guides.setAttribute('aria-hidden','true');layers.shapes.setAttribute('aria-hidden','true');layers.readout.setAttribute('aria-hidden','true');layers.rulers.setAttribute('aria-hidden','true');
+ const layers={};for(const name of ['rulers','chrome','page','bands','grid','shapes','items','overlay','guides','tags','readout']){layers[name]=svgEl('g',{class:'cv-'+name});svg.append(layers[name]);}
+ layers.tags.setAttribute('aria-hidden','true');layers.chrome.setAttribute('aria-hidden','true');layers.grid.setAttribute('aria-hidden','true');layers.guides.setAttribute('aria-hidden','true');layers.shapes.setAttribute('aria-hidden','true');layers.readout.setAttribute('aria-hidden','true');layers.rulers.setAttribute('aria-hidden','true');
  if(host)host.append(svg);
  const ppm=()=>SCALE*zoom/100;
  const fmt=n=>String(n);
@@ -281,7 +284,7 @@ window.createReportingCanvas=function(ports){
   for(const i of order){
    const r=rectOf(i),x=X(r.x),y=X(r.y),w=L(r.w),h=L(r.h),sel=selection.includes(i.key),dim=!prints(i);
    const refused=!!marked&&!!marked.element&&marked.element===i.key;
-   const g=svgEl('g',{class:'cv-item '+(i.table?'cv-table':'cv-'+i.ref.source)+(sel?' cv-selected':'')+(dim?' cv-dim':'')+(bad.has(i.key)?' cv-bad':'')+(refused?' cv-refused':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf(i,lab)+(dim?'，变量层不打印':'')+(refused?'，预览或检查指出此处放不下或无法打印':'')});
+   const g=svgEl('g',{class:'cv-item '+(i.table?'cv-table':'cv-'+i.ref.source)+(sel?' cv-selected':'')+(dim?' cv-dim':'')+(bad.has(i.key)?' cv-bad':'')+(refused?' cv-refused':'')+(locked.has(i.key)?' cv-locked':'')+(hidden.has(i.key)?' cv-hidden':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf(i,lab)+(dim?'，变量层不打印':'')+(locked.has(i.key)?'，已锁定':'')+(refused?'，预览或检查指出此处放不下或无法打印':'')});
    g.append(svgEl('rect',{class:'cv-box',x,y,width:w,height:h}));
    if(i.table){
     const fs=i.ref.font_size*25.4/72*p,head=Math.min(h,fs*2.4),cols=i.ref.columns;let run=0;
@@ -354,7 +357,7 @@ window.createReportingCanvas=function(ports){
   for(const i of order){
    const e=i.ref,r=rectOf(i),x=X(r.x),y=X(r.y),w=L(r.w),h=L(r.h),sel=selection.includes(i.key),refused=!!marked&&!!marked.element&&marked.element===i.key;
    const kind=e.type==='text'?{literal:'literal',field:'row',group_sum:'total',page:'page',issue_number:'number'}[e.source]:e.type;
-   const g2=svgEl('g',{class:'cv-item cv-'+kind+(sel?' cv-selected':'')+(bad.has(i.key)?' cv-bad':'')+(refused?' cv-refused':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf2(i,lab)+(refused?'，预览或检查指出此处放不下或无法打印':'')});
+   const g2=svgEl('g',{class:'cv-item cv-'+kind+(sel?' cv-selected':'')+(bad.has(i.key)?' cv-bad':'')+(refused?' cv-refused':'')+(locked.has(i.key)?' cv-locked':'')+(hidden.has(i.key)?' cv-hidden':''),'data-key':i.key,tabindex:'0',role:'button','aria-pressed':sel?'true':'false','aria-label':nameOf2(i,lab)+(locked.has(i.key)?'，已锁定':'')+(refused?'，预览或检查指出此处放不下或无法打印':'')});
    let tag=e.id+' · ';
    if(e.type==='line'){
     const a=[X(BAND_X+U(e.x1)),X(i.top+U(e.y1)),X(BAND_X+U(e.x2)),X(i.top+U(e.y2))];
@@ -392,6 +395,21 @@ window.createReportingCanvas=function(ports){
   }
   return edges;
  }
+ // The page's heading above it and, in the margin left of it, the name of each region (a 2.0 template: its bands; a 1.x template: the banner strip and the body).
+ const bandShort={page_header:'页眉',document_header:'报表头',detail:'明细区',document_footer:'报表尾',page_footer:'页脚'};
+ function chrome(d,p,X,L){
+  const out=[],title=ports.title?ports.title():'';
+  out.push(svgEl('text',{class:'cv-heading',x:RULER,y:15},'第 1 页'+(title?' · '+title:'')),svgEl('text',{class:'cv-heading',x:RULER+210*p,y:15,'text-anchor':'end'},'A4 · 210 × 297 mm'));
+  if(!d)return out;
+  const regions=banded(d)?(()=>{const g=geo(d);return bandNames.filter(n=>d.bands[n]).map(n=>[bandShort[n],g[n].top,g[n].h]);})():[['横幅',100,80],['正文',250,2450]];
+  for(const [name,top,h] of regions){
+   const y1=X(top),y2=X(top+h),cy=(y1+y2)/2;
+   out.push(svgEl('line',{class:'cv-bandrule',x1:RULER-3,x2:RULER-3,y1,y2}),svgEl('text',{class:'cv-bandlabel',x:RULER-9,y:cy,'text-anchor':'middle',transform:'rotate(-90 '+(RULER-9)+' '+cy+')'},name));
+  }
+  return out;
+ }
+ // A 10 mm grid over the page, below the items.
+ function gridPath(p){let d='';for(let mm=10;mm<210;mm+=10)d+='M'+(RULER+mm*p)+' '+RULER+'v'+297*p;for(let mm=10;mm<297;mm+=10)d+='M'+RULER+' '+(RULER+mm*p)+'h'+210*p;return d;}
  function draw(view,extra){
   const d=view||config;extra=extra||{};
   const active=document.activeElement,focusKey=focusAfter||(active&&host&&host.contains(active)&&active.getAttribute?(active.getAttribute('data-key')||(active.hasAttribute('data-col')?'col:'+active.getAttribute('data-col'):active.hasAttribute('data-band')?'band:'+active.getAttribute('data-band'):active.hasAttribute('data-end')?'end:'+active.getAttribute('data-end'):null)):null);focusAfter=null;
@@ -399,9 +417,10 @@ window.createReportingCanvas=function(ports){
   const p=ppm(),W=Math.round(RULER+210*p+PAD+(d&&banded(d)?GUTTER:0)),H=Math.round(RULER+297*p+PAD),X=u=>RULER+u/10*p,L=u=>u/10*p;
   svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox','0 0 '+W+' '+H);
   for(const name of Object.keys(layers))layers[name].replaceChildren();
-  layers.rulers.append(...rulers(p,W,H));
+  layers.rulers.append(...rulers(p,W,H));layers.chrome.append(...chrome(d,p,X,L));
   layers.page.append(svgEl('rect',{class:'cv-paper',x:RULER,y:RULER,width:210*p,height:297*p}));
   if(!d){svg.setAttribute('aria-label','A4 文档画布：尚无模板');if(modeLine)modeLine.textContent=blank;return;}
+  if(gridOn)layers.grid.append(svgEl('path',{class:'cv-gridline',d:gridPath(p)}));
   svg.setAttribute('aria-label','A4 文档画布，单位毫米');
   const two=banded(d);
   layers.page.append(svgEl('rect',{class:'cv-strip',x:X(100),y:X(100),width:L(1900),height:L(80)}),svgEl('text',{class:'cv-strip-text',x:X(100)+6,y:X(100)+Math.min(L(80)-3,13)},'横幅 / 出具印章保留区（10–18 毫米，不可选）'),svgEl('rect',{class:'cv-safe',x:X(100),y:X(250),width:L(1900),height:L(2450)}),svgEl('text',{class:'cv-safe-text',x:X(2000)-4,y:two?X(250)-4:X(2700)-4,'text-anchor':'end'},'安全区 x 10–200 · y 25–270'));
@@ -422,7 +441,7 @@ window.createReportingCanvas=function(ports){
    });
   }
   const chosen=order.filter(i=>selection.includes(i.key));
-  if(chosen.length===1){
+  if(chosen.length===1&&!locked.has(chosen[0].key)){
    const i=chosen[0],r=rectOf(i),l=X(r.x),tp=X(r.y),rt=l+L(r.w),b=tp+L(r.h),cx=(l+rt)/2,cy=(tp+b)/2;
    if(two&&i.ref.type==='line'){
     const e=i.ref;
@@ -437,8 +456,10 @@ window.createReportingCanvas=function(ports){
   layers.overlay.append(...edges);
   for(const u of (extra.guides&&extra.guides.x)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:X(u),x2:X(u),y1:RULER,y2:RULER+297*p}));
   for(const u of (extra.guides&&extra.guides.y)||[])layers.guides.append(svgEl('line',{class:'cv-guide',x1:RULER,x2:RULER+210*p,y1:X(u),y2:X(u)}));
+  if(dropMark)layers.guides.append(svgEl('path',{class:'cv-drop',d:'M'+(RULER+dropMark.x*p)+' '+RULER+'v'+297*p+'M'+RULER+' '+(RULER+dropMark.y*p)+'h'+210*p}));
   if(extra.readout)layers.readout.append(svgEl('text',{class:'cv-readout'+(extra.message?' cv-bad':''),x:X(extra.readout.u),y:Math.max(X(extra.readout.v)-16,RULER+10)},extra.readout.text+(extra.message?'（将被拒绝）':'')));
   if(modeLine)modeLine.textContent=two?d.schema_version+' 分带模板：各带自上而下叠放在安全区内，明细带随页面伸展，元素位置相对于所在带 · '+(d.group?'分组 '+d.group.fields.join('、'):'无分组（整个快照一份文档）')+' · 画布显示版面，不显示数据，PDF 预览为准':(print.mode==='variables'?'变量层：只打印行字段、合计与明细表，固定文字灰显且不打印':'完整文本：打印全部文本框与明细表')+' · 整体偏移 '+fmt(print.offset_x)+' / '+fmt(print.offset_y)+' 毫米'+(ox||oy?'（虚线为偏移后的打印位置）':'')+' · 画布显示版面，不显示底稿与数据，PDF 预览为准';
+  if(!view&&ports.drawn)ports.drawn();
   if(focusKey&&host){const target=focusKey.startsWith('col:')?svg.querySelector('[data-col="'+focusKey.slice(4)+'"]'):focusKey.startsWith('band:')?svg.querySelector('.cv-bk[data-band="'+focusKey.slice(5)+'"]'):focusKey.startsWith('end:')?svg.querySelector('[data-end="'+focusKey.slice(4)+'"]'):svg.querySelector('[data-key="'+focusKey+'"]');if(target&&target!==document.activeElement&&target.focus)target.focus({preventScroll:true});}
  }
 
@@ -469,20 +490,23 @@ window.createReportingCanvas=function(ports){
   if(!config)return;
   try{const out=fn(clone(config));if(out)commit(out.d||out,label,out.made);}catch(e){status('未应用：'+e.message);}
  }
+ // A locked item is not moved or resized by the pointer or the keys (nor by align and distribute, which move it): the refusal says which and how to unlock.
+ const guard=keys=>{const l=keys.filter(k=>locked.has(k));if(l.length)throw Error('已锁定的项目不能移动或调整大小：'+l.join('、')+'。先解除锁定。');return keys;};
  const needSelection=keys=>{if(!keys.length)throw Error('请先选择画布上的项目。');return keys;};
  const actions={
-  align:mode=>attempt(d=>align(d,selection,mode),'对齐'),
-  distribute:axis=>attempt(d=>distribute(d,selection,axis),'等距分布'),
+  align:mode=>attempt(d=>align(d,guard(selection),mode),'对齐'),
+  distribute:axis=>attempt(d=>distribute(d,guard(selection),axis),'等距分布'),
   remove:()=>attempt(d=>remove(d,needSelection(selection)),'删除'),
   duplicate:()=>attempt(d=>banded(d)?duplicate2(d,needSelection(selection.filter(k=>k!==tableKey(d))),m=>ports.test(m)):duplicate(d,needSelection(selection.filter(k=>k!=='table')),m=>ports.test(m)),'复制'),
  };
  function nudge(dx,dy){
   if(!config||!selection.length)return;
+  const held=selection.filter(k=>locked.has(k));if(held.length){status('已锁定的项目不能移动：'+held.join('、')+'。先解除锁定。');return;}
   if(banded(config)&&!dx&&selection.every(k=>k===tableKey(config))){status('明细表紧接在上方各带之后，纵向位置由各带的高度决定，不能微调。');return;}
   attempt(d=>moveBy(d,selection,dx,dy),'微调');
  }
  function nudgeBoundary(index,delta){
-  attempt(d=>{const t=tableOf(d);if(!t)return null;const before=t.columns[index].width,w=moveBoundary(d,index,U(before)+delta);if(M(w)===before){status('该列已到最小宽度或相邻列已到最小宽度。');return null;}return d;},'调整列宽');
+  attempt(d=>{const t=tableOf(d);if(!t)return null;guard([tableKey(d)]);const before=t.columns[index].width,w=moveBoundary(d,index,U(before)+delta);if(M(w)===before){status('该列已到最小宽度或相邻列已到最小宽度。');return null;}return d;},'调整列宽');
  }
  // A band's height by the keyboard (2.0): the bottom edge moves by delta (0.1 mm units).
  function nudgeBand(name,delta){
@@ -490,7 +514,7 @@ window.createReportingCanvas=function(ports){
  }
  // One end of the selected line by the keyboard (2.0).
  function nudgeEnd(end,dx,dy){
-  attempt(d=>{const e=items(d).find(i=>i.key===selection[0]);if(!e||e.ref.type!=='line')return null;e.ref['x'+end]=M(U(e.ref['x'+end])+dx);e.ref['y'+end]=M(U(e.ref['y'+end])+dy);return d;},'移动端点');
+  attempt(d=>{const e=items(d).find(i=>i.key===selection[0]);if(!e||e.ref.type!=='line')return null;guard([e.key]);e.ref['x'+end]=M(U(e.ref['x'+end])+dx);e.ref['y'+end]=M(U(e.ref['y'+end])+dy);return d;},'移动端点');
  }
 
  // ---- pointer ------------------------------------------------------------------------------------------------
@@ -506,12 +530,13 @@ window.createReportingCanvas=function(ports){
   const t=ev.target,found=t&&t.closest?t.closest('[data-dir],[data-col],[data-key],[data-band],[data-end]'):null;
   if(!found){if(!ev.shiftKey&&selection.length)select([],'已清除选择。');if(svg.focus)svg.focus({preventScroll:true});return;}
   ev.preventDefault();
-  if(found.hasAttribute('data-dir')){if(selection.length===1)start(ev,'resize',{key:selection[0],dir:found.getAttribute('data-dir')});return;}
-  if(found.hasAttribute('data-end')){focusAfter='end:'+found.getAttribute('data-end');if(selection.length===1)start(ev,'lineend',{key:selection[0],end:Number(found.getAttribute('data-end'))});return;}
+  if(found.hasAttribute('data-dir')){if(selection.length===1&&!locked.has(selection[0]))start(ev,'resize',{key:selection[0],dir:found.getAttribute('data-dir')});return;}
+  if(found.hasAttribute('data-end')){focusAfter='end:'+found.getAttribute('data-end');if(selection.length===1&&!locked.has(selection[0]))start(ev,'lineend',{key:selection[0],end:Number(found.getAttribute('data-end'))});return;}
   if(found.hasAttribute('data-band')){focusAfter='band:'+found.getAttribute('data-band');start(ev,'band',{name:found.getAttribute('data-band')});return;}
   if(found.hasAttribute('data-col')){
    focusAfter='col:'+found.getAttribute('data-col');
    if(!(selection.length===1&&selection[0]===tableKey(config)))select([tableKey(config)]);
+   if(locked.has(tableKey(config))){status('已锁定的项目不能移动或调整大小：明细表。先解除锁定。');return;}
    start(ev,'boundary',{index:Number(found.getAttribute('data-col'))});return;
   }
   const key=found.getAttribute('data-key');
@@ -519,6 +544,8 @@ window.createReportingCanvas=function(ports){
   if(ev.shiftKey){select(selection.includes(key)?selection.filter(k=>k!==key):[...selection,key]);return;}
   const wasIn=selection.includes(key);
   if(wasIn)draw();else select([key]);
+  const held=selection.filter(k=>locked.has(k));
+  if(held.length){status('已锁定的项目不能移动：'+held.join('、')+'。先解除锁定。');return;}
   start(ev,'move',{keys:[...selection],key,collapse:wasIn&&selection.length>1});
  });
  svg.addEventListener('pointermove',ev=>{
@@ -555,6 +582,7 @@ window.createReportingCanvas=function(ports){
   if(key==='Escape'){ev.preventDefault();if(drag){finish(ev,true);}else if(selection.length)select([],'已清除选择。');return;}
   if(mod&&key.toLowerCase()==='a'){ev.preventDefault();selectAll();return;}
   if(mod&&key.toLowerCase()==='d'){ev.preventDefault();actions.duplicate();return;}
+  if(mod&&!ev.altKey&&ports.clipboard&&['c','x','v'].includes(key.toLowerCase())&&!editing(t)){ev.preventDefault();ports.clipboard({c:'copy',x:'cut',v:'paste'}[key.toLowerCase()]);return;}
   if((key==='Enter'||key===' ')&&k){ev.preventDefault();select(ev.shiftKey||mod?(selection.includes(k)?selection.filter(v=>v!==k):[...selection,k]):[k]);return;}
   if((key==='Delete'||key==='Backspace')&&!mod){ev.preventDefault();if(band===null)actions.remove();return;}
   if(key.startsWith('Arrow')&&!mod&&!ev.altKey){
@@ -649,11 +677,11 @@ window.createReportingCanvas=function(ports){
   // Called with the designer's configuration (or null) after every change, undo, redo and open.
   show(c){
    config=c;drag=null;const before=selection.join(',');
-   const known=c?items(c).map(i=>i.key):[];selection=selection.filter(k=>known.includes(k));
+   const known=c?items(c).map(i=>i.key):[];selection=selection.filter(k=>known.includes(k));for(const k of [...locked])if(!known.includes(k))locked.delete(k);for(const k of [...hidden])if(!known.includes(k))hidden.delete(k);
    if(c&&statusLine&&statusLine.textContent===idle)status('画布显示当前模板；点击项目开始编辑，Ctrl/Cmd+K 打开命令面板。');
    draw();syncToolbar();if(before!==selection.join(','))announce(selectionText());notify();
   },
-  clear(){config=null;selection=[];drag=null;marked=null;closePalette();draw(null);syncToolbar();status(idle);announce('未选择任何项目。');notify();},
+  clear(){config=null;selection=[];drag=null;marked=null;locked.clear();hidden.clear();dropMark=null;closePalette();draw(null);syncToolbar();status(idle);announce('未选择任何项目。');notify();},
   // The picture of an image has arrived: drawn again, with the selection and the focus where they were.
   refresh(){if(config&&!drag)draw();},
   // The band, element or column a refusal names, outlined until the template changes; null clears it.
@@ -665,10 +693,19 @@ window.createReportingCanvas=function(ports){
   },
   marked:()=>marked?{...marked}:null,
   // A template that is opened or reset is another page: nothing stays selected.
-  reset(){selection=[];drag=null;announce('未选择任何项目。');notify();},
+  reset(){selection=[];drag=null;locked.clear();hidden.clear();announce('未选择任何项目。');notify();},
   selection:()=>[...selection],
   select,
   zoom:()=>zoom,
+  // The studio's view controls (session only): zoom (50..200), the 10 mm grid, the snapping switch, locks and hidden items, the drop marker of a library drag.
+  setZoom(v){const n=Math.round(Number(v));if(!(n>=50&&n<=200))return false;zoom=n;if(zoomInput)zoomInput.value=String(n);draw();syncToolbar();return true;},
+  setGrid(on){gridOn=!!on;draw();},grid:()=>gridOn,
+  setSnap(on){snapOn=!!on;},snap:()=>snapOn,
+  setLocked(keys,on){for(const k of keys)on?locked.add(k):locked.delete(k);draw();syncToolbar();},locked:()=>[...locked],isLocked:k=>locked.has(k),
+  setHidden(keys,on){for(const k of keys)on?hidden.add(k):hidden.delete(k);draw();},hidden:()=>[...hidden],
+  // The page position in millimetres of a client point, or null outside the paper.
+  pageAt(cx,cy){if(!svg.getBoundingClientRect)return null;const r=svg.getBoundingClientRect(),x=(cx-r.left-RULER)/ppm(),y=(cy-r.top-RULER)/ppm();return x>=0&&x<=210&&y>=0&&y<=297?{x:Math.round(x*10)/10,y:Math.round(y*10)/10}:null;},
+  dropAt(point){dropMark=point||null;draw();},
   scale:SCALE,
   origin:{x:RULER,y:RULER},
   palette:{open:openPalette,close:closePalette,isOpen:()=>!!palette&&palette.open},

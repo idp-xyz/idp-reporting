@@ -13,7 +13,7 @@ import {JSDOM,VirtualConsole} from 'jsdom';
 
 const root=resolve(import.meta.dirname,'..');
 const read=name=>readFile(join(root,'console/assets',name),'utf8');
-const [indexHtml,embedHtml,appScript,dashboardScript,canvasScript,documentsScript,embedScript]=await Promise.all(['index.html','embed.html','app.js','dashboard.js','canvas.js','documents.js','embed.js'].map(read));
+const [indexHtml,embedHtml,appScript,dashboardScript,canvasScript,studioScript,documentsScript,embedScript]=await Promise.all(['index.html','embed.html','app.js','dashboard.js','canvas.js','studio.js','documents.js','embed.js'].map(read));
 const token=randomBytes(32).toString('hex');
 const pdfConfigured=['REPORTING_TYPST','REPORTING_TYPST_SHA256','REPORTING_PDF_FONTS'].every(k=>process.env[k]);
 if(process.env.REPORTING_PDF_REQUIRE==='1'&&!pdfConfigured)throw new Error('REPORTING_PDF_REQUIRE=1 but the Typst binary, its checksum or the fonts are not configured');
@@ -85,7 +85,7 @@ async function embedPage({view='dashboard',resource,integration=FINANCE,parent=H
     if(intercept){const answer=await intercept(String(path),options,given);if(answer)return answer;}
     return fetch(url+path,{...options,headers:{...headers,...(accepted.has(given)?{Authorization:'Bearer '+accepted.get(given)}:{})}});
   };
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(documentsScript);w.eval(embedScript);w.eval(appScript);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(embedScript);w.eval(appScript);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
   const click=id=>$(id).click();
@@ -110,7 +110,7 @@ test('the embed page shows nothing and says ready to the exact parent origin, on
       assert.equal(a.trace.length,0,'no request before the parent gives a token');
       // No token form, no logout, no navigation: nothing to type a token into.
       assert.equal(a.$('access-token'),null);assert.equal(a.$('connect-form'),null);assert.equal(a.$('logout'),null);
-      assert.equal(a.w.document.querySelector('input[type=password]'),null);assert.equal(a.w.document.querySelector('nav, aside, .sidebar, .topbar'),null);
+      assert.equal(a.w.document.querySelector('input[type=password]'),null);assert.equal(a.w.document.querySelector('[data-page], nav[aria-label="主导航"], .brand, .shell > aside, .body'),null,'no console navigation');
       assert.equal(a.w.localStorage.length,0);assert.equal(a.w.sessionStorage.length,0);
     }finally{a.close();}
   }
@@ -438,7 +438,7 @@ test('the console page loads none of the embed code, and answers no message',asy
   const errors=[],virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',e=>errors.push(e.message));
   const dom=new JSDOM(indexHtml,{url:url+'/console/',runScripts:'outside-only',virtualConsole});const w=dom.window;
   const calls=[];w.fetch=async p=>{calls.push(p);return new Response('{}');};Object.defineProperty(w,'crypto',{value:webcrypto});w.TextDecoder=TextDecoder;w.TextEncoder=TextEncoder;
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(documentsScript);w.eval(appScript);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(appScript);
   const other=new JSDOM('',{url:HOST+'/'}).window;
   w.dispatchEvent(new w.MessageEvent('message',{data:{type:'reporting:token',v:1,token},origin:HOST,source:other}));
   await sleep(40);
@@ -462,7 +462,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   }
   // One door out, with the origin it was served for: no wildcard target anywhere, and no other posting code.
   assert.equal([...embedScript.matchAll(/postMessage\(/g)].length,1);assert.match(embedScript,/parent\.postMessage\(Object\.assign\(\{type: '', v: 1\}, fields\), origin\)/);
-  for(const [name,code] of [['app.js',appScript],['embed.js',embedScript],['dashboard.js',dashboardScript],['documents.js',documentsScript],['canvas.js',canvasScript]]){
+  for(const [name,code] of [['app.js',appScript],['embed.js',embedScript],['dashboard.js',dashboardScript],['documents.js',documentsScript],['studio.js',studioScript],['canvas.js',canvasScript]]){
     assert.equal(/postMessage\(/.test(code)&&name!=='embed.js',false,name+' posts a message');
     assert.equal(/['"`]\*['"`]\s*\)/.test(code.replace(/\/\*[\s\S]*?\*\//g,'')),false,name+' has a "*" argument');
     assert.equal(/localStorage|sessionStorage|indexedDB|document\.cookie|caches\./.test(code),false,name+' uses storage');
@@ -490,4 +490,23 @@ test('the embed page shows a quota refusal and does not post it to the host',asy
       assert.equal(a.errors.length,0,a.errors.join('|'));
     }finally{a.close();}
   }
+});
+
+// S06-A: the embed page shows the same studio (the section is byte for byte the console's, tested above); the wordmark is what the embed hides, the
+// query form waits in the start card until the data is there, and the publish confirmation reports to the parent like the old button.
+test('the embedded studio: the query form is in its start card, the wordmark is the one link out and is hidden, and publishing through the confirmation tells the parent',async()=>{
+  const id=await seedTemplate('Studio title');
+  const a=await embedPage({view:'document-designer',resource:{template:id}});try{
+    const css=await readFile(join(root,'console/assets/embed.css'),'utf8');assert.match(css,/\.embed \[data-open\]\{display:none\}/);
+    assert.deepEqual([...a.w.document.querySelectorAll('#page-documents [data-open]')].map(e=>e.id),['st-wordmark','st-start-open','st-leave'].filter(i=>a.$(i)),'the controls that open another console page are the wordmark, the start card\'s button and the chooser\'s way out; the embed hides every one of them');
+    a.give();await a.connected();await until(()=>a.$('query-dataset').value===DATASET.id+'@'+DATASET.version,'dataset of the template');
+    assert.equal(a.$('st-start').contains(a.w.document.querySelector('.query-panel')),true,'the query form waits in the start card');assert.equal(a.$('st-start').hidden,false);
+    await queried(a);await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'template opened');
+    assert.equal(a.$('st-start').hidden,true,'the data is here: the canvas takes over');assert.equal(a.$('st-state').textContent,'已保存 v1');
+    a.$('st-publish').click();await until(()=>!a.$('st-pub-confirm').disabled,'confirmation ready');a.$('st-pub-confirm').click();await until(()=>a.$('doc-release-status').textContent.includes('已发布版本')&&!a.$('preview').disabled,'published');
+    assert.deepEqual(a.messages('reporting:event').map(m=>[m.name,m.template_id,m.version]),[['published',id,1]]);assert.equal(a.$('st-state').textContent,'已发布 v1');
+    // The parameters drawer takes the form over from the start card and gives it back.
+    a.$('st-ctx-params').click();assert.equal(a.$('st-query-slot').contains(a.w.document.querySelector('.query-panel')),true);a.w.document.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('st-start').contains(a.w.document.querySelector('.query-panel')),true,'it goes back where it was');
+    assert.equal(a.errors.length,0,a.errors.join('|'));
+  }finally{a.close();}
 });

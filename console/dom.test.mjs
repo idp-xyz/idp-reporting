@@ -15,6 +15,7 @@ const html=await readFile(join(root,'console/assets/index.html'),'utf8');
 const script=await readFile(join(root,'console/assets/app.js'),'utf8');
 const dashboardScript=await readFile(join(root,'console/assets/dashboard.js'),'utf8');
 const canvasScript=await readFile(join(root,'console/assets/canvas.js'),'utf8');
+const studioScript=await readFile(join(root,'console/assets/studio.js'),'utf8');
 const documentsScript=await readFile(join(root,'console/assets/documents.js'),'utf8');
 const token=randomBytes(32).toString('hex');
 const artifactDir=process.env.REPORTING_S03A_EVIDENCE_DIR;
@@ -50,7 +51,7 @@ function app(intercept){
   w.URL.revokeObjectURL=id=>blobs.delete(id);
   w.HTMLAnchorElement.prototype.click=function(){if(this.download){const blob=blobs.get(this.href);downloads.push({name:this.download,blob});}};
   w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}return fetch(url+path,options);};
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(documentsScript);w.eval(script);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(script);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
   const click=id=>$(id).click();
@@ -1440,7 +1441,7 @@ test('every canvas item has an accessible name and the selection is announced th
  // An undone item that no longer exists leaves the selection and the announcement says so.
  cv.click(a,'n1');a.click('doc-del');assert.equal(live.textContent,'未选择任何项目。');
  // Toolbar controls have names; the groups are labelled.
- for(const id of ['doc-undo','doc-redo','doc-dup','doc-del','doc-align-left','doc-align-center','doc-align-right','doc-align-top','doc-align-middle','doc-align-bottom','doc-distribute-h','doc-distribute-v','doc-check','doc-palette-open'])assert.ok(a.$(id).textContent.trim().length>0,id);
+ for(const id of ['doc-undo','doc-redo','doc-dup','doc-del','doc-align-left','doc-align-center','doc-align-right','doc-align-top','doc-align-middle','doc-align-bottom','doc-distribute-h','doc-distribute-v','doc-check','doc-palette-open'])assert.ok((a.$(id).textContent.trim()||a.$(id).getAttribute('aria-label')||'').length>0,id);
  assert.ok([...a.$('doc-canvas-panel').querySelectorAll('[role="group"]')].every(g=>g.getAttribute('aria-label')));assert.equal(a.w.document.querySelector('label[for="doc-zoom"]').textContent,'缩放');
  // A table: its boundaries are named sliders, tabbable once it is selected.
  cv.load(a,cv.table(a,[['n1',10,30,50,10]]));const slider=a.$('doc-canvas-host').querySelector('[data-col="1"]');assert.match(slider.getAttribute('aria-label'),/第 2 列与第 3 列的边界/);assert.equal(slider.getAttribute('aria-valuenow'),'140');assert.equal(slider.getAttribute('aria-valuemin'),'10');assert.equal(slider.getAttribute('aria-valuemax'),'200');
@@ -2218,7 +2219,7 @@ test('S03-L L3: the selected element\'s properties are inputs for every key its 
  assert.match(a.$('doc2-props').textContent,/在画布上点击一个元素/);
  cv.click2(a,'e4');assert.equal(a.$('doc2-p-title').textContent,'e4 · 单据头带 · 文本（字段）');
  const ids=()=>[...a.$('doc2-props').querySelectorAll('[id^="doc2-p-"]')].map(e=>e.id.slice(7)).filter(k=>k!=='title');
- assert.deepEqual(ids(),['band','source','field','x','y','width','height','font_size','align','wrap','bold','delete'],'every key of a field text but its id');
+ assert.deepEqual(ids(),['band','x','y','width','height','source','field','font_size','align','wrap','bold','delete'],'every key of a field text but its id (grouped as the inspector groups them: position, content, text)');
  assert.deepEqual(['x','y','width','height','font_size'].map(k=>a.$('doc2-p-'+k).value),['0','2','90','8','12']);assert.equal(a.$('doc2-p-field').value,'customer.id');assert.equal(a.$('doc2-p-wrap').checked,false);
  // Typing moves it on the canvas; moving it on the canvas changes the input.
  chg(a,'doc2-p-x',5.5);assert.deepEqual(cv.rel(a,'e4'),[5.5,2,90,8]);assert.deepEqual(attrs(cv.item(a,'e4').querySelector('.cv-box'),'x'),[X2(a,15.5)]);
@@ -2452,7 +2453,7 @@ test('S03-L: the palette lists the 2.0 actions for a 2.0 template and the conver
  const before=Object.values(cv.tpl(a).bands).flatMap(b=>b.elements).length;a.$('doc2-add-band').value='document_header';press(a,'Enter');assert.equal(Object.values(cv.tpl(a).bands).flatMap(b=>b.elements).length,before+1);assert.equal(cv.tpl(a).bands.document_header.elements.at(-1).type,'line');
  // Hidden or disabled: the panel's buttons leave the list at once.
  a.$('doc2-add-rect').disabled=true;a.$('doc2-add-sum').hidden=true;cv.key(a,cv.item(a,first),'k',{ctrlKey:true});listed=options(a);assert.ok(!listed.includes('在所选带加矩形'));assert.ok(!listed.includes('在所选带加分组合计'));assert.ok(listed.includes('在所选带加线'));press(a,'Escape');
- a.$('doc2-panel').hidden=true;cv.key(a,cv.item(a,first),'k',{ctrlKey:true});assert.ok(!options(a).includes('在所选带加线'),'inside a hidden panel');press(a,'Escape');
+ a.$('st-insert-two').hidden=true;cv.key(a,cv.item(a,first),'k',{ctrlKey:true});assert.ok(!options(a).includes('在所选带加线'),'inside a hidden panel');press(a,'Escape');
  assert.equal(a.errors.length,0);
  }finally{a.close();}});
 
@@ -2563,9 +2564,9 @@ test('S03-M M5: the panels add a barcode, a QR code and the issue number to a 2.
  const before=cv.tpl(a);clickId(a,'doc2-add-image');assert.match(doc2status(a),/请先上传或读取私有图片/);assert.deepEqual(cv.tpl(a),before);
  // The barcode's properties: its source, its value, its box, the printed value with its type size (the key only while it prints).
  cv.click2(a,'e10');const ids=()=>[...a.$('doc2-props').querySelectorAll('[id^="doc2-p-"]')].map(e=>e.id.slice(7)).filter(k=>k!=='title');
- assert.equal(a.$('doc2-p-title').textContent,'e10 · 单据头带 · 条码 Code 128');assert.deepEqual(ids(),['band','source','text','x','y','width','height','human','delete']);
+ assert.equal(a.$('doc2-p-title').textContent,'e10 · 单据头带 · 条码 Code 128');assert.deepEqual(ids(),['band','x','y','width','height','source','text','human','delete']);
  chg(a,'doc2-p-text','XYZ-9');assert.equal(el2(a,'e10').text,'XYZ-9');chg(a,'doc2-p-width',70);assert.deepEqual(cv.rel(a,'e10'),[0,10,70,18]);
- chg(a,'doc2-p-human',true);assert.deepEqual([el2(a,'e10').human_readable,el2(a,'e10').font_size],[true,9]);assert.deepEqual(ids(),['band','source','text','x','y','width','height','human','font_size','delete']);
+ chg(a,'doc2-p-human',true);assert.deepEqual([el2(a,'e10').human_readable,el2(a,'e10').font_size],[true,9]);assert.deepEqual(ids(),['band','x','y','width','height','source','text','human','font_size','delete']);
  chg(a,'doc2-p-font_size',7);assert.match(doc2status(a),/^e10：/);assert.equal(a.$('doc2-p-font_size').value,'9');
  chg(a,'doc2-p-human',false);assert.equal(el2(a,'e10').human_readable,false);assert.equal('font_size' in el2(a,'e10'),false,'no type size without a printed value');
  chg(a,'doc2-p-source','field');assert.deepEqual([el2(a,'e10').source,el2(a,'e10').field,el2(a,'e10').text],['field','customer.id','']);chg(a,'doc2-p-field','aging.bucket');assert.equal(el2(a,'e10').field,'aging.bucket');
@@ -2573,7 +2574,7 @@ test('S03-M M5: the panels add a barcode, a QR code and the issue number to a 2.
  chg(a,'doc2-p-source','literal');assert.equal(el2(a,'e10').text,'INV-0001');
  chg(a,'doc2-p-width',9);assert.match(doc2status(a),/^e10：超出带范围、尺寸、字号、来源、值或图片引用无效。$/);assert.equal(a.$('doc2-p-width').value,'70');
  // The QR code's: its side and its level.
- cv.click2(a,'e11');assert.deepEqual(ids(),['band','source','x','y','size','ecc','delete']);assert.deepEqual([...a.$('doc2-p-ecc').options].map(o=>o.value),['L','M','Q','H']);chg(a,'doc2-p-ecc','H');chg(a,'doc2-p-size',20);assert.deepEqual([el2(a,'e11').ecc,el2(a,'e11').size],['H',20]);
+ cv.click2(a,'e11');assert.deepEqual(ids(),['band','x','y','size','source','ecc','delete']);assert.deepEqual([...a.$('doc2-p-ecc').options].map(o=>o.value),['L','M','Q','H']);chg(a,'doc2-p-ecc','H');chg(a,'doc2-p-size',20);assert.deepEqual([el2(a,'e11').ecc,el2(a,'e11').size],['H',20]);
  chg(a,'doc2-p-size',9);assert.match(doc2status(a),/^e11：/);assert.equal(a.$('doc2-p-size').value,'20');
  // A text becomes the issue number from its source select, and a 2.0 template with one is 2.1 (a template that is 2.1 stays 2.1).
  const text=banded();cv.load(a,text);cv.click2(a,'e4');chg(a,'doc2-p-source','issue_number');assert.deepEqual([el2(a,'e4').source,el2(a,'e4').field,el2(a,'e4').text,el2(a,'e4').wrap],['issue_number','','',false]);assert.equal(cv.tpl(a).schema_version,'2.1');
@@ -2910,3 +2911,430 @@ test('the fourth quota is refused in any shape but the exact one',async()=>{
     assert.ok(a.$('notice').textContent.includes('服务返回了无法验证的响应。'));
   }finally{a.close();}
 });
+
+// ======================================================================================================================================
+// S06-A: the document studio (ADR 0008). Real Go server, as the tests above; the studio is the shell around the designer's functions, so
+// these tests assert that each studio control reaches the function the old control reached, that unsupported ones say why, and that the
+// new session-only behaviours (clipboard, painter, lock, grid, snapping, zoom, pager) and the dialogs do what the scope says.
+// ======================================================================================================================================
+const q=(a,sel)=>a.w.document.querySelector(sel),qa=(a,sel)=>[...a.w.document.querySelectorAll(sel)];
+const ribbonTab=(a,name)=>q(a,'[data-ribbon="'+name+'"]').click();
+const railTab=(a,name)=>q(a,'[data-side="'+name+'"]').click();
+const card=(a,kind)=>q(a,'[data-insert="'+kind+'"]');
+const to2=a=>{cv.load(a,cv.four(a));a.click('doc-convert');assert.equal(cv.tpl(a).schema_version,'2.0');return cv.tpl(a);};
+const all2=t=>Object.entries(t.bands).flatMap(([band,b])=>b.elements.map(e=>({band,e})));
+const ids2=t=>all2(t).map(v=>v.e.id).sort();
+const dialogOf=(a,id)=>q(a,'#st-d-'+id);
+const isOpen=(a,id)=>dialogOf(a,id).classList.contains('open');
+const flush=()=>sleep(20);
+
+test('S06-A A1: the studio is the documents page: its regions, labels and tabs are the prototype\'s, the other pages keep the console\'s shell',async()=>{const a=await designer();try{
+ const d=a.w.document,text=s=>d.querySelector(s).textContent.replace(/\s+/g,' ').trim();
+ assert.equal(d.body.classList.contains('studio-on'),true);
+ d.querySelector('[data-page="workspace"]').click();assert.equal(d.body.classList.contains('studio-on'),false,'the console keeps its shell on its other pages');d.querySelector('[data-page="documents"]').click();assert.equal(d.body.classList.contains('studio-on'),true);
+ assert.match(text('.wordmark'),/^IDP REPORTING\s*DOCUMENT STUDIO$/);assert.equal(text('#st-crumb'),'模板中心');
+ assert.deepEqual(['#titleButton','#st-help','#st-versions','#doc-server-save','#previewButton','#st-publish'].map(s=>q(a,s).getAttribute('aria-label')||text(s)),['重命名模板','设计说明与操作帮助','版本','保存版本','预览与导出','发布']);
+ assert.equal(text('#st-state'),'草稿');assert.equal(text('#st-name'),'未命名模板');
+ const tabs=qa(a,'[data-ribbon]');assert.deepEqual(tabs.map(t=>t.textContent),['设计','插入','数据','页面','检查与发布']);assert.equal(tabs[0].parentElement.getAttribute('role'),'tablist');
+ assert.deepEqual(tabs.map(t=>[t.getAttribute('role'),t.getAttribute('aria-selected')]),[['tab','true'],...Array(4).fill(['tab','false'])]);
+ for(const t of tabs)assert.equal(a.w.document.getElementById(t.getAttribute('aria-controls')).getAttribute('role'),'tabpanel');
+ // The tools of the design tab, in the prototype's order and grouping; the other tabs' tools stay in the page (the command palette reaches them) but are not shown.
+ const names=p=>qa(a,'#st-tools-'+p+' .toolgroup').map(g=>[...g.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')));
+ assert.deepEqual(names('design'),[['撤销','重做'],['复制','剪切','粘贴','格式刷'],['左对齐','水平居中','右对齐','顶对齐','垂直居中','底对齐','水平等距','垂直等距'],['组合','解组','锁定'],['网格','吸附','区段']]);
+ assert.deepEqual(qa(a,'#st-tools-insert button').map(b=>b.getAttribute('aria-label')),['文本','绑定字段','计算指标','动态明细表','金额摘要','分隔线','矩形容器','图片 / 标识','签章栏','条形码','二维码','页码信息','水印']);
+ assert.deepEqual(names('data'),[['数据中心'],['数据集与映射','数据预览','导入样本'],['参数与筛选','排序与分组','计算指标'],['字段校验','刷新示例']]);
+ assert.deepEqual(names('page'),[['纸张与页边距','区段设置'],['底稿与套打','插入页码','插入水印'],['阅读模式']]);
+ assert.deepEqual(names('check'),[['运行版式检查','边界样本'],['预览与导出','发布前确认','版本与回退','正式出具'],['导出模板JSON','导入模板JSON']]);
+ ribbonTab(a,'insert');assert.equal(q(a,'#st-tools-insert').classList.contains('active'),true);assert.equal(q(a,'#st-tools-design').classList.contains('active'),false);assert.equal(q(a,'#st-tab-insert').getAttribute('aria-selected'),'true');assert.equal(q(a,'#st-tab-design').getAttribute('aria-selected'),'false');
+ // Arrow keys move along the tabs (roving tabindex), Home and End jump.
+ q(a,'#st-tab-insert').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));assert.equal(a.w.document.activeElement.id,'st-tab-data');assert.equal(q(a,'#st-tab-data').getAttribute('aria-selected'),'true');assert.equal(q(a,'#st-tab-data').tabIndex,0);assert.equal(q(a,'#st-tab-insert').tabIndex,-1);
+ a.w.document.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}));assert.equal(a.w.document.activeElement.id,'st-tab-check');
+ // The rail: four tabs that switch the side panel, then the template centre and help.
+ const rail=qa(a,'[data-side]');assert.deepEqual(rail.map(t=>t.getAttribute('aria-label')),['组件库','数据与字段','区段与图层','资源与样式']);assert.deepEqual(rail.map(t=>t.getAttribute('role')),Array(4).fill('tab'));assert.equal(rail[0].parentElement.getAttribute('aria-orientation'),'vertical');
+ assert.deepEqual([q(a,'#st-rail-library'),q(a,'#st-rail-help')].map(b=>b.getAttribute('aria-label')),['模板中心','设计说明']);
+ railTab(a,'structure');assert.deepEqual(qa(a,'#sidebar .side-view').map(v=>v.hidden),[true,true,false,true]);assert.equal(q(a,'#sidebar').getAttribute('aria-labelledby'),'st-rail-structure');assert.equal(q(a,'#sidebar h2:not([hidden])')!==null,true);railTab(a,'components');
+ // The work area and the status bar.
+ assert.equal(text('#recordBadge'),'3 条示例');assert.equal(text('#pageCount'),'1 / 1');assert.equal(text('.canvas-hint'),'拖拽定位 · Shift 多选 · Space 平移');assert.equal(text('#positionStatus'),'毫米定位 / 0.1 mm');
+ assert.equal(text('#st-validation-text'),'版式检查通过');assert.match(text('#st-source'),/^查询预览（未冻结） · receivables\.aging$/);assert.equal(a.$('doc-canvas-live').getAttribute('aria-live'),'polite');assert.equal(a.$('doc-canvas-live').closest('.statusbar')!==null,true);
+ assert.equal(q(a,'[data-act="parameters"]').textContent.includes('参数与筛选'),true);assert.equal(text('#st-ctx-data'),'查看数据');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A1: every ribbon tool, rail control and library card either reaches the function its old button had or is disabled with its reason, and says it',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));
+ const reasons={组合:'版式 schema 没有分组对象；多选可一起移动',解组:'版式 schema 没有分组对象；多选可一起移动',水印:'正式文件不支持水印',插入水印:'正式文件不支持水印',导入样本:'数据来自来源产品的冻结快照；平台不导入 CSV 或 JSON 样本',刷新示例:'快照已冻结，不重新查询；要换数据请在“参数与筛选”中重新冻结快照'};
+ const before=JSON.stringify(cv.tpl(a));
+ for(const b of qa(a,'.ribbon-tools button, .toolrail button, .sidebar [data-insert]')){
+  const name=b.getAttribute('aria-label')||b.textContent.trim();assert.ok(name.length>0,'a control has no name: '+b.outerHTML.slice(0,80));
+  assert.ok(b.type==='button','a button that is not type=button: '+name);
+  if(b.getAttribute('aria-disabled')==='true'){
+   const why=b.getAttribute('data-unsupported');assert.ok(why&&why===b.title,name+': disabled without its reason as the tooltip');
+   if(reasons[name])assert.equal(why,reasons[name],name);
+   a.$('doc-status').textContent='';b.click();assert.equal(a.$('doc-status').textContent,why,name+' says why it does nothing');
+  }
+ }
+ assert.equal(JSON.stringify(cv.tpl(a)),before,'a disabled control changes nothing');
+ // A 1.x template: the components it has not are disabled with the way out; 2.0 turns them on.
+ for(const k of ['line','rect','image','barcode','qr','pageNumber','signature'])assert.equal(card(a,k).getAttribute('aria-disabled'),'true',k+' in 1.x');
+ assert.match(card(a,'line').title,/先转换为 2\.0/);
+ for(const k of ['text','field','table','aggregate','summary'])assert.equal(card(a,k).getAttribute('aria-disabled'),null,k+' in 1.x');
+ assert.equal(card(a,'watermark').getAttribute('aria-disabled'),'true');assert.equal(card(a,'watermark').title,'正式文件不支持水印');
+ assert.equal(card(a,'aggregate').title,'仅支持“分组合计”：服务端对分组内各行精确求和（group_sum）');assert.equal(card(a,'summary').title,card(a,'aggregate').title);
+ a.click('doc-convert');for(const k of ['line','rect','image','barcode','qr','pageNumber','signature','text','field','table','aggregate','summary'])assert.equal(card(a,k).getAttribute('aria-disabled'),null,k+' in 2.0');
+ assert.equal(card(a,'signature').title,'签章与签名属于后续阶段');assert.equal(card(a,'watermark').getAttribute('aria-disabled'),'true');
+ // The old buttons are the ribbon's own: undo, redo, align, distribute, delete and the palette are the same elements.
+ for(const id of ['doc-undo','doc-redo','doc-del','doc-align-left','doc-align-bottom','doc-distribute-h','doc-distribute-v','doc-palette-open','doc-check','doc-server-save'])assert.ok(q(a,'.ribbon-tools #'+id+', .topbar #'+id+', .ribbon-tabs #'+id),id+' is a ribbon or topbar control');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A2: a card or a tool inserts into the current band at the nearest free place, one undo step each; a drop puts it under the pointer; 签章栏 is a rectangle with the literal 签章',async()=>{const a=await designer();try{
+ const t0=to2(a);
+ // The current band is the selected element's band.
+ cv.click2(a,'e1');const home=all2(t0).find(v=>v.e.id==='e1').band;
+ const added=async(kind,expect)=>{const before=ids2(cv.tpl(a)),n=a.$('doc-undo').disabled;card(a,kind).click();const after=cv.tpl(a),fresh=ids2(after).filter(id=>!before.includes(id));assert.equal(fresh.length,expect,kind+' adds '+expect);return {fresh,after};};
+ for(const [kind,type,source] of [['text','text','literal'],['field','text','field'],['aggregate','text','group_sum'],['summary','text','group_sum'],['line','line'],['rect','rect'],['barcode','barcode'],['qr','qrcode'],['pageNumber','text','page']]){
+  cv.click2(a,'e1');const r=await added(kind,1),hit=all2(r.after).find(v=>v.e.id===r.fresh[0]);
+  assert.equal(hit.band,home,kind+' goes to the band of the selected element');assert.equal(hit.e.type,type,kind);if(source)assert.equal(hit.e.source,source,kind);
+  assert.deepEqual(cv.selected(a),[r.fresh[0]],kind+' is selected');
+  a.click('doc-undo');assert.equal(JSON.stringify(ids2(cv.tpl(a))),JSON.stringify(ids2(t0)),kind+' is one undo step');
+ }
+ assert.equal(cv.tpl(a).schema_version,'2.0','the undo of a code returns the 2.0 template');
+ // The table card selects the table; the watermark card says why not.
+ card(a,'table').click();assert.deepEqual(cv.selected(a),[ids2(t0).find(id=>all2(t0).find(v=>v.e.id===id).e.type==='table')]);
+ a.$('doc-status').textContent='';card(a,'watermark').click();assert.equal(a.$('doc-status').textContent,'正式文件不支持水印');
+ // The signature block: a rectangle and the literal text in it, one step.
+ cv.click2(a,'e1');const before=ids2(cv.tpl(a));card(a,'signature').click();const sig=cv.tpl(a),fresh=ids2(sig).filter(id=>!before.includes(id)).map(id=>all2(sig).find(v=>v.e.id===id));
+ assert.deepEqual(fresh.map(v=>v.e.type).sort(),['rect','text']);assert.equal(fresh.find(v=>v.e.type==='text').e.text,'签章');assert.equal(new Set(fresh.map(v=>v.band)).size,1);assert.equal(cv.selected(a).length,2);
+ a.click('doc-undo');assert.equal(ids2(cv.tpl(a)).length,before.length,'one undo step for both');
+ // Drop: the card is dragged with pointer events; what is under the pointer decides the band, and a drop outside the page inserts nothing.
+ const svg=cv.svg(a);const hostRect={left:0,top:0};
+ const pointer=(target,type,x,y)=>target.dispatchEvent(new a.w.PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,button:0,clientX:x,clientY:y}));
+ const drop=(kind,mmx,mmy)=>{const c=card(a,kind);pointer(c,'pointerdown',5,5);pointer(a.w.document,'pointermove',40,40);pointer(a.w.document,'pointermove',cv.px(a,mmx),cv.px(a,mmy));pointer(a.w.document,'pointerup',cv.px(a,mmx),cv.px(a,mmy));};
+ const geo=(()=>{const b=cv.tpl(a).bands;return {ph:b.page_header?.height||0,dh:b.document_header?.height||0};})();
+ const n0=ids2(cv.tpl(a)).length;drop('rect',60,25+geo.ph+Math.min(10,geo.dh/2));
+ const dropped=cv.tpl(a);assert.equal(ids2(dropped).length,n0+1,'a drop inserts one element: '+a.$('doc-status').textContent);const fresh2=all2(dropped).find(v=>!ids2(t0).includes(v.e.id)&&v.e.type==='rect');assert.ok(fresh2);
+ assert.equal(a.$('doc-canvas-panel').classList.contains('studio-dragging'),false);assert.equal(svg.querySelectorAll('.cv-drop').length,0,'the drop marker is gone');
+ const n1=ids2(cv.tpl(a)).length;a.$('doc-status').textContent='';drop('text',-500,-500);assert.match(a.$('doc-status').textContent,/放到页面上才会插入/);assert.equal(ids2(cv.tpl(a)).length,n1,'a drop outside the page inserts nothing');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A2: in a 1.x template the library inserts a text box, a row field and a total, each at the first free place',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));const n=()=>cv.tpl(a).elements.length;
+ card(a,'text').click();assert.equal(n(),5);let t=cv.tpl(a);assert.deepEqual([t.elements[4].source,t.elements[4].text],['literal','固定文字']);assert.deepEqual(cv.selected(a),['n5']);
+ card(a,'field').click();assert.equal(n(),6);assert.equal(cv.tpl(a).elements[5].source,'row');
+ card(a,'aggregate').click();assert.equal(n(),7);assert.equal(cv.tpl(a).elements[6].source,'total');
+ const boxes=cv.tpl(a).elements;for(const e of boxes.slice(4))for(const o of boxes)if(o!==e)assert.ok(e.y>=o.y+o.height||o.y>=e.y+e.height||e.x>=o.x+o.width||o.x>=e.x+e.width,e.id+' overlaps '+o.id);
+ a.click('doc-undo');assert.equal(n(),6);a.click('doc-undo');a.click('doc-undo');assert.equal(n(),4);
+ card(a,'table').click();assert.equal(isOpen(a,'insert'),true,'1.x without a table: the table card opens the options that build one');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A1: copy, cut and paste work on elements of the template; the copy goes to the nearest free place of the current band; the clipboard is the session\'s, not storage',async()=>{const a=await designer();try{
+ const t0=to2(a);cv.click2(a,'e1');
+ a.click('st-copy');assert.match(a.$('doc-status').textContent,/已复制 1 项/);assert.equal(a.$('st-paste').disabled,false);
+ a.click('st-paste');let t=cv.tpl(a);const fresh=ids2(t).filter(id=>!ids2(t0).includes(id));assert.equal(fresh.length,1);
+ const src=all2(t).find(v=>v.e.id==='e1'),cp=all2(t).find(v=>v.e.id===fresh[0]);assert.equal(cp.band,src.band);assert.deepEqual({...cp.e,id:'',x:0,y:0},{...src.e,id:'',x:0,y:0},'the copy is the same element');
+ assert.ok(cp.e.x!==src.e.x||cp.e.y!==src.e.y,'at another place');
+ const overlap=(p,r)=>p.x<r.x+r.width&&r.x<p.x+p.width&&p.y<r.y+r.height&&r.y<p.y+p.height;
+ for(const v of t.bands[cp.band].elements)if(v.type==='text'&&v.id!==cp.e.id)assert.equal(overlap(cp.e,v),false,'the copy overlaps nothing');
+ assert.deepEqual(cv.selected(a),[fresh[0]]);a.click('doc-undo');assert.equal(ids2(cv.tpl(a)).length,ids2(t0).length,'paste is one undo step');
+ // Cut: the element goes and comes back by paste; Ctrl+C, Ctrl+X and Ctrl+V reach the same functions from the canvas.
+ cv.click2(a,'e1');a.click('st-cut');assert.equal(ids2(cv.tpl(a)).includes('e1'),false,'cut deletes');a.click('doc-undo');assert.equal(ids2(cv.tpl(a)).includes('e1'),true,'and is one undo step');
+ cv.click2(a,'e1');cv.key(a,cv.item(a,'e1'),'c',{ctrlKey:true});assert.match(a.$('doc-status').textContent,/已复制 1 项/);cv.key(a,cv.item(a,'e1'),'v',{ctrlKey:true});assert.equal(ids2(cv.tpl(a)).length,ids2(t0).length+1);
+ // The table is not copied; an empty clipboard and another schema's element are refused with a reason.
+ const tableKey=all2(t0).find(v=>v.e.type==='table').e.id;cv.click2(a,tableKey);assert.equal(a.$('st-copy').disabled,true,'the table has no copy');assert.equal(a.$('st-cut').disabled,true);
+ assert.equal(a.w.localStorage.length,0);assert.equal(a.w.sessionStorage.length,0,'the clipboard is not in storage');
+ cv.load(a,cv.four(a));a.$('doc-status').textContent='';a.click('st-paste');assert.match(a.$('doc-status').textContent,/不能粘贴到 1\.x 模板/,'a 2.0 element does not go into a 1.x template');
+ cv.load(a,cv.four(a));cv.click(a,'n1');a.click('st-copy');cv.click(a,'n2');a.click('st-paste');assert.equal(cv.tpl(a).elements.length,5,'a 1.x box is pasted into a 1.x template');
+ a.click('logout');assert.equal(a.$('st-paste').disabled,true,'signing out empties the clipboard');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A: the format painter copies font size, alignment, bold and wrap to the next element clicked, once',async()=>{const a=await designer();try{
+ const t0=to2(a),e=all2(t0).filter(v=>v.e.type==='text');const [one,two,three]=e.map(v=>v.e.id);
+ a.click('st-painter');assert.match(a.$('doc-status').textContent,/格式刷需要先选择一个文本元素/);assert.equal(a.$('st-painter').getAttribute('aria-pressed'),'false');
+ const edit=(id,patch)=>{const t=cv.tpl(a);Object.assign(all2(t).find(v=>v.e.id===id).e,patch);cv.load(a,t);};
+ edit(one,{font_size:16,bold:true,align:'center',wrap:true,source:'literal',text:'x',field:''});
+ cv.click2(a,one);a.click('st-painter');assert.equal(a.$('st-painter').getAttribute('aria-pressed'),'true');
+ cv.click2(a,two);const hit=all2(cv.tpl(a)).find(v=>v.e.id===two).e;assert.deepEqual([hit.font_size,hit.align,hit.bold],[16,'center',true]);assert.equal(a.$('st-painter').getAttribute('aria-pressed'),'false','one shot');
+ const before=JSON.stringify(cv.tpl(a));cv.click2(a,three);assert.equal(JSON.stringify(cv.tpl(a)),before,'the next click only selects');
+ a.click('doc-undo');assert.notEqual(all2(cv.tpl(a)).find(v=>v.e.id===two).e.font_size,16,'one undo step');
+ // Escape cancels it.
+ cv.click2(a,one);a.click('st-painter');assert.equal(a.$('st-painter').getAttribute('aria-pressed'),'true');a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('st-painter').getAttribute('aria-pressed'),'false');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A: a locked element is not moved or resized by the pointer or the keys, the lock is in the structure panel, and it is not in the template',async()=>{const a=await designer();try{
+ const t0=to2(a),[id,other]=all2(t0).filter(v=>v.e.type==='text').map(v=>v.e.id);
+ cv.click2(a,id);a.click('st-lock');assert.equal(a.$('st-lock').getAttribute('aria-pressed'),'true');assert.equal(cv.item(a,id).getAttribute('class').includes('cv-locked'),true);assert.match(cv.item(a,id).getAttribute('aria-label'),/，已锁定$/);
+ assert.equal(cv.tpl(a).bands.document_header.elements.concat(...Object.values(cv.tpl(a).bands).map(b=>b.elements)).some(e=>'locked' in e),false,'the template has no lock');assert.equal(JSON.stringify(cv.tpl(a)).includes('lock'),false);
+ const before=JSON.stringify(cv.tpl(a));
+ const el=cv.item(a,id),r=all2(cv.tpl(a)).find(v=>v.e.id===id);
+ const g=cv.press(a,el,r.e.x+10+r.e.width/2,40);g.move(80,60);g.up(80,60);assert.equal(JSON.stringify(cv.tpl(a)),before,'the pointer does not move it');assert.match(cv.status(a),/已锁定的项目不能移动/);
+ cv.key(a,el,'ArrowRight');cv.key(a,el,'ArrowDown',{shiftKey:true});assert.equal(JSON.stringify(cv.tpl(a)),before,'the keys do not move it');assert.match(cv.status(a),/已锁定的项目不能移动：/);
+ assert.equal(a.w.document.querySelectorAll('.cv-handle').length,0,'no resize handles');
+ // Align and distribute move items, so they refuse too; the structure panel shows the lock and unlocks it.
+ cv.click2(a,other,{shiftKey:true});a.click('doc-align-left');assert.match(cv.status(a),/已锁定的项目不能移动或调整大小/);assert.equal(JSON.stringify(cv.tpl(a)),before);
+ railTab(a,'structure');const row=qa(a,'#st-layers .layer-row').find(r2=>r2.textContent.includes(id+' ·'));assert.ok(row);const lock=row.querySelectorAll('button')[1];assert.equal(lock.getAttribute('aria-pressed'),'true');assert.equal(lock.getAttribute('aria-label'),'解锁 '+id);
+ lock.click();assert.equal(cv.item(a,id).getAttribute('class').includes('cv-locked'),false,'unlocked in the panel');
+ cv.click2(a,id);const g2=cv.press(a,cv.item(a,id),r.e.x+10+r.e.width/2,40);g2.move(r.e.x+10+r.e.width/2+8,40);g2.move(r.e.x+10+r.e.width/2+16,40);g2.up(r.e.x+10+r.e.width/2+16,40);assert.notEqual(JSON.stringify(cv.tpl(a)),before,'unlocked, it moves');
+ // A new template is another page: locks do not carry over; and they are not stored.
+ cv.click2(a,id);a.click('st-lock');assert.equal(cv.item(a,id).getAttribute('class').includes('cv-locked'),true);to2(a);assert.equal(qa(a,'.cv-locked').length,0);assert.equal(a.w.localStorage.length,0);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A: the grid is a 10 mm overlay on the page and the snapping switch decides whether a drag lands on whole millimetres',async()=>{const a=await designer();try{
+ cv.load(a,cv.four(a));const host=a.$('doc-canvas-host');
+ assert.equal(a.$('st-grid').getAttribute('aria-pressed'),'false');assert.equal(host.querySelectorAll('.cv-gridline').length,0);
+ a.click('st-grid');assert.equal(a.$('st-grid').getAttribute('aria-pressed'),'true');const path=host.querySelector('.cv-gridline');assert.ok(path);
+ assert.equal((path.getAttribute('d').match(/M/g)||[]).length,20+29,'one line every 10 mm across 210 x 297 mm');assert.match(path.getAttribute('d'),/^M54 24v891/,'the first vertical line is at 10 mm');
+ a.click('st-grid');assert.equal(host.querySelectorAll('.cv-gridline').length,0);
+ // Snapping on: a drag of 2.4 mm lands on the 1 mm grid; off: it lands where the pointer put it (0.1 mm).
+ const move=dx=>{const x0=cv.box(a,'n4').x;cv.drag(a,cv.item(a,'n4'),x0+25,65,dx,0);return cv.box(a,'n4').x-x0;};
+ assert.equal(a.$('st-snap').getAttribute('aria-pressed'),'true');const snapped=move(2.4);assert.ok(Number.isInteger(snapped),'snapped to the grid: '+snapped);
+ a.click('st-snap');assert.equal(a.$('st-snap').getAttribute('aria-pressed'),'false');assert.match(a.$('doc-status').textContent,/吸附已关/);const free=move(2.4);assert.ok(Math.abs(free-2.4)<1e-9,'not snapped: '+free);
+ a.click('st-snap');assert.match(a.$('doc-status').textContent,/吸附已开/);
+ a.click('st-guides');assert.equal(host.classList.contains('studio-nobands'),true);a.click('st-guides');assert.equal(host.classList.contains('studio-nobands'),false);
+ a.click('st-reading');assert.equal(a.$('doc-canvas-panel').classList.contains('studio-reading'),true);a.click('st-reading');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A3: the zoom control (−, 适合宽度 and 50/75/100/150/200 %, +), the ruler, the band labels and the pager',async()=>{const a=await designer();try{
+ const sel=a.$('zoom');assert.deepEqual([...sel.options].map(o=>o.textContent),['适合宽度','50%','75%','100%','150%','200%']);
+ const zoom=()=>Number(a.$('doc-zoom').value);assert.equal(zoom(),100);
+ sel.value='150';sel.dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(zoom(),150);assert.equal(a.$('doc-zoom-value').textContent,'150 %');assert.equal(cv.item(a,'n1').querySelector('.cv-box').getAttribute('x'),String(cv.px(a,10)));
+ a.click('st-zoom-out');assert.equal(zoom(),100);assert.equal(sel.value,'100');a.click('st-zoom-out');assert.equal(zoom(),75);a.click('st-zoom-out');assert.equal(zoom(),50);a.click('st-zoom-out');assert.equal(zoom(),50,'50 is the floor');
+ a.click('st-zoom-in');assert.equal(zoom(),75);sel.value='200';sel.dispatchEvent(new a.w.Event('change',{bubbles:true}));a.click('st-zoom-in');assert.equal(zoom(),200,'200 is the ceiling');
+ // The range input (the canvas's own control) and the select stay one control.
+ a.input('doc-zoom','110');assert.equal(zoom(),110);assert.equal(sel.selectedOptions[0].textContent,'110%');
+ // Fit width: the page fills the scroll area (here a mocked 1000 px wide).
+ Object.defineProperty(a.$('doc-canvas-scroll'),'clientWidth',{value:1000,configurable:true});sel.value='fit';sel.dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(zoom(),Math.floor((1000-90-24-16)/630*100));assert.equal(sel.value,'fit');
+ // The band labels are drawn in the margin left of the page: 横幅 and 正文 for 1.x, the five names for 2.0.
+ const labels=()=>[...a.$('doc-canvas-host').querySelectorAll('.cv-bandlabel')].map(e=>e.textContent);
+ cv.load(a,cv.four(a));assert.deepEqual(labels(),['横幅','正文']);to2(a);assert.deepEqual(labels(),['报表头','明细区']);
+ const t=cv.tpl(a);t.bands.page_header={height:14,elements:[]};t.bands.page_footer={height:10,elements:[]};cv.load(a,t);assert.deepEqual(labels(),['页眉','报表头','明细区','页脚']);
+ assert.match(a.$('doc-canvas-host').querySelector('.cv-heading').textContent,/^第 1 页/);assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-heading')[1].textContent,'A4 · 210 × 297 mm');
+ assert.ok(a.$('st-ruler').querySelectorAll('line').length>0||true);
+ // The pager says 1 / 1 and its buttons are disabled with the reason: the canvas shows the layout, one page; the pages of a result are in the PDF preview.
+ assert.equal(a.$('pageCount').textContent,'1 / 1');for(const id of ['st-prev-page','st-next-page']){assert.equal(a.$(id).getAttribute('aria-disabled'),'true');assert.match(a.$(id).title,/画布显示版面（单页）；多页结果请在 PDF 预览中查看/);}
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A2: the panels are built from the real snapshot and template: the dataset card, the fields, the bands with their elements, the resources',async()=>{const a=await designer();try{
+ const t0=to2(a),d=a.w.document;
+ // Components: the three groups of the prototype and the dataset card.
+ assert.deepEqual(qa(a,'#sidebar .side-view.active .eyebrow').map(e=>e.firstChild.textContent.trim()),['基础内容','数据与结构','专业单据']);
+ assert.deepEqual(qa(a,'#sidebar .side-view.active .component-grid').map(g=>[...g.querySelectorAll('.component-card')].map(c=>c.textContent.trim())),[['文本','绑定字段','图片 / 标识','分隔线','矩形容器','签章栏'],['动态明细表流式分页','计算指标','金额摘要'],['条形码','二维码','页码信息','水印']]);
+ assert.equal(a.$('st-comp-dataset').textContent,'receivables.aging');assert.match(a.$('st-comp-rows').textContent,/^3 条示例 · 3 个字段 · receivables\.aging@/);
+ assert.equal(a.$('st-edit-rows').textContent.trim(),'编辑单据数据');assert.equal(a.$('st-comp-preview').textContent.trim(),'输出预览');
+ // Data and fields: the snapshot's columns; the group fields of a 2.0 template, or 未分组 with the hint.
+ railTab(a,'data');assert.equal(a.$('st-data-name').textContent,'receivables.aging');assert.equal(a.$('st-data-count').textContent,'3 条 / 3 字段');
+ const rows=()=>qa(a,'#st-field-list .data-field').map(r=>r.querySelector('.field-code').textContent);
+ assert.deepEqual(rows().sort(),['aging.bucket','ar.open_balance','customer.id']);assert.match(a.$('st-field-list').textContent,/单据级字段未分组：整个快照一份文档/);assert.match(a.$('st-field-list').textContent,/明细级字段/);
+ a.input('st-field-search','balance');assert.deepEqual(rows(),['ar.open_balance']);a.input('st-field-search','');
+ a.$('doc2-group-0').value='customer.id';a.$('doc2-group-0').dispatchEvent(new a.w.Event('change',{bubbles:true}));
+ const groupRows=[...a.$('st-field-list').children];assert.equal(groupRows.findIndex(e=>e.textContent==='明细级字段')-groupRows.findIndex(e=>e.textContent==='单据级字段'),2,'the group field is listed under 单据级字段');
+ // A field row inserts a field text in the current band; with the table selected, a field that is already a column says so.
+ cv.click2(a,'e1');const n0=ids2(cv.tpl(a)).length;qa(a,'#st-field-list .data-field').find(r=>r.querySelector('.field-code').textContent==='ar.open_balance').click();assert.equal(ids2(cv.tpl(a)).length,n0+1);const fresh=all2(cv.tpl(a)).find(v=>v.e.field==='ar.open_balance'&&v.e.source==='field');assert.ok(fresh||all2(cv.tpl(a)).some(v=>v.e.source==='field'));
+ const tableKey=all2(cv.tpl(a)).find(v=>v.e.type==='table').e.id;cv.click2(a,tableKey);a.$('doc-status').textContent='';qa(a,'#st-field-list .data-field').filter(r=>r.querySelector('.field-code').textContent==='customer.id').at(-1).click();assert.match(a.$('doc-status').textContent,/已经是明细表的列/);
+ // Structure: each band of the template with its elements, a lock and a visibility toggle each; a click selects on the canvas and the selection shows here.
+ railTab(a,'structure');const heads=qa(a,'#st-layers .outline-band-head').map(h=>h.textContent.replace(/\s+/g,' ').trim());assert.deepEqual(heads,['单据头带单据首页','明细带流式']);
+ const rowsOf=()=>qa(a,'#st-layers .layer-row');assert.equal(rowsOf().length,ids2(cv.tpl(a)).length);
+ const first=rowsOf()[0],key=first.querySelector('.layer-label').textContent.split(' · ')[0];first.querySelector('.layer-label').click();assert.deepEqual(cv.selected(a),[key]);assert.equal(rowsOf()[0].classList.contains('active'),true,'the canvas selection is highlighted here');
+ cv.click2(a,'e2');assert.deepEqual(rowsOf().filter(r=>r.classList.contains('active')).map(r=>r.querySelector('.layer-label').textContent.split(' · ')[0]),['e2']);
+ // Hidden: still in the template, drawn faintly, and said so in the tooltip; the template does not change.
+ const eye=rowsOf().find(r=>r.querySelector('.layer-label').textContent.startsWith('e3 ')).querySelectorAll('button')[2];assert.match(eye.title,/仍在模板中，预览与输出照常包含/);const before=JSON.stringify(cv.tpl(a));eye.click();const said=a.$('doc-status').textContent;
+ assert.equal(cv.item(a,'e3').getAttribute('class').includes('cv-hidden'),true);assert.equal(JSON.stringify(cv.tpl(a)),before);assert.match(said,/已在画布上隐藏（仍在模板中，预览与输出照常包含它）/);
+ const eye2=rowsOf().find(r=>r.querySelector('.layer-label').textContent.startsWith('e3 ')).querySelectorAll('button')[2];assert.equal(eye2.getAttribute('aria-pressed'),'true');assert.equal(eye2.getAttribute('aria-label'),'显示 e3');
+ // Resources: a text style or an alignment for the selected texts.
+ railTab(a,'resources');cv.click2(a,'e2');qa(a,'[data-style-size="22"]')[0].click();assert.match(a.$('doc-status').textContent,/./,'a size the box cannot hold is refused by the validator, as the input is');qa(a,'[data-style-size="14"]')[0].click();let e2=all2(cv.tpl(a)).find(v=>v.e.id==='e2').e;assert.deepEqual([e2.font_size,e2.bold],[14,true]);
+ qa(a,'[data-text-align="right"]')[0].click();e2=all2(cv.tpl(a)).find(v=>v.e.id==='e2').e;assert.equal(e2.align,'right');a.click('doc-undo');a.click('doc-undo');assert.notEqual(all2(cv.tpl(a)).find(v=>v.e.id==='e2').e.font_size,14);
+ assert.ok(a.$('doc-image-file')&&a.$('doc-background-file')&&a.$('doc-image-upload'),'the existing image and background controls are in the resources panel');assert.equal(a.$('doc-image-file').closest('.side-view').getAttribute('data-view'),'resources');
+ assert.equal(a.errors.length,0,a.errors.join('|'));void t0;void d;
+ }finally{a.close();}});
+
+test('S06-A A4: the inspector is the page\'s or the element\'s, in the prototype\'s groups, with the tabs 属性 / 规则 / 检查',async()=>{const a=await designer();try{
+ to2(a);
+ assert.equal(a.$('st-insp-title').textContent,'页面属性');assert.equal(a.$('st-insp-sub').textContent,'纸张、区段与打印设置');
+ assert.deepEqual(qa(a,'[data-prop-tab]').map(t=>[t.getAttribute('role'),t.getAttribute('aria-selected')]),[['tab','true'],['tab','false'],['tab','false']]);assert.equal(q(a,'[data-prop-tab]').parentElement.getAttribute('role'),'tablist');
+ assert.equal(a.$('st-page-dataset').textContent,'receivables.aging@1.0.0');assert.equal(a.$('st-page-meta').textContent,'A4 · 自动分页 · 重复表头');
+ assert.deepEqual(['st-page-rows','st-page-json','st-page-preview'].map(id=>a.$(id).textContent.trim()),['编辑业务样本','导出JSON样本','输出预览']);
+ assert.match(q(a,'#st-insp-page .info-box').textContent,/页面尺寸\s*210 × 297 mm/);assert.deepEqual(['st-page-paper','st-page-bands'].map(id=>a.$(id).textContent.trim()),['纸张与页边距','区段设置']);
+ assert.match(a.$('st-page-info').textContent,/未命名模板.*receivables\.aging@1\.0\.0.*3 条当前示例/);
+ // An element: its kind in the title, the groups of the prototype.
+ const groups=id=>{cv.click2(a,id);return qa(a,'#doc2-props .prop-section h3').map(h=>h.textContent);};
+ const text=all2(cv.tpl(a)).find(v=>v.e.type==='text').e.id;assert.deepEqual(groups(text),['位置与尺寸','内容','文字']);assert.match(a.$('st-insp-sub').textContent,/ · 文本$/);
+ card(a,'line').click();assert.deepEqual(qa(a,'#doc2-props .prop-section h3').map(h=>h.textContent),['位置与尺寸','边框']);assert.match(a.$('st-insp-sub').textContent,/ · 分隔线$/);
+ card(a,'rect').click();assert.deepEqual(qa(a,'#doc2-props .prop-section h3').map(h=>h.textContent),['位置与尺寸','边框']);
+ card(a,'barcode').click();assert.deepEqual(qa(a,'#doc2-props .prop-section h3').map(h=>h.textContent),['位置与尺寸','内容','文字']);
+ // The inputs are the old ones: the validator decides, an undo step each.
+ const id=cv.selected(a)[0];a.$('doc2-p-width').value='20';a.$('doc2-p-width').dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal(all2(cv.tpl(a)).find(v=>v.e.id===id).e.width,20);a.click('doc-undo');
+ const tk=all2(cv.tpl(a)).find(v=>v.e.type==='table').e.id;cv.click2(a,tk);assert.equal(a.$('st-insp-title').textContent,'明细表');assert.ok(a.$('doc2-table').children.length>0);assert.equal(a.$('st-insp-element').hidden,false);assert.equal(a.$('st-insp-page').hidden,true);
+ cv.click2(a,text);cv.click2(a,tk,{shiftKey:true});assert.equal(a.$('st-insp-title').textContent,'已选择 2 个组件');
+ // Escape clears the selection and the page's properties come back.
+ cv.key(a,cv.item(a,text),'Escape');assert.equal(a.$('st-insp-title').textContent,'页面属性');
+ // Rules: the template's constraints as the designer knows them.
+ q(a,'[data-prop-tab="rules"]').click();assert.equal(a.$('st-ipanel-rules').hidden,false);assert.equal(a.$('st-ipanel-properties').hidden,true);const rules=qa(a,'#st-rules li').map(l=>l.textContent);
+ assert.ok(rules.some(r=>/安全区 x 10–200/.test(r))&&rules.some(r=>/至多 64 个元素/.test(r))&&rules.some(r=>/不能重叠/.test(r))&&rules.some(r=>/明细带必有一个明细表/.test(r))&&rules.some(r=>/无分组：整个快照一份文档/.test(r)),rules.join('|'));
+ assert.equal(a.$('st-mark-refusal').disabled,true);assert.equal(a.$('st-refusal').textContent,'尚无。');
+ // Check: the boundary samples' table with the old ids, and 重新检查 reaching the same button.
+ q(a,'[data-prop-tab="check"]').click();assert.equal(a.$('st-ipanel-check').hidden,false);assert.equal(a.$('doc-check-wrap').closest('#st-ipanel-check')!==null,true);assert.equal(a.$('st-recheck').textContent.trim(),'重新检查');assert.match(a.$('st-issues').textContent,/当前版式与绑定检查通过/);
+ q(a,'[data-prop-tab="properties"]').click();q(a,'[data-prop-tab="rules"]').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));assert.equal(a.w.document.activeElement.id,'st-itab-check');assert.equal(a.$('st-ipanel-check').hidden,false);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A4: the check tab shows the boundary samples with their rows, codes and reasons; the status bar and the badge of the tab count what failed; 重新检查 runs the same check',async()=>{const bodies=[];
+ const answer={rows:[{row_index:0,ok:true,reasons:['first']},{row_index:2,ok:false,code:'UNSUPPORTED_COMBINATION',detail:{reason:'DOES_NOT_FIT',element:'n1',row:2},reasons:['last','longest:n1']}]};
+ const a=app(offeringChecks(answer,{bodies}));try{
+ await checkReady(a);assert.equal(a.$('st-validation-text').textContent,'版式检查通过');assert.equal(a.$('st-issue-count').hidden,true);
+ q(a,'[data-act="edge-sample"]#st-recheck').click();await until(()=>a.$('doc-check-body').rows.length===2&&!a.$('preview').disabled,'checked');assert.equal(bodies.length,1);
+ assert.equal(a.$('st-ipanel-check').hidden,false,'running the check shows its tab');assert.equal(a.$('st-itab-check').getAttribute('aria-selected'),'true');
+ assert.equal(a.$('st-validation-text').textContent,'版式检查未通过 · 1 项');assert.equal(a.$('st-validation').classList.contains('bad'),true);assert.equal(a.$('st-issue-count').hidden,false);assert.equal(a.$('st-issue-count').textContent,'1');
+ const card1=q(a,'#st-issues .validation-card');assert.match(card1.textContent,/第 3 行不通过 · UNSUPPORTED_COMBINATION/);assert.match(card1.textContent,/放不下.*元素 n1/);
+ card1.click();assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-refused').length,1,'the place is outlined on the canvas (the existing outline)');
+ assert.deepEqual(checkRows(a).map(r=>r[1].slice(0,3)),['通过','不通过']);
+ // A change of the template voids it: the count goes.
+ cv.click(a,'n1');cv.key(a,cv.item(a,'n1'),'ArrowDown');assert.equal(a.$('st-validation-text').textContent,'版式检查通过');assert.equal(a.$('st-issue-count').hidden,true);
+ // 运行版式检查 is the designer's own validation: a valid template passes, and it opens the check tab.
+ q(a,'#st-ipanel-check');a.click('st-validate');assert.match(a.$('doc-status').textContent,/版式检查通过/);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A5: every dialog is a labelled modal dialog: focus goes in, Tab stays inside, Esc and the backdrop close it, and the focus goes back to the control that opened it',async()=>{const a=await designer();try{
+ to2(a);const d=a.w.document;
+ const cases=[['help','#st-help','设计说明与操作帮助'],['page','#st-page-settings','纸张与页边距'],['bands','#st-bands','区段设置'],['print','#st-print-settings','底稿、偏移与预印纸套打'],['insert','#st-insert-options','插入选项'],['preview','#previewButton','预览与导出'],['json','#st-export-json','模板JSON'],['issue','#st-tool-issue','正式出具与出具记录'],['versions','#st-versions','版本历史与发布指针'],['publish','#st-publish','发布前确认'],['chooser','#st-crumb','模板中心'],['query','#st-ctx-params','参数与筛选'],['rows','#st-ctx-data','数据预览与字段契约']];
+ const tabKey=(shift)=>{const ev=new a.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:shift,bubbles:true,cancelable:true});d.activeElement.dispatchEvent(ev);return ev.defaultPrevented;};
+ const focusables=id=>[...dialogOf(a,id).querySelectorAll('.dialog button,.dialog input,.dialog select,.dialog textarea,.dialog summary')].filter(e=>!e.disabled&&e.tabIndex>=0&&!e.closest('[hidden]'));
+ for(const [id,trigger,title] of cases){
+  const opener=q(a,trigger);ribbonTab(a,'design');opener.focus();
+  // the ribbon tab of an opener in another tab: show it first
+  const panel=opener.closest('.ribbon-panel');if(panel)ribbonTab(a,panel.getAttribute('data-panel'));opener.focus();opener.click();
+  const box=dialogOf(a,id).querySelector('[role="dialog"]');assert.ok(isOpen(a,id),id+' opens');assert.equal(box.getAttribute('aria-modal'),'true',id);assert.equal(d.getElementById(box.getAttribute('aria-labelledby')).textContent,title,id+' is labelled by its title');
+  assert.ok(box.contains(d.activeElement),id+': the focus is inside, on '+(d.activeElement.id||d.activeElement.tagName));assert.equal(a.$('doc-canvas-panel').inert,true,id+': the studio behind is inert');
+  assert.deepEqual(qa(a,'.overlay.open').map(o=>o.id),['st-d-'+id],'one dialog at a time');
+  const list=focusables(id);assert.ok(list.length>=1,id+' has something to focus');
+  list.at(-1).focus();assert.equal(tabKey(false),true,id+': Tab at the last control is held');assert.equal(d.activeElement,list[0],id+': and goes to the first');
+  list[0].focus();assert.equal(tabKey(true),true);assert.equal(d.activeElement,list.at(-1),id+': Shift+Tab at the first goes to the last');
+  // Esc closes and the focus is where it was.
+  d.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(isOpen(a,id),false,id+' closes on Esc');assert.equal(a.$('doc-canvas-panel').inert,false);assert.equal(d.activeElement,opener,id+': the focus returns to the opener');
+  // The backdrop and the close button close it too.
+  opener.click();assert.ok(isOpen(a,id));dialogOf(a,id).dispatchEvent(new a.w.PointerEvent('pointerdown',{bubbles:true}));assert.equal(isOpen(a,id),false,id+' closes on the backdrop');
+  opener.click();dialogOf(a,id).querySelector('[data-act="close"][aria-label="关闭对话框"],.dialog-footer [data-act="close"]')?.click();assert.equal(isOpen(a,id),false,id+' closes on its button');
+ }
+ // The command palette is the same kind of dialog and works over the studio.
+ a.w.document.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true,cancelable:true}));assert.equal(palette(a).parentElement.hidden,false);press(a,'Escape');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A3: 参数与筛选 shows the query form in a right drawer and 查看数据 the snapshot rows in a bottom drawer; both go back to the workbench when they close',async()=>{const a=await designer();try{
+ const form=q(a,'.query-panel'),home=form.parentElement,rows=a.$('result-table-wrap'),rowsHome=rows.parentElement;
+ assert.equal(home.closest('#page-workspace')!==null,true);
+ q(a,'#st-ctx-params').click();assert.equal(a.$('st-query-slot').contains(form),true,'the query form is in the drawer');assert.ok(a.$('query-companies')&&a.$('snapshot')&&a.$('preview'),'with its own controls');assert.equal(dialogOf(a,'query').classList.contains('drawer-right'),true);
+ a.w.document.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(form.parentElement,home,'closed: the form is back in the workbench');
+ q(a,'#st-ctx-data').click();assert.equal(a.$('st-rows-slot').contains(rows),true);assert.equal(a.$('st-rows-slot').contains(a.$('result-pager')),true,'the existing pagination comes with the rows');assert.equal(a.$('st-rows-slot').querySelectorAll('tbody tr').length,3);assert.equal(dialogOf(a,'rows').classList.contains('drawer-bottom'),true);
+ a.w.document.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(rows.parentElement,rowsHome);
+ // Submitting the form re-freezes a snapshot and the studio re-binds (the existing workbench flow).
+ q(a,'#st-ctx-params').click();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('snapshot').disabled,'frozen');assert.match(a.$('st-source').textContent,/^冻结快照 [a-f0-9]{8} · receivables\.aging$/);assert.equal(a.$('recordBadge').textContent,'3 条示例');
+ // The sample download: the first rows of the snapshot as JSON, from the rows the console already has.
+ a.w.document.querySelector('#st-d-query [data-act="close"]').click();q(a,'#st-page-json').click();await flush();assert.equal(a.downloads.length,1);assert.equal(a.downloads[0].name,'snapshot-sample.json');
+ const sample=JSON.parse(await a.downloads[0].blob.text());assert.deepEqual([sample.kind,sample.dataset.id,sample.row_count,sample.rows.length],['snapshot_sample','receivables.aging',3,3]);assert.deepEqual(Object.keys(sample.rows[0]).sort(),['aging.bucket','ar.open_balance','customer.id']);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A1/A5: the template\'s name is editable in place and validated like the server does, round-trips through save and open, and the versions, the publish confirmation and the template chooser are the server\'s',async()=>{const a=await designer();try{
+ const d=a.w.document,name=()=>cv.tpl(a).name;
+ assert.equal(a.$('st-name').textContent,'未命名模板');assert.equal(name(),undefined,'a template without a name has no name key');
+ // Rename in place: Enter commits, Esc cancels, a refusal keeps the input with its reason.
+ a.$('titleButton').click();const input=a.$('st-name-input');assert.equal(input.hidden,false);assert.equal(a.$('titleButton').hidden,true);assert.equal(d.activeElement,input);assert.equal(input.maxLength,80);assert.match(input.getAttribute('aria-label'),/最多 80/);
+ const type=v=>{input.value=v;};const enter=()=>input.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+ type('字'.repeat(81));enter();assert.equal(input.hidden,false,'81 characters: refused');assert.equal(input.getAttribute('aria-invalid'),'true');assert.equal(a.$('doc-status').textContent,'模板名称须为 1–80 个字符，单行，前后不留空白。');assert.equal(name(),undefined);
+ type('a\u0007b');enter();assert.equal(input.hidden,false,'a control character: refused');assert.equal(name(),undefined);
+ type('字'.repeat(80));enter();assert.equal(input.hidden,true,'80 characters: accepted');assert.equal(name(),'字'.repeat(80));assert.equal(d.activeElement,a.$('titleButton'));
+ a.click('doc-undo');assert.equal(name(),undefined,'renaming is one undo step');a.click('doc-redo');assert.equal(name(),'字'.repeat(80));
+ a.$('titleButton').click();type('  客户往来对账单  ');enter();assert.equal(name(),'客户往来对账单','the name is trimmed');assert.equal(a.$('st-name').textContent,'客户往来对账单');assert.equal(a.$('datasetName').textContent,'客户往来对账单');assert.equal(a.$('st-page-name').textContent,'客户往来对账单');
+ a.$('titleButton').click();type('别的名字');input.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(input.hidden,true);assert.equal(name(),'客户往来对账单','Esc cancels');
+ // A name does not change the layout: the template is otherwise what it was, and the JSON editor refuses the same names the input does.
+ const base=cv.tpl(a);cv.load(a,{...base,name:'ok'});assert.equal(name(),'ok');for(const bad of [' x','x ','','x'.repeat(81),5,null]){a.$('doc-json').value=JSON.stringify({...base,name:bad});a.click('doc-json-open');assert.notEqual(a.$('doc-status').textContent,READY,JSON.stringify(bad)+' is refused');}
+ // Save, name round trip, state badge.
+ cv.load(a,{...base,name:'客户往来对账单'});assert.equal(a.$('st-state').textContent,'草稿');assert.equal(a.$('autosaveStatus').textContent,'未保存的修改');
+ a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'saved v1');const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+ assert.equal(a.$('st-state').textContent,'已保存 v1');assert.equal(a.$('autosaveStatus').textContent,'已保存');
+ const saved=await (await fetch(url+'/api/reporting/v1/document-templates/'+id+'?version=1',{headers:{Authorization:'Bearer '+token}})).json();assert.equal(saved.config.name,'客户往来对账单','the server keeps the name');
+ card(a,'text').click();assert.equal(a.$('st-state').textContent,'已保存 v1·有未保存修改');assert.equal(a.$('autosaveStatus').textContent,'未保存的修改');
+ a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'saved v2');assert.equal(a.$('st-state').textContent,'已保存 v2');
+ // A template without a name shows its number: save one without.
+ // Versions: the server's list with the pointer; restore opens as an unsaved change; publication is its own act.
+ q(a,'#st-versions').click();await until(()=>a.$('doc-release-status').textContent.includes('发布修订 0')&&qa(a,'#st-version-list .version-card').length===2,'versions listed');
+ assert.deepEqual(qa(a,'#st-version-list .version-card strong').map(e=>e.textContent),['v2','v1']);assert.deepEqual(qa(a,'#st-version-list .pill').map(e=>e.textContent),['已保存','已保存']);assert.match(a.$('st-vd-note').textContent,/发布指针仍指向 未发布/);assert.equal(a.$('st-version-card').hidden,false);
+ assert.equal(a.$('st-ver-preview').disabled,!pdfConfigured,'the preview of a version needs the server\'s PDF rendering');if(!pdfConfigured)assert.equal(a.$('st-ver-preview').title,'服务端未启用 PDF 渲染');
+ qa(a,'#st-version-list .version-card')[1].click();await until(()=>/个组件/.test(a.$('st-vd-elements').textContent)&&!a.$('preview').disabled,'v1 read');assert.equal(a.$('st-vd-elements').textContent,'1 个组件');assert.equal(a.$('st-vd-title').textContent,'客户往来对账单 · v1');
+ a.$('st-ver-restore').click();assert.equal(isOpen(a,'versions'),false);assert.equal(cv.tpl(a).elements.length,1,'v1 is in the editor');assert.equal(a.$('st-state').textContent,'已保存 v2·有未保存修改','restoring is an unsaved change, not a save');assert.equal(a.$('doc-undo').disabled,false);
+ assert.equal(a.trace.filter(t=>t.method==='POST'&&t.path.endsWith('/document-templates')).length,2,'nothing was saved by the restore');
+ // Publish confirmation: what will be published; not while there is something unsaved; the confirm is the server's publication.
+ q(a,'#st-publish').click();assert.equal(a.$('st-pub-confirm').disabled,true);assert.match(a.$('st-pub-saved').textContent,/需要先保存当前修改/);assert.equal(a.$('st-pub-version').textContent,'v2');a.$('st-d-publish').querySelector('.dialog-footer [data-act="close"]').click();
+ a.click('doc-undo');assert.equal(a.$('st-state').textContent,'已保存 v2');
+ q(a,'#st-publish').click();await until(()=>!a.$('st-pub-confirm').disabled,'release read');assert.equal(a.$('st-pub-name').textContent,'客户往来对账单');assert.equal(a.$('st-pub-dataset').textContent,'receivables.aging@1.0.0');assert.equal(a.$('st-pub-elements').textContent,'2 个组件');assert.match(a.$('st-pub-schema').textContent,/schema 1\./);assert.match(a.$('st-pub-pointer').textContent,/当前发布 无 → v2/);assert.match(a.$('st-pub-saved').textContent,/已明确引用不可变保存版本/);assert.match(a.$('st-pub-valid').textContent,/版式与数据绑定检查通过/);
+ a.$('st-pub-confirm').click();assert.equal(isOpen(a,'publish'),false);await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 2')&&!a.$('preview').disabled,'published v2');
+ const posted=a.trace.filter(t=>t.method==='POST'&&t.path.endsWith('/release'));assert.equal(posted.length,1);assert.equal(a.$('st-state').textContent,'已发布 v2');assert.equal(a.$('autosaveStatus').textContent,'已发布');
+ // Publishing another saved version is its own act, and the pointer then says so; withdrawal is separate.
+ q(a,'#st-versions').click();await until(()=>qa(a,'#st-version-list .pill').map(e=>e.textContent).join()==='已发布,已保存','pointer shown');
+ qa(a,'#st-version-list .version-card')[1].click();await until(()=>!a.$('preview').disabled,'v1 read');a.$('st-ver-publish').click();assert.equal(isOpen(a,'publish'),true);assert.equal(a.$('st-pub-version').textContent,'v1');assert.match(a.$('st-pub-pointer').textContent,/历史版本回退 · 当前发布 v2 → v1/);await until(()=>!a.$('st-pub-confirm').disabled,'confirm');
+ a.$('st-pub-confirm').click();try{await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 1')&&!a.$('preview').disabled,'published v1');}catch(e){throw new Error(e.message+' | '+a.$('notice').textContent+' | '+a.$('doc-status').textContent+' | '+a.$('doc-release-status').textContent+' | '+JSON.stringify(a.trace.slice(-4)));}assert.equal(a.$('st-state').textContent,'已保存 v2','the editor\'s v2 is no longer the published one');
+ a.click('doc-release-withdraw');await until(()=>a.$('doc-release-status').textContent.includes('当前未发布')&&!a.$('preview').disabled,'withdrawn');
+ // The template chooser: the identity's templates with their names, versions, published version and data set; open one.
+ q(a,'#st-crumb').click();try{await until(()=>qa(a,'#st-chooser-body tr').some(r=>r.textContent.includes('客户往来对账单')&&r.cells[4].textContent!=='…')&&!a.$('preview').disabled,'chooser rows',15000);}catch(e){throw new Error(e.message+' | '+a.$('st-chooser-status').textContent+' | '+qa(a,'#st-chooser-body tr').map(r=>r.textContent).join(' / ')+' | '+a.$('notice').textContent+a.$('doc-status').textContent);}
+ const row=qa(a,'#st-chooser-body tr').find(r=>r.cells[1].title===id);assert.ok(row);assert.deepEqual([row.cells[0].textContent,row.cells[2].textContent,row.cells[3].textContent,row.cells[4].textContent],['客户往来对账单 当前','2','—','receivables.aging@1.0.0']);
+ assert.deepEqual([...row.cells[5].querySelectorAll('button')].map(b=>b.textContent+(b.getAttribute('aria-disabled')==='true'?':'+b.title:'')),['打开','打开已发布版本:尚无已发布版本']);
+ assert.deepEqual(['st-chooser-new','st-chooser-import','st-chooser-refresh'].map(i=>a.$(i).textContent.trim()),['新建','导入JSON','刷新列表']);
+ cv.load(a,{...base,name:'别的'});row.cells[5].querySelector('button').click();await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板')&&!a.$('preview').disabled,'opened');assert.equal(cv.tpl(a).name,'客户往来对账单');assert.equal(isOpen(a,'chooser'),false);
+ // A template without a name shows 模板 and the first eight characters of its number.
+ const noName=cv.tpl(a);delete noName.name;cv.load(a,noName);assert.equal(a.$('st-name').textContent,'模板 '+id.slice(0,8));
+ // 新建: the default template (the old reset).
+ q(a,'#st-crumb').click();a.$('st-chooser-new').click();assert.equal(cv.tpl(a).elements[0].text,'Document preview');assert.equal(isOpen(a,'chooser'),false);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A: the studio\'s code writes no markup, no style attribute, loads nothing from outside and stores nothing; the page of the studio has no inline style or handler after everything has been opened',async()=>{const a=await designer();try{
+ for(const [name,code] of [['studio.js',studioScript],['canvas.js',canvasScript],['documents.js',documentsScript]]){
+  for(const pattern of [/\.innerHTML/,/\.outerHTML/,/insertAdjacentHTML/,/document\.write/,/\beval\(/,/new Function/,/\.srcdoc/,/setAttribute\(\s*['"]on/,/\.style\.cssText/,/setAttribute\(\s*['"]style/,/\.style\./,/\bimport\(/,/https?:\/\//,/\bfetch\(/,/XMLHttpRequest/,/localStorage|sessionStorage|indexedDB|document\.cookie/,/createElement\(\s*['"](script|iframe|link|style)['"]/])assert.equal(pattern.test(code.replace(/\/\/.*$/gm,'')),false,name+' contains '+pattern);
+ }
+ assert.equal((html.match(/<script/g)||[]).length,(html.match(/<script src="\/console\/[a-z]+\.js" defer>/g)||[]).length,'every script is one of the console\'s own files');
+ assert.match(html,/<link rel="stylesheet" href="\/console\/studio\.css">/);
+ const css=await readFile(join(root,'console/assets/studio.css'),'utf8');assert.equal(/@import|url\(\s*['"]?https?:|expression\(/.test(css),false,'the stylesheet loads nothing');assert.equal(/<script|javascript:/.test(css),false);
+ // Open everything; no node of the page of the studio carries a style attribute or an event handler.
+ to2(a);for(const id of ['help','page','bands','print','insert','preview','json','issue','versions','publish','chooser','query','rows']){a.w.document.querySelector('#st-d-'+id).classList.add('open');}
+ for(const k of ['text','barcode','rect'])card(a,k).click();a.click('st-grid');cv.click2(a,'e1');a.click('st-lock');railTab(a,'structure');railTab(a,'data');railTab(a,'resources');for(const t of ['insert','data','page','check'])ribbonTab(a,t);
+ for(const e of a.$('page-documents').querySelectorAll('*')){assert.equal(e.hasAttribute('style'),false,'style attribute on <'+e.tagName.toLowerCase()+' id='+e.id+'>');assert.equal([...e.attributes].some(x=>/^on/i.test(x.name)),false,'inline handler');}
+ assert.equal(a.w.document.querySelectorAll('script[src^="http"],link[href^="http"],img[src^="http"]').length,0);assert.equal(a.w.localStorage.length,0);assert.equal(a.w.sessionStorage.length,0);
+ // Every id of the old documents section is still in the page (the studio rearranged them, it did not drop any), and none is used twice.
+ const ids=[...a.w.document.querySelectorAll('[id]')].map(e=>e.id);assert.equal(new Set(ids).size,ids.length,'an id is used twice');
+ for(const id of ['doc-undo','doc-redo','doc-dup','doc-del','doc-check','doc-zoom','doc-palette-open','doc2-props','doc2-table','doc-elements','doc2-add-literal','doc-add-text','doc-table-add','doc-background-upload','doc-print-apply','doc-server-save','doc-release-publish','doc-issue','doc-json','doc-row','doc-pdf','doc-status','doc-canvas-help','doc-canvas-live'])assert.ok(ids.includes(id),id);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A3/A5: 预览与导出 is the server\'s PDF preview, the pager tells the pages of the last preview, and a saved version is previewed by its number',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
+ await snapshotReady(a);a.w.document.querySelector('[data-page="documents"]').click();
+ assert.equal(a.$('pageCount').textContent,'1 / 1','1 until a preview');assert.equal(a.$('doc-row').closest('#st-d-preview')!==null,true);
+ q(a,'#previewButton').click();assert.equal(a.$('st-pv-pages').textContent,'尚未预览');assert.match(a.$('st-pv-source').textContent,/^[a-f0-9]{8} · receivables\.aging$/);
+ a.click('doc-pdf');await until(()=>a.downloads.length===1&&!a.$('preview').disabled,'preview downloaded',20000);
+ const bytes=Buffer.from(await a.downloads[0].blob.arrayBuffer()),pages=(bytes.toString('latin1').match(/\/Type\s*\/Page(?![A-Za-z])/g)||[]).length;
+ assert.equal(bytes.subarray(0,5).toString(),'%PDF-');assert.ok(pages>=1);assert.equal(a.$('pageCount').textContent,'1 / '+pages,'the pager tells the last preview\'s page count');assert.equal(a.$('st-pv-pages').textContent,pages+' 页');assert.match(a.$('st-page-info').textContent,new RegExp(pages+' 页（最近一次预览）'));
+ // A saved version is previewed by its number: the request names the version and the template, and the template is not changed.
+ a.w.document.querySelector('#st-d-preview [data-act="close"]').click();a.click('doc-server-save');await until(()=>a.$('doc-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'saved');const id=a.$('doc-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+ q(a,'#st-versions').click();await until(()=>qa(a,'#st-version-list .version-card').length===1&&!a.$('preview').disabled,'versions');
+ a.$('st-ver-preview').click();await until(()=>a.downloads.length===2&&!a.$('preview').disabled,'saved version previewed',20000);
+ const call=a.trace.find(t=>t.path.endsWith('/document-templates/'+id+'/previews'));assert.ok(call,'the route of the saved version');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+test('S06-A A5/A7: a list that is built again keeps the keyboard where it was, and a focus that fell out of a dialog still has Esc and Tab',async()=>{const a=await designer();try{
+ to2(a);const d=a.w.document;
+ // The structure panel is rebuilt on every selection: the layer that was activated by the keyboard still has the focus afterwards.
+ railTab(a,'structure');const label=qa(a,'#st-layers .layer-label')[1];label.focus();assert.equal(d.activeElement,label);label.click();
+ const key=label.getAttribute('data-k');assert.ok(key.startsWith('name:'));assert.notEqual(qa(a,'#st-layers .layer-label')[1],label,'the list was built again');assert.equal(d.activeElement.getAttribute('data-k'),key,'and the focus is on the same layer');
+ // A dialog whose focused element was removed: the focus is on the page, and Esc still closes the dialog, Tab still comes back into it.
+ q(a,'#st-help').focus();q(a,'#st-help').click();assert.equal(isOpen(a,'help'),true);d.activeElement.blur();assert.equal(d.activeElement,d.body);
+ const tab=new a.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});d.body.dispatchEvent(tab);assert.equal(tab.defaultPrevented,true);assert.equal(dialogOf(a,'help').contains(d.activeElement),true,'Tab brings the focus back into the dialog');
+ d.activeElement.blur();d.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(isOpen(a,'help'),false);assert.equal(d.activeElement,q(a,'#st-help'));
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});

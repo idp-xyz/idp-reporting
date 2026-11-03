@@ -487,6 +487,16 @@
 {"name":"the issue number as a text with a field","expect":"invalid","edit":{"set":{"schema_version":"2.1"},"push":{"bands.document_footer.elements":{"id":"e21","type":"text","source":"issue_number","text":"","field":"customer.id","wrap":false,"x":0,"y":0,"width":60,"height":8,"font_size":10,"align":"left","bold":false}}}},
 {"name":"the issue number text in the detail band","expect":"invalid","edit":{"set":{"schema_version":"2.1"},"push":{"bands.detail.elements":{"id":"e21","type":"text","source":"issue_number","text":"","field":"","wrap":false,"x":0,"y":0,"width":60,"height":8,"font_size":10,"align":"left","bold":false}}}},
 {"name":"a barcode field the dataset lacks","expect":"unauthorized","edit":{"set":{"schema_version":"2.1"},"push":{"bands.document_footer.elements":{"id":"e20","type":"barcode","source":"field","text":"","field":"ghost","x":0,"y":0,"width":95,"height":18,"symbology":"code128","human_readable":false}}}},
-{"name":"a QR code field the dataset lacks","expect":"unauthorized","edit":{"set":{"schema_version":"2.1"},"push":{"bands.document_footer.elements":{"id":"e20","type":"qrcode","source":"field","text":"","field":"ghost","x":0,"y":0,"size":18,"ecc":"M"}}}}
+{"name":"a QR code field the dataset lacks","expect":"unauthorized","edit":{"set":{"schema_version":"2.1"},"push":{"bands.document_footer.elements":{"id":"e20","type":"qrcode","source":"field","text":"","field":"ghost","x":0,"y":0,"size":18,"ecc":"M"}}}},
+{"name":"a template name","expect":"valid","edit":{"set":{"name":"模板名称 · 客户往来对账单 (v2)"}}},
+{"name":"a name of exactly 80 characters","expect":"valid","edit":{"set":{"name":"字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字"}}},
+{"name":"a name of 81 characters","expect":"invalid","edit":{"set":{"name":"字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字"}}},
+{"name":"a name with a line break","expect":"invalid","edit":{"set":{"name":"对账单\n第二行"}}},
+{"name":"a name with a control character","expect":"invalid","edit":{"set":{"name":"对账单\u0007"}}},
+{"name":"a name with a space before it","expect":"invalid","edit":{"set":{"name":" 对账单"}}},
+{"name":"a name with a space after it","expect":"invalid","edit":{"set":{"name":"对账单 "}}},
+{"name":"a name of only a space","expect":"invalid","edit":{"set":{"name":" "}}},
+{"name":"a name that is not text","expect":"invalid","edit":{"set":{"name":5}}},
+{"name":"a name on a 2.1 template with a code","expect":"valid","edit":{"set":{"name":"二维码模板","schema_version":"2.1"},"push":{"bands.document_footer.elements":{"id":"e20","type":"qrcode","source":"literal","text":"x","field":"","x":0,"y":0,"size":18,"ecc":"M"}}}}
 ]
 }
