@@ -1,0 +1,492 @@
+{
+ "catalog": {
+  "domain": "wms",
+  "flow": "labels",
+  "domain_label": "仓储 WMS",
+  "flow_label": "仓储标签"
+ },
+ "source": {
+  "template_name": "WMS · 商品标签",
+  "kind": "wmsSkuLabel",
+  "versions": 1,
+  "published": 1,
+  "file": "wmsSkuLabel"
+ },
+ "doc": {
+  "schema": "studio-uiux-2.6",
+  "name": "WMS · 商品标签",
+  "kind": "wmsSkuLabel",
+  "datasetId": "wmsSkuLabel",
+  "tradeMap": {
+   "documentRef": "documentRef",
+   "lineId": "lineId",
+   "ownerCode": "ownerCode",
+   "warehouseCode": "warehouseCode",
+   "sku": "sku",
+   "description": "description",
+   "location": "location",
+   "batch": "batch",
+   "palletId": "palletId",
+   "cartonId": "cartonId",
+   "quantity": "quantity",
+   "unit": "unit",
+   "barcodeValue": "barcodeValue"
+  },
+  "page": {
+   "preset": "Custom",
+   "width": 150,
+   "height": 100,
+   "orientation": "landscape",
+   "margins": {
+    "top": 5,
+    "bottom": 5,
+    "left": 5,
+    "right": 5
+   },
+   "mode": "full",
+   "offsetX": 0,
+   "offsetY": 0,
+   "background": "",
+   "opacity": 0.2
+  },
+  "bands": {
+   "pageHeader": 5,
+   "reportHeader": 5,
+   "reportFooter": 5,
+   "pageFooter": 5
+  },
+  "parameters": [],
+  "nodes": [
+   {
+    "id": "n1",
+    "type": "text",
+    "band": "detail",
+    "x": 6,
+    "y": 4,
+    "w": 138,
+    "h": 8,
+    "name": "商品标签 / WAREHOUSE LABEL",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 13,
+     "color": "#263b56",
+     "bold": true,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "text": "商品标签 / WAREHOUSE LABEL"
+   },
+   {
+    "id": "n2",
+    "type": "field",
+    "band": "detail",
+    "x": 6,
+    "y": 14,
+    "w": 138,
+    "h": 12,
+    "name": "标识",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 13,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "sku",
+    "label": "标识",
+    "scope": "row",
+    "format": "text"
+   },
+   {
+    "id": "n3",
+    "type": "field",
+    "band": "detail",
+    "x": 6,
+    "y": 28,
+    "w": 68,
+    "h": 10,
+    "name": "货主",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "ownerCode",
+    "label": "货主",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n4",
+    "type": "field",
+    "band": "detail",
+    "x": 80,
+    "y": 28,
+    "w": 64,
+    "h": 10,
+    "name": "仓库",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "warehouseCode",
+    "label": "仓库",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n5",
+    "type": "field",
+    "band": "detail",
+    "x": 6,
+    "y": 40,
+    "w": 92,
+    "h": 11,
+    "name": "商品",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 9,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "description",
+    "label": "商品",
+    "scope": "row",
+    "format": "text"
+   },
+   {
+    "id": "n6",
+    "type": "field",
+    "band": "detail",
+    "x": 103,
+    "y": 40,
+    "w": 25,
+    "h": 11,
+    "name": "数量",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 9,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "quantity",
+    "label": "数量",
+    "scope": "row",
+    "format": "text"
+   },
+   {
+    "id": "n7",
+    "type": "field",
+    "band": "detail",
+    "x": 131,
+    "y": 40,
+    "w": 13,
+    "h": 11,
+    "name": "单位",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "unit",
+    "label": "单位",
+    "scope": "row",
+    "format": "text"
+   },
+   {
+    "id": "n8",
+    "type": "field",
+    "band": "detail",
+    "x": 6,
+    "y": 53,
+    "w": 69,
+    "h": 10,
+    "name": "库位",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 9,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "location",
+    "label": "库位",
+    "scope": "row",
+    "format": "text"
+   },
+   {
+    "id": "n9",
+    "type": "field",
+    "band": "detail",
+    "x": 80,
+    "y": 53,
+    "w": 64,
+    "h": 10,
+    "name": "批次",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 9,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "batch",
+    "label": "批次",
+    "scope": "row",
+    "format": "text"
+   },
+   {
+    "id": "n10",
+    "type": "barcode",
+    "band": "detail",
+    "x": 8,
+    "y": 66,
+    "w": 134,
+    "h": 22,
+    "name": "内部标识条码",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.8,
+     "color": "#25334a",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "scope": "row",
+    "field": "barcodeValue",
+    "text": "",
+    "codeType": "code128",
+    "codeSettings": {},
+    "showText": true
+   },
+   {
+    "id": "n11",
+    "type": "text",
+    "band": "detail",
+    "x": 6,
+    "y": 91,
+    "w": 138,
+    "h": 5,
+    "name": "WMS · INTERNAL LABEL · DESIGN SAMPLE",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 6.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "text": "WMS · INTERNAL LABEL · DESIGN SAMPLE"
+   }
+  ]
+ },
+ "dataset": {
+  "id": "wmsSkuLabel",
+  "name": "WMS · 商品标签",
+  "product": "WMS · 单仓单货主示例契约",
+  "description": "平台内部标签；Code128为普通标识编码，不是GS1或承运商标签。每条记录生成一张标签。",
+  "fields": [
+   {
+    "id": "documentRef",
+    "label": "报表/单据编号",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "lineId",
+    "label": "行标识",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "ownerCode",
+    "label": "货主编码",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "warehouseCode",
+    "label": "仓库编码",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "sku",
+    "label": "SKU",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "description",
+    "label": "商品名称",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "location",
+    "label": "库位",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "batch",
+    "label": "批次",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "palletId",
+    "label": "托盘号",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "cartonId",
+    "label": "箱号",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "quantity",
+    "label": "数量",
+    "type": "decimal",
+    "scale": 3
+   },
+   {
+    "id": "unit",
+    "label": "单位",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "barcodeValue",
+    "label": "条码原始内容",
+    "type": "string",
+    "scale": 0
+   }
+  ]
+ },
+ "rows": [
+  {
+   "documentRef": "DEMO-WMSSKULABEL-001",
+   "lineId": "1",
+   "ownerCode": "DEMO-OWNER",
+   "warehouseCode": "SHA01",
+   "sku": "SKU-0001",
+   "description": "示例工业配件 1",
+   "location": "A-01-01",
+   "batch": "LOT-261028",
+   "palletId": "PAL-0001",
+   "cartonId": "CTN-0001",
+   "quantity": "10.000",
+   "unit": "PCS",
+   "barcodeValue": "SKU-0001"
+  },
+  {
+   "documentRef": "DEMO-WMSSKULABEL-001",
+   "lineId": "2",
+   "ownerCode": "DEMO-OWNER",
+   "warehouseCode": "SHA01",
+   "sku": "SKU-0002",
+   "description": "示例工业配件 2",
+   "location": "A-01-02",
+   "batch": "LOT-261028",
+   "palletId": "PAL-0002",
+   "cartonId": "CTN-0002",
+   "quantity": "20.000",
+   "unit": "PCS",
+   "barcodeValue": "SKU-0002"
+  },
+  {
+   "documentRef": "DEMO-WMSSKULABEL-001",
+   "lineId": "3",
+   "ownerCode": "DEMO-OWNER",
+   "warehouseCode": "SHA01",
+   "sku": "SKU-0003",
+   "description": "示例工业配件 3",
+   "location": "A-01-03",
+   "batch": "LOT-261028",
+   "palletId": "PAL-0003",
+   "cartonId": "CTN-0003",
+   "quantity": "30.000",
+   "unit": "SET",
+   "barcodeValue": "SKU-0003"
+  }
+ ],
+ "meta": {
+  "ownerCode": "DEMO-OWNER",
+  "warehouseCode": "SHA01"
+ }
+}

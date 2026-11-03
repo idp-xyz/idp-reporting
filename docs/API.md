@@ -220,7 +220,11 @@ document (of no rows if the snapshot has none, with a header, an empty table and
 the table's total row, whole; it moves to a new page, below the page header, when it does not fit under the table, and
 is refused with BAND_OVERFLOW when it fits no empty page) and `page_footer` (every page, at the bottom of the safe
 region); each but `detail` is `{height, elements}` with `height` of 5 to 245 mm on the 0.1 mm grid, `detail` is
-`{elements}`. Bands lie inside the safe region (x 10-200, y 25-270 mm) and the strip 10-18 mm stays the banner's or the
+`{elements}`. `detail` may be absent (S06-B part 2): the template is then a *form*, which draws its page header, document header,
+document footer and page footer on one page, with no table, no rows of its own and no carried sums; the document footer lies directly under the
+document header; bands that together exceed the safe region are refused with DOES_NOT_FIT, never cut; at least one band is needed, `"detail": null`
+is refused, and a 1.x template has none. A form's documents are made as above (the group fields select the rows, which must agree on every field
+that is not a group field); without `group` it is one document per row, as a 1.x template. Bands lie inside the safe region (x 10-200, y 25-270 mm) and the strip 10-18 mm stays the banner's or the
 stamp's. The heights of the page header, document header and page footer plus the least detail band (the table's
 header, brought-forward, one body and carry-forward row, one line each at the table's type size) must fit the safe
 region. Element positions are in millimetres on the 0.1 mm grid, relative to the band (which starts at x 10 mm); ids
@@ -265,6 +269,9 @@ Issue by group (S03-K, docs/S03K_SCOPE.md, ADR 0004 decision 7). A schema 2.0 te
 `POST /issues` issues one: `{template_id, version, snapshot_id, group}`, where `group` is the list of the group's key values in the
 order of the template's `group.fields` (the empty list for a template without `group`, whose one group is the whole snapshot), or,
 for a client that holds a row number (the console), `{template_id, version, snapshot_id, row_index}`, the group containing that row.
+A *form* without group fields (S06-B, above: one document per row) is issued as a 1.x template is: `{template_id, version, snapshot_id, row_index}` alone
+(`group` is 400), the document is that row's own, and the job, the product's intent, the record, the listing and the job view carry `row_index` and no
+`group`; the product-authority contract is the one of a 1.x issue (contract version 1 suffices). A form with group fields is issued by group as any 2.x template.
 Both or neither is 400, and so is a `group` of a 1.x template (a 1.x template keeps `row_index` alone, as ever) or of a length other than
 the template's fields. The admission resolves the group in the frozen snapshot, as the preview does, and refuses as the preview refuses
 (a field that differs inside the group, a value the layout cannot print: 422 with the reason and the place, never a value); a key no group
@@ -549,6 +556,7 @@ compared with it by a test): the template without a preset is A4 portrait, as ev
 | `label_4x6in` | 101.6 x 152.4 | 4, y 12-146.4 | 4, 3, 93.6 x 6 | 2 lines, 6 pt |
 | `label_100x150` | 100 x 150 | 4, y 12-144 | 4, 3, 92 x 6 | 2 lines, 6 pt |
 | `label_100x100` | 100 x 100 | 4, y 12-94 | 4, 3, 92 x 6 | 2 lines, 6 pt |
+| `label_150x100` | 150 x 100 (landscape) | 4, y 12-94 | 4, 3, 142 x 6 | 2 lines, 6 pt |
 
 The bands span the safe region's width (page width less both margins) and the stack of bands is held to its height; the issue stamp strip exists on
 every preset. Where the widest stamp the contract allows does not fit one line (a stamp is `ISSUED No. <number> - <time> - <id>`), it is broken after the

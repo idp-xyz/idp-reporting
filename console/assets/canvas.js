@@ -19,7 +19,7 @@
 // belongs to a band and its position is relative to the band's top-left corner (x 10 mm); the model below turns that into
 // page units for drawing, snapping, alignment and distribution, and back again when an element is written.
 // The page presets (S06-B): a copy of doctemplates.Presets, the one table of the platform; a Go test (doctemplates/preset_test.go) fails when this differs.
-window.reportingPresets=/*presets:begin*/[{"id":"a4","width":210,"height":297,"left":10,"top":25,"bottom":270,"strip":{"x":10,"y":10,"width":190,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a4_landscape","width":297,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":277,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a5","width":148,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":128,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":2}},{"id":"label_4x6in","width":101.6,"height":152.4,"left":4,"top":12,"bottom":146.4,"strip":{"x":4,"y":3,"width":93.6,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x150","width":100,"height":150,"left":4,"top":12,"bottom":144,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x100","width":100,"height":100,"left":4,"top":12,"bottom":94,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}}]/*presets:end*/;
+window.reportingPresets=/*presets:begin*/[{"id":"a4","width":210,"height":297,"left":10,"top":25,"bottom":270,"strip":{"x":10,"y":10,"width":190,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a4_landscape","width":297,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":277,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a5","width":148,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":128,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":2}},{"id":"label_4x6in","width":101.6,"height":152.4,"left":4,"top":12,"bottom":146.4,"strip":{"x":4,"y":3,"width":93.6,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x150","width":100,"height":150,"left":4,"top":12,"bottom":144,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x100","width":100,"height":100,"left":4,"top":12,"bottom":94,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_150x100","width":150,"height":100,"left":4,"top":12,"bottom":94,"strip":{"x":4,"y":3,"width":142,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}}]/*presets:end*/;
 window.createReportingCanvas=function(ports){
  const NS='http://www.w3.org/2000/svg',SCALE=3,RULER=24,PAD=16,GUTTER=104,HANDLE=8,TOLERANCE=10,DRAG_PIXELS=3;
  const $=id=>document.getElementById(id);
@@ -37,7 +37,7 @@ window.createReportingCanvas=function(ports){
 
  // ---- the model: pure operations on a configuration, in 0.1 mm units ------------------------------
  const banded=d=>!!d&&(d.schema_version==='2.0'||d.schema_version==='2.1');
- const tableOf=d=>banded(d)?d.bands.detail.elements[0]:d.table,tableKey=d=>banded(d)?tableOf(d).id:'table';
+ const tableOf=d=>banded(d)?(d.bands.detail?d.bands.detail.elements[0]:null):d.table,tableKey=d=>banded(d)?(tableOf(d)?tableOf(d).id:''):'table';
  const items=d=>banded(d)?items2(d):[...d.elements.map(e=>({key:e.id,table:false,ref:e})),...(d.table?[{key:'table',table:true,ref:d.table}]:[])];
  const rectOf=i=>i.band!==undefined?rect2(i):({x:U(i.ref.x),y:U(i.ref.y),w:U(i.ref.width),h:U(i.ref.height)});
  const overlap=(a,b)=>a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;
@@ -54,7 +54,13 @@ window.createReportingCanvas=function(ports){
  // the table needs (ports.minDetail, 0.1 mm); the document footer follows it, so a footer that does not fit shows where it would hang.
  function geo(d){
   setPage(d);
-  const b=d.bands,h=n=>b[n]?U(b[n].height):0,ph=h('page_header'),dh=h('document_header'),df=h('document_footer'),pf=h('page_footer'),detail=Math.max(ports.minDetail(tableOf(d).font_size),SAFE_B-SAFE_T-ph-dh-pf-df);
+  const b=d.bands,h=n=>b[n]?U(b[n].height):0,ph=h('page_header'),dh=h('document_header'),df=h('document_footer'),pf=h('page_footer');
+  // A form (no detail band) stacks its bands: the document footer lies directly under the document header, and there is no detail region.
+  if(!b.detail){
+   const g={page_header:{top:SAFE_T,h:ph},document_header:{top:SAFE_T+ph,h:dh},document_footer:{top:SAFE_T+ph+dh,h:df},page_footer:{top:SAFE_B-pf,h:pf}};
+   g.document_footer.over=!!b.document_footer&&g.document_footer.top+df>SAFE_B-pf;return g;
+  }
+  const detail=Math.max(ports.minDetail(tableOf(d).font_size),SAFE_B-SAFE_T-ph-dh-pf-df);
   const g={page_header:{top:SAFE_T,h:ph},document_header:{top:SAFE_T+ph,h:dh},detail:{top:SAFE_T+ph+dh,h:detail},document_footer:{top:SAFE_T+ph+dh+detail,h:df},page_footer:{top:SAFE_B-pf,h:pf}};
   g.document_footer.over=!!b.document_footer&&g.document_footer.top+df>SAFE_B-pf;return g;
  }

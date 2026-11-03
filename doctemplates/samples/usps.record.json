@@ -1,0 +1,189 @@
+{
+ "kind": "usps",
+ "file": "usps",
+ "name": "USPS 快递面单 · 4×6",
+ "dataset": "usps",
+ "page": "4x6 101.6×152.4",
+ "preset": "label_4x6in",
+ "counts": {
+  "nodes_in": 18,
+  "elements_out": 18,
+  "dropped": 0,
+  "substituted": 0
+ },
+ "entries": [
+  {
+   "code": "box_grown",
+   "detail": "文本框高度小于平台下限（5 毫米，且不小于所需行数的高度），已放大",
+   "nodes": [
+    "n1",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n17",
+    "n18"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+1.3 毫米）",
+   "nodes": [
+    "n4"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+2.6 毫米）",
+   "nodes": [
+    "n5"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+3.8 毫米）",
+   "nodes": [
+    "n6"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+0.6 毫米）",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+0.5 毫米）",
+   "nodes": [
+    "n12"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 30 磅 → 28 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n1"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 13.3 磅 → 13 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n2"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 7.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n14"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 7.2 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n7"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 8.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n8"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 11.5 磅 → 11 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n9",
+    "n13"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 9.4 磅 → 9 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 10.5 磅 → 10 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n11",
+    "n12"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.951 缩放：字号 7 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n17",
+    "n18"
+   ]
+  },
+  {
+   "code": "form_fit",
+   "detail": "固定版式转成表单（没有明细带、没有明细表）：整版放在页眉区段，高度取最低元素的底边；外框 93.6×137 毫米；外框左上角对齐安全区左上角，整体等比缩小到 0.951（字号随之取整，不低于 8 磅）"
+  },
+  {
+   "code": "page_background",
+   "detail": "版式参考图 \"usps-v1\" 是原型自己画的图形，不是位图，不转换"
+  },
+  {
+   "code": "page_background",
+   "detail": "底图透明度 1 不转换"
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 4x6（101.6×152.4 毫米）即预设 label_4x6in"
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、行距",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n17",
+    "n18"
+   ]
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色",
+   "nodes": [
+    "n16"
+   ]
+  }
+ ]
+}

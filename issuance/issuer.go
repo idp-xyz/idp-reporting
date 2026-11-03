@@ -77,7 +77,7 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	}
 	// A 2.0 template is issued by row group (S03-K), a 1.x template by row: a job that names a 2.0 template
 	// without a group could only be bound by row, and a 1.x template with a group has none to bind.
-	banded := d.Banded()
+	banded := d.Banded() && !d.IssuedByRow()
 	switch {
 	case banded && j.Group == nil:
 		return document{}, r.ErrUnsupported
@@ -101,8 +101,14 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	if published.Version != j.TemplateVersion || !bytes.Equal(current, frozen) {
 		return document{}, r.ErrUnpublished
 	}
-	if banded {
-		doc, e := bindGroup(d, j, snap)
+	if d.Banded() {
+		var doc document
+		var e error
+		if banded {
+			doc, e = bindGroup(d, j, snap)
+		} else {
+			doc, e = bindRowForm(d, j, snap)
+		}
 		if e != nil {
 			return doc, e
 		}
@@ -172,6 +178,19 @@ func (i *Issuer) resolveImages(owner r.Identity, d doctemplates.Document) (map[s
 		images[bi.Item.ID] = data
 	}
 	return images, nil
+}
+
+// bindRowForm makes the document of a row job of a form without group fields: the row's own group, bound as a preview binds it.
+func bindRowForm(d doctemplates.Document, j r.Job, snap r.Snapshot) (document, error) {
+	group, e := doctemplates.GroupOf(d, snap, j.RowIndex)
+	if e != nil {
+		return document{}, e
+	}
+	values, table, e := doctemplates.BindGroup(d, snap, group)
+	if e != nil {
+		return document{}, e
+	}
+	return document{d: d, values: values, table: table}, nil
 }
 
 // bindGroup makes the document of a group job: the frozen group must be the verified snapshot's, whole, under

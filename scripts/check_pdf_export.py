@@ -75,9 +75,14 @@ finder pattern, replace it by a picture, and move or remove an image.
 the expectations and the PDFs in several ways and fails unless each corruption is caught.
 --verapdf IMAGE validates every PDF as PDF/A-2b with veraPDF in Docker without a network, and
 a copy without XMP metadata, which must fail.
+--samples DIR (S06-B) takes the sample pack, doctemplates/samples, as a corpus: each of its samples has its document in DIR (sample_<kind>.pdf with its
+expectation), checked on the page of the preset the sample names, with every code it draws an element of the expectation that is decoded from the PDF.
+The negative controls change a sample's page, remove a code from the expectation or its value, and take the other samples away.
+A document whose expectation has no "table" is a form (S06-B: a 2.x template without a detail band): one page of its bands, no table assertions, the document
+footer directly under the document header; the controls that need a table, or something under a band, are not made for it.
 
 Usage: python -I scripts/check_pdf_export.py DIR [--negative] [--golden FILE | --write-golden FILE]
-       [--font FILE] [--verapdf IMAGE]   (needs PyMuPDF and zxing-cpp: scripts/requirements-pdfcheck.txt)
+       [--font FILE] [--verapdf IMAGE] [--samples DIR]   (needs PyMuPDF and zxing-cpp: scripts/requirements-pdfcheck.txt)
 """
 import argparse
 import copy
@@ -1949,8 +1954,10 @@ def check_document2(directory, exp, font=None):
             if el.get("source") == "issue_number" and el["type"] in ("text", "barcode", "qrcode") and el["text" if el["type"] == "text" else "value"] != shown:
                 problems.append(f"element {el['id']} shows the issue number: the document must show the {'record' + chr(39) + 's number' if issue else 'placeholder ' + shown}")
     pages, footer, table_pages = doc.page_count, exp.get("footer"), exp["table_pages"]
-    want_pages = footer["page"] if footer else table_pages
-    if pages != want_pages or table_pages < 1 or table_pages > pages:
+    # A form (S06-B: no detail band) has no table: it is one page of its bands, and nothing of the table is asserted.
+    form = not exp.get("table")
+    want_pages = footer["page"] if footer else (1 if form else table_pages)
+    if pages != want_pages or (form and (table_pages != 0 or pages != 1)) or (not form and table_pages < 1) or table_pages > pages:
         return problems + [f"{pages} pages, expected {want_pages} ({table_pages} of them with the table)"], {"pages": pages}
     shim = {"elements": [], "offset_x": 0, "offset_y": 0, "background": exp.get("background", False), "background_file": exp.get("background_file"), "issue": issue}
     ph, dh, df, pf = heights2(exp)
@@ -2014,7 +2021,8 @@ def check_document2(directory, exp, font=None):
             problems.append(f"page {number}: ink outside the elements, the table and the banner")
     layout = {"pages": pages}
     ends = []
-    problems += check_table(exp, table_pages_data, metrics, layout, region_of=lambda number: region2(exp, number), ends=ends, drawings_of=lambda number: per_page[number - 1])
+    if not form:
+        problems += check_table(exp, table_pages_data, metrics, layout, region_of=lambda number: region2(exp, number), ends=ends, drawings_of=lambda number: per_page[number - 1])
     for number, rest in enumerate(per_page, 1):
         region = region2(exp, number)
         inside = lambda r: r.x1 >= region.x0 - 1 and r.x0 <= region.x1 + 1 and r.y1 >= region.y0 - 1 and r.y0 <= region.y1 + 1
@@ -2023,7 +2031,15 @@ def check_document2(directory, exp, font=None):
             problems.append(f"page {number}: {len(stray)} drawings that no element draws")
     # The document footer follows the table's end, whole: on the last table page when it fits above the page
     # footer, else on a page of its own below the page header.
-    if footer and len(ends) == table_pages:
+    if footer and form:
+        # Under the document header on the one page; the stack must fit above the page footer.
+        want_top = (SAFE_TOP + ph + dh) * MM
+        if footer["page"] != 1 or abs(footer["top"] - want_top) > 0.1:
+            problems.append(f"the document footer of a form is on page {footer['page']} at {footer['top']:.2f}, expected page 1 at {want_top:.2f}")
+        if want_top + df * MM > (SAFE_BOTTOM - pf) * MM + 0.01:
+            problems.append("the bands of the form do not fit the page")
+        layout["footer_page"] = 1
+    elif footer and len(ends) == table_pages:
         bottom = (SAFE_BOTTOM - pf) * MM
         fits = ends[-1] + df * MM <= bottom + 0.01
         want_page, want_top = (table_pages, ends[-1]) if fits else (table_pages + 1, (SAFE_TOP + ph) * MM)
@@ -2080,26 +2096,33 @@ def document2_corruptions(exp):
         b, k = wrap
         el = exp["bands"][b]["elements"][k]
         yield changed("a wrapped value changed", lambda e: e["bands"][b]["elements"][k].__setitem__("text", el["text"] + "X"), "is not drawn in its box")
-        yield changed("a wrapped box narrowed to 10 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("width", 10), "")
         yield changed("a wrapped value moved by 0.5 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("y", el["y"] + 0.5), "")
+    # A box of 10 mm breaks a value of some length into lines the document does not have; a short value (a label of two characters) fits it.
+    wide = next(((b, k) for b, k, el in elements("text") if el["wrap"] and len(squash(el["text"])) >= 12), None)
+    if wide:
+        b, k = wide
+        yield changed("a wrapped box narrowed to 10 mm", lambda e: e["bands"][b]["elements"][k].__setitem__("width", 10), "")
     paged = next(((b, k) for b, k, el in elements("text") if el["source"] == "page"), None)
     if paged:
         b, k = paged
         el = exp["bands"][b]["elements"][k]
         # With one page {page} and {pages} are the same number: the swap is then a digit more.
-        pages = exp["footer"]["page"] if exp.get("footer") else exp["table_pages"]
+        pages = exp["footer"]["page"] if exp.get("footer") else max(1, exp["table_pages"])
         yield changed("a page text's placeholder swapped", lambda e: e["bands"][b]["elements"][k].__setitem__("text", el["text"].replace("{page}", "{pages}", 1) if "{page}" in el["text"] and pages > 1 else el["text"] + "9"), "is not drawn on one line")
+    names = [band["name"] for band in exp["bands"]]
+    # A band's height is seen in what lies under it: the table, or, in a form (no table), a later band of the stack; the page footer, anchored at the bottom, in its own place.
+    below = {"page_header": ("document_header", "document_footer"), "document_header": ("document_footer",), "page_footer": ()}
     for b, band in enumerate(exp["bands"]):
-        if band["name"] != "document_footer":
+        if band["name"] != "document_footer" and (exp.get("table") or band["name"] == "page_footer" or any(n in names for n in below[band["name"]])):
             yield changed(f"the {band['name']} made 0.5 mm taller", lambda e: e["bands"][b].__setitem__("height", band["height"] + 0.5))
     if exp.get("footer"):
         # The footer's height decides whether it fits under the table: made so tall that it cannot, or, when it was moved to
         # a page of its own, so short that it can, the footer is on the wrong page.
         index = next(i for i, band in enumerate(exp["bands"]) if band["name"] == "document_footer")
         ph, dh, df, pf = heights2(exp)
-        moved = exp["footer"]["page"] > exp["table_pages"]
-        yield changed("the document footer made " + ("short enough to fit under the table" if moved else "too tall to fit under the table"),
-                      lambda e: e["bands"][index].__setitem__("height", 5 if moved else SAFE_BOTTOM - SAFE_TOP - ph - pf), "the document footer is on page")
+        moved = exp["footer"]["page"] > max(1, exp["table_pages"])
+        yield changed("the document footer made " + ("short enough to fit under the table" if moved else "too tall to fit under the table" if exp.get("table") else "too tall to fit the form's page"),
+                      lambda e: e["bands"][index].__setitem__("height", 5 if moved else SAFE_BOTTOM - SAFE_TOP - ph - pf if exp.get("table") else SAFE_BOTTOM - SAFE_TOP - ph - dh - pf + 5), "the document footer is on page" if exp.get("table") else "the bands of the form do not fit")
     line = next(((b, k) for b, k, el in elements("line")), None)
     if line:
         b, k = line
@@ -2149,33 +2172,34 @@ def document2_corruptions(exp):
         yield changed("an image's box made 3 mm narrower", lambda e: e["bands"][b]["elements"][k].__setitem__("width", el["width"] - 3), "no picture is drawn contained")
         yield changed("an image of other pixels", lambda e: (e["bands"][b]["elements"][k].__setitem__("width_px", el["width_px"] * 2), e["bands"][b]["elements"][k].__setitem__("height_px", el["height_px"] * 2)), "pixels, not")
         yield changed("an image removed from the expectation", lambda e: e["bands"][b]["elements"].pop(k), "no image element draws")
-    t = exp["table"]
-    rows, columns = t["rows"] or [], t["columns"]
-    solid = next((i for i, row in enumerate(rows) if any(squash(v) for v in row)), None)
-    if solid is not None:
-        cell = next(j for j, v in enumerate(rows[solid]) if squash(v))
-        yield changed("a table cell changed", lambda e: e["table"]["rows"][solid].__setitem__(cell, e["table"]["rows"][solid][cell] + "X"))
-        yield changed("a table row removed", lambda e: e["table"]["rows"].pop(solid))
-        yield changed("a table row added", lambda e: e["table"]["rows"].insert(solid, list(e["table"]["rows"][solid])))
-    summed = next((j for j, c in enumerate(columns) if j > 0 and c["metric"]), None)
-    if summed is not None and rows:
-        yield changed("a table amount changed", lambda e: e["table"]["rows"][0].__setitem__(summed, "0.01"))
-    full_table = exp.get("mode", "full") == "full"  # a variables-only print draws no header: its label is not on the page
-    if full_table:
-        yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", columns[0]["label"] + "X"))
-    yield changed("the table moved by 0.5 mm", lambda e: e["table"].__setitem__("x", t["x"] + 0.5))
-    # In the variable layer a boundary between a left-aligned and a right-aligned column alone moves no text: two columns need the header.
-    if len(columns) > 1 and (full_table or len(columns) > 2):
-        yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", columns[0]["width"] - 5), e["table"]["columns"][-1].__setitem__("width", columns[-1]["width"] + 5)))
-        flip_column = {"left": "right", "right": "center", "center": "left"}
-        current = columns[0].get("align") or ("right" if columns[0]["metric"] else "left")
-        yield changed("a column's alignment changed", lambda e: e["table"]["columns"][0].__setitem__("align", flip_column[current]), "is not aligned")
+    if exp.get("table"):
+        t = exp["table"]
+        rows, columns = t["rows"] or [], t["columns"]
+        solid = next((i for i, row in enumerate(rows) if any(squash(v) for v in row)), None)
+        if solid is not None:
+            cell = next(j for j, v in enumerate(rows[solid]) if squash(v))
+            yield changed("a table cell changed", lambda e: e["table"]["rows"][solid].__setitem__(cell, e["table"]["rows"][solid][cell] + "X"))
+            yield changed("a table row removed", lambda e: e["table"]["rows"].pop(solid))
+            yield changed("a table row added", lambda e: e["table"]["rows"].insert(solid, list(e["table"]["rows"][solid])))
+        summed = next((j for j, c in enumerate(columns) if j > 0 and c["metric"]), None)
+        if summed is not None and rows:
+            yield changed("a table amount changed", lambda e: e["table"]["rows"][0].__setitem__(summed, "0.01"))
+        full_table = exp.get("mode", "full") == "full"  # a variables-only print draws no header: its label is not on the page
+        if full_table:
+            yield changed("a column label changed", lambda e: e["table"]["columns"][0].__setitem__("label", columns[0]["label"] + "X"))
+        yield changed("the table moved by 0.5 mm", lambda e: e["table"].__setitem__("x", t["x"] + 0.5))
+        # In the variable layer a boundary between a left-aligned and a right-aligned column alone moves no text: two columns need the header.
+        if len(columns) > 1 and (full_table or len(columns) > 2):
+            yield changed("a column width changed", lambda e: (e["table"]["columns"][0].__setitem__("width", columns[0]["width"] - 5), e["table"]["columns"][-1].__setitem__("width", columns[-1]["width"] + 5)))
+            flip_column = {"left": "right", "right": "center", "center": "left"}
+            current = columns[0].get("align") or ("right" if columns[0]["metric"] else "left")
+            yield changed("a column's alignment changed", lambda e: e["table"]["columns"][0].__setitem__("align", flip_column[current]), "is not aligned")
     footer = exp.get("footer")
     if footer:
         yield changed("the document footer moved by 1 mm", lambda e: e["footer"].__setitem__("top", footer["top"] + MM), "")
-        yield changed("the document footer on another page", lambda e: e["footer"].__setitem__("page", footer["page"] + 1 if footer["page"] == exp["table_pages"] else footer["page"] - 1), "")
+        yield changed("the document footer on another page", lambda e: e["footer"].__setitem__("page", footer["page"] + 1 if footer["page"] == max(1, exp["table_pages"]) else footer["page"] - 1), "")
         yield changed("the document footer removed from the expectation", lambda e: (e.pop("footer"), e["bands"].__delitem__(next(i for i, b in enumerate(e["bands"]) if b["name"] == "document_footer"))), "")
-    yield changed("a table page more", lambda e: e.__setitem__("table_pages", exp["table_pages"] + 1), "")
+    yield changed("a table page more" if exp.get("table") else "a table page on a form", lambda e: e.__setitem__("table_pages", exp["table_pages"] + 1), "")
     if exp["table_pages"] > 1:
         yield changed("a table page less", lambda e: e.__setitem__("table_pages", exp["table_pages"] - 1), "")
     # The page of a preset (S06-B): the checker holds the template to the numbers of its own page, so each of them changed is found.
@@ -2190,7 +2214,9 @@ def document2_corruptions(exp):
     if exp.get("offset_x") or exp.get("offset_y"):
         yield changed("the print offset dropped", lambda e: (e.__setitem__("offset_x", 0), e.__setitem__("offset_y", 0)), "")
         yield changed("the print offset doubled", lambda e: (e.__setitem__("offset_x", 2 * exp.get("offset_x", 0)), e.__setitem__("offset_y", 2 * exp.get("offset_y", 0))), "")
-    if exp.get("mode") == "variables":
+    # A full print differs from a variables-only one by the table's rules, fills and header (and the literals, lines and rectangles, which the
+    # expectation of a variables-only print leaves out): a form of fields alone draws the same in both, and the control would change nothing.
+    if exp.get("mode") == "variables" and exp.get("table"):
         yield changed("the variables-only print taken for a full one", lambda e: e.__setitem__("mode", "full"), "")
     if exp.get("background"):
         yield changed("the background dropped from the expectation", lambda e: e.__setitem__("background", False), "images, expected")
@@ -2261,7 +2287,8 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
     yield "a replacement character", "replacement character", copy_with("fffd", text("�", free))
     if not exp.get("background"):
         yield "a shape outside the elements", "ink outside", copy_with("outside", lambda doc: doc[0].draw_circle((free[0], free[1] - 3 * MM), 3, color=(0, 0, 0), fill=(0, 0, 0)))
-    yield "text of another size in the table", "pt in the table", copy_with("tablesize", text("X", (region2(exp, 1).x0 + 20, region2(exp, 1).y1 - 3), size=14))
+    if exp.get("table"):
+        yield "text of another size in the table", "pt in the table", copy_with("tablesize", text("X", (region2(exp, 1).x0 + 20, region2(exp, 1).y1 - 3), size=14))
 
     def line_of(page, el, top):
         base = top + el["y"] * MM + ASCENT * el["size"]
@@ -2306,7 +2333,10 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
         yield "the last glyph of a right-aligned text 0.6 pt past the edge", "leaves its box", copy_with("edge", past_edge)
     if any(el["type"] == "line" for band in exp["bands"] for el in band["elements"]):
         yield "the rules turned white", "colour", copy_with("whiterules", lambda doc: rewrite(doc, ".23529412 SCN", "1 SCN"))
-        yield "the rules thinned", "stroke width", copy_with("thinrules", lambda doc: rewrite(doc, ".25 w", ".1 w") if any(el["type"] == "line" and el["stroke"] == 0.25 for band in exp["bands"] for el in band["elements"]) else rewrite(doc, ".5 w", ".1 w"))
+        # The stroke the first line is drawn with, written as the engine writes it (0.75 as ".75"), made .1: a template's lines may have any
+        # width a quarter point apart (the converted samples have .75 and 1.5), and a control that thins another width thins nothing.
+        stroke = next(el["stroke"] for band in exp["bands"] for el in band["elements"] if el["type"] == "line")
+        yield "the rules thinned", "stroke width", copy_with("thinrules", lambda doc: rewrite(doc, re.sub(r"^0\.", ".", format(stroke, "g")) + " w", ".1 w"))
     fills = [el["fill"] for band in exp["bands"] for el in band["elements"] if el["type"] == "rect" and el["fill"] != "none"]
     if fills:
         want = {"grey1": ".9607843 scn", "grey2": ".9098039 scn", "grey3": ".84313729 scn", "grey4": ".74509808 scn"}[fills[0]]
@@ -2338,7 +2368,7 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
             yield "the document footer's text 3 pt lower", "baseline", copy_with("footerdown", footer_down)
     # A group sum drawn as the exact digits without the table's separators: the sum is covered by a redaction and the
     # same digits are set in its place.
-    all_pages = exp["footer"]["page"] if exp.get("footer") else exp["table_pages"]
+    all_pages = exp["footer"]["page"] if exp.get("footer") else max(1, exp["table_pages"])
     summed = next(((number, el, top) for number in range(1, all_pages + 1) for band, top in bands_on_page2(exp, number) for el in band["elements"]
                    if el["type"] == "text" and el["source"] == "group_sum" and not el["wrap"] and exp_sum_has_separators(el)), None)
     if summed:
@@ -2353,7 +2383,7 @@ def document2_pdf_corruptions(directory, exp, scratch, font_file=None):
             page.insert_font(fontname="Fx", fontbuffer=font.buffer)
             page.insert_text((left + 1, base), exact_sum(el["sum_values"], el["scale"]), fontname="Fx", fontsize=el["size"], color=(0.07, 0.13, 0.22))
         yield "the group sum drawn without its separators", "is not drawn on one line", copy_with("ungrouped", ungroup)
-    total_rows = exp["table"]["rows"]
+    total_rows = (exp.get("table") or {}).get("rows")
     if total_rows and exp["table_pages"] > 1:
         yield "the last table page removed", "pages, expected", copy_with("lasttable", lambda doc: doc.delete_page(exp["table_pages"] - 1))
     # Schema 2.1: a code moved, drawn below its least module size, damaged or drawn as a picture instead of as rectangles.
@@ -2623,6 +2653,46 @@ def check_pdfa(image, directory, pdfs):
     return failed
 
 
+def sample_corpus(samples, directory, mutate=None):
+    """The sample pack (doctemplates/samples, S06-B) as a corpus: every sample of the pack has a document in DIRECTORY (the Go test
+    TestTypstRendersEverySampleWithItsOwnRows writes sample_<kind>.pdf with its expectation), the page of that document is the preset the
+    sample's own document names (A4 where it names none), and every barcode and QR code the sample draws is an element of the expectation
+    with the value it must decode to (check_document2 decodes it from the PDF with an independent decoder). Returns the problems and the
+    number of samples; `mutate` changes an expectation in memory, for the negative controls."""
+    problems, count = [], 0
+    for name in sorted(os.listdir(samples)):
+        if not name.endswith(".json") or name.endswith(".record.json"):
+            continue
+        with open(os.path.join(samples, name), encoding="utf-8") as f:
+            sample = json.load(f)
+        count += 1
+        kind = sample["kind"]
+        stem = "sample_" + kind.lstrip("_")
+        path = os.path.join(directory, stem + ".json")
+        if not os.path.exists(path) or not os.path.exists(os.path.join(directory, stem + ".pdf")):
+            problems.append(f"{kind}: no document {stem}.pdf with its expectation")
+            continue
+        with open(path, encoding="utf-8") as f:
+            exp = json.load(f)
+        if mutate:
+            exp = mutate(kind, exp)
+        want = (sample["document"].get("page") or {}).get("preset") or "a4"
+        have = (exp.get("page") or {}).get("preset") or "a4"
+        if exp.get("kind") != "document2" or want != have:
+            problems.append(f"{kind}: the document is checked on page {have}, the sample's is {want}")
+        drawn = [el for band in sample["document"]["bands"].values() if band and "elements" in band for el in band["elements"] if el["type"] in ("barcode", "qrcode")]
+        checked = [el for band in exp.get("bands", []) for el in band["elements"] if el["type"] in ("barcode", "qrcode")]
+        # A variables-only print leaves out the codes of a literal, and no sample has one.
+        if len(drawn) != len(checked):
+            problems.append(f"{kind}: the sample draws {len(drawn)} codes, the expectation checks {len(checked)}")
+        for el in checked:
+            if not el.get("value"):
+                problems.append(f"{kind}: code {el.get('id')} has no value to decode")
+    if count == 0:
+        problems.append("no sample in " + samples)
+    return problems, count
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("directory")
@@ -2630,6 +2700,7 @@ def main():
     ap.add_argument("--golden", metavar="FILE")
     ap.add_argument("--write-golden", metavar="FILE")
     ap.add_argument("--verapdf", metavar="IMAGE")
+    ap.add_argument("--samples", metavar="DIR", help="the sample pack (doctemplates/samples): each sample must have its document in DIRECTORY, on its own preset, with its codes")
     ap.add_argument("--font", metavar="FILE", help="the Regular face; checks every character of a document at its plain-advance position")
     args = ap.parse_args()
     names = sorted(f for f in os.listdir(args.directory) if f.endswith(".json"))
@@ -2694,6 +2765,30 @@ def main():
                         caught = any(expected in p for p in found)
                         print(f"  negative control, PDF with {what}: {'caught' if caught else 'MISSED'}")
                         failed |= not caught
+    if args.samples:
+        problems, count = sample_corpus(args.samples, args.directory)
+        print(f"sample pack: {count} samples, {'ok' if not problems else 'FAILED'}")
+        for p in problems[:20]:
+            print("  " + p)
+        failed |= bool(problems)
+        if args.negative and count:
+            controls = [
+                ("a sample's page changed to another preset", lambda k, e: {**e, "page": {**(e.get("page") or {}), "preset": "a5" if (e.get("page") or {}).get("preset") != "a5" else "a4"}}, "the sample's is"),
+                ("a code removed from the expectation", lambda k, e: {**e, "bands": [{**b, "elements": [el for el in b["elements"] if el["type"] not in ("barcode", "qrcode")]} for b in e["bands"]]}, "the sample draws"),
+                ("a code without its value", lambda k, e: {**e, "bands": [{**b, "elements": [({**el, "value": ""} if el["type"] in ("barcode", "qrcode") else el) for el in b["elements"]]} for b in e["bands"]]}, "no value to decode"),
+            ]
+            for what, mutate, expected in controls:
+                caught = any(expected in p for p in sample_corpus(args.samples, args.directory, mutate)[0])
+                print(f"  negative control, {what}: {'caught' if caught else 'MISSED'}")
+                failed |= not caught
+            with tempfile.TemporaryDirectory() as scratch:
+                for name in os.listdir(args.directory):
+                    if name != "sample_usps.pdf" and name != "sample_usps.json":
+                        continue
+                    shutil.copy(os.path.join(args.directory, name), scratch)
+                caught = any("no document" in p for p in sample_corpus(args.samples, scratch)[0])
+                print(f"  negative control, the pack's other samples missing from the directory: {'caught' if caught else 'MISSED'}")
+                failed |= not caught
     if args.write_golden:
         with open(args.write_golden, "w", encoding="utf-8") as f:
             json.dump(layouts, f, indent=1, sort_keys=True)

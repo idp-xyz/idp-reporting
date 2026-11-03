@@ -1,0 +1,699 @@
+{
+ "kind": "wms_backlog",
+ "name": "WMS · 作业进度与积压表",
+ "domain": "仓储 WMS",
+ "flow": "运营监控",
+ "description": "仅列未完成任务；等待分钟向下取整，逾期分钟向上取整；按截止时点计算。",
+ "fields": [
+  {
+   "id": "documentNo",
+   "label": "单据编号",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "issueDate",
+   "label": "日期",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "wmsOwner",
+   "label": "货主",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "wmsWarehouse",
+   "label": "仓库",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "sourceRef",
+   "label": "来源单 / 波次",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "asOf",
+   "label": "时点（含时区）",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "partner",
+   "label": "业务伙伴",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "wmsTotals",
+   "label": "数量汇总 / 按基础单位",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "operator",
+   "label": "制单 / 作业人",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "approver",
+   "label": "审核 / 接收人",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "wmsRows",
+   "label": "明细行数",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "taskRef",
+   "label": "任务号",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "taskType",
+   "label": "RECEIVE/PUTAWAY/PICK/PACK/DISPATCH/REPLENISH/RETURN",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "taskStatus",
+   "label": "WAITING/RUNNING/HOLD",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "createdAt",
+   "label": "创建时间（含时区）",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "dueAt",
+   "label": "应完成时间（含时区）",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "waitMinutes",
+   "label": "已等待分钟（自动）",
+   "type": "integer",
+   "scope": "row"
+  },
+  {
+   "id": "overdueMinutes",
+   "label": "逾期分钟（自动）",
+   "type": "integer",
+   "scope": "row"
+  },
+  {
+   "id": "assignedTo",
+   "label": "负责人",
+   "type": "text",
+   "scope": "row"
+  }
+ ],
+ "rows": [
+  {
+   "approver": "待审核 / 待签收",
+   "asOf": "2026-10-28T16:00:00+08:00",
+   "assignedTo": "示例责任人",
+   "createdAt": "2026-10-28T08:00:00+08:00",
+   "documentNo": "DEMO-WMSBACKLOG-001",
+   "dueAt": "2026-10-28T14:00:00+08:00",
+   "issueDate": "2026-10-28",
+   "operator": "示例制单员",
+   "overdueMinutes": "120",
+   "partner": "示例业务伙伴",
+   "sourceRef": "DEMO-TASK-1028",
+   "taskRef": "TASK-0001",
+   "taskStatus": "WAITING",
+   "taskType": "RECEIVE",
+   "waitMinutes": "480",
+   "wmsOwner": "DEMO-OWNER / 示例货主",
+   "wmsRows": "3 行",
+   "wmsTotals": "3 个未完成任务 / 2 个逾期",
+   "wmsWarehouse": "SHA01 / 上海示例仓"
+  },
+  {
+   "approver": "待审核 / 待签收",
+   "asOf": "2026-10-28T16:00:00+08:00",
+   "assignedTo": "示例责任人",
+   "createdAt": "2026-10-28T08:00:00+08:00",
+   "documentNo": "DEMO-WMSBACKLOG-001",
+   "dueAt": "2026-10-28T18:00:00+08:00",
+   "issueDate": "2026-10-28",
+   "operator": "示例制单员",
+   "overdueMinutes": "0",
+   "partner": "示例业务伙伴",
+   "sourceRef": "DEMO-TASK-1028",
+   "taskRef": "TASK-0002",
+   "taskStatus": "WAITING",
+   "taskType": "PICK",
+   "waitMinutes": "480",
+   "wmsOwner": "DEMO-OWNER / 示例货主",
+   "wmsRows": "3 行",
+   "wmsTotals": "3 个未完成任务 / 2 个逾期",
+   "wmsWarehouse": "SHA01 / 上海示例仓"
+  },
+  {
+   "approver": "待审核 / 待签收",
+   "asOf": "2026-10-28T16:00:00+08:00",
+   "assignedTo": "示例责任人",
+   "createdAt": "2026-10-28T08:00:00+08:00",
+   "documentNo": "DEMO-WMSBACKLOG-001",
+   "dueAt": "2026-10-28T14:00:00+08:00",
+   "issueDate": "2026-10-28",
+   "operator": "示例制单员",
+   "overdueMinutes": "120",
+   "partner": "示例业务伙伴",
+   "sourceRef": "DEMO-TASK-1028",
+   "taskRef": "TASK-0003",
+   "taskStatus": "WAITING",
+   "taskType": "PUTAWAY",
+   "waitMinutes": "480",
+   "wmsOwner": "DEMO-OWNER / 示例货主",
+   "wmsRows": "3 行",
+   "wmsTotals": "3 个未完成任务 / 2 个逾期",
+   "wmsWarehouse": "SHA01 / 上海示例仓"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "page": {
+   "preset": "a4"
+  },
+  "bands": {
+   "page_header": {
+    "height": 27,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "text",
+      "source": "literal",
+      "text": "作业进度与积压 / OPERATIONS BACKLOG",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 186,
+      "height": 9,
+      "font_size": 15,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "literal",
+      "text": "单据编号",
+      "field": "",
+      "wrap": true,
+      "x": 2,
+      "y": 12,
+      "width": 12.9,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e3",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "documentNo",
+      "wrap": true,
+      "x": 14.9,
+      "y": 12,
+      "width": 100.1,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "literal",
+      "text": "日期",
+      "field": "",
+      "wrap": true,
+      "x": 122,
+      "y": 12,
+      "width": 10,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e5",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "issueDate",
+      "wrap": true,
+      "x": 132,
+      "y": 12,
+      "width": 56,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e6",
+      "type": "line",
+      "x1": 2,
+      "y1": 25.2,
+      "x2": 188,
+      "y2": 25.2,
+      "stroke": 0.75
+     }
+    ]
+   },
+   "document_header": {
+    "height": 52,
+    "elements": [
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "literal",
+      "text": "货主",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 88,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "wmsOwner",
+      "wrap": false,
+      "x": 2,
+      "y": 5,
+      "width": 88,
+      "height": 6,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "literal",
+      "text": "仓库",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 0,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e10",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "wmsWarehouse",
+      "wrap": false,
+      "x": 98,
+      "y": 5,
+      "width": 90,
+      "height": 6,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e11",
+      "type": "text",
+      "source": "literal",
+      "text": "来源单 / 波次",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 13,
+      "width": 88,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "sourceRef",
+      "wrap": false,
+      "x": 2,
+      "y": 18,
+      "width": 88,
+      "height": 6,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "literal",
+      "text": "时点（含时区）",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 13,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "asOf",
+      "wrap": false,
+      "x": 98,
+      "y": 18,
+      "width": 90,
+      "height": 6,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "text",
+      "source": "literal",
+      "text": "业务伙伴",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 26,
+      "width": 186,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e16",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "partner",
+      "wrap": false,
+      "x": 2,
+      "y": 31,
+      "width": 186,
+      "height": 6,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e17",
+      "type": "text",
+      "source": "literal",
+      "text": "仅列未完成任务；等待分钟向下取整，逾期分钟向上取整；按截止时点计算。",
+      "field": "",
+      "wrap": true,
+      "x": 2,
+      "y": 40,
+      "width": 186,
+      "height": 10,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "detail": {
+    "elements": [
+     {
+      "id": "e18",
+      "type": "table",
+      "x": 2,
+      "width": 186,
+      "font_size": 8,
+      "columns": [
+       {
+        "field": "taskRef",
+        "width": 32.5,
+        "align": "left",
+        "label": "任务号"
+       },
+       {
+        "field": "taskType",
+        "width": 19.6,
+        "align": "left",
+        "label": "环节"
+       },
+       {
+        "field": "taskStatus",
+        "width": 18.8,
+        "align": "left",
+        "label": "状态"
+       },
+       {
+        "field": "createdAt",
+        "width": 29.3,
+        "align": "left",
+        "label": "创建时间"
+       },
+       {
+        "field": "dueAt",
+        "width": 29.3,
+        "align": "left",
+        "label": "应完成时间"
+       },
+       {
+        "field": "waitMinutes",
+        "width": 18,
+        "align": "right",
+        "label": "等待分"
+       },
+       {
+        "field": "overdueMinutes",
+        "width": 18,
+        "align": "right",
+        "label": "逾期分"
+       },
+       {
+        "field": "assignedTo",
+        "width": 20.5,
+        "align": "left",
+        "label": "负责人"
+       }
+      ]
+     }
+    ]
+   },
+   "document_footer": {
+    "height": 33,
+    "elements": [
+     {
+      "id": "e19",
+      "type": "text",
+      "source": "literal",
+      "text": "数量汇总 / 按基础单位",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 1,
+      "width": 186,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e20",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "wmsTotals",
+      "wrap": false,
+      "x": 2,
+      "y": 6,
+      "width": 186,
+      "height": 5,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e21",
+      "type": "text",
+      "source": "literal",
+      "text": "制单 / 作业人",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 14,
+      "width": 56,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e22",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "operator",
+      "wrap": false,
+      "x": 2,
+      "y": 19,
+      "width": 56,
+      "height": 5,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e23",
+      "type": "text",
+      "source": "literal",
+      "text": "审核 / 接收人",
+      "field": "",
+      "wrap": false,
+      "x": 66,
+      "y": 14,
+      "width": 56,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e24",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "approver",
+      "wrap": false,
+      "x": 66,
+      "y": 19,
+      "width": 56,
+      "height": 5,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e25",
+      "type": "text",
+      "source": "literal",
+      "text": "明细行数",
+      "field": "",
+      "wrap": false,
+      "x": 130,
+      "y": 14,
+      "width": 58,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e26",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "wmsRows",
+      "wrap": false,
+      "x": 130,
+      "y": 19,
+      "width": 58,
+      "height": 5,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e27",
+      "type": "text",
+      "source": "literal",
+      "text": "本地设计样张 · 不执行收货、库存调整或出库确认",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 27,
+      "width": 186,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "page_footer": {
+    "height": 9,
+    "elements": [
+     {
+      "id": "e28",
+      "type": "text",
+      "source": "literal",
+      "text": "WMS · DESIGN SAMPLE",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 101.3,
+      "height": 8,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e29",
+      "type": "text",
+      "source": "page",
+      "text": "第 {page} / {pages} 页",
+      "field": "",
+      "wrap": false,
+      "x": 104.3,
+      "y": 0,
+      "width": 83.7,
+      "height": 8,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     }
+    ]
+   }
+  }
+ }
+}

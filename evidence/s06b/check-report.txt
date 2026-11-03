@@ -1,0 +1,1865 @@
+# scripts/check_pdf_export.py on the CI evidence directory (the documents of go test ./export/pdf, the DOM suite's documents, and the 37 samples)
+# python3 -I scripts/check_pdf_export.py <dir> --negative --golden export/pdf/testdata/golden.json --font NotoSansSC-Regular.otf --samples doctemplates/samples
+# (veraPDF is not run locally; the CI pdf job runs it.) Typst and fonts as pinned by scripts/fetch_pdf_tools.py.
+# whole run: 117 documents ok, 0 FAILED, 0 MISSED, 6688 negative controls (6688 caught), exit 0
+# below: the 37 samples (each: its check, then its negative controls) and the corpus check of the pack; the other documents' lines are left out
+sample_bol.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+sample_booking.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_commercial.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_export_packing.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_fedex.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a barcode's value changed: caught
+  negative control, a barcode moved by 0.5 mm: caught
+  negative control, a barcode's box made 5 mm wider: caught
+  negative control, a barcode's box made 3 mm lower: caught
+  negative control, a barcode's printed value switched: caught
+  negative control, a barcode removed from the expectation: caught
+  negative control, a QR code's value changed: caught
+  negative control, a QR code's level changed: caught
+  negative control, a QR code moved by 0.5 mm: caught
+  negative control, a QR code's box made 2 mm larger: caught
+  negative control, a QR code removed from the expectation: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the barcode e18 moved by 1.5 mm: caught
+  negative control, PDF with the barcode e18 drawn with a module of 0.20 mm: caught
+  negative control, PDF with the barcode e18 damaged: caught
+  negative control, PDF with the barcode e18 as a picture: caught
+  negative control, PDF with the QR code e19 moved by 1.5 mm: caught
+  negative control, PDF with the QR code e19 drawn with a module of 0.32 mm: caught
+  negative control, PDF with the QR code e19 damaged: caught
+  negative control, PDF with the QR code e19 as a picture: caught
+sample_manifest.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_mawb.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+sample_mawb_air_waybill.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+sample_order.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a group sum's values changed: caught
+  negative control, a group sum's scale changed: caught
+  negative control, a group sum's value and values changed together: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, a table page less: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+  negative control, PDF with the group sum drawn without its separators: caught
+  negative control, PDF with the last table page removed: caught
+sample_origin.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_packing.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a group sum's values changed: caught
+  negative control, a group sum's scale changed: caught
+  negative control, a group sum's value and values changed together: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, a table page less: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+  negative control, PDF with the last table page removed: caught
+sample_proforma.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_statement.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a group sum's values changed: caught
+  negative control, a group sum's scale changed: caught
+  negative control, a group sum's value and values changed together: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a table amount changed: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, a table page less: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with the last page removed: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+  negative control, PDF with the group sum drawn without its separators: caught
+  negative control, PDF with the last table page removed: caught
+sample_usps.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a barcode's value changed: caught
+  negative control, a barcode moved by 0.5 mm: caught
+  negative control, a barcode's box made 5 mm wider: caught
+  negative control, a barcode's box made 3 mm lower: caught
+  negative control, a barcode's printed value switched: caught
+  negative control, a barcode removed from the expectation: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the last glyph of a right-aligned text 0.6 pt past the edge: caught
+  negative control, PDF with the barcode e16 moved by 1.5 mm: caught
+  negative control, PDF with the barcode e16 drawn with a module of 0.20 mm: caught
+  negative control, PDF with the barcode e16 damaged: caught
+  negative control, PDF with the barcode e16 as a picture: caught
+sample_wms_aging.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_asn.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_backlog.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_balance.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_carton_label.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a barcode's value changed: caught
+  negative control, a barcode moved by 0.5 mm: caught
+  negative control, a barcode's box made 5 mm wider: caught
+  negative control, a barcode's box made 3 mm lower: caught
+  negative control, a barcode's printed value switched: caught
+  negative control, a barcode removed from the expectation: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the barcode e16 moved by 1.5 mm: caught
+  negative control, PDF with the barcode e16 damaged: caught
+  negative control, PDF with the barcode e16 as a picture: caught
+sample_wms_count.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_damage.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_dispatch.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_ledger.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_location_label.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a barcode's value changed: caught
+  negative control, a barcode moved by 0.5 mm: caught
+  negative control, a barcode's box made 5 mm wider: caught
+  negative control, a barcode's box made 3 mm lower: caught
+  negative control, a barcode's printed value switched: caught
+  negative control, a barcode removed from the expectation: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the barcode e16 moved by 1.5 mm: caught
+  negative control, PDF with the barcode e16 damaged: caught
+  negative control, PDF with the barcode e16 as a picture: caught
+sample_wms_pack.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_pallet_label.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a barcode's value changed: caught
+  negative control, a barcode moved by 0.5 mm: caught
+  negative control, a barcode's box made 5 mm wider: caught
+  negative control, a barcode's box made 3 mm lower: caught
+  negative control, a barcode's printed value switched: caught
+  negative control, a barcode removed from the expectation: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the barcode e16 moved by 1.5 mm: caught
+  negative control, PDF with the barcode e16 damaged: caught
+  negative control, PDF with the barcode e16 as a picture: caught
+sample_wms_pick.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_picking_exception.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_putaway.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_receive.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_receiving_exception.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_return_disposition.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_return_receipt.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_sku_label.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a barcode's value changed: caught
+  negative control, a barcode moved by 0.5 mm: caught
+  negative control, a barcode's box made 5 mm wider: caught
+  negative control, a barcode's box made 3 mm lower: caught
+  negative control, a barcode's printed value switched: caught
+  negative control, a barcode removed from the expectation: caught
+  negative control, a table page on a form: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the barcode e16 moved by 1.5 mm: caught
+  negative control, PDF with the barcode e16 damaged: caught
+  negative control, PDF with the barcode e16 as a picture: caught
+sample_wms_status.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_transfer.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample_wms_variance.pdf: ok
+  negative control, a text value changed: caught
+  negative control, a text moved by 0.5 mm: caught
+  negative control, a text moved down by 0.5 mm: caught
+  negative control, a text's weight changed: caught
+  negative control, a text's type size changed: caught
+  negative control, a text's alignment changed: caught
+  negative control, a text removed: caught
+  negative control, a text added: caught
+  negative control, a wrapped value changed: caught
+  negative control, a wrapped value moved by 0.5 mm: caught
+  negative control, a wrapped box narrowed to 10 mm: caught
+  negative control, a page text's placeholder swapped: caught
+  negative control, the page_header made 0.5 mm taller: caught
+  negative control, the document_header made 0.5 mm taller: caught
+  negative control, the page_footer made 0.5 mm taller: caught
+  negative control, the document footer made too tall to fit under the table: caught
+  negative control, a line moved by 0.5 mm: caught
+  negative control, a line's stroke changed: caught
+  negative control, a line removed from the expectation: caught
+  negative control, a table cell changed: caught
+  negative control, a table row removed: caught
+  negative control, a table row added: caught
+  negative control, a column label changed: caught
+  negative control, the table moved by 0.5 mm: caught
+  negative control, a column width changed: caught
+  negative control, a column's alignment changed: caught
+  negative control, the document footer moved by 1 mm: caught
+  negative control, the document footer on another page: caught
+  negative control, the document footer removed from the expectation: caught
+  negative control, a table page more: caught
+  negative control, the page's width changed: caught
+  negative control, the page's height changed: caught
+  negative control, the safe region's left edge moved by 1 mm: caught
+  negative control, the safe region's top moved by 1 mm: caught
+  negative control, the banner strip moved by 1 mm: caught
+  negative control, the strip's type size changed: caught
+  negative control, PDF with extra text: caught
+  negative control, PDF with a font that is not embedded: caught
+  negative control, PDF with the XMP metadata removed: caught
+  negative control, PDF with an extra page: caught
+  negative control, PDF with a smaller page: caught
+  negative control, PDF with a value in a light colour: caught
+  negative control, PDF with a replacement character: caught
+  negative control, PDF with a shape outside the elements: caught
+  negative control, PDF with text of another size in the table: caught
+  negative control, PDF with two glyphs swapped: caught
+  negative control, PDF with a glyph moved by 1 pt: caught
+  negative control, PDF with a text covered by a white box: caught
+  negative control, PDF with a text moved 3 pt down: caught
+  negative control, PDF with the rules turned white: caught
+  negative control, PDF with the rules thinned: caught
+  negative control, PDF with the document footer's text 3 pt lower: caught
+sample pack: 37 samples, ok
+  negative control, a sample's page changed to another preset: caught
+  negative control, a code removed from the expectation: caught
+  negative control, a code without its value: caught
+  negative control, the pack's other samples missing from the directory: caught
+exit 0
+

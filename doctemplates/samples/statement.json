@@ -1,0 +1,810 @@
+{
+ "kind": "statement",
+ "name": "客户往来对账单",
+ "domain": "通用业务",
+ "flow": "财务",
+ "description": "按单据列示客户往来与本期收付差额",
+ "fields": [
+  {
+   "id": "customer",
+   "label": "客户名称",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "statement",
+   "label": "单据编号",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "period",
+   "label": "业务期间",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "currency",
+   "label": "结算币种",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "debit",
+   "label": "本期应收",
+   "type": "decimal",
+   "scope": "row",
+   "metric": true,
+   "scale": 2
+  },
+  {
+   "id": "credit",
+   "label": "本期已收",
+   "type": "decimal",
+   "scope": "row",
+   "metric": true,
+   "scale": 2
+  },
+  {
+   "id": "date",
+   "label": "记账日期",
+   "type": "date",
+   "scope": "row"
+  },
+  {
+   "id": "ref",
+   "label": "单据编号",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "desc",
+   "label": "业务摘要",
+   "type": "text",
+   "scope": "row"
+  }
+ ],
+ "rows": [
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-02",
+   "debit": "12600.00",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610001",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-03",
+   "debit": "8400.00",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610002",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-04",
+   "debit": "15600.00",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610003",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-05",
+   "debit": "6200.00",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610004",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-06",
+   "debit": "9800.00",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610005",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-07",
+   "debit": "-1200.00",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610006",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-08",
+   "debit": "4800.00",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610007",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-09",
+   "debit": "12600.00",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610008",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-10",
+   "debit": "8400.00",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610009",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-11",
+   "debit": "15600.00",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610010",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-12",
+   "debit": "6200.00",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610011",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-13",
+   "debit": "9800.00",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610012",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-14",
+   "debit": "-1200.00",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610013",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-15",
+   "debit": "4800.00",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610014",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-16",
+   "debit": "12600.00",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610015",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-17",
+   "debit": "8400.00",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610016",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-18",
+   "debit": "15600.00",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610017",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-19",
+   "debit": "6200.00",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610018",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-20",
+   "debit": "9800.00",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610019",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-21",
+   "debit": "-1200.00",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610020",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-22",
+   "debit": "4800.00",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610021",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-23",
+   "debit": "12600.00",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610022",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-24",
+   "debit": "8400.00",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610023",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-25",
+   "debit": "15600.00",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610024",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-26",
+   "debit": "6200.00",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610025",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-27",
+   "debit": "9800.00",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610026",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "0.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-28",
+   "debit": "-1200.00",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "SO-2610027",
+   "statement": "ST-2026-1008"
+  },
+  {
+   "credit": "5600.00",
+   "currency": "人民币 / CNY",
+   "customer": "上海云川实业有限公司",
+   "date": "2026-10-02",
+   "debit": "4800.00",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "ref": "RC-2610028",
+   "statement": "ST-2026-1008"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "page": {
+   "preset": "a4"
+  },
+  "bands": {
+   "page_header": {
+    "height": 33,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "rect",
+      "x": 8,
+      "y": 7,
+      "width": 72,
+      "height": 12,
+      "stroke": 0.75,
+      "fill": "none"
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "literal",
+      "text": "企业标识",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 10.5,
+      "width": 72,
+      "height": 5,
+      "font_size": 9,
+      "align": "center",
+      "bold": false
+     },
+     {
+      "id": "e3",
+      "type": "text",
+      "source": "literal",
+      "text": "客户往来对账单",
+      "field": "",
+      "wrap": false,
+      "x": 100,
+      "y": 3,
+      "width": 82,
+      "height": 13,
+      "font_size": 22,
+      "align": "right",
+      "bold": true
+     },
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "literal",
+      "text": "CUSTOMER STATEMENT",
+      "field": "",
+      "wrap": false,
+      "x": 100,
+      "y": 18,
+      "width": 82,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e5",
+      "type": "line",
+      "x1": 8,
+      "y1": 31.2,
+      "x2": 182,
+      "y2": 31.2,
+      "stroke": 0.75
+     }
+    ]
+   },
+   "document_header": {
+    "height": 62,
+    "elements": [
+     {
+      "id": "e6",
+      "type": "text",
+      "source": "literal",
+      "text": "客户名称",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 5,
+      "width": 104,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "customer",
+      "wrap": false,
+      "x": 8,
+      "y": 10,
+      "width": 104,
+      "height": 8,
+      "font_size": 12,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "literal",
+      "text": "单据编号",
+      "field": "",
+      "wrap": false,
+      "x": 122,
+      "y": 5,
+      "width": 60,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "statement",
+      "wrap": false,
+      "x": 122,
+      "y": 10,
+      "width": 60,
+      "height": 8,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e10",
+      "type": "text",
+      "source": "literal",
+      "text": "业务期间",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 22,
+      "width": 104,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e11",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "period",
+      "wrap": false,
+      "x": 8,
+      "y": 27,
+      "width": 104,
+      "height": 6,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "literal",
+      "text": "结算币种",
+      "field": "",
+      "wrap": false,
+      "x": 122,
+      "y": 22,
+      "width": 60,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "currency",
+      "wrap": false,
+      "x": 122,
+      "y": 27,
+      "width": 60,
+      "height": 6,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "literal",
+      "text": "本期应收 · 示例合计",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 38,
+      "width": 57,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "text",
+      "source": "group_sum",
+      "text": "",
+      "field": "debit",
+      "wrap": false,
+      "x": 8,
+      "y": 43,
+      "width": 57,
+      "height": 8,
+      "font_size": 12,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e16",
+      "type": "text",
+      "source": "literal",
+      "text": "本期已收 · 示例合计",
+      "field": "",
+      "wrap": false,
+      "x": 66,
+      "y": 38,
+      "width": 57,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e17",
+      "type": "text",
+      "source": "group_sum",
+      "text": "",
+      "field": "credit",
+      "wrap": false,
+      "x": 66,
+      "y": 43,
+      "width": 57,
+      "height": 8,
+      "font_size": 12,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e18",
+      "type": "text",
+      "source": "literal",
+      "text": "本期差额 · 示例合计",
+      "field": "",
+      "wrap": false,
+      "x": 124,
+      "y": 38,
+      "width": 57,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "detail": {
+    "elements": [
+     {
+      "id": "e19",
+      "type": "table",
+      "x": 8,
+      "width": 174,
+      "font_size": 9,
+      "columns": [
+       {
+        "field": "date",
+        "width": 36,
+        "align": "left",
+        "label": "记账日期"
+       },
+       {
+        "field": "ref",
+        "width": 31.2,
+        "align": "left",
+        "label": "单据编号"
+       },
+       {
+        "field": "desc",
+        "width": 42.7,
+        "align": "left",
+        "label": "业务摘要"
+       },
+       {
+        "field": "debit",
+        "width": 32.1,
+        "align": "right",
+        "label": "本期应收"
+       },
+       {
+        "field": "credit",
+        "width": 32,
+        "align": "right",
+        "label": "本期已收"
+       }
+      ]
+     }
+    ]
+   },
+   "document_footer": {
+    "height": 29,
+    "elements": [
+     {
+      "id": "e20",
+      "type": "text",
+      "source": "literal",
+      "text": "请核对以上业务明细，如有差异，请于收到本单后 5 个工作日内与我们联系。\n本单据为业务核对凭据，款项以实际到账及双方确认为准。",
+      "field": "",
+      "wrap": true,
+      "x": 8,
+      "y": 2,
+      "width": 174,
+      "height": 12,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e21",
+      "type": "rect",
+      "x": 8,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "stroke": 0.5,
+      "fill": "none"
+     },
+     {
+      "id": "e22",
+      "type": "text",
+      "source": "literal",
+      "text": "客户确认 / 签章",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e23",
+      "type": "rect",
+      "x": 112,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "stroke": 0.5,
+      "fill": "none"
+     },
+     {
+      "id": "e24",
+      "type": "text",
+      "source": "literal",
+      "text": "制单人 / 日期",
+      "field": "",
+      "wrap": false,
+      "x": 112,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "page_footer": {
+    "height": 10,
+    "elements": [
+     {
+      "id": "e25",
+      "type": "text",
+      "source": "literal",
+      "text": "远山贸易 · 业务往来核对",
+      "field": "",
+      "wrap": true,
+      "x": 8,
+      "y": 0,
+      "width": 94.7,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e26",
+      "type": "text",
+      "source": "page",
+      "text": "第 {page} / {pages} 页",
+      "field": "",
+      "wrap": false,
+      "x": 103.7,
+      "y": 0,
+      "width": 78.3,
+      "height": 9,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     }
+    ]
+   }
+  }
+ }
+}

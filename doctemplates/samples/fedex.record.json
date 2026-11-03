@@ -1,0 +1,242 @@
+{
+ "kind": "fedex",
+ "file": "fedex",
+ "name": "FedEx 快递面单 · 4×6",
+ "dataset": "fedex",
+ "page": "4x6 101.6×152.4",
+ "preset": "label_4x6in",
+ "counts": {
+  "nodes_in": 20,
+  "elements_out": 20,
+  "dropped": 0,
+  "substituted": 1
+ },
+ "entries": [
+  {
+   "code": "barcode_symbology",
+   "detail": "二维码类型 pdf417 换成 QR 码（纠错级别 M）：PDF417 是宽扁的矩形，QR 码是正方形，边长取框的短边，不小于模块 0.4 毫米所需的大小",
+   "nodes": [
+    "n19"
+   ]
+  },
+  {
+   "code": "box_grown",
+   "detail": "文本框高度小于平台下限（5 毫米，且不小于所需行数的高度），已放大",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n16",
+    "n17",
+    "n20"
+   ]
+  },
+  {
+   "code": "box_grown",
+   "detail": "条码框按平台的条高下限调整：宽 88.6 → 82.4 毫米（居中），高 11.3 → 11.3 毫米",
+   "nodes": [
+    "n18"
+   ]
+  },
+  {
+   "code": "box_grown",
+   "detail": "二维码边长 10 → 13.3 毫米（模块不小于 0.4 毫米）",
+   "nodes": [
+    "n19"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+1.1 毫米）",
+   "nodes": [
+    "n2"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+2.2 毫米）",
+   "nodes": [
+    "n3"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+3.4 毫米）",
+   "nodes": [
+    "n4"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+0.4 毫米）",
+   "nodes": [
+    "n6"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+0.8 毫米）",
+   "nodes": [
+    "n7"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+0.7 毫米）",
+   "nodes": [
+    "n9"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+2.0 毫米）",
+   "nodes": [
+    "n20"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 7.3 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 7.2 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n5",
+    "n7"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 8.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n6"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 11.5 磅 → 11 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n8",
+    "n12"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 9.4 磅 → 9 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n9"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 10.5 磅 → 10 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n10",
+    "n11",
+    "n17"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 7.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n13"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 15 磅 → 14 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n14"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 22 磅 → 21 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n15"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 14 磅 → 13 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n16"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.947 缩放：字号 6.7 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n20"
+   ]
+  },
+  {
+   "code": "form_fit",
+   "detail": "固定版式转成表单（没有明细带、没有明细表）：整版放在页眉区段，高度取最低元素的底边；外框 93.6×137.6 毫米；外框左上角对齐安全区左上角，整体等比缩小到 0.947（字号随之取整，不低于 8 磅）"
+  },
+  {
+   "code": "page_background",
+   "detail": "版式参考图 \"fedex-v1\" 是原型自己画的图形，不是位图，不转换"
+  },
+  {
+   "code": "page_background",
+   "detail": "底图透明度 1 不转换"
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 4x6（101.6×152.4 毫米）即预设 label_4x6in"
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、行距",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n16",
+    "n17",
+    "n20"
+   ]
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色",
+   "nodes": [
+    "n18",
+    "n19"
+   ]
+  }
+ ]
+}

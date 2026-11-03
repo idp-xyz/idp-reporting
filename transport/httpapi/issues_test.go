@@ -664,3 +664,12 @@ func requestWithKey(h http.Handler, method, path string, body []byte, key string
 	h.ServeHTTP(w, q)
 	return w
 }
+
+// CheckIssueWith and IssueWith make the stand-in a renderer of 2.1 documents too (the sample forms have codes): the same as the 2.0 ones.
+func (f *stampingRenderer) CheckIssueWith(ctx context.Context, d doctemplates.Document, values map[string]string, bg []byte, t *doctemplates.TableData, _ doctemplates.Resolved) error {
+	return f.CheckIssue(ctx, d, values, bg, t)
+}
+
+func (f *stampingRenderer) IssueWith(ctx context.Context, d doctemplates.Document, values map[string]string, bg []byte, t *doctemplates.TableData, _ doctemplates.Resolved, stamp string, at time.Time) ([]byte, int, error) {
+	return f.Issue(ctx, d, values, bg, t, stamp, at)
+}

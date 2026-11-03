@@ -99,6 +99,14 @@ func Groups(d Document, s r.Snapshot) ([]RowGroup, error) {
 	}
 	rows := s.Result.Rows
 	if d.Group == nil {
+		if d.Form() {
+			// A form without group fields is one document per row, as a 1.x template is (S06-B).
+			out := make([]RowGroup, len(rows))
+			for i := range rows {
+				out[i] = RowGroup{Rows: []int{i}}
+			}
+			return out, nil
+		}
 		all := make([]int, len(rows))
 		for i := range rows {
 			all[i] = i
@@ -275,6 +283,9 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 		}
 		values[it.ID] = text
 	}
+	if d.Form() {
+		return values, nil, nil // a form has no table: its bands are all it draws
+	}
 	table, e := bindGroupTable(*d.TableItem(), s, g.Rows, metrics)
 	if e != nil {
 		return nil, nil, e
@@ -336,6 +347,13 @@ func wholeGroup(d Document, s r.Snapshot, g RowGroup) error {
 	rows := s.Result.Rows
 	if len(g.Key) != len(cols) {
 		return r.ErrInvalid
+	}
+	// The group of a form without group fields is one row.
+	if d.Form() && d.Group == nil {
+		if len(g.Rows) != 1 || g.Rows[0] < 0 || g.Rows[0] >= len(rows) {
+			return r.ErrInvalid
+		}
+		return nil
 	}
 	prev := -1
 	for _, i := range g.Rows {

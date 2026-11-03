@@ -1,0 +1,866 @@
+{
+ "kind": "booking",
+ "name": "海运订舱委托 · Ocean Booking",
+ "domain": "运输 / 货代",
+ "flow": "海运",
+ "description": "REQUEST ONLY / NOT A CONFIRMED BOOKING",
+ "fields": [
+  {
+   "id": "documentNo",
+   "label": "单据编号",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "documentDates",
+   "label": "documentDates",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "seller",
+   "label": "SELLER / SHIPPER",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "buyer",
+   "label": "BUYER / SOLD TO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "shipTo",
+   "label": "CONSIGNEE / SHIP TO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "cargoReadyDate",
+   "label": "CARGO READY DATE",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "requestedEtd",
+   "label": "REQUESTED ETD",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "route",
+   "label": "FROM → TO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "shipDate",
+   "label": "EST. SHIP DATE",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "serviceType",
+   "label": "SERVICE / FCL-LCL",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "carrier",
+   "label": "CARRIER",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "freightTerms",
+   "label": "FREIGHT TERMS",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "totalContainers",
+   "label": "TOTAL CONTAINERS",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "totalGross",
+   "label": "TOTAL GROSS WEIGHT",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "totalVolume",
+   "label": "TOTAL CBM",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "specialInstructions",
+   "label": "SPECIAL REQUIREMENTS / DG DETAILS",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "equipment",
+   "label": "箱型",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "containerQty",
+   "label": "订舱箱量",
+   "type": "integer",
+   "scope": "row"
+  },
+  {
+   "id": "description",
+   "label": "货物描述",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "packages",
+   "label": "总包装件数",
+   "type": "integer",
+   "scope": "row"
+  },
+  {
+   "id": "packageType",
+   "label": "包装类型",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "grossKg",
+   "label": "货物总毛重 KG",
+   "type": "decimal",
+   "scope": "row",
+   "scale": 3
+  },
+  {
+   "id": "volumeCbm",
+   "label": "总体积 CBM",
+   "type": "decimal",
+   "scope": "row",
+   "scale": 3
+  },
+  {
+   "id": "dangerous",
+   "label": "危险品 YES / NO",
+   "type": "text",
+   "scope": "row"
+  }
+ ],
+ "rows": [
+  {
+   "buyer": "EXAMPLE IMPORTS INC. (SAMPLE) / 200 SAMPLE AVENUE, LOS ANGELES, CA 90001, US / PURCHASING@IMPORT.EXAMPLE.TEST",
+   "cargoReadyDate": "2026-11-05",
+   "carrier": "DEMO CARRIER / NOT CONFIRMED",
+   "containerQty": "1",
+   "dangerous": "NO",
+   "description": "Industrial components / cargo group 1",
+   "documentDates": "DATE 2026-10-28",
+   "documentNo": "DEMO-OB-20261028-001",
+   "equipment": "20GP",
+   "freightTerms": "PREPAID / SUBJECT TO QUOTATION",
+   "grossKg": "1000.000",
+   "packageType": "CTNS",
+   "packages": "20",
+   "requestedEtd": "2026-11-10",
+   "route": "SHANGHAI, CHINA → LOS ANGELES, US",
+   "seller": "YUANSHAN EXPORT CO., LTD. (SAMPLE) / 88 EXAMPLE ROAD, SHANGHAI 200000, CN / SALES@YUANSHAN.EXAMPLE.TEST",
+   "serviceType": "FCL / CY-CY",
+   "shipDate": "2026-11-10",
+   "shipTo": "EXAMPLE DISTRIBUTION CENTRE (SAMPLE) / 500 SAMPLE ROAD, LOS ANGELES, CA 90001, US",
+   "specialInstructions": "NON-DANGEROUS SAMPLE GOODS / SPECIAL REQUIREMENTS SUBJECT TO CARRIER REVIEW.",
+   "totalContainers": "3 CONTAINERS",
+   "totalGross": "6000.000 KG",
+   "totalVolume": "30.000 CBM",
+   "volumeCbm": "5.000"
+  },
+  {
+   "buyer": "EXAMPLE IMPORTS INC. (SAMPLE) / 200 SAMPLE AVENUE, LOS ANGELES, CA 90001, US / PURCHASING@IMPORT.EXAMPLE.TEST",
+   "cargoReadyDate": "2026-11-05",
+   "carrier": "DEMO CARRIER / NOT CONFIRMED",
+   "containerQty": "1",
+   "dangerous": "NO",
+   "description": "Industrial components / cargo group 2",
+   "documentDates": "DATE 2026-10-28",
+   "documentNo": "DEMO-OB-20261028-001",
+   "equipment": "40HC",
+   "freightTerms": "PREPAID / SUBJECT TO QUOTATION",
+   "grossKg": "2000.000",
+   "packageType": "CTNS",
+   "packages": "40",
+   "requestedEtd": "2026-11-10",
+   "route": "SHANGHAI, CHINA → LOS ANGELES, US",
+   "seller": "YUANSHAN EXPORT CO., LTD. (SAMPLE) / 88 EXAMPLE ROAD, SHANGHAI 200000, CN / SALES@YUANSHAN.EXAMPLE.TEST",
+   "serviceType": "FCL / CY-CY",
+   "shipDate": "2026-11-10",
+   "shipTo": "EXAMPLE DISTRIBUTION CENTRE (SAMPLE) / 500 SAMPLE ROAD, LOS ANGELES, CA 90001, US",
+   "specialInstructions": "NON-DANGEROUS SAMPLE GOODS / SPECIAL REQUIREMENTS SUBJECT TO CARRIER REVIEW.",
+   "totalContainers": "3 CONTAINERS",
+   "totalGross": "6000.000 KG",
+   "totalVolume": "30.000 CBM",
+   "volumeCbm": "10.000"
+  },
+  {
+   "buyer": "EXAMPLE IMPORTS INC. (SAMPLE) / 200 SAMPLE AVENUE, LOS ANGELES, CA 90001, US / PURCHASING@IMPORT.EXAMPLE.TEST",
+   "cargoReadyDate": "2026-11-05",
+   "carrier": "DEMO CARRIER / NOT CONFIRMED",
+   "containerQty": "1",
+   "dangerous": "NO",
+   "description": "Industrial components / cargo group 3",
+   "documentDates": "DATE 2026-10-28",
+   "documentNo": "DEMO-OB-20261028-001",
+   "equipment": "20GP",
+   "freightTerms": "PREPAID / SUBJECT TO QUOTATION",
+   "grossKg": "3000.000",
+   "packageType": "CTNS",
+   "packages": "60",
+   "requestedEtd": "2026-11-10",
+   "route": "SHANGHAI, CHINA → LOS ANGELES, US",
+   "seller": "YUANSHAN EXPORT CO., LTD. (SAMPLE) / 88 EXAMPLE ROAD, SHANGHAI 200000, CN / SALES@YUANSHAN.EXAMPLE.TEST",
+   "serviceType": "FCL / CY-CY",
+   "shipDate": "2026-11-10",
+   "shipTo": "EXAMPLE DISTRIBUTION CENTRE (SAMPLE) / 500 SAMPLE ROAD, LOS ANGELES, CA 90001, US",
+   "specialInstructions": "NON-DANGEROUS SAMPLE GOODS / SPECIAL REQUIREMENTS SUBJECT TO CARRIER REVIEW.",
+   "totalContainers": "3 CONTAINERS",
+   "totalGross": "6000.000 KG",
+   "totalVolume": "30.000 CBM",
+   "volumeCbm": "15.000"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "page": {
+   "preset": "a4"
+  },
+  "bands": {
+   "page_header": {
+    "height": 25,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "text",
+      "source": "literal",
+      "text": "YUANSHAN · TRADE DOCUMENTS",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 92,
+      "height": 6.2,
+      "font_size": 11,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "literal",
+      "text": "EXPORT OPERATIONS / DOCUMENT STUDIO",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 8,
+      "width": 92,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e3",
+      "type": "text",
+      "source": "literal",
+      "text": "OCEAN BOOKING REQUEST",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 0,
+      "width": 90,
+      "height": 10,
+      "font_size": 14,
+      "align": "right",
+      "bold": true
+     },
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "documentNo",
+      "wrap": false,
+      "x": 98,
+      "y": 11,
+      "width": 90,
+      "height": 5,
+      "font_size": 9,
+      "align": "right",
+      "bold": true
+     },
+     {
+      "id": "e5",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "documentDates",
+      "wrap": false,
+      "x": 75,
+      "y": 17,
+      "width": 113,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e6",
+      "type": "line",
+      "x1": 2,
+      "y1": 23.2,
+      "x2": 188,
+      "y2": 23.2,
+      "stroke": 0.75
+     }
+    ]
+   },
+   "document_header": {
+    "height": 72,
+    "elements": [
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "literal",
+      "text": "SELLER / SHIPPER",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 1,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "seller",
+      "wrap": true,
+      "x": 2,
+      "y": 6,
+      "width": 90,
+      "height": 15,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "literal",
+      "text": "BUYER / SOLD TO",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 1,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e10",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "buyer",
+      "wrap": true,
+      "x": 98,
+      "y": 6,
+      "width": 90,
+      "height": 15,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e11",
+      "type": "text",
+      "source": "literal",
+      "text": "CONSIGNEE / SHIP TO",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 24,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "shipTo",
+      "wrap": true,
+      "x": 2,
+      "y": 29,
+      "width": 90,
+      "height": 15,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "literal",
+      "text": "CARGO READY DATE",
+      "field": "",
+      "wrap": true,
+      "x": 98,
+      "y": 24,
+      "width": 30,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "cargoReadyDate",
+      "wrap": true,
+      "x": 128,
+      "y": 24,
+      "width": 60,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "text",
+      "source": "literal",
+      "text": "REQUESTED ETD",
+      "field": "",
+      "wrap": true,
+      "x": 98,
+      "y": 35,
+      "width": 25.4,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e16",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "requestedEtd",
+      "wrap": true,
+      "x": 123.4,
+      "y": 35,
+      "width": 64.6,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e17",
+      "type": "text",
+      "source": "literal",
+      "text": "FROM → TO",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 47,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e18",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "route",
+      "wrap": false,
+      "x": 2,
+      "y": 52,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e19",
+      "type": "text",
+      "source": "literal",
+      "text": "EST. SHIP DATE",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 47,
+      "width": 42,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e20",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "shipDate",
+      "wrap": false,
+      "x": 98,
+      "y": 52,
+      "width": 42,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e21",
+      "type": "text",
+      "source": "literal",
+      "text": "SERVICE / FCL-LCL",
+      "field": "",
+      "wrap": false,
+      "x": 145,
+      "y": 47,
+      "width": 43,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e22",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "serviceType",
+      "wrap": false,
+      "x": 145,
+      "y": 52,
+      "width": 43,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e23",
+      "type": "text",
+      "source": "literal",
+      "text": "CARRIER",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 60,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e24",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "carrier",
+      "wrap": false,
+      "x": 2,
+      "y": 65,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e25",
+      "type": "text",
+      "source": "literal",
+      "text": "FREIGHT TERMS",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 60,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e26",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "freightTerms",
+      "wrap": false,
+      "x": 98,
+      "y": 65,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "detail": {
+    "elements": [
+     {
+      "id": "e27",
+      "type": "table",
+      "x": 2,
+      "width": 186,
+      "font_size": 8,
+      "columns": [
+       {
+        "field": "equipment",
+        "width": 32.5,
+        "align": "left",
+        "label": "EQUIPMENT"
+       },
+       {
+        "field": "containerQty",
+        "width": 15.3,
+        "align": "right",
+        "label": "CNTRS"
+       },
+       {
+        "field": "description",
+        "width": 45.4,
+        "align": "left",
+        "label": "GOODS"
+       },
+       {
+        "field": "packages",
+        "width": 15.3,
+        "align": "right",
+        "label": "PKGS"
+       },
+       {
+        "field": "packageType",
+        "width": 14.4,
+        "align": "left",
+        "label": "TYPE"
+       },
+       {
+        "field": "grossKg",
+        "width": 22.6,
+        "align": "right",
+        "label": "KG"
+       },
+       {
+        "field": "volumeCbm",
+        "width": 21.7,
+        "align": "right",
+        "label": "CBM"
+       },
+       {
+        "field": "dangerous",
+        "width": 18.8,
+        "align": "left",
+        "label": "DG"
+       }
+      ]
+     }
+    ]
+   },
+   "document_footer": {
+    "height": 48,
+    "elements": [
+     {
+      "id": "e28",
+      "type": "text",
+      "source": "literal",
+      "text": "TOTAL CONTAINERS",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 2,
+      "width": 55,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e29",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "totalContainers",
+      "wrap": false,
+      "x": 2,
+      "y": 7,
+      "width": 55,
+      "height": 6,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e30",
+      "type": "text",
+      "source": "literal",
+      "text": "TOTAL GROSS WEIGHT",
+      "field": "",
+      "wrap": false,
+      "x": 65,
+      "y": 2,
+      "width": 55,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e31",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "totalGross",
+      "wrap": false,
+      "x": 65,
+      "y": 7,
+      "width": 55,
+      "height": 6,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e32",
+      "type": "text",
+      "source": "literal",
+      "text": "TOTAL CBM",
+      "field": "",
+      "wrap": false,
+      "x": 130,
+      "y": 2,
+      "width": 58,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e33",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "totalVolume",
+      "wrap": false,
+      "x": 130,
+      "y": 7,
+      "width": 58,
+      "height": 6,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e34",
+      "type": "text",
+      "source": "literal",
+      "text": "SPECIAL REQUIREMENTS / DG DETAILS",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 17,
+      "width": 186,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e35",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "specialInstructions",
+      "wrap": true,
+      "x": 2,
+      "y": 22,
+      "width": 186,
+      "height": 19,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "page_footer": {
+    "height": 9,
+    "elements": [
+     {
+      "id": "e36",
+      "type": "text",
+      "source": "literal",
+      "text": "OCEAN BOOKING REQUEST · DRAFT",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 101.3,
+      "height": 8,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e37",
+      "type": "text",
+      "source": "page",
+      "text": "PAGE {page} / {pages}",
+      "field": "",
+      "wrap": false,
+      "x": 104.3,
+      "y": 0,
+      "width": 83.7,
+      "height": 8,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     }
+    ]
+   }
+  }
+ }
+}

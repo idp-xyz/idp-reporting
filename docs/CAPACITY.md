@@ -255,9 +255,27 @@ The worst-case proof itself is per element and does not depend on how many there
 for the widest (or longest) number its box can be given, which `TestTypstIssuesTheWidestLegalNumbers` sweeps to the tightest box the check accepts; that test is
 unchanged and passes. With 128 elements the check adds the elements' own cost only (about 6 ms here), so the old limits were not what the budget was spent on.
 
-The heaviest *samples* are the two hand-written fixtures of this part (`doctemplates/samples/_fixture_*.json`, 15 and 9 elements; preview 10-60 ms each in
-`TestTypstRendersEverySampleWithItsOwnRows`, written with the checker's evidence). The 37 converted samples are part 2's: it measures the heaviest of them here and,
-for a sample that does not fit the budget, converts it with fewer elements and says so.
+### The 37 samples of the pack (S06-B part 2, B7)
+
+`TestTypstTheSamplePackRendersWithinTheBudgetAndTheHeaviestAreMeasured` renders each converted sample five times from its own rows (the preview route's
+path, `RenderWith`: layout and Typst) and times the pre-issue proof (`CheckIssueWith`, fonts only); same machine, pinned Typst and fonts, WSL2. The heaviest
+by render time (best of five, then the worst of the five), and the extremes of the rest:
+
+| Sample | Elements | Pages | Preview, best / worst of 5 | PDF | Pre-issue check |
+|---|---|---|---|---|---|
+| `proforma` (形式发票) | 57 | 1 | 54.7 / 61.0 ms | 47.9 KB | 0.6 ms |
+| `commercial` (商业发票) | 57 | 1 | 52.8 / 55.0 ms | 47.4 KB | 1.8 ms |
+| `bol` (海运提单, 52 fields, a form) | 52 | 1 | 48.1 / 50.2 ms | 42.2 KB | 0.7 ms |
+| `origin` (原产地证书) | 35 | 1 | 43.7 / 44.7 ms | 38.6 KB | 0.5 ms |
+| `export_packing` (出口装箱单) | 44 | 1 | 43.5 / 47.8 ms | 41.1 KB | 0.6 ms |
+| `order` (销售订单, 28 rows) | 25 | 2 | 39.1 / 42.6 ms | 53.6 KB | 0.5 ms |
+| `mawb` (72 fields, a form) | 72 | 1 | 40.5 / 43.3 ms | 32.7 KB | 0.6 ms |
+| the 4 WMS labels (lightest, forms) | 17 | 1 | 26.6-27.2 / 28.2-28.8 ms | 19.9-20.1 KB | 0.2 ms |
+
+All 37 render in 27-61 ms and are proved in about 2 ms or less: against the 15 s budget (and the 5 s the test itself allows a preview) none comes near it, so no sample was
+converted with fewer elements for the budget (a sample's elements are dropped only where the platform's geometry forbids them, and each is in its record:
+none of the nine forms (the two waybills, the B/L, the two parcel labels, the four WMS labels) loses an element). The largest sample by element count is the MAWB (72: its 72 fields; a form has no table), under the template limit of 128 and
+the band limit of 96; the heaviest by time are the two 57-element invoices. The 128-element worst case above stays the bound; the samples are well inside it.
 
 The per-identity template cap rises from 16 to 64 (docs/OPERATIONS.md): the file of an identity grows with it, bounded by the store's 8 MiB. A template of 128
 elements is about 25-30 KB canonical (64 KiB is the bound of one), so 64 templates of one version each is under 2 MB; the 20 versions a template may keep are what

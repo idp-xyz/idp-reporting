@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -96,7 +97,7 @@ func TestSamplesAreReadableByAnyIdentityAndNeverWritable(t *testing.T) {
 		Elements, Fields                 int
 		Rows                             any
 	}
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list) < 2 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list) != 37 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	presets := map[string]string{}
@@ -106,25 +107,26 @@ func TestSamplesAreReadableByAnyIdentityAndNeverWritable(t *testing.T) {
 			t.Fatalf("a card lacks what it shows, or carries rows: %+v", s)
 		}
 	}
-	if presets["_fixture_delivery_note"] != "a4" || presets["_fixture_parcel_label"] != "label_100x150" {
+	if presets["statement"] != "a4" || presets["usps"] != "label_4x6in" || presets["wms_sku_label"] != "label_150x100" {
 		t.Fatal(presets)
 	}
 	*f.other = true // any signed-in identity reads them
-	w = request(f.h, "GET", samplesBase+"/samples/_fixture_parcel_label", nil, true)
+	w = request(f.h, "GET", samplesBase+"/samples/usps", nil, true)
+	pack, _, _ := doctemplates.SampleByKind("usps")
 	var one struct {
 		Kind       string
 		FieldSlots []map[string]any `json:"field_slots"`
 		Rows       []map[string]string
 		Document   doctemplates.Document
 	}
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &one) != nil || one.Kind != "_fixture_parcel_label" || len(one.FieldSlots) != 5 || len(one.Rows) != 3 || one.Document.Page == nil || one.Document.Page.Preset != "label_100x150" {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &one) != nil || one.Kind != "usps" || len(one.FieldSlots) != len(pack.Fields) || len(one.Rows) != len(pack.Rows) || one.Document.Page == nil || one.Document.Page.Preset != "label_4x6in" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if request(f.h, "GET", samplesBase+"/samples/nothing", nil, true).Code != 404 {
 		t.Fatal("unknown sample")
 	}
 	// Never writable: no verb but the three routes'.
-	for _, c := range [][2]string{{"POST", samplesBase + "/samples"}, {"PUT", samplesBase + "/samples/_fixture_parcel_label"}, {"DELETE", samplesBase + "/samples/_fixture_parcel_label"}, {"POST", samplesBase + "/samples/_fixture_parcel_label"}} {
+	for _, c := range [][2]string{{"POST", samplesBase + "/samples"}, {"PUT", samplesBase + "/samples/usps"}, {"DELETE", samplesBase + "/samples/usps"}, {"POST", samplesBase + "/samples/usps"}} {
 		if code := request(f.h, c[0], c[1], []byte(`{}`), true).Code; code != 405 && code != 404 {
 			t.Fatalf("%s %s: %d", c[0], c[1], code)
 		}
@@ -137,28 +139,32 @@ func TestSamplesAreReadableByAnyIdentityAndNeverWritable(t *testing.T) {
 
 func TestSamplePreviewRendersTheSamplesOwnRowsWithoutADataset(t *testing.T) {
 	f := newSamplesFixture(t, true)
-	w := request(f.h, "POST", samplesBase+"/samples/_fixture_delivery_note/previews", []byte(`{}`), true)
+	w := request(f.h, "POST", samplesBase+"/samples/statement/previews", []byte(`{}`), true)
 	if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "%PDF-") || w.Header().Get("X-Content-SHA256") == "" || f.renderer.calls != 1 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if f.renderer.values["e5"] != "华东贸易有限公司" || f.renderer.values["e9"] != "DN202611020001" || f.renderer.table == nil || len(f.renderer.table.Rows) != 4 {
+	pack, _, _ := doctemplates.SampleByKind("statement")
+	if f.renderer.values["e7"] != pack.Rows[0]["customer"] || f.renderer.values["e9"] != pack.Rows[0]["statement"] || f.renderer.table == nil || len(f.renderer.table.Rows) != len(pack.Rows) || len(pack.Rows) != 28 {
 		t.Fatalf("not the sample's own rows: %v", f.renderer.values)
+	}
+	if f.renderer.values["e15"] != "224800.00" {
+		t.Fatalf("a group sum of the sample's own rows: %q", f.renderer.values["e15"])
 	}
 	if f.renderer.last.Binding != doctemplates.SampleBinding {
 		t.Fatal("a preview is bound to no dataset of the caller's")
 	}
 	// No body at all is as good as {}; another key is not.
-	q := httptest.NewRequest("POST", samplesBase+"/samples/_fixture_parcel_label/previews", nil)
+	q := httptest.NewRequest("POST", samplesBase+"/samples/usps/previews", nil)
 	q.Header.Set("Authorization", "Bearer "+secret)
 	rec := httptest.NewRecorder()
 	f.h.ServeHTTP(rec, q)
 	if rec.Code != 200 {
 		t.Fatal("no body", rec.Code)
 	}
-	if request(f.h, "POST", samplesBase+"/samples/_fixture_parcel_label/previews", []byte(`{"x":1}`), true).Code != 400 {
+	if request(f.h, "POST", samplesBase+"/samples/usps/previews", []byte(`{"x":1}`), true).Code != 400 {
 		t.Fatal("a body with a key")
 	}
-	if request(f.h, "POST", samplesBase+"/samples/_fixture_parcel_label/previews", []byte(`{}`), false).Code != 401 {
+	if request(f.h, "POST", samplesBase+"/samples/usps/previews", []byte(`{}`), false).Code != 401 {
 		t.Fatal("anonymous")
 	}
 	if request(f.h, "POST", samplesBase+"/samples/nothing/previews", []byte(`{}`), true).Code != 404 {
@@ -166,7 +172,7 @@ func TestSamplePreviewRendersTheSamplesOwnRowsWithoutADataset(t *testing.T) {
 	}
 	// Without a renderer the route is not there, as a template's own preview is not.
 	g := newSamplesFixture(t, false)
-	if request(g.h, "POST", samplesBase+"/samples/_fixture_delivery_note/previews", []byte(`{}`), true).Code == 200 {
+	if request(g.h, "POST", samplesBase+"/samples/statement/previews", []byte(`{}`), true).Code == 200 {
 		t.Fatal("a preview without a renderer")
 	}
 }
@@ -174,14 +180,14 @@ func TestSamplePreviewRendersTheSamplesOwnRowsWithoutADataset(t *testing.T) {
 func TestSampleCopyAppliesTheMappingOnTheServerAndSavesLikeASave(t *testing.T) {
 	f := newSamplesFixture(t, false)
 	mapping := map[string]any{
-		"customer": map[string]string{"column": "customer.id"},
-		"address":  map[string]string{"literal": "上海市测试路 1 号"},
-		"order_no": map[string]string{"column": "aging.bucket"},
-		"item":     map[string]string{"column": "customer.id"},
-		"amount":   map[string]string{"column": "ar.open_balance"},
-		// quantity and unit_price are unmapped: a table column has no literal, so both are dropped
+		"customer":  map[string]string{"column": "customer.id"},
+		"statement": map[string]string{"literal": "ST-上海-1"},
+		"date":      map[string]string{"column": "aging.bucket"},
+		"ref":       map[string]string{"column": "customer.id"},
+		"debit":     map[string]string{"column": "ar.open_balance"},
+		// desc and credit are unmapped: a table column has no literal, so both are dropped
 	}
-	w := request(f.h, "POST", samplesBase+"/samples/_fixture_delivery_note/copy", f.copyBody(mapping, "我的送货单"), true)
+	w := request(f.h, "POST", samplesBase+"/samples/statement/copy", f.copyBody(mapping, "我的对账单"), true)
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -192,35 +198,41 @@ func TestSampleCopyAppliesTheMappingOnTheServerAndSavesLikeASave(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &saved)
 	d := saved.Config
-	if saved.Version != 1 || d.Name != "我的送货单" || d.Binding.Integration != contractsim.FinanceIntegration || d.Binding.Dataset.ID != "receivables.aging" {
+	if saved.Version != 1 || d.Name != "我的对账单" || d.Binding.Integration != contractsim.FinanceIntegration || d.Binding.Dataset.ID != "receivables.aging" || d.Page == nil || d.Page.Preset != "a4" {
 		t.Fatal("not bound to the caller's dataset as version 1", saved)
 	}
-	if d.Group == nil || len(d.Group.Fields) != 1 || d.Group.Fields[0] != "customer.id" {
-		t.Fatalf("the document-scope field is the group, the literal one is not: %+v", d.Group)
+	if d.Group != nil {
+		t.Fatalf("the statement has no group: %+v", d.Group)
 	}
 	cols := d.TableItem().Columns
-	if len(cols) != 2 || cols[0].Field != "customer.id" || cols[1].Field != "ar.open_balance" {
+	if len(cols) != 3 || cols[0].Field != "aging.bucket" || cols[1].Field != "customer.id" || cols[2].Field != "ar.open_balance" {
 		t.Fatalf("columns %+v", cols)
 	}
 	sum := 0.0
 	for _, c := range cols {
 		sum += c.Width
 	}
-	if sum != d.TableItem().Width {
+	if math.Abs(sum-d.TableItem().Width) > 1e-9 {
 		t.Fatalf("the widths of the dropped columns are shared: %v of %v", sum, d.TableItem().Width)
 	}
 	byID := map[string]doctemplates.Item{}
 	for _, bi := range d.Items() {
 		byID[bi.Item.ID] = bi.Item
 	}
-	if it := byID["e7"]; it.Source != "literal" || it.Text != "上海市测试路 1 号" || it.Field != "" {
+	if it := byID["e9"]; it.Source != "literal" || it.Text != "ST-上海-1" || it.Field != "" {
 		t.Fatalf("a literal mapping: %+v", it)
 	}
-	if it := byID["e5"]; it.Source != "field" || it.Field != "customer.id" {
+	if it := byID["e7"]; it.Source != "field" || it.Field != "customer.id" {
 		t.Fatalf("a column mapping: %+v", it)
 	}
-	if it := byID["e13"]; it.Source != "group_sum" || it.Field != "ar.open_balance" {
+	if it := byID["e15"]; it.Source != "group_sum" || it.Field != "ar.open_balance" {
 		t.Fatalf("a group sum: %+v", it)
+	}
+	if it := byID["e17"]; it.Source != "literal" || it.Text != "[本期已收]" {
+		t.Fatalf("a group sum whose column is unmapped: %+v", it)
+	}
+	if it := byID["e11"]; it.Source != "literal" || it.Text != "[业务期间]" {
+		t.Fatalf("an unmapped field: %+v", it)
 	}
 	// The copy is the caller's: readable, listed with the sample's domain and flow, and counted by the store.
 	if request(f.h, "GET", samplesBase+"/"+saved.ID+"?version=1", nil, true).Code != 200 {
@@ -231,7 +243,7 @@ func TestSampleCopyAppliesTheMappingOnTheServerAndSavesLikeASave(t *testing.T) {
 		Catalog struct{ Domain, Flow string }
 	}
 	json.Unmarshal(request(f.h, "GET", samplesBase, nil, true).Body.Bytes(), &list)
-	if len(list) != 1 || list[0].Catalog.Domain != "通用业务" || list[0].Catalog.Flow != "送货" {
+	if len(list) != 1 || list[0].Catalog.Domain != "通用业务" || list[0].Catalog.Flow != "财务" {
 		t.Fatal(list)
 	}
 	// Another identity cannot read it.
@@ -245,29 +257,41 @@ func TestSampleCopyAppliesTheMappingOnTheServerAndSavesLikeASave(t *testing.T) {
 		t.Fatal("another identity lists a copy")
 	}
 	*f.other = false
-	// An unmapped slot is the literal "[<label>]".
-	w = request(f.h, "POST", samplesBase+"/samples/_fixture_delivery_note/copy", f.copyBody(map[string]any{"customer": map[string]string{"column": "customer.id"}, "item": map[string]string{"column": "aging.bucket"}, "amount": map[string]string{"column": "ar.open_balance"}}, ""), true)
+	// The name defaults to the sample's.
+	w = request(f.h, "POST", samplesBase+"/samples/statement/copy", f.copyBody(map[string]any{"customer": map[string]string{"column": "customer.id"}, "ref": map[string]string{"column": "aging.bucket"}, "debit": map[string]string{"column": "ar.open_balance"}}, ""), true)
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	json.Unmarshal(w.Body.Bytes(), &saved)
-	for _, bi := range saved.Config.Items() {
-		if bi.Item.ID == "e7" && (bi.Item.Source != "literal" || bi.Item.Text != "[地址]") {
-			t.Fatalf("an unmapped field: %+v", bi.Item)
-		}
-		if bi.Item.ID == "e9" && (bi.Item.Source != "literal" || bi.Item.Text != "[单号]") {
-			t.Fatalf("an unmapped field: %+v", bi.Item)
-		}
-	}
-	if saved.Config.Name != "送货单（测试夹具）" {
+	if saved.Config.Name != "客户往来对账单" {
 		t.Fatal("the name defaults to the sample's", saved.Config.Name)
+	}
+	// A fixed form is a form: no detail band, no group, the sample's own page; a literal mapping and an unmapped slot are as in any copy.
+	w = request(f.h, "POST", samplesBase+"/samples/usps/copy", f.copyBody(map[string]any{"trackingNumber": map[string]string{"column": "customer.id"}, "recipientName": map[string]string{"literal": "测试收件人"}}, "我的面单"), true)
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &saved)
+	if !saved.Config.Form() || saved.Config.Group != nil || saved.Config.Page.Preset != "label_4x6in" || saved.Config.TableItem() != nil {
+		t.Fatalf("a form: %+v", saved.Config.Bands)
+	}
+	for _, bi := range saved.Config.Items() {
+		if bi.Item.ID == "e9" && (bi.Item.Source != "literal" || bi.Item.Text != "测试收件人") {
+			t.Fatalf("a literal on a form: %+v", bi.Item)
+		}
+		if bi.Item.ID == "e10" && (bi.Item.Source != "literal" || bi.Item.Text != "[收件人公司]") {
+			t.Fatalf("an unmapped slot on a form: %+v", bi.Item)
+		}
+		if bi.Item.ID == "e15" && (bi.Item.Source != "field" || bi.Item.Field != "customer.id") {
+			t.Fatalf("a column on a form: %+v", bi.Item)
+		}
 	}
 }
 
 func TestSampleCopyIsRefusedLikeASave(t *testing.T) {
 	f := newSamplesFixture(t, false)
-	url := samplesBase + "/samples/_fixture_delivery_note/copy"
-	ok := map[string]any{"customer": map[string]string{"column": "customer.id"}, "item": map[string]string{"column": "customer.id"}, "amount": map[string]string{"column": "ar.open_balance"}}
+	url := samplesBase + "/samples/statement/copy"
+	ok := map[string]any{"customer": map[string]string{"column": "customer.id"}, "ref": map[string]string{"column": "customer.id"}, "debit": map[string]string{"column": "ar.open_balance"}}
 	with := func(k string, v any) map[string]any {
 		m := map[string]any{}
 		for a, b := range ok {
@@ -278,25 +302,25 @@ func TestSampleCopyIsRefusedLikeASave(t *testing.T) {
 	}
 	cases := []struct {
 		name string
+		url  string
 		body []byte
 		want int
 	}{
-		{"a column the dataset lacks", f.copyBody(with("order_no", map[string]string{"column": "nothing"}), ""), 403},
-		{"a slot the sample lacks", f.copyBody(with("nothing", map[string]string{"literal": "x"}), ""), 400},
-		{"a mapping with both", f.copyBody(with("order_no", map[string]string{"column": "aging.bucket", "literal": "x"}), ""), 400},
-		{"a mapping with neither", f.copyBody(with("order_no", map[string]string{}), ""), 400},
-		{"a group sum of a dimension", f.copyBody(with("amount", map[string]string{"column": "aging.bucket"}), ""), 403},
-		{"a group field that is a metric", f.copyBody(with("customer", map[string]string{"column": "ar.open_balance"}), ""), 422},
-		{"a name of 81 characters", f.copyBody(ok, strings.Repeat("名", 81)), 400},
-		{"no table column left", f.copyBody(map[string]any{}, ""), 400},
-		{"a text over 256 characters", f.copyBody(with("address", map[string]string{"literal": strings.Repeat("a", 257)}), ""), 400},
-		{"a dataset the caller cannot read", []byte(`{"dataset":{"integration_id":"` + contractsim.FinanceIntegration + `","id":"nothing","version":"1"},"name":"","mapping":{}}`), 403},
-		{"no dataset", []byte(`{"name":"","mapping":{}}`), 400},
-		{"no mapping", []byte(`{"dataset":{"integration_id":"` + contractsim.FinanceIntegration + `","id":"receivables.aging","version":"1.0.0"}}`), 400},
-		{"another key", []byte(`{"dataset":{"integration_id":"x","id":"y","version":"1"},"mapping":{},"x":1}`), 400},
+		{"a column the dataset lacks", url, f.copyBody(with("desc", map[string]string{"column": "nothing"}), ""), 403},
+		{"a slot the sample lacks", url, f.copyBody(with("nothing", map[string]string{"literal": "x"}), ""), 400},
+		{"a mapping with both", url, f.copyBody(with("desc", map[string]string{"column": "aging.bucket", "literal": "x"}), ""), 400},
+		{"a mapping with neither", url, f.copyBody(with("desc", map[string]string{}), ""), 400},
+		{"a group sum of a dimension", url, f.copyBody(with("debit", map[string]string{"column": "aging.bucket"}), ""), 403},
+		{"a name of 81 characters", url, f.copyBody(ok, strings.Repeat("名", 81)), 400},
+		{"no table column left", url, f.copyBody(map[string]any{}, ""), 400},
+		{"a text over 256 characters", url, f.copyBody(with("statement", map[string]string{"literal": strings.Repeat("a", 257)}), ""), 400},
+		{"a dataset the caller cannot read", url, []byte(`{"dataset":{"integration_id":"` + contractsim.FinanceIntegration + `","id":"nothing","version":"1"},"name":"","mapping":{}}`), 403},
+		{"no dataset", url, []byte(`{"name":"","mapping":{}}`), 400},
+		{"no mapping", url, []byte(`{"dataset":{"integration_id":"` + contractsim.FinanceIntegration + `","id":"receivables.aging","version":"1.0.0"}}`), 400},
+		{"another key", url, []byte(`{"dataset":{"integration_id":"x","id":"y","version":"1"},"mapping":{},"x":1}`), 400},
 	}
 	for _, c := range cases {
-		if w := request(f.h, "POST", url, c.body, true); w.Code != c.want {
+		if w := request(f.h, "POST", c.url, c.body, true); w.Code != c.want {
 			t.Errorf("%s: %d, want %d: %s", c.name, w.Code, c.want, w.Body.String())
 		}
 	}
@@ -304,7 +328,7 @@ func TestSampleCopyIsRefusedLikeASave(t *testing.T) {
 		t.Fatal("anonymous or unknown sample")
 	}
 	// A body over the document bound (1 MiB) is 413 before it is parsed.
-	big := f.copyBody(with("address", map[string]string{"literal": strings.Repeat("a", 1<<20)}), "")
+	big := f.copyBody(with("statement", map[string]string{"literal": strings.Repeat("a", 1<<20)}), "")
 	if w := request(f.h, "POST", url, big, true); w.Code != 413 {
 		t.Errorf("a body over 1 MiB: %d", w.Code)
 	}
@@ -320,8 +344,8 @@ func TestSampleCopyCountsAgainstThePerIdentityCap(t *testing.T) {
 	if doctemplates.MaxTemplates != 64 {
 		t.Fatal("the cap is 64")
 	}
-	url := samplesBase + "/samples/_fixture_parcel_label/copy"
-	body := f.copyBody(map[string]any{"tracking_no": map[string]string{"column": "customer.id"}, "sku": map[string]string{"column": "aging.bucket"}, "pieces": map[string]string{"column": "ar.open_balance"}}, "")
+	url := samplesBase + "/samples/usps/copy"
+	body := f.copyBody(map[string]any{"trackingNumber": map[string]string{"column": "customer.id"}}, "")
 	for i := range 64 {
 		if w := request(f.h, "POST", url, body, true); w.Code != 201 {
 			t.Fatalf("copy %d: %d %s", i+1, w.Code, w.Body.String())
