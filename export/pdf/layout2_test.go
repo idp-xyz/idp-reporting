@@ -1026,3 +1026,47 @@ func TestGroupDigitsIsTheTablesRule(t *testing.T) {
 		}
 	}
 }
+
+// A form (S06-B) has no detail band: its bands are stacked on one page, with no rows, no carried sums and no carry line; what does not fit
+// the page is refused as DOES_NOT_FIT, never cut.
+func TestAFormLaysOutItsBandsOnOnePageWithNoTable(t *testing.T) {
+	d := banded(doctemplates.Bands{
+		PageHeader:     fixedBand(60, textItem("e1", "field", "customer", 0, 0, 80, 6, 10, "left")),
+		DocumentHeader: fixedBand(40, textItem("e2", "literal", "表头", 0, 0, 80, 6, 10, "left")),
+		DocumentFooter: fixedBand(30, textItem("e3", "literal", "表尾", 0, 0, 80, 6, 10, "left")),
+		PageFooter:     fixedBand(10, textItem("e4", "page", "{page}/{pages}", 0, 0, 40, 6, 8, "right")),
+	})
+	p, err := layOut(d, valuesFor(d, map[string]string{"e1": "客户"}), nil, nil, plainFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Pages) != 1 || len(p.Pages[0].Cells) != 0 || len(p.Pages[0].Rules) != 0 {
+		t.Fatalf("one page, no cells, no rules: %d pages, %d cells, %d rules", len(p.Pages), len(p.Pages[0].Cells), len(p.Pages[0].Rules))
+	}
+	for _, g := range p.Pages[0].Texts {
+		if strings.Contains(string(g.Text), "过次") || strings.Contains(string(g.Text), "合计") || strings.Contains(string(g.Text), "承前") {
+			t.Fatalf("a carried or total line on a form: %q", g.Text)
+		}
+	}
+	// The document footer is directly under the document header, on the one page.
+	if p.Footer == nil || p.Footer.Page != 1 || math.Abs(p.Footer.Top-(25+60+40)*mm) > 1e-6 {
+		t.Fatalf("footer %+v", p.Footer)
+	}
+	// A table with it is no form's, and a form takes no table data.
+	if _, err := layOut(d, valuesFor(d, nil), nil, groupRows(1, 0), plainFake()); !errors.Is(err, r.ErrInvalid) {
+		t.Fatalf("a form with table data: %v", err)
+	}
+	// Bands that exceed the page: 60 + 40 + 100 + 10 > 245.
+	big := banded(doctemplates.Bands{PageHeader: fixedBand(60, textItem("e1", "literal", "a", 0, 0, 20, 6, 10, "left")), DocumentHeader: fixedBand(40, textItem("e2", "literal", "b", 0, 0, 20, 6, 10, "left")),
+		DocumentFooter: fixedBand(100, textItem("e3", "literal", "c", 0, 0, 20, 6, 10, "left")), PageFooter: fixedBand(50, textItem("e4", "literal", "d", 0, 0, 20, 6, 10, "left"))})
+	_, err = layOut(big, valuesFor(big, nil), nil, nil, plainFake())
+	detail, ok := doctemplates.DetailOf(err)
+	if !errors.Is(err, r.ErrUnsupported) || !ok || detail.Reason != doctemplates.ReasonDoesNotFit {
+		t.Fatalf("bands beyond the page: %v %+v", err, detail)
+	}
+	// Exactly the page fits: 245 mm of bands.
+	exact := banded(doctemplates.Bands{PageHeader: fixedBand(100, textItem("e1", "literal", "a", 0, 0, 20, 6, 10, "left")), DocumentFooter: fixedBand(145, textItem("e3", "literal", "c", 0, 0, 20, 6, 10, "left"))})
+	if _, err = layOut(exact, valuesFor(exact, nil), nil, nil, plainFake()); err != nil {
+		t.Fatalf("245 mm of bands: %v", err)
+	}
+}

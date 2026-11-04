@@ -102,8 +102,8 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 			if e != nil {
 				return e
 			}
-			banded := entry.Layout.Banded()
-			// A 1.x template has rows and no group.
+			banded := entry.Layout.Banded() && !entry.Layout.IssuedByRow()
+			// A template issued by row (1.x, or a form with no group fields) has rows and no group.
 			if !banded && input.Group != nil {
 				return r.ErrInvalid
 			}
@@ -123,6 +123,16 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 				if in.Group, e = resolveIssueGroup(entry.Layout, snap, input.RowIndex, input.Group); e != nil {
 					return e
 				}
+			} else if entry.Layout.Banded() {
+				// A form without group fields: the document of the row, bound as a preview binds it.
+				group, e := doctemplates.GroupOf(entry.Layout, snap, *input.RowIndex)
+				if e != nil {
+					return e
+				}
+				if _, _, e = doctemplates.BindGroup(entry.Layout, snap, group); e != nil {
+					return e
+				}
+				in.RowIndex = *input.RowIndex
 			} else {
 				if _, e = doctemplates.Bind(entry.Layout, snap, *input.RowIndex); e != nil {
 					return e

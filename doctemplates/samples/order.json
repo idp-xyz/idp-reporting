@@ -1,0 +1,795 @@
+{
+ "kind": "order",
+ "name": "销售订单",
+ "domain": "通用业务",
+ "flow": "销售",
+ "description": "订单商品、数量、单价与货款",
+ "fields": [
+  {
+   "id": "customer",
+   "label": "客户名称",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "statement",
+   "label": "单据编号",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "period",
+   "label": "业务期间",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "currency",
+   "label": "结算币种",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "quantity",
+   "label": "数量",
+   "type": "integer",
+   "scope": "row",
+   "metric": true
+  },
+  {
+   "id": "amount",
+   "label": "订单金额",
+   "type": "decimal",
+   "scope": "row",
+   "metric": true,
+   "scale": 2
+  },
+  {
+   "id": "sku",
+   "label": "商品编码",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "desc",
+   "label": "商品名称",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "unitPrice",
+   "label": "单价",
+   "type": "decimal",
+   "scope": "row",
+   "scale": 2
+  }
+ ],
+ "rows": [
+  {
+   "amount": "300.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "12",
+   "sku": "TR-2601-01",
+   "statement": "SO-2026-1027",
+   "unitPrice": "25.00"
+  },
+  {
+   "amount": "456.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "16",
+   "sku": "TR-2608-02",
+   "statement": "SO-2026-1027",
+   "unitPrice": "28.50"
+  },
+  {
+   "amount": "640.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "20",
+   "sku": "TR-2612-03",
+   "statement": "SO-2026-1027",
+   "unitPrice": "32.00"
+  },
+  {
+   "amount": "852.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "24",
+   "sku": "TR-2601-04",
+   "statement": "SO-2026-1027",
+   "unitPrice": "35.50"
+  },
+  {
+   "amount": "1092.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "28",
+   "sku": "TR-2608-05",
+   "statement": "SO-2026-1027",
+   "unitPrice": "39.00"
+  },
+  {
+   "amount": "1360.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "32",
+   "sku": "TR-2612-06",
+   "statement": "SO-2026-1027",
+   "unitPrice": "42.50"
+  },
+  {
+   "amount": "1656.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "36",
+   "sku": "TR-2601-07",
+   "statement": "SO-2026-1027",
+   "unitPrice": "46.00"
+  },
+  {
+   "amount": "1000.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "40",
+   "sku": "TR-2608-08",
+   "statement": "SO-2026-1027",
+   "unitPrice": "25.00"
+  },
+  {
+   "amount": "1254.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "44",
+   "sku": "TR-2612-09",
+   "statement": "SO-2026-1027",
+   "unitPrice": "28.50"
+  },
+  {
+   "amount": "384.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "12",
+   "sku": "TR-2601-10",
+   "statement": "SO-2026-1027",
+   "unitPrice": "32.00"
+  },
+  {
+   "amount": "568.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "16",
+   "sku": "TR-2608-11",
+   "statement": "SO-2026-1027",
+   "unitPrice": "35.50"
+  },
+  {
+   "amount": "780.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "20",
+   "sku": "TR-2612-12",
+   "statement": "SO-2026-1027",
+   "unitPrice": "39.00"
+  },
+  {
+   "amount": "1020.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "24",
+   "sku": "TR-2601-13",
+   "statement": "SO-2026-1027",
+   "unitPrice": "42.50"
+  },
+  {
+   "amount": "1288.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "28",
+   "sku": "TR-2608-14",
+   "statement": "SO-2026-1027",
+   "unitPrice": "46.00"
+  },
+  {
+   "amount": "800.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "32",
+   "sku": "TR-2612-15",
+   "statement": "SO-2026-1027",
+   "unitPrice": "25.00"
+  },
+  {
+   "amount": "1026.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "36",
+   "sku": "TR-2601-16",
+   "statement": "SO-2026-1027",
+   "unitPrice": "28.50"
+  },
+  {
+   "amount": "1280.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "40",
+   "sku": "TR-2608-17",
+   "statement": "SO-2026-1027",
+   "unitPrice": "32.00"
+  },
+  {
+   "amount": "1562.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "44",
+   "sku": "TR-2612-18",
+   "statement": "SO-2026-1027",
+   "unitPrice": "35.50"
+  },
+  {
+   "amount": "468.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "12",
+   "sku": "TR-2601-19",
+   "statement": "SO-2026-1027",
+   "unitPrice": "39.00"
+  },
+  {
+   "amount": "680.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "16",
+   "sku": "TR-2608-20",
+   "statement": "SO-2026-1027",
+   "unitPrice": "42.50"
+  },
+  {
+   "amount": "920.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "20",
+   "sku": "TR-2612-21",
+   "statement": "SO-2026-1027",
+   "unitPrice": "46.00"
+  },
+  {
+   "amount": "600.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "24",
+   "sku": "TR-2601-22",
+   "statement": "SO-2026-1027",
+   "unitPrice": "25.00"
+  },
+  {
+   "amount": "798.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "28",
+   "sku": "TR-2608-23",
+   "statement": "SO-2026-1027",
+   "unitPrice": "28.50"
+  },
+  {
+   "amount": "1024.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "客户到款核销",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "32",
+   "sku": "TR-2612-24",
+   "statement": "SO-2026-1027",
+   "unitPrice": "32.00"
+  },
+  {
+   "amount": "1278.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "定制产品交付结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "36",
+   "sku": "TR-2601-25",
+   "statement": "SO-2026-1027",
+   "unitPrice": "35.50"
+  },
+  {
+   "amount": "1560.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "常规采购订单结算",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "40",
+   "sku": "TR-2608-26",
+   "statement": "SO-2026-1027",
+   "unitPrice": "39.00"
+  },
+  {
+   "amount": "1870.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "国际运输及包装服务",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "44",
+   "sku": "TR-2612-27",
+   "statement": "SO-2026-1027",
+   "unitPrice": "42.50"
+  },
+  {
+   "amount": "552.00",
+   "currency": "美元 / USD",
+   "customer": "上海云川实业有限公司",
+   "desc": "项目补充货款",
+   "period": "2026.10.01 — 2026.10.31",
+   "quantity": "12",
+   "sku": "TR-2601-28",
+   "statement": "SO-2026-1027",
+   "unitPrice": "46.00"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "page": {
+   "preset": "a4"
+  },
+  "bands": {
+   "page_header": {
+    "height": 33,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "rect",
+      "x": 8,
+      "y": 7,
+      "width": 72,
+      "height": 12,
+      "stroke": 0.75,
+      "fill": "none"
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "literal",
+      "text": "企业标识",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 10.5,
+      "width": 72,
+      "height": 5,
+      "font_size": 9,
+      "align": "center",
+      "bold": false
+     },
+     {
+      "id": "e3",
+      "type": "text",
+      "source": "literal",
+      "text": "销售订单",
+      "field": "",
+      "wrap": false,
+      "x": 100,
+      "y": 3,
+      "width": 82,
+      "height": 13,
+      "font_size": 22,
+      "align": "right",
+      "bold": true
+     },
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "literal",
+      "text": "SALES ORDER",
+      "field": "",
+      "wrap": false,
+      "x": 100,
+      "y": 18,
+      "width": 82,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e5",
+      "type": "line",
+      "x1": 8,
+      "y1": 31.2,
+      "x2": 182,
+      "y2": 31.2,
+      "stroke": 0.75
+     }
+    ]
+   },
+   "document_header": {
+    "height": 62,
+    "elements": [
+     {
+      "id": "e6",
+      "type": "text",
+      "source": "literal",
+      "text": "客户名称",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 5,
+      "width": 104,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "customer",
+      "wrap": false,
+      "x": 8,
+      "y": 10,
+      "width": 104,
+      "height": 8,
+      "font_size": 12,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "literal",
+      "text": "单据编号",
+      "field": "",
+      "wrap": false,
+      "x": 122,
+      "y": 5,
+      "width": 60,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "statement",
+      "wrap": false,
+      "x": 122,
+      "y": 10,
+      "width": 60,
+      "height": 8,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e10",
+      "type": "text",
+      "source": "literal",
+      "text": "业务期间",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 22,
+      "width": 104,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e11",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "period",
+      "wrap": false,
+      "x": 8,
+      "y": 27,
+      "width": 104,
+      "height": 6,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "literal",
+      "text": "结算币种",
+      "field": "",
+      "wrap": false,
+      "x": 122,
+      "y": 22,
+      "width": 60,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "currency",
+      "wrap": false,
+      "x": 122,
+      "y": 27,
+      "width": 60,
+      "height": 6,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "literal",
+      "text": "数量 · 范围合计",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 38,
+      "width": 86,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "text",
+      "source": "group_sum",
+      "text": "",
+      "field": "quantity",
+      "wrap": false,
+      "x": 8,
+      "y": 43,
+      "width": 86,
+      "height": 8,
+      "font_size": 12,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e16",
+      "type": "text",
+      "source": "literal",
+      "text": "订单金额 · 范围合计",
+      "field": "",
+      "wrap": false,
+      "x": 95,
+      "y": 38,
+      "width": 86,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e17",
+      "type": "text",
+      "source": "group_sum",
+      "text": "",
+      "field": "amount",
+      "wrap": false,
+      "x": 95,
+      "y": 43,
+      "width": 86,
+      "height": 8,
+      "font_size": 12,
+      "align": "left",
+      "bold": true
+     }
+    ]
+   },
+   "detail": {
+    "elements": [
+     {
+      "id": "e18",
+      "type": "table",
+      "x": 8,
+      "width": 174,
+      "font_size": 9,
+      "columns": [
+       {
+        "field": "sku",
+        "width": 36,
+        "align": "left",
+        "label": "商品编码"
+       },
+       {
+        "field": "desc",
+        "width": 31.2,
+        "align": "left",
+        "label": "商品名称"
+       },
+       {
+        "field": "quantity",
+        "width": 42.7,
+        "align": "right",
+        "label": "数量"
+       },
+       {
+        "field": "unitPrice",
+        "width": 32.1,
+        "align": "right",
+        "label": "单价"
+       },
+       {
+        "field": "amount",
+        "width": 32,
+        "align": "right",
+        "label": "订单金额"
+       }
+      ]
+     }
+    ]
+   },
+   "document_footer": {
+    "height": 29,
+    "elements": [
+     {
+      "id": "e19",
+      "type": "text",
+      "source": "literal",
+      "text": "请核对以上业务明细，如有差异，请于收到本单后 5 个工作日内与我们联系。\n本单据为业务核对凭据，款项以实际到账及双方确认为准。",
+      "field": "",
+      "wrap": true,
+      "x": 8,
+      "y": 2,
+      "width": 174,
+      "height": 12,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e20",
+      "type": "rect",
+      "x": 8,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "stroke": 0.5,
+      "fill": "none"
+     },
+     {
+      "id": "e21",
+      "type": "text",
+      "source": "literal",
+      "text": "客户确认 / 签章",
+      "field": "",
+      "wrap": false,
+      "x": 8,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e22",
+      "type": "rect",
+      "x": 112,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "stroke": 0.5,
+      "fill": "none"
+     },
+     {
+      "id": "e23",
+      "type": "text",
+      "source": "literal",
+      "text": "制单人 / 日期",
+      "field": "",
+      "wrap": false,
+      "x": 112,
+      "y": 19,
+      "width": 70,
+      "height": 7,
+      "font_size": 10,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "page_footer": {
+    "height": 10,
+    "elements": [
+     {
+      "id": "e24",
+      "type": "text",
+      "source": "literal",
+      "text": "远山贸易 · 业务往来核对",
+      "field": "",
+      "wrap": true,
+      "x": 8,
+      "y": 0,
+      "width": 94.7,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e25",
+      "type": "text",
+      "source": "page",
+      "text": "第 {page} / {pages} 页",
+      "field": "",
+      "wrap": false,
+      "x": 103.7,
+      "y": 0,
+      "width": 78.3,
+      "height": 9,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     }
+    ]
+   }
+  }
+ }
+}

@@ -58,7 +58,11 @@ type bandedLayout struct {
 // exact sums) between the bands above and below it.
 func layOutBanded(d doctemplates.Document, values map[string]string, background []byte, table *doctemplates.TableData, m *measurer, c coded) (*page, error) {
 	t := d.TableItem()
-	if t == nil || table == nil || len(table.Columns) != len(t.Columns) || len(table.Metric) != len(t.Columns) {
+	if d.Form() {
+		if t != nil || table != nil {
+			return nil, r.ErrInvalid
+		}
+	} else if t == nil || table == nil || len(table.Columns) != len(t.Columns) || len(table.Metric) != len(t.Columns) {
 		return nil, r.ErrInvalid
 	}
 	pre, ok := d.PagePreset()
@@ -90,42 +94,57 @@ func layOutBanded(d doctemplates.Document, values map[string]string, background 
 		return band.Height
 	}
 	ph, dh, df, pf := height(d.Bands.PageHeader), height(d.Bands.DocumentHeader), height(d.Bands.DocumentFooter), height(d.Bands.PageFooter)
-	// The detail band's room on each page: below the page header (and on the first page the
-	// document header) down to the page footer.
-	spec := tableSpec{size: float64(t.FontSize), full: !variables, left: (b.x0 + t.X) * mm, top: (safeTop + ph + dh) * mm, width: t.Width, band: doctemplates.BandDetail, element: t.ID}
-	for _, c := range t.Columns {
-		spec.columns = append(spec.columns, specColumn{field: c.Field, width: c.Width, align: c.Align, label: c.Label})
-	}
-	lay, running, zero, err := newTableLayout(spec, table, m)
-	if err != nil {
-		return nil, err
-	}
-	lay.bottom = (safeBottom - pf) * mm
-	lay.top1 = func(number int) float64 {
-		if number == 1 {
-			return (safeTop + ph + dh) * mm
+	var footerPage int
+	var footerTop, bottom float64
+	if t == nil {
+		// A form (S06-B): its bands are stacked on one page, the document footer directly under the document header; what does not fit the
+		// page is refused, never cut.
+		bottom = (safeBottom - pf) * mm
+		footerTop = (safeTop + ph + dh) * mm
+		if footerTop+df*mm > bottom+fitEpsilon {
+			return nil, refuse(doctemplates.ReasonDoesNotFit, doctemplates.Detail{}, "pdf: the bands of the form do not fit the page")
 		}
-		return (safeTop + ph) * mm
-	}
-	if err := lay.paginate(p, running, zero); err != nil {
-		return nil, err
-	}
-	// The document footer follows the total row, whole: on a page of its own, below the page
-	// header, when the last table page has not room for it.
-	footerPage, footerTop := 0, 0.0
-	if d.Bands.DocumentFooter != nil {
-		fits := func(top float64) bool { return top+df*mm <= lay.bottom+fitEpsilon }
-		footerPage, footerTop = len(p.Pages), lay.end
-		if !fits(footerTop) {
-			footerTop = (safeTop + ph) * mm
+		if d.Bands.DocumentFooter != nil {
+			footerPage = 1
+		}
+	} else {
+		// The detail band's room on each page: below the page header (and on the first page the
+		// document header) down to the page footer.
+		spec := tableSpec{size: float64(t.FontSize), full: !variables, left: (b.x0 + t.X) * mm, top: (safeTop + ph + dh) * mm, width: t.Width, band: doctemplates.BandDetail, element: t.ID}
+		for _, c := range t.Columns {
+			spec.columns = append(spec.columns, specColumn{field: c.Field, width: c.Width, align: c.Align, label: c.Label})
+		}
+		lay, running, zero, err := newTableLayout(spec, table, m)
+		if err != nil {
+			return nil, err
+		}
+		lay.bottom = (safeBottom - pf) * mm
+		lay.top1 = func(number int) float64 {
+			if number == 1 {
+				return (safeTop + ph + dh) * mm
+			}
+			return (safeTop + ph) * mm
+		}
+		if err := lay.paginate(p, running, zero); err != nil {
+			return nil, err
+		}
+		bottom = lay.bottom
+		// The document footer follows the total row, whole: on a page of its own, below the page
+		// header, when the last table page has not room for it.
+		if d.Bands.DocumentFooter != nil {
+			fits := func(top float64) bool { return top+df*mm <= lay.bottom+fitEpsilon }
+			footerPage, footerTop = len(p.Pages), lay.end
 			if !fits(footerTop) {
-				return nil, refuse(doctemplates.ReasonBandOverflow, doctemplates.Detail{Band: doctemplates.BandDocumentFooter}, "pdf: the document footer does not fit an empty page")
+				footerTop = (safeTop + ph) * mm
+				if !fits(footerTop) {
+					return nil, refuse(doctemplates.ReasonBandOverflow, doctemplates.Detail{Band: doctemplates.BandDocumentFooter}, "pdf: the document footer does not fit an empty page")
+				}
+				if len(p.Pages) >= maxPages {
+					return nil, refuse(doctemplates.ReasonTooManyPages, doctemplates.Detail{}, "pdf: the document needs more than %d pages", maxPages)
+				}
+				p.Pages = append(p.Pages, newPage(nil))
+				footerPage = len(p.Pages)
 			}
-			if len(p.Pages) >= maxPages {
-				return nil, refuse(doctemplates.ReasonTooManyPages, doctemplates.Detail{}, "pdf: the document needs more than %d pages", maxPages)
-			}
-			p.Pages = append(p.Pages, newPage(nil))
-			footerPage = len(p.Pages)
 		}
 	}
 	if footerPage > 0 {
@@ -150,7 +169,7 @@ func layOutBanded(d doctemplates.Document, values map[string]string, background 
 			}
 		}
 		if band := d.Bands.PageFooter; band != nil {
-			if err := b.place(pg, doctemplates.BandPageFooter, band, lay.bottom, n, pages); err != nil {
+			if err := b.place(pg, doctemplates.BandPageFooter, band, bottom, n, pages); err != nil {
 				return nil, err
 			}
 		}

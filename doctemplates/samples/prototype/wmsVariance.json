@@ -1,0 +1,720 @@
+{
+ "catalog": {
+  "domain": "wms",
+  "flow": "counting",
+  "domain_label": "仓储 WMS",
+  "flow_label": "盘点"
+ },
+ "source": {
+  "template_name": "WMS · 盘点差异表",
+  "kind": "wmsVariance",
+  "versions": 1,
+  "published": 1,
+  "file": "wmsVariance"
+ },
+ "doc": {
+  "schema": "studio-uiux-2.6",
+  "name": "WMS · 盘点差异表",
+  "kind": "wmsVariance",
+  "datasetId": "wmsVariance",
+  "tradeMap": {
+   "documentRef": "documentRef",
+   "lineId": "lineId",
+   "ownerCode": "ownerCode",
+   "warehouseCode": "warehouseCode",
+   "sku": "sku",
+   "description": "description",
+   "batch": "batch",
+   "unit": "unit",
+   "location": "location",
+   "bookQty": "bookQty",
+   "countedQty": "countedQty",
+   "difference": "difference",
+   "reason": "reason"
+  },
+  "page": {
+   "preset": "A4",
+   "width": 210,
+   "height": 297,
+   "orientation": "portrait",
+   "margins": {
+    "top": 12,
+    "bottom": 12,
+    "left": 12,
+    "right": 12
+   },
+   "mode": "full",
+   "offsetX": 0,
+   "offsetY": 0,
+   "background": "",
+   "opacity": 0.2
+  },
+  "bands": {
+   "pageHeader": 27,
+   "reportHeader": 52,
+   "reportFooter": 33,
+   "pageFooter": 9
+  },
+  "parameters": [],
+  "nodes": [
+   {
+    "id": "n1",
+    "type": "text",
+    "band": "pageHeader",
+    "x": 12,
+    "y": 0,
+    "w": 186,
+    "h": 9,
+    "name": "盘点差异表 / COUNT VARIANCE",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 15,
+     "color": "#263b56",
+     "bold": true,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "text": "盘点差异表 / COUNT VARIANCE"
+   },
+   {
+    "id": "n2",
+    "type": "field",
+    "band": "pageHeader",
+    "x": 12,
+    "y": 12,
+    "w": 113,
+    "h": 9,
+    "name": "单据编号",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "documentNo",
+    "label": "单据编号",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n3",
+    "type": "field",
+    "band": "pageHeader",
+    "x": 132,
+    "y": 12,
+    "w": 66,
+    "h": 9,
+    "name": "日期",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "issueDate",
+    "label": "日期",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n4",
+    "type": "line",
+    "band": "pageHeader",
+    "x": 12,
+    "y": 25,
+    "w": 186,
+    "h": 0.3,
+    "name": "页眉分隔线",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 10,
+     "color": "#6c859b",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.4,
+     "letterSpace": 0
+    }
+   },
+   {
+    "id": "n5",
+    "type": "field",
+    "band": "reportHeader",
+    "x": 12,
+    "y": 0,
+    "w": 88,
+    "h": 11,
+    "name": "货主",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "wmsOwner",
+    "label": "货主",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n6",
+    "type": "field",
+    "band": "reportHeader",
+    "x": 108,
+    "y": 0,
+    "w": 90,
+    "h": 11,
+    "name": "仓库",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "wmsWarehouse",
+    "label": "仓库",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n7",
+    "type": "field",
+    "band": "reportHeader",
+    "x": 12,
+    "y": 13,
+    "w": 88,
+    "h": 11,
+    "name": "来源单 / 波次",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "sourceRef",
+    "label": "来源单 / 波次",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n8",
+    "type": "field",
+    "band": "reportHeader",
+    "x": 108,
+    "y": 13,
+    "w": 90,
+    "h": 11,
+    "name": "时点（含时区）",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 7.7,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "asOf",
+    "label": "时点（含时区）",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n9",
+    "type": "field",
+    "band": "reportHeader",
+    "x": 12,
+    "y": 26,
+    "w": 186,
+    "h": 11,
+    "name": "业务伙伴",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "partner",
+    "label": "业务伙伴",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n10",
+    "type": "text",
+    "band": "reportHeader",
+    "x": 12,
+    "y": 40,
+    "w": 186,
+    "h": 10,
+    "name": "差异=实盘−账面；差异原因必填；审核前不得据此直接调整库存。",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 7.6,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "text": "差异=实盘−账面；差异原因必填；审核前不得据此直接调整库存。"
+   },
+   {
+    "id": "n11",
+    "type": "table",
+    "band": "detail",
+    "x": 12,
+    "y": 0,
+    "w": 186,
+    "h": 80,
+    "name": "WMS 动态明细",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8,
+     "color": "#25334a",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "rowsPerPage": 0,
+    "minRowHeight": 8,
+    "padding": 1.2,
+    "wrap": true,
+    "repeatHeader": true,
+    "striped": false,
+    "groupField": "",
+    "groupTotals": false,
+    "carry": false,
+    "subtotal": false,
+    "sortField": "",
+    "sortDirection": "asc",
+    "negativeRed": true,
+    "headerColor": "#eaf1f7",
+    "columns": [
+     {
+      "field": "location",
+      "label": "库位",
+      "width": 25,
+      "align": "left",
+      "format": "auto"
+     },
+     {
+      "field": "sku",
+      "label": "SKU",
+      "width": 25,
+      "align": "left",
+      "format": "auto"
+     },
+     {
+      "field": "batch",
+      "label": "批次",
+      "width": 25,
+      "align": "left",
+      "format": "auto"
+     },
+     {
+      "field": "unit",
+      "label": "单位",
+      "width": 14,
+      "align": "left",
+      "format": "auto"
+     },
+     {
+      "field": "bookQty",
+      "label": "账面",
+      "width": 26,
+      "align": "right",
+      "format": "auto"
+     },
+     {
+      "field": "countedQty",
+      "label": "实盘",
+      "width": 26,
+      "align": "right",
+      "format": "auto"
+     },
+     {
+      "field": "difference",
+      "label": "差异",
+      "width": 25,
+      "align": "right",
+      "format": "auto"
+     },
+     {
+      "field": "reason",
+      "label": "原因",
+      "width": 40,
+      "align": "left",
+      "format": "auto"
+     }
+    ]
+   },
+   {
+    "id": "n12",
+    "type": "field",
+    "band": "reportFooter",
+    "x": 12,
+    "y": 1,
+    "w": 186,
+    "h": 10,
+    "name": "数量汇总 / 按基础单位",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "wmsTotals",
+    "label": "数量汇总 / 按基础单位",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n13",
+    "type": "field",
+    "band": "reportFooter",
+    "x": 12,
+    "y": 14,
+    "w": 56,
+    "h": 10,
+    "name": "制单 / 作业人",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "operator",
+    "label": "制单 / 作业人",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n14",
+    "type": "field",
+    "band": "reportFooter",
+    "x": 76,
+    "y": 14,
+    "w": 56,
+    "h": 10,
+    "name": "审核 / 接收人",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "approver",
+    "label": "审核 / 接收人",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n15",
+    "type": "field",
+    "band": "reportFooter",
+    "x": 140,
+    "y": 14,
+    "w": 58,
+    "h": 10,
+    "name": "明细行数",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 8.5,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "field": "wmsRows",
+    "label": "明细行数",
+    "scope": "meta",
+    "format": "text"
+   },
+   {
+    "id": "n16",
+    "type": "text",
+    "band": "reportFooter",
+    "x": 12,
+    "y": 27,
+    "w": 186,
+    "h": 5,
+    "name": "本地设计样张 · 不执行收货、库存调整或出库确认",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 6.8,
+     "color": "#263b56",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.2,
+     "letterSpace": 0
+    },
+    "text": "本地设计样张 · 不执行收货、库存调整或出库确认"
+   },
+   {
+    "id": "n17",
+    "type": "pageNumber",
+    "band": "pageFooter",
+    "x": 12,
+    "y": 0,
+    "w": 186,
+    "h": 8,
+    "name": "页码",
+    "hidden": false,
+    "locked": false,
+    "group": "",
+    "style": {
+     "font": "sans",
+     "size": 7,
+     "color": "#687a91",
+     "bold": false,
+     "italic": false,
+     "align": "left",
+     "lineHeight": 1.4,
+     "letterSpace": 0
+    },
+    "text": "WMS · DESIGN SAMPLE",
+    "pattern": "第 {page} / {pages} 页"
+   }
+  ]
+ },
+ "dataset": {
+  "id": "wmsVariance",
+  "name": "WMS · 盘点差异表",
+  "product": "WMS · 单仓单货主示例契约",
+  "description": "差异=实盘−账面；差异原因必填；审核前不得据此直接调整库存。",
+  "fields": [
+   {
+    "id": "documentRef",
+    "label": "报表/单据编号",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "lineId",
+    "label": "行标识",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "ownerCode",
+    "label": "货主编码",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "warehouseCode",
+    "label": "仓库编码",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "sku",
+    "label": "SKU",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "description",
+    "label": "商品名称",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "batch",
+    "label": "批次",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "unit",
+    "label": "基础单位",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "location",
+    "label": "库位",
+    "type": "string",
+    "scale": 0
+   },
+   {
+    "id": "bookQty",
+    "label": "账面数量",
+    "type": "decimal",
+    "scale": 3
+   },
+   {
+    "id": "countedQty",
+    "label": "实盘数量",
+    "type": "decimal",
+    "scale": 3
+   },
+   {
+    "id": "difference",
+    "label": "差异（自动）",
+    "type": "decimal",
+    "scale": 3
+   },
+   {
+    "id": "reason",
+    "label": "差异原因",
+    "type": "string",
+    "scale": 0
+   }
+  ]
+ },
+ "rows": [
+  {
+   "documentRef": "DEMO-WMSVARIANCE-001",
+   "lineId": "1",
+   "ownerCode": "DEMO-OWNER",
+   "warehouseCode": "SHA01",
+   "sku": "SKU-0001",
+   "description": "示例工业配件 1",
+   "batch": "LOT-261028",
+   "unit": "PCS",
+   "location": "A-01-01",
+   "bookQty": "100.000",
+   "countedQty": "100.000",
+   "difference": "0.000",
+   "reason": ""
+  },
+  {
+   "documentRef": "DEMO-WMSVARIANCE-001",
+   "lineId": "2",
+   "ownerCode": "DEMO-OWNER",
+   "warehouseCode": "SHA01",
+   "sku": "SKU-0002",
+   "description": "示例工业配件 2",
+   "batch": "LOT-261028",
+   "unit": "PCS",
+   "location": "A-01-02",
+   "bookQty": "100.000",
+   "countedQty": "100.000",
+   "difference": "0.000",
+   "reason": ""
+  },
+  {
+   "documentRef": "DEMO-WMSVARIANCE-001",
+   "lineId": "3",
+   "ownerCode": "DEMO-OWNER",
+   "warehouseCode": "SHA01",
+   "sku": "SKU-0003",
+   "description": "示例工业配件 3",
+   "batch": "LOT-261028",
+   "unit": "SET",
+   "location": "A-01-03",
+   "bookQty": "100.000",
+   "countedQty": "100.000",
+   "difference": "0.000",
+   "reason": ""
+  }
+ ],
+ "meta": {
+  "documentNo": "DEMO-WMSVARIANCE-001",
+  "issueDate": "2026-10-28",
+  "wmsOwner": "DEMO-OWNER / 示例货主",
+  "wmsWarehouse": "SHA01 / 上海示例仓",
+  "sourceRef": "DEMO-TASK-1028",
+  "asOf": "2026-10-28T16:00:00+08:00",
+  "partner": "示例业务伙伴",
+  "wmsTotals": "0.000 PCS / 0.000 SET",
+  "operator": "示例制单员",
+  "approver": "待审核 / 待签收",
+  "wmsRows": "3 行"
+ }
+}

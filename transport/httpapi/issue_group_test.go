@@ -386,3 +386,76 @@ func TestIssueByGroupWithoutAuthenticationIsRefused(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+// A form with no group fields (S06-B) is one document per row, so it is issued for a row as a 1.x template is: `row_index` alone, the job and
+// the record carry the row and no group, the product is asked once, and the document is the row's own values. The sample `usps`, copied onto the dataset.
+func TestIssueOfAFormWithoutGroupFieldsIsIssuedByRow(t *testing.T) {
+	v := newIssueHTTP(t, nil)
+	v.groupedSnapshot()
+	sample, _, _ := doctemplates.SampleByKind("usps")
+	col := func(c string) doctemplates.FieldMapping { return doctemplates.FieldMapping{Column: &c} }
+	d, err := sample.Bind(doctemplates.Binding{Integration: contractsim.FinanceIntegration, Dataset: contractsim.FinancialQuery().Dataset}, "面单",
+		map[string]doctemplates.FieldMapping{"recipientName": col("customer.id"), "packageCount": col("ar.open_balance"), "linearPayload": col("customer.id")})
+	if err != nil || !d.Form() || d.Group != nil {
+		t.Fatal(d.Group, err)
+	}
+	var name, count string
+	for _, bi := range d.Items() {
+		if bi.Item.Field == "customer.id" && bi.Item.Type == "text" {
+			name = bi.Item.ID
+		}
+		if bi.Item.Field == "ar.open_balance" {
+			count = bi.Item.ID
+		}
+	}
+	saved, e := v.store.Save(v.p.Identity, "", 0, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = v.store.Publish(v.p.Identity, saved.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	// Row 2 of the snapshot (index 1): customer_b, 20.00.
+	code, out := v.post(v.body(saved.ID, map[string]any{"row_index": 1}), "k1")
+	issue := issueOf(t, out)
+	if code != 202 || issue["row_index"] != 1.0 || issue["group"] != nil {
+		t.Fatal(code, out)
+	}
+	// `group` is refused for it, as for a 1.x template; neither and both are as ever.
+	for name, body := range map[string]map[string]any{
+		"a group":      v.body(saved.ID, map[string]any{"group": []string{}}),
+		"a group key":  v.body(saved.ID, map[string]any{"group": []string{"customer_b"}}),
+		"both":         v.body(saved.ID, map[string]any{"group": []string{}, "row_index": 1}),
+		"neither":      v.body(saved.ID, nil),
+		"a row beyond": v.body(saved.ID, map[string]any{"row_index": 99}),
+	} {
+		if code, out := v.post(body, "bad-"+name); code != 400 {
+			t.Errorf("%s: %d %v", name, code, out)
+		}
+	}
+	if code, again := v.post(v.body(saved.ID, map[string]any{"row_index": 1}), "k1"); code != 202 || again["job_id"] != out["job_id"] {
+		t.Fatal("a replay", code, again)
+	}
+	if _, e = v.service.RunOne(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	if v.drawn.calls != 1 || v.drawn.doc.Schema != "2.1" || v.drawn.values[name] != "customer_b" || v.drawn.values[count] != "20.00" || !strings.HasPrefix(v.drawn.stamp, "ISSUED No. AR-000001 - ") {
+		t.Fatalf("the document is row 2's: %+v", v.drawn)
+	}
+	jobID := out["job_id"].(string)
+	if rec, held := v.source.IssueRecord(jobID); !held || rec.State != contractsim.IssueConfirmed || rec.Number != "AR-000001" {
+		t.Fatalf("the product confirmed once: %+v %v", rec, held)
+	}
+	w := request(v.h, "GET", "/api/reporting/v1/issues/"+jobID, nil, true)
+	var rec r.IssueView
+	json.Unmarshal(w.Body.Bytes(), &rec)
+	if w.Code != 200 || rec.State != "succeeded" || rec.Number != "AR-000001" || rec.RowIndex == nil || *rec.RowIndex != 1 || rec.Group != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request(v.h, "GET", "/api/reporting/v1/issues?limit=10", nil, true)
+	var list []map[string]any
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if w.Code != 200 || len(list) != 1 || list[0]["row_index"] != 1.0 || list[0]["group"] != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}

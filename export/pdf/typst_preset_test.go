@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -121,6 +122,10 @@ func TestTypstRendersEveryPresetAtItsSizeAndIssuesWithItsStamp(t *testing.T) {
 // fit the strip with the margin, and the lines stand inside the strip.
 func TestTypstTheWidestLegalStampFitsEveryPresetsStrip(t *testing.T) {
 	w := typstWriter(t, nil)
+	// The landscape label (S06-B part 2) is one of the presets proved here: a 142 mm strip, two stamp lines at 6 pt, as the other labels' rules.
+	if lab, ok := doctemplates.PresetByID(doctemplates.PresetLabel150x100); !ok || lab.Width != 150 || lab.Height != 100 || lab.Left != 4 || lab.Strip != (doctemplates.Strip{X: 4, Y: 3, Width: 142, Height: 6, BannerSize: 8, StampSize: 6, StampLines: 2}) {
+		t.Fatalf("label_150x100: %+v", lab)
+	}
 	m := newPlainMeasurer(w.fonts)
 	width := func(s string, size float64) float64 {
 		v, err := m.width(s, size, false)
@@ -212,6 +217,61 @@ func TestTypstRendersEverySampleWithItsOwnRows(t *testing.T) {
 			}
 			bandedEvidence(t, "sample_"+strings.TrimPrefix(s.Kind, "_"), out, s.Document, values, table, groupSums(s.Document, snap, group), w)
 		})
+	}
+}
+
+// TestTypstTheSamplePackRendersWithinTheBudgetAndTheHeaviestAreMeasured renders each sample of the pack five times from its own rows (the preview
+// route's path: layout and Typst) and checks the pre-issue proof of it, and logs the times, heaviest first: they are the numbers of docs/CAPACITY.md.
+// The bound is the render timeout, 15 s; a sample over a third of it would be converted with fewer elements.
+func TestTypstTheSamplePackRendersWithinTheBudgetAndTheHeaviestAreMeasured(t *testing.T) {
+	w := typstWriter(t, nil)
+	all, err := doctemplates.Samples()
+	if err != nil {
+		t.Fatal(err)
+	}
+	type timing struct {
+		kind          string
+		elements      int
+		pages         int
+		bytes         int
+		render, check time.Duration
+		renderMax     time.Duration
+	}
+	var rows []timing
+	for _, s := range all {
+		snap := s.Snapshot()
+		group, err := doctemplates.GroupOf(s.Document, snap, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		values, table, err := doctemplates.BindGroup(s.Document, snap, group)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := timing{kind: s.Kind, elements: s.ElementCount(), render: time.Hour}
+		for i := 0; i < 5; i++ {
+			start := time.Now()
+			out, err := w.RenderWith(t.Context(), s.Document, values, nil, table, doctemplates.Resolved{})
+			took := time.Since(start)
+			if err != nil {
+				t.Fatalf("%s: %v", s.Kind, err)
+			}
+			row.render, row.renderMax, row.bytes, row.pages = min(row.render, took), max(row.renderMax, took), len(out), len(pageSizes(t, out))
+		}
+		start := time.Now()
+		if err := w.CheckIssueWith(t.Context(), s.Document, values, nil, table, doctemplates.Resolved{}); err != nil {
+			t.Fatalf("%s: the pre-issue check refuses: %v", s.Kind, err)
+		}
+		row.check = time.Since(start)
+		if row.renderMax > 5*time.Second {
+			t.Errorf("%s: a preview took %v of the 15 s budget", s.Kind, row.renderMax)
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].render > rows[j].render })
+	t.Logf("%-26s %8s %6s %9s %12s %12s %10s", "sample", "elements", "pages", "bytes", "render min", "render max", "check")
+	for _, r := range rows {
+		t.Logf("%-26s %8d %6d %9d %12v %12v %10v", r.kind, r.elements, r.pages, r.bytes, r.render.Round(time.Microsecond*100), r.renderMax.Round(time.Microsecond*100), r.check.Round(time.Microsecond*100))
 	}
 }
 
@@ -373,4 +433,53 @@ func sha256Sum(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToStri
 func refOf(png []byte) *doctemplates.BackgroundRef {
 	sum := sha256Sum(png)
 	return &doctemplates.BackgroundRef{ID: strings.Repeat("a", 32), SHA256: sum}
+}
+
+// A form (S06-B: a 2.x template without a detail band) renders and issues through the real Typst as one page of its four bands: no table, no
+// carried line, no total; one that does not fit its page is refused as DOES_NOT_FIT, never cut.
+func TestTypstRendersAndIssuesAFormOnOnePage(t *testing.T) {
+	w := typstWriter(t, nil)
+	pre, _ := doctemplates.PresetByID(doctemplates.PresetLabel150x100)
+	d := doctemplates.Document{Schema: "2.0", Kind: "document", Binding: doctemplates.Binding{Integration: "i", Dataset: r.Ref{ID: "d", Version: "1"}},
+		Page:  &doctemplates.Page{Preset: pre.ID},
+		Group: &doctemplates.GroupSpec{Fields: []string{"order"}},
+		Bands: &doctemplates.Bands{
+			PageHeader:     fixedBand(20, bolded(textItem("e1", "field", "order", 0, 0, 80, 6, 10, "left")), textItem("e2", "field", "order", 0, 8, 80, 6, 9, "left")),
+			DocumentFooter: fixedBand(15, textItem("e3", "literal", "FORM FOOTER", 0, 0, 60, 6, 9, "left")),
+			PageFooter:     fixedBand(10, textItem("e4", "page", "{page}/{pages}", 0, 0, 40, 6, 8, "right")),
+		}}
+	if err := doctemplates.Validate(d); err != nil {
+		t.Fatal(err)
+	}
+	snap := presetRows(3)
+	groups, err := doctemplates.Groups(d, snap)
+	if err != nil || len(groups) == 0 {
+		t.Fatal(groups, err)
+	}
+	values, table, err := doctemplates.BindGroup(d, snap, groups[0])
+	if err != nil || table != nil {
+		t.Fatal(table, err)
+	}
+	out, err := w.Render(t.Context(), d, values, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sizes := pageSizes(t, out); len(sizes) != 1 {
+		t.Fatalf("a form is one page, got %d", len(sizes))
+	}
+	requirePageSize(t, "form", out, pre)
+	if err := w.CheckIssue(t.Context(), d, values, nil, nil); err != nil {
+		t.Fatalf("the pre-issue check: %v", err)
+	}
+	stamp := issueStamp("FM-1", time.Date(2026, 11, 3, 6, 12, 3, 0, time.UTC), strings.Repeat("7", 32))
+	if _, _, err := w.Issue(t.Context(), d, values, nil, nil, stamp, time.Date(2026, 11, 3, 6, 12, 3, 0, time.UTC)); err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	bandedEvidence(t, "form_label_150x100", out, d, values, nil, nil, w)
+	// 20 + 15 + 10 + 70 > 58 mm of safe region: refused, not cut.
+	d.Bands.PageHeader.Height = 70
+	_, err = w.Render(t.Context(), d, values, nil, nil)
+	if detail, ok := doctemplates.DetailOf(err); !ok || detail.Reason != doctemplates.ReasonDoesNotFit {
+		t.Fatalf("a form taller than its page: %v", err)
+	}
 }

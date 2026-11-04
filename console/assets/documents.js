@@ -105,8 +105,8 @@ window.createReportingDocuments=function(ports){
   const q=d.page&&d.page.print;if(!q)return true;
   const dx=tenths(q.offset_x),dy=tenths(q.offset_y);if(dx===0&&dy===0)return true;
   const h=n=>d.bands[n]?tenths(d.bands[n].height):0,ph=h('page_header'),dh=h('document_header'),df=h('document_footer'),pf=h('page_footer'),top=tenths(pre.top),bottom=tenths(pre.bottom),bw=geo.bwT;
-  const t=d.bands.detail.elements[0];
-  if(tenths(t.x)+dx<0||tenths(t.x)+tenths(t.width)+dx>bw||top+ph+dh+dy<top||bottom-pf+dy>bottom)return false;
+  if(d.bands.detail){const t=d.bands.detail.elements[0];
+  if(tenths(t.x)+dx<0||tenths(t.x)+tenths(t.width)+dx>bw||top+ph+dh+dy<top||bottom-pf+dy>bottom)return false;}
   const omitted=e=>e.type==='text'||e.type==='barcode'||e.type==='qrcode'?e.source==='literal':true;
   const box=e=>{if(e.type==='line')return[Math.min(tenths(e.x1),tenths(e.x2)),Math.min(tenths(e.y1),tenths(e.y2)),Math.max(tenths(e.x1),tenths(e.x2)),Math.max(tenths(e.y1),tenths(e.y2))];const w=e.type==='qrcode'?e.size:e.width,hh=e.type==='qrcode'?e.size:e.height;return[tenths(e.x),tenths(e.y),tenths(e.x)+tenths(w),tenths(e.y)+tenths(hh)];};
   for(const [name,low,high] of [['page_header',top,top],['document_header',top+ph,top+ph],['document_footer',top+ph+dh,bottom-pf-df],['page_footer',bottom-pf,bottom-pf]]){
@@ -134,7 +134,7 @@ window.createReportingDocuments=function(ports){
    if(!f.every(v=>dimensions.has(v)))fail('分组字段必须是维度，不能是指标。');
   }
   const b=d.bands;
-  if(!b||typeof b!=='object'||Array.isArray(b)||!Object.keys(b).every(k=>bandNames.includes(k))||b.detail===undefined)fail('带只能是页眉、单据头、明细、单据尾、页脚，且必须有明细带。');
+  if(!b||typeof b!=='object'||Array.isArray(b)||!Object.keys(b).every(k=>bandNames.includes(k)))fail('带只能是页眉、单据头、明细、单据尾、页脚；明细带可以没有（没有明细带的是表单）。');
   let stack=0,total=0;const ids=new Set();
   for(const name of fixedBands){
    const band=b[name];if(band===undefined)continue;
@@ -153,11 +153,16 @@ window.createReportingDocuments=function(ports){
    }
   }
   const detail=b.detail;
+  if(detail===undefined){
+   // A form (S06-B): no detail band and no table; it needs a band to draw, and the bands' stack is the layout's to refuse (DOES_NOT_FIT).
+   if(total>128||!fixedBands.some(n=>b[n]!==undefined))fail('表单（没有明细带的模板）至少要有一个带，元素至多128个。');
+  }else{
   if(!keys(detail,['elements'])||!Array.isArray(detail.elements)||detail.elements.length!==1||detail.elements[0]?.type!=='table')fail('明细带必须恰有一个明细表，且不含其他元素。');
   const t=detail.elements[0];total+=1;
   if(total>128||!keys(t,itemKeys.table)||typeof t.id!=='string'||!/^e(?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(t.id)||ids.has(t.id)||!validTable2(t))fail('明细表或元素总数无效（至多128个元素；表宽、字号8–12点、1–12个不同的列，各列至少8毫米且之和等于表宽）。');
   if(!t.columns.every(c=>columns.has(c.field)))fail('明细表列必须是当前授权结果的字段。');
   if(stack+minDetail(t.font_size)>geo.safeH)fail('页眉、单据头与页脚的高度加上明细表的最小高度超出安全区。');
+  }
   if(!overprintFits2(d,pre))fail('套印偏移使元素或明细表超出安全区。');
  }
  // The value a barcode or a QR code takes: a literal (one line, 1 to 64 characters; a QR code's at most 256 bytes), a field of the group or the issue number.
@@ -239,7 +244,8 @@ window.createReportingDocuments=function(ports){
  function issuance(){previews();if(!ports.issuance())throw Error('服务端未启用正式出具。');}
  $('doc-issue').addEventListener('click',()=>action(()=>{issuance();const id=cleanSaved();if(!publishedOpen)throw Error('正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。');const row=Number($('doc-row').value);if(!ports.snapshot()||!Number.isSafeInteger(row)||row<1||row>1000)throw Error('请先打开冻结快照并填写有效行号。');
   // A 2.0 template is issued for the row group that holds the row (S03-K): the server finds the group by the row and freezes it.
-  const banded=is2(config);
+  // A form without group fields is issued by row, as a 1.x template is: one document per row.
+  const byRow=is2(config)&&!config.bands.detail&&!config.group,banded=is2(config)&&!byRow;
   $('doc-issue-status').textContent='正在提交正式出具：模板 '+id+' · 版本 '+saved.version+(banded?' · 第 '+row+' 行所在分组（由服务端按模板的分组字段在冻结快照中确定）。':' · 第 '+row+' 行。');
   ports.issue({template_id:id,version:saved.version,snapshot_id:ports.snapshot(),row_index:row-1},banded);}));
  const issueStates={queued:'排队中',running:'执行中',succeeded:'已出具',failed:'失败',cancelled:'已取消'};
@@ -301,7 +307,7 @@ window.createReportingDocuments=function(ports){
  let lastRefusal=null;
  function renderCore(){syncPrint();canvas.mark(null);const target=$('doc-elements'),two=is2(config);target.replaceChildren();for(const id of ['doc-panel-elements','doc-panel-table','doc-panel-background','doc-panel-print','st-elements-one'])$(id).hidden=two;for(const id of ['doc2-panel','st-insert-two','st-props-two','st-table-two'])$(id).hidden=!two;renderConvert();if(!config){canvas.show(null);renderBanded();return;}
   // Panels follow the template: 1.x inputs, or the 2.0 groups, bands and elements.
-  if(is2(config)){$('doc-table-status').textContent=config.schema_version+' 分带模板：明细表 '+tableOf2(config).columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。';canvas.show(config);renderBanded();return;}
+  if(is2(config)){$('doc-table-status').textContent=tableOf2(config)?config.schema_version+' 分带模板：明细表 '+tableOf2(config).columns.length+' 列，按分组生成每份文档，超过一页自动续页并承前过次。':config.schema_version+' 表单（没有明细带）：只画页眉、单据头、单据尾与页脚，一页，没有明细表；“添加明细表”可加回明细带。';canvas.show(config);renderBanded();return;}
   for(const e of config.elements){const item=node('div');item.className='designer-row';item.append(node('span',e.id+' · '+e.source+' · '+(e.source==='literal'?e.text:e.field)));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=e[k];input.setAttribute('aria-label',e.id+' '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.elements.find(v=>v.id===e.id)[k]=Number(input.value);if(k!=='font_size'&&!Number.isInteger(Number(input.value))&&d.schema_version==='1.0'){d.schema_version='1.1';d.print={mode:'full',offset_x:0,offset_y:0};}apply(d,'修改 '+e.id+' '+k);}));label.append(input);item.append(label);}const remove=node('button','移除');remove.type='button';remove.addEventListener('click',()=>action(()=>apply({...config,elements:config.elements.filter(v=>v.id!==e.id)},'移除 '+e.id)));item.append(remove);target.append(item);}
   if(config.table){const t=config.table,item=node('div');item.className='designer-row';item.append(node('span','明细表 · '+t.columns.map(c=>c.field+' '+c.width+'mm').join('、')));for(const k of ['x','y','width','height','font_size']){const label=node('label',k),input=node('input');input.type='number';input.step=k==='font_size'?'1':'0.1';input.value=t[k];input.setAttribute('aria-label','table '+k);input.addEventListener('change',()=>action(()=>{const d=JSON.parse(JSON.stringify(config));d.table[k]=Number(input.value);apply(d,'修改明细表 '+k);}));label.append(input);item.append(label);}const remove=node('button','移除明细表');remove.type='button';remove.addEventListener('click',()=>action(()=>removeTable()));item.append(remove);target.append(item);}
   $('doc-table-status').textContent=config.table?'明细表：'+config.table.columns.length+' 列，列出冻结快照的全部行，超过一页自动续页并承前过次。':'无明细表。';canvas.show(config);renderBanded();}
@@ -323,7 +329,7 @@ window.createReportingDocuments=function(ports){
  const buttonOf=(id,text,fn)=>ctl('button',id,b=>{b.textContent=text;b.type='button';b.className='button secondary small';b.addEventListener('click',fn);});
  const only2=()=>{if(!is2(config))throw Error('只有 2.0 / 2.1 分带模板有带与元素面板。');};
  const elementOf=(d,id)=>{for(const n of bandNames){const b=d.bands[n];if(!b)continue;const e=b.elements.find(v=>v.id===id);if(e)return {band:n,e};}return null;};
- const tableOf2=d=>d.bands.detail.elements[0];
+ const tableOf2=d=>d.bands.detail?d.bands.detail.elements[0]:null;
  // An edit of the open 2.0 template: fn changes a copy; a refusal (from apply, or fn's own) is shown and the panels go back to the template.
  // A 2.0 template that gets an element only 2.1 has (a barcode, a QR code, an image, the issue number) becomes a 2.1 template: the same template in the form
  // that has it, kept by the next version it is saved as.
@@ -331,6 +337,15 @@ window.createReportingDocuments=function(ports){
  const upgrade=d=>{if(d.schema_version==='2.0'&&uses21(d))d.schema_version='2.1';return d;};
  const edit2=(label,fn)=>action(()=>{try{only2();const d=clone(config);fn(d);upgrade(d);apply(d,label);}catch(e){renderBanded();throw e;}});
  const freeId=d=>{const used=new Set();for(const n of bandNames)for(const e of d.bands[n]?.elements||[])used.add(e.id);for(let k=1;k<=64;k++)if(!used.has('e'+k))return 'e'+k;throw Error('最多64个元素。');};
+ // The detail band a form lacks: a table of the first columns of the result (at most six, across the whole band at 10 pt), under the bands above it. The bands' stack must leave it the least room.
+ const addDetail=d=>{
+  if(d.bands.detail)throw Error('已有明细带。');
+  const n=Math.min(6,result.columns.length);if(!n)throw Error('当前结果没有字段可作为明细表的列。');
+  const stack=['page_header','document_header','page_footer'].reduce((s,k)=>s+(d.bands[k]?tenths(d.bands[k].height):0),0);
+  if(stack+minDetail(10)>geo.safeH)throw Error('页眉、单据头与页脚的高度没有给明细表留下至少 '+minDetail(10)/10+' 毫米：请先调低这些带。');
+  const bw=geo.bwT,each=Math.floor(bw/n);
+  d.bands.detail={elements:[{id:freeId(d),type:'table',x:0,width:bw/10,font_size:10,columns:result.columns.slice(0,n).map((c,k)=>({field:c.id,width:(k===n-1?bw-each*(n-1):each)/10}))}]};
+ };
  // A panel is rebuilt after every applied change. When the rebuilt panel has the same shape as the one on the page (the same controls, with the same
  // options), the controls already there are updated in place, so that the focus stays where the user's Tab or Enter left it and a click is not lost to a
  // control that was replaced between the press and the release; otherwise (another element selected, another list) the panel is replaced. `key` says
@@ -365,7 +380,9 @@ window.createReportingDocuments=function(ports){
    else row.append(named(bandLabels[name]+'：未设置'),buttonOf('doc2-band-add-'+name,'添加'+bandLabels[name],()=>edit2('添加'+bandLabels[name],d=>{d.bands[name]={height:bandDefaults[name],elements:[]};})));
    return row;
   });
-  const detail=node('div');detail.className='cv2-row';detail.append(named(bandLabels.detail+'：必有，只放一个明细表；高度随页面伸展（至少 '+minDetail(tableOf2(config).font_size)/10+' 毫米：表头、承前行、一行明细与过次或合计行）。'));
+  const detail=node('div');detail.className='cv2-row';
+  if(tableOf2(config))detail.append(named(bandLabels.detail+'：只放一个明细表；高度随页面伸展（至少 '+minDetail(tableOf2(config).font_size)/10+' 毫米：表头、承前行、一行明细与过次或合计行）。'),buttonOf('doc2-detail-remove','移除明细表（变成表单）',()=>edit2('移除明细表',d=>{delete d.bands.detail;})));
+  else detail.append(named('没有明细带：这是一份表单，只画页眉、单据头、单据尾与页脚，一页，没有明细行、承前与合计。'),buttonOf('doc2-detail-add','添加明细表',()=>edit2('添加明细表',d=>addDetail(d))));
   reconcile($('doc2-bands'),[...rows,detail]);
   // The band a new element goes to.
   listOptions($('doc2-add-band'),bandOrder.filter(n=>config.bands[n]).map(n=>[n,bandLabels[n]]));
@@ -525,6 +542,8 @@ window.createReportingDocuments=function(ports){
  }
  // The table: place, width (the columns scale with it), type size, and its columns: field, width, header label, alignment, order.
  function renderTable2(){
+  if(!tableOf2(config)){$('doc2-table').replaceChildren(node('p','这份模板没有明细表（表单）。在“添加明细表”或结构面板里加回明细带。','prop-note'));listOptions($('doc2-col-field'),[]);$('doc2-col-add').disabled=true;return;}
+  $('doc2-col-add').disabled=false;
   const t=tableOf2(config),lab=labelsOf(),metrics=new Set((query.metrics||[]).map(m=>m.id)),box=$('doc2-table'),top=node('div'),used=new Set(t.columns.map(c=>c.field));
   top.className='cv2-grid';
   const tset=(key,label,fn)=>edit2('修改明细表'+label,d=>fn(tableOf2(d)));
@@ -703,7 +722,10 @@ window.createReportingDocuments=function(ports){
   const o={...(opts||{}),studio:true};let result2='';
   action(()=>{
    if(is2(config)){
-    if(kind==='table'){canvas.select([tableOf2(config).id]);return;}
+    if(kind==='table'){
+     if(!tableOf2(config)){const d=clone(config);addDetail(d);apply(d,'添加明细表');canvas.select([tableOf2(config).id]);return;}
+     canvas.select([tableOf2(config).id]);return;
+    }
     if(kind==='signature'){addSignature(o);return;}
     const map={text:'literal',field:'field',aggregate:'sum',summary:'sum',line:'line',rect:'rect',image:'image',barcode:'barcode',qr:'qrcode',pageNumber:'page'};
     if(!map[kind])throw Error('这个组件不受支持。');
@@ -729,7 +751,7 @@ window.createReportingDocuments=function(ports){
  // A field of the data panel: a field text; with the table selected, a column of it.
  function insertField(field,detail,at){
   action(()=>{
-   if(is2(config)&&detail&&canvas.selection().length===1&&canvas.selection()[0]===tableOf2(config).id){
+   if(is2(config)&&detail&&tableOf2(config)&&canvas.selection().length===1&&canvas.selection()[0]===tableOf2(config).id){
     if(![...$('doc2-col-field').options].some(o=>o.value===field))throw Error('这个字段已经是明细表的列。');
     $('doc2-col-field').value=field;$('doc2-col-add').click();return;
    }

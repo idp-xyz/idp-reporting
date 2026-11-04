@@ -1,0 +1,694 @@
+{
+ "kind": "document2",
+ "file": "sample_statement.pdf",
+ "bands": [
+  {
+   "elements": [
+    {
+     "fill": "none",
+     "height": 12,
+     "id": "e1",
+     "stroke": 0.75,
+     "type": "rect",
+     "width": 72,
+     "x": 8,
+     "y": 7
+    },
+    {
+     "align": "center",
+     "bold": false,
+     "height": 5,
+     "id": "e2",
+     "size": 9,
+     "source": "literal",
+     "text": "企业标识",
+     "type": "text",
+     "width": 72,
+     "wrap": false,
+     "x": 8,
+     "y": 10.5
+    },
+    {
+     "align": "right",
+     "bold": true,
+     "height": 13,
+     "id": "e3",
+     "size": 22,
+     "source": "literal",
+     "text": "客户往来对账单",
+     "type": "text",
+     "width": 82,
+     "wrap": false,
+     "x": 100,
+     "y": 3
+    },
+    {
+     "align": "right",
+     "bold": false,
+     "height": 5,
+     "id": "e4",
+     "size": 8,
+     "source": "literal",
+     "text": "CUSTOMER STATEMENT",
+     "type": "text",
+     "width": 82,
+     "wrap": false,
+     "x": 100,
+     "y": 18
+    },
+    {
+     "id": "e5",
+     "stroke": 0.75,
+     "type": "line",
+     "x1": 8,
+     "x2": 182,
+     "y1": 31.2,
+     "y2": 31.2
+    }
+   ],
+   "height": 33,
+   "name": "page_header"
+  },
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e6",
+     "size": 8,
+     "source": "literal",
+     "text": "客户名称",
+     "type": "text",
+     "width": 104,
+     "wrap": false,
+     "x": 8,
+     "y": 5
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 8,
+     "id": "e7",
+     "size": 12,
+     "source": "field",
+     "text": "上海云川实业有限公司",
+     "type": "text",
+     "width": 104,
+     "wrap": false,
+     "x": 8,
+     "y": 10
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e8",
+     "size": 8,
+     "source": "literal",
+     "text": "单据编号",
+     "type": "text",
+     "width": 60,
+     "wrap": false,
+     "x": 122,
+     "y": 5
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 8,
+     "id": "e9",
+     "size": 10,
+     "source": "field",
+     "text": "ST-2026-1008",
+     "type": "text",
+     "width": 60,
+     "wrap": false,
+     "x": 122,
+     "y": 10
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e10",
+     "size": 8,
+     "source": "literal",
+     "text": "业务期间",
+     "type": "text",
+     "width": 104,
+     "wrap": false,
+     "x": 8,
+     "y": 22
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e11",
+     "size": 10,
+     "source": "field",
+     "text": "2026.10.01 — 2026.10.31",
+     "type": "text",
+     "width": 104,
+     "wrap": false,
+     "x": 8,
+     "y": 27
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e12",
+     "size": 8,
+     "source": "literal",
+     "text": "结算币种",
+     "type": "text",
+     "width": 60,
+     "wrap": false,
+     "x": 122,
+     "y": 22
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e13",
+     "size": 10,
+     "source": "field",
+     "text": "人民币 / CNY",
+     "type": "text",
+     "width": 60,
+     "wrap": false,
+     "x": 122,
+     "y": 27
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e14",
+     "size": 8,
+     "source": "literal",
+     "text": "本期应收 · 示例合计",
+     "type": "text",
+     "width": 57,
+     "wrap": false,
+     "x": 8,
+     "y": 38
+    },
+    {
+     "align": "left",
+     "bold": true,
+     "height": 8,
+     "id": "e15",
+     "scale": 2,
+     "size": 12,
+     "source": "group_sum",
+     "sum_values": [
+      "12600.00",
+      "8400.00",
+      "15600.00",
+      "6200.00",
+      "9800.00",
+      "-1200.00",
+      "4800.00",
+      "12600.00",
+      "8400.00",
+      "15600.00",
+      "6200.00",
+      "9800.00",
+      "-1200.00",
+      "4800.00",
+      "12600.00",
+      "8400.00",
+      "15600.00",
+      "6200.00",
+      "9800.00",
+      "-1200.00",
+      "4800.00",
+      "12600.00",
+      "8400.00",
+      "15600.00",
+      "6200.00",
+      "9800.00",
+      "-1200.00",
+      "4800.00"
+     ],
+     "text": "224800.00",
+     "type": "text",
+     "width": 57,
+     "wrap": false,
+     "x": 8,
+     "y": 43
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e16",
+     "size": 8,
+     "source": "literal",
+     "text": "本期已收 · 示例合计",
+     "type": "text",
+     "width": 57,
+     "wrap": false,
+     "x": 66,
+     "y": 38
+    },
+    {
+     "align": "left",
+     "bold": true,
+     "height": 8,
+     "id": "e17",
+     "scale": 2,
+     "size": 12,
+     "source": "group_sum",
+     "sum_values": [
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "5600.00"
+     ],
+     "text": "39200.00",
+     "type": "text",
+     "width": 57,
+     "wrap": false,
+     "x": 66,
+     "y": 43
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e18",
+     "size": 8,
+     "source": "literal",
+     "text": "本期差额 · 示例合计",
+     "type": "text",
+     "width": 57,
+     "wrap": false,
+     "x": 124,
+     "y": 38
+    }
+   ],
+   "height": 62,
+   "name": "document_header"
+  },
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": false,
+     "height": 12,
+     "id": "e20",
+     "size": 8,
+     "source": "literal",
+     "text": "请核对以上业务明细，如有差异，请于收到本单后 5 个工作日内与我们联系。\n本单据为业务核对凭据，款项以实际到账及双方确认为准。",
+     "type": "text",
+     "width": 174,
+     "wrap": true,
+     "x": 8,
+     "y": 2
+    },
+    {
+     "fill": "none",
+     "height": 7,
+     "id": "e21",
+     "stroke": 0.5,
+     "type": "rect",
+     "width": 70,
+     "x": 8,
+     "y": 19
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 7,
+     "id": "e22",
+     "size": 10,
+     "source": "literal",
+     "text": "客户确认 / 签章",
+     "type": "text",
+     "width": 70,
+     "wrap": false,
+     "x": 8,
+     "y": 19
+    },
+    {
+     "fill": "none",
+     "height": 7,
+     "id": "e23",
+     "stroke": 0.5,
+     "type": "rect",
+     "width": 70,
+     "x": 112,
+     "y": 19
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 7,
+     "id": "e24",
+     "size": 10,
+     "source": "literal",
+     "text": "制单人 / 日期",
+     "type": "text",
+     "width": 70,
+     "wrap": false,
+     "x": 112,
+     "y": 19
+    }
+   ],
+   "height": 29,
+   "name": "document_footer"
+  },
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": false,
+     "height": 9,
+     "id": "e25",
+     "size": 8,
+     "source": "literal",
+     "text": "远山贸易 · 业务往来核对",
+     "type": "text",
+     "width": 94.7,
+     "wrap": true,
+     "x": 8,
+     "y": 0
+    },
+    {
+     "align": "right",
+     "bold": false,
+     "height": 9,
+     "id": "e26",
+     "size": 8,
+     "source": "page",
+     "text": "第 {page} / {pages} 页",
+     "type": "text",
+     "width": 78.3,
+     "wrap": false,
+     "x": 103.7,
+     "y": 0
+    }
+   ],
+   "height": 10,
+   "name": "page_footer"
+  }
+ ],
+ "table": {
+  "columns": [
+   {
+    "align": "left",
+    "field": "date",
+    "label": "记账日期",
+    "metric": false,
+    "scale": 0,
+    "width": 36
+   },
+   {
+    "align": "left",
+    "field": "ref",
+    "label": "单据编号",
+    "metric": false,
+    "scale": 0,
+    "width": 31.2
+   },
+   {
+    "align": "left",
+    "field": "desc",
+    "label": "业务摘要",
+    "metric": false,
+    "scale": 0,
+    "width": 42.7
+   },
+   {
+    "align": "right",
+    "field": "debit",
+    "label": "本期应收",
+    "metric": true,
+    "scale": 2,
+    "width": 32.1
+   },
+   {
+    "align": "right",
+    "field": "credit",
+    "label": "本期已收",
+    "metric": true,
+    "scale": 2,
+    "width": 32
+   }
+  ],
+  "id": "e19",
+  "rows": [
+   [
+    "2026-10-02",
+    "SO-2610001",
+    "常规采购订单结算",
+    "12600.00",
+    "0.00"
+   ],
+   [
+    "2026-10-03",
+    "SO-2610002",
+    "国际运输及包装服务",
+    "8400.00",
+    "0.00"
+   ],
+   [
+    "2026-10-04",
+    "SO-2610003",
+    "项目补充货款",
+    "15600.00",
+    "0.00"
+   ],
+   [
+    "2026-10-05",
+    "RC-2610004",
+    "客户到款核销",
+    "6200.00",
+    "5600.00"
+   ],
+   [
+    "2026-10-06",
+    "SO-2610005",
+    "定制产品交付结算",
+    "9800.00",
+    "0.00"
+   ],
+   [
+    "2026-10-07",
+    "SO-2610006",
+    "常规采购订单结算",
+    "-1200.00",
+    "0.00"
+   ],
+   [
+    "2026-10-08",
+    "SO-2610007",
+    "国际运输及包装服务",
+    "4800.00",
+    "0.00"
+   ],
+   [
+    "2026-10-09",
+    "RC-2610008",
+    "项目补充货款",
+    "12600.00",
+    "5600.00"
+   ],
+   [
+    "2026-10-10",
+    "SO-2610009",
+    "客户到款核销",
+    "8400.00",
+    "0.00"
+   ],
+   [
+    "2026-10-11",
+    "SO-2610010",
+    "定制产品交付结算",
+    "15600.00",
+    "0.00"
+   ],
+   [
+    "2026-10-12",
+    "SO-2610011",
+    "常规采购订单结算",
+    "6200.00",
+    "0.00"
+   ],
+   [
+    "2026-10-13",
+    "RC-2610012",
+    "国际运输及包装服务",
+    "9800.00",
+    "5600.00"
+   ],
+   [
+    "2026-10-14",
+    "SO-2610013",
+    "项目补充货款",
+    "-1200.00",
+    "0.00"
+   ],
+   [
+    "2026-10-15",
+    "SO-2610014",
+    "客户到款核销",
+    "4800.00",
+    "0.00"
+   ],
+   [
+    "2026-10-16",
+    "SO-2610015",
+    "定制产品交付结算",
+    "12600.00",
+    "0.00"
+   ],
+   [
+    "2026-10-17",
+    "RC-2610016",
+    "常规采购订单结算",
+    "8400.00",
+    "5600.00"
+   ],
+   [
+    "2026-10-18",
+    "SO-2610017",
+    "国际运输及包装服务",
+    "15600.00",
+    "0.00"
+   ],
+   [
+    "2026-10-19",
+    "SO-2610018",
+    "项目补充货款",
+    "6200.00",
+    "0.00"
+   ],
+   [
+    "2026-10-20",
+    "SO-2610019",
+    "客户到款核销",
+    "9800.00",
+    "0.00"
+   ],
+   [
+    "2026-10-21",
+    "RC-2610020",
+    "定制产品交付结算",
+    "-1200.00",
+    "5600.00"
+   ],
+   [
+    "2026-10-22",
+    "SO-2610021",
+    "常规采购订单结算",
+    "4800.00",
+    "0.00"
+   ],
+   [
+    "2026-10-23",
+    "SO-2610022",
+    "国际运输及包装服务",
+    "12600.00",
+    "0.00"
+   ],
+   [
+    "2026-10-24",
+    "SO-2610023",
+    "项目补充货款",
+    "8400.00",
+    "0.00"
+   ],
+   [
+    "2026-10-25",
+    "RC-2610024",
+    "客户到款核销",
+    "15600.00",
+    "5600.00"
+   ],
+   [
+    "2026-10-26",
+    "SO-2610025",
+    "定制产品交付结算",
+    "6200.00",
+    "0.00"
+   ],
+   [
+    "2026-10-27",
+    "SO-2610026",
+    "常规采购订单结算",
+    "9800.00",
+    "0.00"
+   ],
+   [
+    "2026-10-28",
+    "SO-2610027",
+    "国际运输及包装服务",
+    "-1200.00",
+    "0.00"
+   ],
+   [
+    "2026-10-02",
+    "RC-2610028",
+    "项目补充货款",
+    "4800.00",
+    "5600.00"
+   ]
+  ],
+  "size": 9,
+  "totals": {},
+  "width": 174,
+  "x": 8
+ },
+ "table_pages": 2,
+ "footer": {
+  "page": 2,
+  "top": 335.8094488188975
+ },
+ "page": {
+  "preset": "a4",
+  "width": 210,
+  "height": 297,
+  "left": 10,
+  "top": 25,
+  "bottom": 270,
+  "strip": {
+   "x": 10,
+   "y": 10,
+   "width": 190,
+   "height": 8,
+   "banner_size": 10,
+   "stamp_size": 8,
+   "stamp_lines": 1
+  }
+ }
+}

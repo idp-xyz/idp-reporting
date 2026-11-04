@@ -1,0 +1,150 @@
+{
+ "kind": "packing",
+ "file": "packing",
+ "name": "出库装箱单",
+ "dataset": "warehouse",
+ "page": "A4 210×297",
+ "preset": "a4",
+ "counts": {
+  "nodes_in": 14,
+  "elements_out": 25,
+  "dropped": 0,
+  "substituted": 5
+ },
+ "entries": [
+  {
+   "code": "field_label",
+   "detail": "字段的标签在取值上方另出一个 8 磅文本",
+   "nodes": [
+    "n5",
+    "n6",
+    "n7",
+    "n8"
+   ]
+  },
+  {
+   "code": "font_raised",
+   "detail": "字号 7 磅低于下限 8 磅，提高到 8 磅",
+   "nodes": [
+    "n14"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 7.8 磅取整为 8 磅",
+   "nodes": [
+    "n3"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 11.5 磅取整为 12 磅",
+   "nodes": [
+    "n5"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 9.5 磅取整为 10 磅",
+   "nodes": [
+    "n7",
+    "n8"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 8.5 磅取整为 9 磅",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "image",
+   "detail": "图片节点转成方框加名称：原型的图片为空，只显示内置的标识图形，平台的样例不带私有图片",
+   "nodes": [
+    "n1"
+   ]
+  },
+  {
+   "code": "page_number",
+   "detail": "页码节点转成两个文字：左侧原文字，右侧页码（{page} / {pages}）",
+   "nodes": [
+    "n14"
+   ]
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 A4（210×297 毫米）即预设 a4"
+  },
+  {
+   "code": "parameters",
+   "detail": "4 个查询参数（开始日期、结束日期、搜索摘要、业务类别）不转换：平台的查询面板就是参数"
+  },
+  {
+   "code": "rows_kept",
+   "detail": "保留全部 28 行样例数据"
+  },
+  {
+   "code": "signature",
+   "detail": "签章与签名属于后续阶段：转成方框加原文字",
+   "nodes": [
+    "n12",
+    "n13"
+   ]
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色",
+   "nodes": [
+    "n1",
+    "n2",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n10"
+   ]
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、字距",
+   "nodes": [
+    "n3"
+   ]
+  },
+  {
+   "code": "summary",
+   "detail": "汇总卡片转成 2 栏：标签文字加合计（group_sum）",
+   "nodes": [
+    "n9"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "首列 23 → 36 毫米：平台的表格在首列放「承前（第 n 页）」「过次（转第 n 页）」「合计」，首列要放得下；多出的宽度从其余各列按比例让出",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "承前页 / 转下页累计（carry=false）和本页加和（subtotal=true）对应平台表格的承前、转下页和合计行；数值列（单价除外）标为度量列",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "不转换：striped（隔行底色）、negativeRed（负数红字）、headerColor（表头底色）、minRowHeight、padding（行高与内边距，平台的行高由字号定）",
+   "nodes": [
+    "n10"
+   ]
+  }
+ ]
+}

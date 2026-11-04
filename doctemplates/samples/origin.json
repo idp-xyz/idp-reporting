@@ -1,0 +1,818 @@
+{
+ "kind": "origin",
+ "name": "原产地证书 · Certificate of Origin",
+ "domain": "国际贸易",
+ "flow": "贸易单证",
+ "description": "DRAFT / NOT ISSUED OR CERTIFIED / NO PREFERENTIAL CLAIM",
+ "fields": [
+  {
+   "id": "documentNo",
+   "label": "单据编号",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "documentDates",
+   "label": "documentDates",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "seller",
+   "label": "SELLER / SHIPPER",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "buyer",
+   "label": "BUYER / SOLD TO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "shipTo",
+   "label": "CONSIGNEE / SHIP TO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "invoiceRef",
+   "label": "INVOICE REFERENCE",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "buyerRef",
+   "label": "BUYER REFERENCE / PO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "route",
+   "label": "FROM → TO",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "shipDate",
+   "label": "EST. SHIP DATE",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "destinationCountry",
+   "label": "DESTINATION COUNTRY",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "vesselVoyage",
+   "label": "VESSEL / VOYAGE / FLIGHT",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "incoterms",
+   "label": "TRADE TERMS / NAMED PLACE",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "declaration",
+   "label": "EXPORTER DECLARATION / DRAFT",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "remarks",
+   "label": "CERTIFYING AUTHORITY / NOT ISSUED",
+   "type": "text",
+   "scope": "document"
+  },
+  {
+   "id": "marks",
+   "label": "唛头",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "description",
+   "label": "商品描述",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "hsCode",
+   "label": "HS 编码",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "origin",
+   "label": "原产国",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "quantity",
+   "label": "数量",
+   "type": "decimal",
+   "scope": "row",
+   "scale": 3
+  },
+  {
+   "id": "unit",
+   "label": "数量单位",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "grossKg",
+   "label": "毛重 KG",
+   "type": "decimal",
+   "scope": "row",
+   "scale": 3
+  },
+  {
+   "id": "criterion",
+   "label": "原产地依据 / 待审核",
+   "type": "text",
+   "scope": "row"
+  }
+ ],
+ "rows": [
+  {
+   "buyer": "EXAMPLE IMPORTS INC. (SAMPLE) / 200 SAMPLE AVENUE, LOS ANGELES, CA 90001, US / PURCHASING@IMPORT.EXAMPLE.TEST",
+   "buyerRef": "DEMO-PO-001",
+   "criterion": "REVIEW",
+   "declaration": "DRAFT EXPORTER DECLARATION / ORIGIN EVIDENCE TO BE REVIEWED; NO CERTIFICATION ISSUED.",
+   "description": "Industrial components / item 1",
+   "destinationCountry": "US",
+   "documentDates": "DATE 2026-10-28",
+   "documentNo": "DEMO-CO-20261028-001",
+   "grossKg": "60.000",
+   "hsCode": "",
+   "incoterms": "CIF LOS ANGELES · SEE SALES CONTRACT",
+   "invoiceRef": "DEMO-PI-20261028-001",
+   "marks": "DEMO / 1",
+   "origin": "CN",
+   "quantity": "100.000",
+   "remarks": "SYNTHETIC DATA / FOR DOCUMENT DESIGN REVIEW ONLY",
+   "route": "SHANGHAI, CHINA → LOS ANGELES, US",
+   "seller": "YUANSHAN EXPORT CO., LTD. (SAMPLE) / 88 EXAMPLE ROAD, SHANGHAI 200000, CN / SALES@YUANSHAN.EXAMPLE.TEST",
+   "shipDate": "2026-11-10",
+   "shipTo": "EXAMPLE DISTRIBUTION CENTRE (SAMPLE) / 500 SAMPLE ROAD, LOS ANGELES, CA 90001, US",
+   "unit": "PCS",
+   "vesselVoyage": "MV EXAMPLE VOYAGER / 028E"
+  },
+  {
+   "buyer": "EXAMPLE IMPORTS INC. (SAMPLE) / 200 SAMPLE AVENUE, LOS ANGELES, CA 90001, US / PURCHASING@IMPORT.EXAMPLE.TEST",
+   "buyerRef": "DEMO-PO-001",
+   "criterion": "REVIEW",
+   "declaration": "DRAFT EXPORTER DECLARATION / ORIGIN EVIDENCE TO BE REVIEWED; NO CERTIFICATION ISSUED.",
+   "description": "Industrial components / item 2",
+   "destinationCountry": "US",
+   "documentDates": "DATE 2026-10-28",
+   "documentNo": "DEMO-CO-20261028-001",
+   "grossKg": "120.000",
+   "hsCode": "",
+   "incoterms": "CIF LOS ANGELES · SEE SALES CONTRACT",
+   "invoiceRef": "DEMO-PI-20261028-001",
+   "marks": "DEMO / 2",
+   "origin": "CN",
+   "quantity": "200.000",
+   "remarks": "SYNTHETIC DATA / FOR DOCUMENT DESIGN REVIEW ONLY",
+   "route": "SHANGHAI, CHINA → LOS ANGELES, US",
+   "seller": "YUANSHAN EXPORT CO., LTD. (SAMPLE) / 88 EXAMPLE ROAD, SHANGHAI 200000, CN / SALES@YUANSHAN.EXAMPLE.TEST",
+   "shipDate": "2026-11-10",
+   "shipTo": "EXAMPLE DISTRIBUTION CENTRE (SAMPLE) / 500 SAMPLE ROAD, LOS ANGELES, CA 90001, US",
+   "unit": "PCS",
+   "vesselVoyage": "MV EXAMPLE VOYAGER / 028E"
+  },
+  {
+   "buyer": "EXAMPLE IMPORTS INC. (SAMPLE) / 200 SAMPLE AVENUE, LOS ANGELES, CA 90001, US / PURCHASING@IMPORT.EXAMPLE.TEST",
+   "buyerRef": "DEMO-PO-001",
+   "criterion": "REVIEW",
+   "declaration": "DRAFT EXPORTER DECLARATION / ORIGIN EVIDENCE TO BE REVIEWED; NO CERTIFICATION ISSUED.",
+   "description": "Industrial components / item 3",
+   "destinationCountry": "US",
+   "documentDates": "DATE 2026-10-28",
+   "documentNo": "DEMO-CO-20261028-001",
+   "grossKg": "180.000",
+   "hsCode": "",
+   "incoterms": "CIF LOS ANGELES · SEE SALES CONTRACT",
+   "invoiceRef": "DEMO-PI-20261028-001",
+   "marks": "DEMO / 3",
+   "origin": "CN",
+   "quantity": "300.000",
+   "remarks": "SYNTHETIC DATA / FOR DOCUMENT DESIGN REVIEW ONLY",
+   "route": "SHANGHAI, CHINA → LOS ANGELES, US",
+   "seller": "YUANSHAN EXPORT CO., LTD. (SAMPLE) / 88 EXAMPLE ROAD, SHANGHAI 200000, CN / SALES@YUANSHAN.EXAMPLE.TEST",
+   "shipDate": "2026-11-10",
+   "shipTo": "EXAMPLE DISTRIBUTION CENTRE (SAMPLE) / 500 SAMPLE ROAD, LOS ANGELES, CA 90001, US",
+   "unit": "PCS",
+   "vesselVoyage": "MV EXAMPLE VOYAGER / 028E"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "page": {
+   "preset": "a4"
+  },
+  "bands": {
+   "page_header": {
+    "height": 25,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "text",
+      "source": "literal",
+      "text": "YUANSHAN · TRADE DOCUMENTS",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 92,
+      "height": 6.2,
+      "font_size": 11,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "literal",
+      "text": "EXPORT OPERATIONS / DOCUMENT STUDIO",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 8,
+      "width": 92,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e3",
+      "type": "text",
+      "source": "literal",
+      "text": "CERTIFICATE OF ORIGIN",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 0,
+      "width": 90,
+      "height": 10,
+      "font_size": 13,
+      "align": "right",
+      "bold": true
+     },
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "documentNo",
+      "wrap": false,
+      "x": 98,
+      "y": 11,
+      "width": 90,
+      "height": 5,
+      "font_size": 9,
+      "align": "right",
+      "bold": true
+     },
+     {
+      "id": "e5",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "documentDates",
+      "wrap": false,
+      "x": 75,
+      "y": 17,
+      "width": 113,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e6",
+      "type": "line",
+      "x1": 2,
+      "y1": 23.2,
+      "x2": 188,
+      "y2": 23.2,
+      "stroke": 0.75
+     }
+    ]
+   },
+   "document_header": {
+    "height": 72,
+    "elements": [
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "literal",
+      "text": "SELLER / SHIPPER",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 1,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "seller",
+      "wrap": true,
+      "x": 2,
+      "y": 6,
+      "width": 90,
+      "height": 15,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "literal",
+      "text": "BUYER / SOLD TO",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 1,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e10",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "buyer",
+      "wrap": true,
+      "x": 98,
+      "y": 6,
+      "width": 90,
+      "height": 15,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e11",
+      "type": "text",
+      "source": "literal",
+      "text": "CONSIGNEE / SHIP TO",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 24,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "shipTo",
+      "wrap": true,
+      "x": 2,
+      "y": 29,
+      "width": 90,
+      "height": 15,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "literal",
+      "text": "INVOICE REFERENCE",
+      "field": "",
+      "wrap": true,
+      "x": 98,
+      "y": 24,
+      "width": 33.1,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "invoiceRef",
+      "wrap": true,
+      "x": 131.1,
+      "y": 24,
+      "width": 56.9,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "text",
+      "source": "literal",
+      "text": "BUYER REFERENCE / PO",
+      "field": "",
+      "wrap": true,
+      "x": 98,
+      "y": 35,
+      "width": 36.1,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e16",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "buyerRef",
+      "wrap": true,
+      "x": 134.1,
+      "y": 35,
+      "width": 53.9,
+      "height": 9,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e17",
+      "type": "text",
+      "source": "literal",
+      "text": "FROM → TO",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 47,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e18",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "route",
+      "wrap": false,
+      "x": 2,
+      "y": 52,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e19",
+      "type": "text",
+      "source": "literal",
+      "text": "EST. SHIP DATE",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 47,
+      "width": 42,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e20",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "shipDate",
+      "wrap": false,
+      "x": 98,
+      "y": 52,
+      "width": 42,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e21",
+      "type": "text",
+      "source": "literal",
+      "text": "DESTINATION COUNTRY",
+      "field": "",
+      "wrap": false,
+      "x": 145,
+      "y": 47,
+      "width": 43,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e22",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "destinationCountry",
+      "wrap": false,
+      "x": 145,
+      "y": 52,
+      "width": 43,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e23",
+      "type": "text",
+      "source": "literal",
+      "text": "VESSEL / VOYAGE / FLIGHT",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 60,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e24",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "vesselVoyage",
+      "wrap": false,
+      "x": 2,
+      "y": 65,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e25",
+      "type": "text",
+      "source": "literal",
+      "text": "TRADE TERMS / NAMED PLACE",
+      "field": "",
+      "wrap": false,
+      "x": 98,
+      "y": 60,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e26",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "incoterms",
+      "wrap": false,
+      "x": 98,
+      "y": 65,
+      "width": 90,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "detail": {
+    "elements": [
+     {
+      "id": "e27",
+      "type": "table",
+      "x": 2,
+      "width": 186,
+      "font_size": 8,
+      "columns": [
+       {
+        "field": "marks",
+        "width": 32.5,
+        "align": "left",
+        "label": "MARKS"
+       },
+       {
+        "field": "description",
+        "width": 47.9,
+        "align": "left",
+        "label": "DESCRIPTION"
+       },
+       {
+        "field": "hsCode",
+        "width": 22.9,
+        "align": "left",
+        "label": "HS CODE"
+       },
+       {
+        "field": "origin",
+        "width": 16.4,
+        "align": "left",
+        "label": "ORIGIN"
+       },
+       {
+        "field": "quantity",
+        "width": 21,
+        "align": "right",
+        "label": "QTY"
+       },
+       {
+        "field": "unit",
+        "width": 12.6,
+        "align": "left",
+        "label": "UOM"
+       },
+       {
+        "field": "grossKg",
+        "width": 18.2,
+        "align": "right",
+        "label": "KG"
+       },
+       {
+        "field": "criterion",
+        "width": 14.5,
+        "align": "left",
+        "label": "BASIS"
+       }
+      ]
+     }
+    ]
+   },
+   "document_footer": {
+    "height": 48,
+    "elements": [
+     {
+      "id": "e28",
+      "type": "text",
+      "source": "literal",
+      "text": "EXPORTER DECLARATION / DRAFT",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 2,
+      "width": 186,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e29",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "declaration",
+      "wrap": true,
+      "x": 2,
+      "y": 7,
+      "width": 186,
+      "height": 19,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e30",
+      "type": "text",
+      "source": "literal",
+      "text": "DESTINATION COUNTRY",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 29,
+      "width": 92,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e31",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "destinationCountry",
+      "wrap": false,
+      "x": 2,
+      "y": 34,
+      "width": 92,
+      "height": 8,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e32",
+      "type": "text",
+      "source": "literal",
+      "text": "CERTIFYING AUTHORITY / NOT ISSUED",
+      "field": "",
+      "wrap": false,
+      "x": 100,
+      "y": 29,
+      "width": 88,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e33",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "remarks",
+      "wrap": false,
+      "x": 100,
+      "y": 34,
+      "width": 88,
+      "height": 8,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     }
+    ]
+   },
+   "page_footer": {
+    "height": 9,
+    "elements": [
+     {
+      "id": "e34",
+      "type": "text",
+      "source": "literal",
+      "text": "CERTIFICATE OF ORIGIN · DRAFT",
+      "field": "",
+      "wrap": false,
+      "x": 2,
+      "y": 0,
+      "width": 101.3,
+      "height": 8,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e35",
+      "type": "text",
+      "source": "page",
+      "text": "PAGE {page} / {pages}",
+      "field": "",
+      "wrap": false,
+      "x": 104.3,
+      "y": 0,
+      "width": 83.7,
+      "height": 8,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     }
+    ]
+   }
+  }
+ }
+}

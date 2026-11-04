@@ -1,0 +1,157 @@
+{
+ "kind": "wms_damage",
+ "file": "wmsDamage",
+ "name": "WMS · 破损异常处理表",
+ "dataset": "wmsDamage",
+ "page": "A4 210×297",
+ "preset": "a4",
+ "counts": {
+  "nodes_in": 17,
+  "elements_out": 29,
+  "dropped": 0,
+  "substituted": 1
+ },
+ "entries": [
+  {
+   "code": "field_label",
+   "detail": "字段的标签在取值左侧另出一个 8 磅文本（框不够高放不下上下两行）",
+   "nodes": [
+    "n2",
+    "n3"
+   ]
+  },
+  {
+   "code": "field_label",
+   "detail": "字段的标签在取值上方另出一个 8 磅文本",
+   "nodes": [
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n12",
+    "n13",
+    "n14",
+    "n15"
+   ]
+  },
+  {
+   "code": "font_raised",
+   "detail": "字号 6.8 磅低于下限 8 磅，提高到 8 磅",
+   "nodes": [
+    "n16"
+   ]
+  },
+  {
+   "code": "font_raised",
+   "detail": "字号 7 磅低于下限 8 磅，提高到 8 磅",
+   "nodes": [
+    "n17"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 8.5 磅取整为 9 磅",
+   "nodes": [
+    "n5",
+    "n6",
+    "n7",
+    "n9",
+    "n12",
+    "n13",
+    "n14",
+    "n15"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 7.7 磅取整为 8 磅",
+   "nodes": [
+    "n8"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 7.6 磅取整为 8 磅",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "page_number",
+   "detail": "页码节点转成两个文字：左侧原文字，右侧页码（{page} / {pages}）",
+   "nodes": [
+    "n17"
+   ]
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 A4（210×297 毫米）即预设 a4"
+  },
+  {
+   "code": "rows_kept",
+   "detail": "保留全部 3 行样例数据"
+  },
+  {
+   "code": "slot_collision",
+   "detail": "单据级字段与明细字段同名 sourceRef：明细字段改名为 row_sourceRef"
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、行距",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n16",
+    "n11"
+   ]
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色",
+   "nodes": [
+    "n4",
+    "n17"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "列宽之和 228 与表格宽 186 不等，按比例调整",
+   "nodes": [
+    "n11"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "首列 21.2 → 32.5 毫米：平台的表格在首列放「承前（第 n 页）」「过次（转第 n 页）」「合计」，首列要放得下；多出的宽度从其余各列按比例让出",
+   "nodes": [
+    "n11"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "原型的表格没有累计和加和：数值列不标为度量列，平台的表格就不对它们求和",
+   "nodes": [
+    "n11"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "不转换：negativeRed（负数红字）、headerColor（表头底色）、minRowHeight、padding（行高与内边距，平台的行高由字号定）",
+   "nodes": [
+    "n11"
+   ]
+  }
+ ]
+}

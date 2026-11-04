@@ -617,3 +617,85 @@ func bandedDocument(groupFields ...string) doctemplates.Document {
 	}
 	return d
 }
+
+// A form (S06-B: a 2.x template without a detail band) is issued by group like any 2.x template: the group fields select the rows, a form of one group
+// is one document, and the renderer is asked for it with no table.
+func TestIssuerIssuesAFormByGroupWithNoTable(t *testing.T) {
+	ctx := context.Background()
+	owner := groupSnapshot().Owner
+	store, e := doctemplates.Open(filepath.Join(t.TempDir(), "templates"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	form := bandedDocument("customer")
+	form.Bands.Detail = nil
+	form.Bands.DocumentFooter = nil
+	v1, e := store.Save(owner.Identity, "", 0, form)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = store.Publish(owner.Identity, v1.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	frozen, _ := doctemplates.Canonical(v1.Layout)
+	renderer := &fakeRenderer{out: []byte("%PDF-1.7 form"), pages: 1}
+	issuer, _ := issuance.New(store, nil, renderer)
+	snap := groupSnapshot()
+	group, e := r.NewIssueGroup(snap, []string{"customer"}, []string{"乙"}, []int{1, 3})
+	if e != nil {
+		t.Fatal(e)
+	}
+	job := r.Job{ID: strings.Repeat("9", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), Group: &group}
+	if e := issuer.Check(ctx, job, snap); e != nil || renderer.checks != 1 || renderer.checkedRows != 0 || renderer.checkedValues["e1"] != "乙" {
+		t.Fatalf("check: %v %+v rows %d", e, renderer.checkedValues, renderer.checkedRows)
+	}
+	req := r.IssueRequest{Job: job, Snapshot: snap, Stamp: r.IssueStamp("AR-000005", issuedAt, job.ID), At: issuedAt}
+	out, e := issuer.Issue(ctx, req)
+	if e != nil || string(out.PDF) != "%PDF-1.7 form" || renderer.rows != 0 || renderer.vals["e1"] != "乙" {
+		t.Fatalf("issue: %v %+v", e, renderer.vals)
+	}
+}
+
+// A form without group fields is issued for a row, as a 1.x template is: the job has a row and no group, and the document is that row's;
+// a group on such a job is refused.
+func TestIssuerIssuesAFormWithoutGroupFieldsByRow(t *testing.T) {
+	ctx := context.Background()
+	owner := groupSnapshot().Owner
+	store, e := doctemplates.Open(filepath.Join(t.TempDir(), "templates"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	form := bandedDocument()
+	form.Bands.Detail, form.Bands.DocumentFooter = nil, nil
+	form.Bands.PageHeader.Elements[0] = doctemplates.Item{ID: "e1", Type: "text", Source: "field", Field: "customer", X: 0, Y: 2, Width: 100, Height: 8, FontSize: 12, Align: "left"}
+	v1, e := store.Save(owner.Identity, "", 0, form)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = store.Publish(owner.Identity, v1.ID, "publish", 1, 0); e != nil {
+		t.Fatal(e)
+	}
+	frozen, _ := doctemplates.Canonical(v1.Layout)
+	renderer := &fakeRenderer{out: []byte("%PDF-1.7 row"), pages: 1}
+	issuer, _ := issuance.New(store, nil, renderer)
+	snap := groupSnapshot()
+	job := r.Job{ID: strings.Repeat("a", 32), Owner: owner, Kind: "issue", TemplateID: v1.ID, TemplateVersion: 1, Template: string(frozen), RowIndex: 1}
+	if e := issuer.Check(ctx, job, snap); e != nil || renderer.checkedValues["e1"] != "乙" {
+		t.Fatalf("check: %v %+v", e, renderer.checkedValues)
+	}
+	req := r.IssueRequest{Job: job, Snapshot: snap, Stamp: r.IssueStamp("AR-000006", issuedAt, job.ID), At: issuedAt}
+	if _, e := issuer.Issue(ctx, req); e != nil || renderer.vals["e1"] != "乙" || renderer.rows != 0 {
+		t.Fatalf("issue: %v %+v", e, renderer.vals)
+	}
+	job.RowIndex = 2
+	if e := issuer.Check(ctx, job, snap); e != nil || renderer.checkedValues["e1"] != "甲" {
+		t.Fatalf("row 3: %v %+v", e, renderer.checkedValues)
+	}
+	group, _ := r.NewIssueGroup(snap, nil, nil, []int{0, 1, 2, 3})
+	job.Group = &group
+	if e := issuer.Check(ctx, job, snap); !errors.Is(e, r.ErrInvalid) {
+		t.Fatalf("a group for a job by row: %v", e)
+	}
+}

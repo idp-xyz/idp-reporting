@@ -27,6 +27,8 @@ import (
 // Files named <kind>.record.json are the converter's records of what it dropped, not samples; the directory prototype/ is the
 // converter's input. Neither is embedded.
 
+//go:generate go run ../cmd/reporting-samples convert --in samples/prototype --out samples --docs ../docs/SAMPLES.md
+
 //go:embed samples/*.json
 var sampleFiles embed.FS
 
@@ -379,6 +381,9 @@ func (s Sample) Bind(binding Binding, name string, mapping map[string]FieldMappi
 				band.Elements[i].Source, band.Elements[i].Field, band.Elements[i].Text = SourceLiteral, "", literal
 			}
 		}
+	}
+	if d.Bands.Detail == nil {
+		return d, nil // a form has no table to map
 	}
 	table := &d.Bands.Detail.Elements[0]
 	var kept []ItemColumn

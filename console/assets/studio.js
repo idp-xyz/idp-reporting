@@ -305,7 +305,7 @@ window.createReportingStudio=function(api){
    if(reason)setAria(el,true,reason);else{setAria(el,false);el.title=cardTitles[kind]||el.getAttribute('aria-label')||el.textContent.trim();}
   }
   const off=(id,v)=>{const b=$(id);if(b)b.disabled=!!v;};
-  const onlyTable=S.schema&&S.schema.startsWith('2')&&S.config&&n===1&&S.config.bands.detail.elements[0].id===sel[0];
+  const onlyTable=S.schema&&S.schema.startsWith('2')&&S.config&&n===1&&!!S.config.bands.detail&&S.config.bands.detail.elements[0].id===sel[0];
   const pickable=S.ready&&n>0&&!onlyTable&&!(S.schema&&S.schema.startsWith('1.')&&n===1&&sel[0]==='table');
   off('st-copy',!pickable);off('st-cut',!pickable);off('st-paste',!S.ready||!S.clip);off('st-painter',!S.ready);
   off('st-lock',!S.ready||!n);off('st-insp-lock',!n);off('st-insp-delete',!n);

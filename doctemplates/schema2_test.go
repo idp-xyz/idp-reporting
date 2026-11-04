@@ -266,7 +266,6 @@ func TestSchema2DocumentIsClosedAndStrict(t *testing.T) {
 		"a background":    func(d *doctemplates.Document) { d.Background = &doctemplates.BackgroundRef{} },
 		"a 1.x table":     func(d *doctemplates.Document) { d.Table = &doctemplates.Table{} },
 		"no bands":        func(d *doctemplates.Document) { d.Bands = nil },
-		"no detail":       func(d *doctemplates.Document) { b := *d.Bands; b.Detail = nil; d.Bands = &b },
 		"a band of nil": func(d *doctemplates.Document) {
 			b := *d.Bands
 			b.PageHeader = &doctemplates.Band{Height: 10}

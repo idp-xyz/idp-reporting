@@ -2165,7 +2165,7 @@ test('S03-L L3: the group fields are one to three dimension fields in order, or 
 
 test('S03-L L3: bands: an optional band is added with a default height or removed with its elements; its height is an input; the canvas and the inputs agree',async()=>{const a=await designer();try{
  cv.load(a,banded());
- assert.deepEqual([...a.$('doc2-bands').children].map(r=>r.querySelector('.cv2-name').textContent),['页眉带（3 个元素）','单据头带（2 个元素）','单据尾带（2 个元素）','页脚带（1 个元素）','明细带：必有，只放一个明细表；高度随页面伸展（至少 24.2 毫米：表头、承前行、一行明细与过次或合计行）。']);
+ assert.deepEqual([...a.$('doc2-bands').children].map(r=>r.querySelector('.cv2-name').textContent),['页眉带（3 个元素）','单据头带（2 个元素）','单据尾带（2 个元素）','页脚带（1 个元素）','明细带：只放一个明细表；高度随页面伸展（至少 24.2 毫米：表头、承前行、一行明细与过次或合计行）。']);
  assert.equal(a.$('doc2-band-height-page_header').value,'14');
  // Height by the input: the canvas follows (the bands below move).
  chg(a,'doc2-band-height-page_header',20);assert.equal(cv.tpl(a).bands.page_header.height,20);assert.equal(geometry2(a).document_header.top,45);assert.equal(a.$('doc2-band-height-page_header').value,'20');
@@ -3336,5 +3336,103 @@ test('S06-A A5/A7: a list that is built again keeps the keyboard where it was, a
  q(a,'#st-help').focus();q(a,'#st-help').click();assert.equal(isOpen(a,'help'),true);d.activeElement.blur();assert.equal(d.activeElement,d.body);
  const tab=new a.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});d.body.dispatchEvent(tab);assert.equal(tab.defaultPrevented,true);assert.equal(dialogOf(a,'help').contains(d.activeElement),true,'Tab brings the focus back into the dialog');
  d.activeElement.blur();d.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(isOpen(a,'help'),false);assert.equal(d.activeElement,q(a,'#st-help'));
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+// S06-B B7: the sample pack in the studio. The 37 samples of the pack come from the real server (the converter's output, embedded); each is copied to the
+// open query's dataset by the real copy route (a mapping of its slots to the dataset's columns, as the template centre will send it) and the copy opens in
+// the studio's canvas on the page of its own preset with every element drawn and none refused; the page the canvas draws is the preset's.
+test('S06-B B7: every one of the 37 samples, copied to the open dataset, opens in the studio canvas on its own page, with every element drawn',async()=>{const a=await designer();try{
+ const api=async(path,init)=>{const r=await fetch(url+'/api/reporting/v1/document-templates'+path,{headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...init});return r;};
+ const get=async path=>{const r=await api(path);assert.equal(r.status,200,path);return r.json();};
+ const list=await get('/samples');
+ assert.equal(list.length,37);
+ assert.deepEqual([...new Set(list.map(s=>s.domain))].sort(),['仓储 WMS','国际贸易','通用业务','运输 / 货代'].sort());
+ const presets=a.w.reportingPresets;
+ const bound=cv.tpl(a).binding,dataset={integration_id:bound.integration_id,id:bound.dataset.id,version:bound.dataset.version};
+ const pages=new Set();let drawn=0,codes=0;
+ const forms=new Set(['bol','fedex','mawb','mawb_air_waybill','usps','wms_carton_label','wms_location_label','wms_pallet_label','wms_sku_label']);
+ const tableCount=a=>a.$('doc-canvas-host').querySelectorAll('[data-key]').length&&[...a.$('doc-canvas-host').querySelectorAll('[data-key]')].filter(e=>e.getAttribute('data-key')===(cv.tpl(a).bands.detail||{elements:[{id:'-'}]}).elements[0].id&&cv.tpl(a).bands.detail).length;
+ for(const s of list){
+  const one=await get('/samples/'+encodeURIComponent(s.kind));
+  const doc=one.document,slots=Object.fromEntries(one.field_slots.map(f=>[f.id,f]));
+  // The mapping: the group fields to a dimension; of the table's columns the first metric to the dataset's metric and the others in turn to its two dimensions; a slot only a sum names to the metric.
+  const mapping={},table=doc.bands.detail?doc.bands.detail.elements[0].columns.map(c=>c.field):[],group=(doc.group&&doc.group.fields)||[];
+  // The forms have no detail band: their slots map to the dataset's columns one by one, the first to a dimension.
+  if(!doc.bands.detail){const some=one.field_slots.filter(f=>!f.metric).slice(0,2);some.forEach((f,i)=>{mapping[f.id]={column:['customer.id','aging.bucket'][i]};});}
+  for(const g of group)mapping[g]={column:'customer.id'};
+  const dims=['customer.id','aging.bucket'];let metricTaken=false;
+  for(const f of table){
+   if(mapping[f])continue;
+   if(slots[f].metric){if(!metricTaken){mapping[f]={column:'ar.open_balance'};metricTaken=true;}}
+   else if(dims.length)mapping[f]={column:dims.shift()};
+  }
+  for(const band of Object.values(doc.bands))for(const e of band.elements||[])if(e.source==='group_sum'&&!mapping[e.field]&&!table.includes(e.field))mapping[e.field]={column:'ar.open_balance'};
+  const r=await api('/samples/'+encodeURIComponent(s.kind)+'/copy',{method:'POST',body:JSON.stringify({dataset,name:'DOM '+s.kind,mapping})});
+  assert.equal(r.status,201,s.kind+': '+await r.clone().text());
+  const saved=(await r.json()).config;
+  cv.load(a,saved);
+  const ids=[];for(const band of Object.values(doc.bands))for(const e of band.elements||[])ids.push(e.id);
+  assert.equal(ids.length,s.elements,s.kind+': the listing counts the elements');
+  assert.deepEqual(cv.keys(a).sort(),[...ids].sort(),s.kind+': every element is drawn on the canvas');
+  assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-band').length,Object.keys(doc.bands).length,s.kind+': its bands');
+  assert.equal(!!doc.bands.detail,!forms.has(s.kind),s.kind+': a form has no detail band');
+  assert.equal(tableCount(a),doc.bands.detail?1:0,s.kind+': a table only where there is a detail band');
+  assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-refused,.cv-bad-band,.cv-over').length,0,s.kind+': nothing refused or overflowing');
+  assert.equal(a.$('doc2-panel').hidden,false,s.kind+': the 2.x panels');
+  // The page is the preset's: its safe region is what the canvas says it is.
+  const pre=presets.find(p=>p.id===doc.page.preset);
+  assert.ok(pre,s.kind+' names a preset of the table');
+  assert.equal(s.preset,pre.id);
+  assert.equal(a.$('doc-canvas-host').querySelector('.cv-safe-text').textContent,'安全区 x '+pre.left+'–'+(pre.width-pre.left)+' · y '+pre.top+'–'+pre.bottom,s.kind+': the page the canvas draws');
+  assert.equal(cv.tpl(a).page.preset,pre.id,s.kind+': saved with its preset');
+  assert.equal(cv.tpl(a).binding.dataset.id,dataset.id,s.kind+': bound to the open dataset');
+  pages.add(pre.id);drawn+=ids.length;
+  for(const band of Object.values(doc.bands))codes+=(band.elements||[]).filter(e=>e.type==='barcode'||e.type==='qrcode').length;
+ }
+ assert.deepEqual([...pages].sort(),['a4','label_150x100','label_4x6in']);
+ assert.equal(codes,7);assert.ok(drawn>=1000,'drawn '+drawn);
+ // With the pinned Typst renderer every sample also renders from its own rows through the preview route, on the page of its preset (the Go test of export/pdf and the checker hold the drawing to the template).
+ if(pdfConfigured){
+  for(const s of list){
+   const r=await api('/samples/'+encodeURIComponent(s.kind)+'/previews',{method:'POST',body:'{}'});
+   assert.equal(r.status,200,s.kind+' preview: '+(r.status===200?'':await r.text()));
+   const pdf=Buffer.from(await r.arrayBuffer());assert.equal(pdf.subarray(0,5).toString(),'%PDF-',s.kind);
+   const pre=presets.find(p=>p.id===s.preset),boxes=[...pdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
+   assert.ok(boxes.length>=1,s.kind+': a page');
+   for(const b of boxes){assert.ok(Math.abs(Number(b[1])*25.4/72-pre.width)<0.05&&Math.abs(Number(b[2])*25.4/72-pre.height)<0.05,s.kind+': a page of '+pre.id+' ('+b[1]+' x '+b[2]+' pt)');}
+  }
+ }
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}});
+
+// S06-B part 2: a form is a 2.x template without a detail band: the canvas and the structure panel have no 明细区 for it, the validator accepts it,
+// and the studio's "添加明细表" adds the detail band (and its table) back.
+test('S06-B: a form (no detail band) is drawn and validated without a detail region, and the insert of a table adds the detail band back',async()=>{const a=await designer();try{
+ const form=banded();delete form.bands.detail;
+ cv.load(a,form);
+ assert.equal(cv.tpl(a).bands.detail,undefined,'saved without a detail band');
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-b-detail').length,0,'no detail region on the canvas');
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('[data-band-box]').length,4);
+ assert.deepEqual([...a.$('doc-canvas-host').querySelectorAll('.cv-bandlabel')].map(e=>e.textContent),['页眉','报表头','报表尾','页脚'],'the margin names no 明细区');
+ const rows=[...a.$('doc2-bands').children].map(r=>r.querySelector('.cv2-name').textContent);
+ assert.match(rows.at(-1),/没有明细带/);assert.equal(rows.some(t=>t.startsWith('明细带：')),false);
+ assert.equal(a.$('st-layers').querySelectorAll('[data-k="band:detail"]').length,0,'the structure panel lists no detail band');
+ assert.equal(a.$('doc-table-status').textContent.includes('表单'),true);
+ // The document footer hangs directly under the document header: no detail region between them.
+ const box=n=>{const e=a.$('doc-canvas-host').querySelector('.cv-b-'+n);return {y:Number(e.getAttribute('y')),h:Number(e.getAttribute('height'))};};
+ assert.ok(Math.abs(box('document_footer').y-(box('document_header').y+box('document_header').h))<0.01,'the footer under the header');
+ // A form needs a band; the shared cases hold the rest (no band, a null detail).
+ const empty=banded();delete empty.bands.detail;for(const n of ['page_header','document_header','document_footer','page_footer'])delete empty.bands[n];
+ a.$('doc-status').textContent='';a.$('doc-json').value=JSON.stringify(empty);a.click('doc-json-open');assert.notEqual(a.$('doc-status').textContent,READY);
+ // The studio's insert of a table adds the detail band with a table of the first columns, selected; undo takes it away again.
+ a.$('st-card-table').click();
+ const t=cv.tpl(a).bands.detail;assert.ok(t&&t.elements.length===1&&t.elements[0].type==='table'&&t.elements[0].columns.length>=1,'the detail band is back');
+ assert.deepEqual(cv.selected(a),[t.elements[0].id]);
+ assert.equal(a.$('doc-canvas-host').querySelectorAll('.cv-b-detail').length,1);
+ assert.equal([...a.$('doc2-bands').children].some(r=>r.querySelector('.cv2-name').textContent.startsWith('明细带：')),true);
+ a.click('doc-undo');assert.equal(cv.tpl(a).bands.detail,undefined,'one undo step');
+ // And the other way: removing the table makes a form.
+ a.click('doc2-detail-add');assert.ok(cv.tpl(a).bands.detail);a.click('doc2-detail-remove');assert.equal(cv.tpl(a).bands.detail,undefined);
  assert.equal(a.errors.length,0,a.errors.join('|'));
  }finally{a.close();}});

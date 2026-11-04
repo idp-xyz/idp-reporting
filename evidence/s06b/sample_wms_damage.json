@@ -1,0 +1,555 @@
+{
+ "kind": "document2",
+ "file": "sample_wms_damage.pdf",
+ "bands": [
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": true,
+     "height": 9,
+     "id": "e1",
+     "size": 15,
+     "source": "literal",
+     "text": "破损异常处理 / DAMAGE REGISTER",
+     "type": "text",
+     "width": 186,
+     "wrap": false,
+     "x": 2,
+     "y": 0
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 9,
+     "id": "e2",
+     "size": 8,
+     "source": "literal",
+     "text": "单据编号",
+     "type": "text",
+     "width": 12.9,
+     "wrap": true,
+     "x": 2,
+     "y": 12
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 9,
+     "id": "e3",
+     "size": 8,
+     "source": "field",
+     "text": "DEMO-WMSDAMAGE-001",
+     "type": "text",
+     "width": 100.1,
+     "wrap": true,
+     "x": 14.9,
+     "y": 12
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 9,
+     "id": "e4",
+     "size": 8,
+     "source": "literal",
+     "text": "日期",
+     "type": "text",
+     "width": 10,
+     "wrap": true,
+     "x": 122,
+     "y": 12
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 9,
+     "id": "e5",
+     "size": 8,
+     "source": "field",
+     "text": "2026-10-28",
+     "type": "text",
+     "width": 56,
+     "wrap": true,
+     "x": 132,
+     "y": 12
+    },
+    {
+     "id": "e6",
+     "stroke": 0.75,
+     "type": "line",
+     "x1": 2,
+     "x2": 188,
+     "y1": 25.2,
+     "y2": 25.2
+    }
+   ],
+   "height": 27,
+   "name": "page_header"
+  },
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e7",
+     "size": 8,
+     "source": "literal",
+     "text": "货主",
+     "type": "text",
+     "width": 88,
+     "wrap": false,
+     "x": 2,
+     "y": 0
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e8",
+     "size": 9,
+     "source": "field",
+     "text": "DEMO-OWNER / 示例货主",
+     "type": "text",
+     "width": 88,
+     "wrap": false,
+     "x": 2,
+     "y": 5
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e9",
+     "size": 8,
+     "source": "literal",
+     "text": "仓库",
+     "type": "text",
+     "width": 90,
+     "wrap": false,
+     "x": 98,
+     "y": 0
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e10",
+     "size": 9,
+     "source": "field",
+     "text": "SHA01 / 上海示例仓",
+     "type": "text",
+     "width": 90,
+     "wrap": false,
+     "x": 98,
+     "y": 5
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e11",
+     "size": 8,
+     "source": "literal",
+     "text": "来源单 / 波次",
+     "type": "text",
+     "width": 88,
+     "wrap": false,
+     "x": 2,
+     "y": 13
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e12",
+     "size": 9,
+     "source": "field",
+     "text": "DEMO-TASK-1028",
+     "type": "text",
+     "width": 88,
+     "wrap": false,
+     "x": 2,
+     "y": 18
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e13",
+     "size": 8,
+     "source": "literal",
+     "text": "时点（含时区）",
+     "type": "text",
+     "width": 90,
+     "wrap": false,
+     "x": 98,
+     "y": 13
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e14",
+     "size": 8,
+     "source": "field",
+     "text": "2026-10-28T16:00:00+08:00",
+     "type": "text",
+     "width": 90,
+     "wrap": false,
+     "x": 98,
+     "y": 18
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e15",
+     "size": 8,
+     "source": "literal",
+     "text": "业务伙伴",
+     "type": "text",
+     "width": 186,
+     "wrap": false,
+     "x": 2,
+     "y": 26
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 6,
+     "id": "e16",
+     "size": 9,
+     "source": "field",
+     "text": "示例业务伙伴",
+     "type": "text",
+     "width": 186,
+     "wrap": false,
+     "x": 2,
+     "y": 31
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 10,
+     "id": "e17",
+     "size": 8,
+     "source": "literal",
+     "text": "破损数量按SKU/批次/单位记录；处置与库存报损分开，报损须经授权。",
+     "type": "text",
+     "width": 186,
+     "wrap": true,
+     "x": 2,
+     "y": 40
+    }
+   ],
+   "height": 52,
+   "name": "document_header"
+  },
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e19",
+     "size": 8,
+     "source": "literal",
+     "text": "数量汇总 / 按基础单位",
+     "type": "text",
+     "width": 186,
+     "wrap": false,
+     "x": 2,
+     "y": 1
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e20",
+     "size": 9,
+     "source": "field",
+     "text": "20.000 PCS；10.000 SET",
+     "type": "text",
+     "width": 186,
+     "wrap": false,
+     "x": 2,
+     "y": 6
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e21",
+     "size": 8,
+     "source": "literal",
+     "text": "制单 / 作业人",
+     "type": "text",
+     "width": 56,
+     "wrap": false,
+     "x": 2,
+     "y": 14
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e22",
+     "size": 9,
+     "source": "field",
+     "text": "示例制单员",
+     "type": "text",
+     "width": 56,
+     "wrap": false,
+     "x": 2,
+     "y": 19
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e23",
+     "size": 8,
+     "source": "literal",
+     "text": "审核 / 接收人",
+     "type": "text",
+     "width": 56,
+     "wrap": false,
+     "x": 66,
+     "y": 14
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e24",
+     "size": 9,
+     "source": "field",
+     "text": "待审核 / 待签收",
+     "type": "text",
+     "width": 56,
+     "wrap": false,
+     "x": 66,
+     "y": 19
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e25",
+     "size": 8,
+     "source": "literal",
+     "text": "明细行数",
+     "type": "text",
+     "width": 58,
+     "wrap": false,
+     "x": 130,
+     "y": 14
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e26",
+     "size": 9,
+     "source": "field",
+     "text": "3 行",
+     "type": "text",
+     "width": 58,
+     "wrap": false,
+     "x": 130,
+     "y": 19
+    },
+    {
+     "align": "left",
+     "bold": false,
+     "height": 5,
+     "id": "e27",
+     "size": 8,
+     "source": "literal",
+     "text": "本地设计样张 · 不执行收货、库存调整或出库确认",
+     "type": "text",
+     "width": 186,
+     "wrap": false,
+     "x": 2,
+     "y": 27
+    }
+   ],
+   "height": 33,
+   "name": "document_footer"
+  },
+  {
+   "elements": [
+    {
+     "align": "left",
+     "bold": false,
+     "height": 8,
+     "id": "e28",
+     "size": 8,
+     "source": "literal",
+     "text": "WMS · DESIGN SAMPLE",
+     "type": "text",
+     "width": 101.3,
+     "wrap": false,
+     "x": 2,
+     "y": 0
+    },
+    {
+     "align": "right",
+     "bold": false,
+     "height": 8,
+     "id": "e29",
+     "size": 8,
+     "source": "page",
+     "text": "第 {page} / {pages} 页",
+     "type": "text",
+     "width": 83.7,
+     "wrap": false,
+     "x": 104.3,
+     "y": 0
+    }
+   ],
+   "height": 9,
+   "name": "page_footer"
+  }
+ ],
+ "table": {
+  "columns": [
+   {
+    "align": "left",
+    "field": "row_sourceRef",
+    "label": "来源单",
+    "metric": false,
+    "scale": 0,
+    "width": 32.5
+   },
+   {
+    "align": "left",
+    "field": "sku",
+    "label": "SKU",
+    "metric": false,
+    "scale": 0,
+    "width": 18.3
+   },
+   {
+    "align": "left",
+    "field": "location",
+    "label": "库位",
+    "metric": false,
+    "scale": 0,
+    "width": 17.6
+   },
+   {
+    "align": "left",
+    "field": "batch",
+    "label": "批次",
+    "metric": false,
+    "scale": 0,
+    "width": 18.3
+   },
+   {
+    "align": "right",
+    "field": "quantity",
+    "label": "破损量",
+    "metric": false,
+    "scale": 3,
+    "width": 18.3
+   },
+   {
+    "align": "left",
+    "field": "unit",
+    "label": "单位",
+    "metric": false,
+    "scale": 0,
+    "width": 10.3
+   },
+   {
+    "align": "left",
+    "field": "disposition",
+    "label": "处置方式",
+    "metric": false,
+    "scale": 0,
+    "width": 23.4
+   },
+   {
+    "align": "left",
+    "field": "issueStatus",
+    "label": "状态",
+    "metric": false,
+    "scale": 0,
+    "width": 22.7
+   },
+   {
+    "align": "left",
+    "field": "reason",
+    "label": "原因",
+    "metric": false,
+    "scale": 0,
+    "width": 24.6
+   }
+  ],
+  "id": "e18",
+  "rows": [
+   [
+    "DEMO-SOURCE-1",
+    "SKU-0001",
+    "RETURN-A-01",
+    "LOT-2607",
+    "10.000",
+    "PCS",
+    "CLAIM",
+    "OPEN",
+    "待业务核实"
+   ],
+   [
+    "DEMO-SOURCE-2",
+    "SKU-0002",
+    "RETURN-A-02",
+    "LOT-2607",
+    "10.000",
+    "PCS",
+    "CLAIM",
+    "OPEN",
+    "待业务核实"
+   ],
+   [
+    "DEMO-SOURCE-3",
+    "SKU-0003",
+    "RETURN-A-03",
+    "LOT-2607",
+    "10.000",
+    "SET",
+    "CLAIM",
+    "OPEN",
+    "待业务核实"
+   ]
+  ],
+  "size": 8,
+  "totals": {},
+  "width": 186,
+  "x": 2
+ },
+ "table_pages": 1,
+ "footer": {
+  "page": 1,
+  "top": 409.20314960629923
+ },
+ "page": {
+  "preset": "a4",
+  "width": 210,
+  "height": 297,
+  "left": 10,
+  "top": 25,
+  "bottom": 270,
+  "strip": {
+   "x": 10,
+   "y": 10,
+   "width": 190,
+   "height": 8,
+   "banner_size": 10,
+   "stamp_size": 8,
+   "stamp_lines": 1
+  }
+ }
+}

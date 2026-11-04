@@ -1,0 +1,428 @@
+{
+ "kind": "usps",
+ "name": "USPS 快递面单 · 4×6",
+ "domain": "运输 / 货代",
+ "flow": "快递面单",
+ "description": "一份包裹面单；追踪号与条码载荷独立绑定。样本用于设计，不调用承运商或购买邮资。",
+ "fields": [
+  {
+   "id": "classMark",
+   "label": "服务标记",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "serviceText",
+   "label": "服务名称",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "senderName",
+   "label": "寄件人名称",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "senderStreet",
+   "label": "寄件人街道",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "senderCityStateZip",
+   "label": "寄件人城市 / 州 / 邮编",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "senderCountry",
+   "label": "寄件国家",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "shipDate",
+   "label": "出货日期",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "weightDisplay",
+   "label": "包裹重量（显示值）",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "recipientName",
+   "label": "收件人名称",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "recipientCompany",
+   "label": "收件人公司",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "recipientStreet",
+   "label": "收件人街道",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "recipientStreet2",
+   "label": "收件人第二地址行",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "recipientCityStateZip",
+   "label": "收件人城市 / 州 / 邮编",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "recipientCountry",
+   "label": "收件国家",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "trackingNumber",
+   "label": "追踪号显示值",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "linearPayload",
+   "label": "一维条码载荷（示例）",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "reference",
+   "label": "客户参考号",
+   "type": "text",
+   "scope": "row"
+  },
+  {
+   "id": "packageCount",
+   "label": "包裹序号 / 总数",
+   "type": "text",
+   "scope": "row"
+  }
+ ],
+ "rows": [
+  {
+   "classMark": "G",
+   "linearPayload": "SAMPLE-USPS-001",
+   "packageCount": "1 OF 1",
+   "recipientCityStateZip": "CITY OF INDUSTRY CA 91748",
+   "recipientCompany": "EXAMPLE DISTRIBUTION (DEMO)",
+   "recipientCountry": "UNITED STATES",
+   "recipientName": "SAMPLE RECEIVING TEAM",
+   "recipientStreet": "200 SAMPLE AVENUE",
+   "recipientStreet2": "SUITE 100",
+   "reference": "ORDER DEMO-001",
+   "senderCityStateZip": "LOS ANGELES CA 90001",
+   "senderCountry": "UNITED STATES",
+   "senderName": "DEMO FULFILLMENT CENTRE",
+   "senderStreet": "100 EXAMPLE ROAD",
+   "serviceText": "USPS GROUND ADVANTAGE",
+   "shipDate": "28 OCT 2026",
+   "trackingNumber": "DEMO-USPS-0001",
+   "weightDisplay": "2.00 LB"
+  }
+ ],
+ "document": {
+  "schema_version": "2.1",
+  "kind": "document",
+  "binding": {
+   "integration_id": "sample",
+   "dataset": {
+    "id": "sample",
+    "version": "1"
+   }
+  },
+  "page": {
+   "preset": "label_4x6in"
+  },
+  "bands": {
+   "page_header": {
+    "height": 131.5,
+    "elements": [
+     {
+      "id": "e1",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "classMark",
+      "wrap": false,
+      "x": 1.4,
+      "y": 0,
+      "width": 12.3,
+      "height": 15.6,
+      "font_size": 28,
+      "align": "center",
+      "bold": true
+     },
+     {
+      "id": "e2",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "serviceText",
+      "wrap": false,
+      "x": 0,
+      "y": 20,
+      "width": 89,
+      "height": 7.6,
+      "font_size": 13,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e3",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "senderName",
+      "wrap": false,
+      "x": 0,
+      "y": 36.1,
+      "width": 58.9,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e4",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "senderStreet",
+      "wrap": false,
+      "x": 0,
+      "y": 41.2,
+      "width": 58.9,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e5",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "senderCityStateZip",
+      "wrap": false,
+      "x": 0,
+      "y": 46.3,
+      "width": 58.9,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e6",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "senderCountry",
+      "wrap": false,
+      "x": 0,
+      "y": 51.4,
+      "width": 58.9,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e7",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "shipDate",
+      "wrap": false,
+      "x": 60.9,
+      "y": 36.1,
+      "width": 28.1,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e8",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "weightDisplay",
+      "wrap": false,
+      "x": 60.9,
+      "y": 42.8,
+      "width": 28.1,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     },
+     {
+      "id": "e9",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "recipientName",
+      "wrap": false,
+      "x": 0,
+      "y": 60.9,
+      "width": 89,
+      "height": 6.2,
+      "font_size": 11,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e10",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "recipientCompany",
+      "wrap": false,
+      "x": 0,
+      "y": 67.2,
+      "width": 89,
+      "height": 5,
+      "font_size": 9,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e11",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "recipientStreet",
+      "wrap": false,
+      "x": 0,
+      "y": 72.3,
+      "width": 89,
+      "height": 5.6,
+      "font_size": 10,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e12",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "recipientStreet2",
+      "wrap": false,
+      "x": 0,
+      "y": 78,
+      "width": 89,
+      "height": 5.6,
+      "font_size": 10,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e13",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "recipientCityStateZip",
+      "wrap": false,
+      "x": 0,
+      "y": 83.7,
+      "width": 89,
+      "height": 6.2,
+      "font_size": 11,
+      "align": "left",
+      "bold": true
+     },
+     {
+      "id": "e14",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "recipientCountry",
+      "wrap": false,
+      "x": 0,
+      "y": 90.3,
+      "width": 89,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e15",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "trackingNumber",
+      "wrap": false,
+      "x": 0,
+      "y": 103.2,
+      "width": 89,
+      "height": 5.6,
+      "font_size": 10,
+      "align": "center",
+      "bold": true
+     },
+     {
+      "id": "e16",
+      "type": "barcode",
+      "source": "field",
+      "text": "",
+      "field": "linearPayload",
+      "x": 0,
+      "y": 109.4,
+      "width": 89,
+      "height": 13.3,
+      "symbology": "code128",
+      "human_readable": false
+     },
+     {
+      "id": "e17",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "reference",
+      "wrap": false,
+      "x": 0,
+      "y": 126.5,
+      "width": 64.6,
+      "height": 5,
+      "font_size": 8,
+      "align": "left",
+      "bold": false
+     },
+     {
+      "id": "e18",
+      "type": "text",
+      "source": "field",
+      "text": "",
+      "field": "packageCount",
+      "wrap": false,
+      "x": 67.5,
+      "y": 126.5,
+      "width": 21.4,
+      "height": 5,
+      "font_size": 8,
+      "align": "right",
+      "bold": false
+     }
+    ]
+   }
+  }
+ }
+}

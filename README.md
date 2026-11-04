@@ -1,14 +1,28 @@
-# IDP Reporting Platform · S06-B part 1
+# IDP Reporting Platform · S06-B parts 1 and 2
 
-2026-11-03。模板中心的服务端与渲染器部分（docs/S06B_SCOPE.md 的第一部分，B1–B4；第二部分转换 37 个样例，第三部分是模板中心页面）：页面预设、2.x 套印、抬高的元素上限、样例包与目录元数据的路由、每身份 64 个模板。
+2026-11-03。模板中心的服务端与渲染器部分（docs/S06B_SCOPE.md 的第一部分，B1–B4；第二部分转换 37 个样例，见下；第三部分是模板中心页面）：页面预设、2.x 套印、抬高的元素上限、样例包与目录元数据的路由、每身份 64 个模板。
 
 - 页面预设（B1）：2.x 模板的 `page.preset`——`a4`（缺省，所有已存模板都是它）、`a4_landscape`、`a5`、`label_4x6in`、`label_100x150`、`label_100x100`。预设表只有一份，在 `doctemplates/schema2.go`（宽、高、安全区、横幅/印章条）；Typst 页面（`document.typ` 读 `data.json` 的页面尺寸，A4 不写该键所以字节不变）、版面、检查器（读测试写入的期望，没有自己的另一张表）、画布（`canvas.js` 里一份由测试与预设表比对的副本）都从它取数。出具印章条每个预设都有；窄条把最宽的合法印章在第一个 “ - ” 后折成两行（A5 8 pt，标签 6 pt），测试证明最宽的合法印章在每个预设里都放得下。1.x 仍只有 A4，带 `page` 被拒绝。
 - 2.x 套印（B2）：`page.print {offset_x, offset_y, variables_only, background?}`，语义同 1.x（偏移移动每个元素、表格与分页；底图在完整模式画在页面下、仅变量模式不画；仅变量模式去掉所有非变量——固定文字与固定条码、线、矩形、图片、表的线框与表头）。偏移须使打印内容仍在安全区内；底图须与预设同长宽比。预览、检查、出具与检查器两种模式都覆盖。
 - 上限（B3）：`MaxItems` 64→128、`MaxBandItems` 24→96，元素编号 e1–e128；在最坏模板（128 元素、单带 96）上重测：预览约 52 ms、出具前检查约 6 ms、最宽编号出具约 65 ms（预算 15 s），数字在 docs/CAPACITY.md。
-- 样例与目录（B4）：`doctemplates/samples/`（`embed.FS`）；`GET /document-templates/samples`、`GET …/samples/{kind}`、`POST …/samples/{kind}/previews`（用样例自带行、带 PREVIEW 横幅、无数据集）、`POST …/samples/{kind}/copy`（服务端按映射绑定、与保存同样校验并存为新模板第 1 版，未映射的槽位是字面量 `[标签]`）；`GET/PUT /document-templates/{id}/catalog`（领域、流程、收藏、归档、至多 16 个各至多 40 字的集合，`expected_revision` 冲突 409，读取某版本时服务端记 `last_opened`），列表带元数据；每身份模板上限 16→64（`privatedocs.OpenCap`，其余存储仍 16）。本部分的样例只有两个手写夹具 `_fixture_*.json`，第二部分以转换出的样例取代它们。
+- 样例与目录（B4）：`doctemplates/samples/`（`embed.FS`）；`GET /document-templates/samples`、`GET …/samples/{kind}`、`POST …/samples/{kind}/previews`（用样例自带行、带 PREVIEW 横幅、无数据集）、`POST …/samples/{kind}/copy`（服务端按映射绑定、与保存同样校验并存为新模板第 1 版，未映射的槽位是字面量 `[标签]`）；`GET/PUT /document-templates/{id}/catalog`（领域、流程、收藏、归档、至多 16 个各至多 40 字的集合，`expected_revision` 冲突 409，读取某版本时服务端记 `last_opened`），列表带元数据；每身份模板上限 16→64（`privatedocs.OpenCap`，其余存储仍 16）。本部分只有两个手写夹具，第二部分已以转换出的 37 个样例取代它们。
 - 为让共享校验用例两侧一致，`documents.js` 的 2.x 校验器随上限与 `page` 更新（限制、预设、套印），`canvas.js` 按预设画页面尺寸；页面中心 UI 不在本部分。
 
 测试：Go 无环境顶层测试 416 → 443 项通过（跳过 18 → 23，新增 5 项需 Typst，已加入 ci.yml 的三份跳过清单），带 Typst 的 Go 套件 458 项通过、跳过 8 项（需 PostgreSQL / S3 的既有项）；普通与 race（doctemplates、privatedocs、transport、export）都通过；DOM 186 项不变（无 Typst 166 通过、20 跳过，有 Typst 186/186，共享的 2.x 校验用例 323 → 347 条，两侧一致）；检查器对 78 份文档通过（改动前 76 份中的 70 份 PDF 与基线逐字节相同，其余 6 份本来就每次不同：随机记录号的印章与生成时间），golden.json 只新增 22 项。
+
+## S06-B 第二部分：37 个样例的提取、转换与验收（B5–B7）
+
+2026-11-03。原型 `IDP_Reporting_Designer_UIUX_V3.0` 的 37 个模板成为平台的样例包，取代第一部分的两个手写夹具（逐模板的转换记录在 docs/SAMPLES.md）。
+
+- 提取（B5）：`scripts/prototype_templates.mjs <原型文件> <输出目录> <CDP 端口>`（Node 24，无依赖，经 CDP 驱动自己端口的无头 Chrome；原型从本机回环地址临时提供，只在送出的那份副本里加一行把闭包里的四五个函数交出来，不抄原型的 JS）。写出 `doctemplates/samples/prototype/<kind>.json`：最后一版的文档、它绑定的数据集、原型自带的样例行、单据级字段的取值、原型模板中心的默认分类，另有 `inventory.json`。两次提取逐字相同（原型每次启动随机生成的模板编号不写出），提取结果提交入库，原型文件不入库。
+- 转换（B6）：`cmd/reporting-samples`（`convert --in … --out … --docs …`，`go generate ./doctemplates` 运行）。确定性；每种节点一条规则（text、field、table、line、rect、image、signature、summary、aggregate、barcode、qr、pageNumber、watermark，加区段、参数、套打）；转换结果必须通过 `doctemplates` 校验才写出，否则整次运行失败、什么都不写。固定版式（两张运单、提单、两张快递面单、四张 WMS 标签）转成**表单**，不放任何占位表：整版放在页眉区段，高度取最低元素的底边，外框在安全区内就原样放在纸上的位置，放不进才对齐安全区角并等比缩小，不再切开；一行一份文档。每个舍去或改写进 `doctemplates/samples/<kind>.record.json` 与 docs/SAMPLES.md。37 个模板共 816 个节点、转成 1197 个元素，没有一个节点整个丢掉；改写 44 个节点（页码、签章、图片、汇总）；字号低于 8 磅的提到 8 磅、颜色/斜体/字距/行距、查询参数、版式参考图、水印等逐条记录。测试断言提交的样例、记录与 docs/SAMPLES.md 等于转换结果、同一输入两次输出逐字相同、每个节点要么有元素要么在记录里。
+- 验收（B7）：37 个样例各用自带的行经预览路径渲染、过出具前检查，`scripts/check_pdf_export.py` 加 `--samples doctemplates/samples`：包里每个样例都有文档、页面是它自己的预设、条码与二维码由独立解码器解出；37 份 PDF 与检查报告在 `evidence/s06b/`；渲染时间最重的在 docs/CAPACITY.md（全部 27–61 毫秒）；DOM 测试把 37 个样例各经真实的复制路由绑到当前数据集并在工作室画布里打开。
+- 检查器的两个负向对照原来只对线宽 0.25/0.5 与「首个自动换行的文本」成立，对转换出的样例（线宽 0.75/1.5、短标签）无法成立，已改成取首条线的实际线宽、取够长的自动换行文本。
+- 表单（2.x 的明细带可以没有）：`bands.detail` 缺省的模板只画页眉、单据头、单据尾与页脚四个带，一页，没有明细行、承前与合计，单据尾紧接单据头；放不下页面按 DOES_NOT_FIT 拒绝而不截断；至少要有一个带，`"detail": null` 与 1.x 都拒绝。分组字段仍按取值选行，没有分组字段时一行一份文档（与 1.x 的行字段相同），`POST /issues` 按 `row_index` 出具（记录带行号、不带分组，`group` 为 400），工作室的正式出具走 1.x 的按行路径。涉及文档模型与校验、版面、预检与出具（同一分组的表单是一份文档）、画布与结构面板（没有明细区，“添加明细表”加回明细带，也可移除明细表变回表单）、控制台校验与共享用例、检查器（没有表就没有表的断言）。
+- 预设 `label_150x100`（150 × 100 毫米横向标签，安全区左右 4 毫米、y 12–94，横幅条 4, 3, 142 × 6，两行 6 磅印章）：进预设表、控制台副本、印章宽度证明测试、画布与 docs/API.md；四张 WMS 标签按原纸张转到它上面（安全区高 82 毫米，小于版式的 92 毫米，所以内容等比缩小到约 0.86）。
+- 第一部分的夹具测试改用真实样例（`statement` 与 `usps`），测试内容不变。
+
+测试（第二部分）：Go 无环境顶层测试 443 → 471 项通过（跳过 23 → 25，新增的 2 项需 Typst，已加入 ci.yml 的三份跳过清单；含子测试 1086 → 1114），带 Typst 的 Go 套件顶层 458 → 488 项通过、跳过 8 项不变（含子测试 1171 → 1237）；DOM 186 → 188 项（无 Typst 166 → 168 通过、20 跳过；有 Typst 188/188）；检查器对 CI 证据目录（含 37 个样例）全部通过，含负向对照；`gofmt`、`go vet ./...` 干净。
 
 以下为此前阶段历史说明：
 

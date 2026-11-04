@@ -1,0 +1,111 @@
+{
+ "kind": "wms_location_label",
+ "file": "wmsLocationLabel",
+ "name": "WMS · 库位标签",
+ "dataset": "wmsLocationLabel",
+ "page": "Custom 150×100",
+ "preset": "label_150x100",
+ "counts": {
+  "nodes_in": 11,
+  "elements_out": 17,
+  "dropped": 0,
+  "substituted": 0
+ },
+ "entries": [
+  {
+   "code": "box_grown",
+   "detail": "条码框按平台的条高下限调整：宽 115.7 → 113 毫米（居中），高 19 → 19 毫米",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "box_grown",
+   "detail": "文本框高度小于平台下限（5 毫米，且不小于所需行数的高度），已放大",
+   "nodes": [
+    "n11"
+   ]
+  },
+  {
+   "code": "field_label",
+   "detail": "字段的标签在取值左侧另出一个 8 磅文本（框不够高放不下上下两行）",
+   "nodes": [
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n8",
+    "n9"
+   ]
+  },
+  {
+   "code": "field_label",
+   "detail": "字段的标签舍去（框太小，放不下标签和取值）",
+   "nodes": [
+    "n6",
+    "n7"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.864 缩放：字号 13 磅 → 11 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n1",
+    "n2"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.864 缩放：字号 9 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n5",
+    "n6",
+    "n8",
+    "n9"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.864 缩放：字号 8.8 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n10"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.864 缩放：字号 6.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n11"
+   ]
+  },
+  {
+   "code": "form_fit",
+   "detail": "固定版式转成表单（没有明细带、没有明细表）：整版放在页眉区段，高度取最低元素的底边；外框 138×92 毫米；外框左上角对齐安全区左上角，整体等比缩小到 0.864（字号随之取整，不低于 8 磅）"
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 Custom（150×100 毫米）即预设 label_150x100"
+  },
+  {
+   "code": "rows_kept",
+   "detail": "原型有 3 行样例数据，每行一张表单；样例只留第一行，其余 2 行舍去"
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、行距",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11"
+   ]
+  }
+ ]
+}

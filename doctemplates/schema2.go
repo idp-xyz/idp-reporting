@@ -107,7 +107,7 @@ type DetailBand struct {
 type Bands struct {
 	PageHeader     *Band       `json:"page_header,omitempty"`
 	DocumentHeader *Band       `json:"document_header,omitempty"`
-	Detail         *DetailBand `json:"detail"`
+	Detail         *DetailBand `json:"detail,omitempty"`
 	DocumentFooter *Band       `json:"document_footer,omitempty"`
 	PageFooter     *Band       `json:"page_footer,omitempty"`
 }
@@ -367,6 +367,24 @@ func (b *Band) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalJSON reads the bands, refusing a detail band that is written as null: the detail band is present with its table, or absent (a form).
+func (b *Bands) UnmarshalJSON(data []byte) error {
+	type wire Bands
+	var value wire
+	if e := r.DecodeStrict(bytes.NewReader(data), &value); e != nil {
+		return e
+	}
+	var fields map[string]json.RawMessage
+	if e := json.Unmarshal(data, &fields); e != nil {
+		return r.ErrInvalid
+	}
+	if raw, ok := fields["detail"]; ok && string(bytes.TrimSpace(raw)) == "null" {
+		return r.ErrInvalid
+	}
+	*b = Bands(value)
+	return nil
+}
+
 func (b *DetailBand) UnmarshalJSON(data []byte) error {
 	type wire DetailBand
 	var value wire
@@ -427,7 +445,15 @@ func (d Document) Items() []BandItem {
 	return out
 }
 
-// TableItem returns the detail table of a 2.0 document, or nil.
+// Form reports a 2.x document without a detail band: a form (S06-B), which renders its four fixed bands on one page and has no table, no
+// rows of its own and no carried sums. Every document of a form is one row group.
+func (d Document) Form() bool { return d.Banded() && d.Bands != nil && d.Bands.Detail == nil }
+
+// IssuedByRow reports a template that is issued for one row of the snapshot rather than for a row group: every 1.x template, and a form with
+// no group fields (one document per row). Its issue request names `row_index`, its job and record carry the row and no group.
+func (d Document) IssuedByRow() bool { return !d.Banded() || (d.Form() && d.Group == nil) }
+
+// TableItem returns the detail table of a 2.0 document, or nil (a form has none).
 func (d Document) TableItem() *Item {
 	if d.Bands == nil || d.Bands.Detail == nil || len(d.Bands.Detail.Elements) != 1 || d.Bands.Detail.Elements[0].Type != TypeTable {
 		return nil
@@ -496,7 +522,7 @@ func printableText(text string, wrap bool, limit int) bool {
 // validateBanded checks a schema 2.0 document: every rule of the closed form, in the order of
 // ADR 0004. It never looks at data; the snapshot's fields are checked where the document is bound.
 func validateBanded(d Document) error {
-	if !d.Banded() || d.Kind != "document" || !validBinding(d.Binding) || len(d.Elements) != 0 || d.Print != nil || d.Background != nil || d.Table != nil || d.Bands == nil || d.Bands.Detail == nil {
+	if !d.Banded() || d.Kind != "document" || !validBinding(d.Binding) || len(d.Elements) != 0 || d.Print != nil || d.Background != nil || d.Table != nil || d.Bands == nil {
 		return r.ErrInvalid
 	}
 	// The page (S06-B): a preset of the table below, and the overprint profile.
@@ -534,7 +560,7 @@ func validateBanded(d Document) error {
 		}
 	}
 	detail := d.Bands.Detail
-	if len(detail.Elements) != 1 || detail.Elements[0].Type != TypeTable {
+	if detail != nil && (len(detail.Elements) != 1 || detail.Elements[0].Type != TypeTable) {
 		return r.ErrInvalid
 	}
 	total, ids := 0, map[string]bool{}
@@ -562,13 +588,17 @@ func validateBanded(d Document) error {
 			}
 		}
 	}
-	table := detail.Elements[0]
-	total++
-	if total > MaxItems || !validItemID(table.ID) || ids[table.ID] || validTable(table, bw) != nil {
-		return r.ErrInvalid
-	}
-	if heights+MinDetailHeightTenths(table.FontSize) > safeHeight {
-		return r.ErrInvalid
+	if detail != nil {
+		table := detail.Elements[0]
+		total++
+		if total > MaxItems || !validItemID(table.ID) || ids[table.ID] || validTable(table, bw) != nil {
+			return r.ErrInvalid
+		}
+		if heights+MinDetailHeightTenths(table.FontSize) > safeHeight {
+			return r.ErrInvalid
+		}
+	} else if total > MaxItems || (d.Bands.PageHeader == nil && d.Bands.DocumentHeader == nil && d.Bands.DocumentFooter == nil && d.Bands.PageFooter == nil) {
+		return r.ErrInvalid // a form has at least a band to draw
 	}
 	if !overprintFits(d, pre) {
 		return r.ErrInvalid
@@ -766,6 +796,7 @@ const (
 	PresetLabel4x6in   = "label_4x6in"
 	PresetLabel100x150 = "label_100x150"
 	PresetLabel100x100 = "label_100x100"
+	PresetLabel150x100 = "label_150x100" // a landscape label (S06-B part 2: the WMS labels of the prototype)
 )
 
 // Strip is the banner strip of a page, in millimetres, with the type sizes (points) of the preview banner and of the issue stamp.
@@ -796,6 +827,7 @@ var Presets = []Preset{
 	{PresetLabel4x6in, 101.6, 152.4, 4, 12, 146.4, Strip{4, 3, 93.6, 6, 8, 6, 2}},
 	{PresetLabel100x150, 100, 150, 4, 12, 144, Strip{4, 3, 92, 6, 8, 6, 2}},
 	{PresetLabel100x100, 100, 100, 4, 12, 94, Strip{4, 3, 92, 6, 8, 6, 2}},
+	{PresetLabel150x100, 150, 100, 4, 12, 94, Strip{4, 3, 142, 6, 8, 6, 2}},
 }
 
 // PresetByID finds a preset; the empty id is the default, A4.
@@ -908,9 +940,11 @@ func overprintFits(d Document, pre Preset) bool {
 	top, bottom := tenths(pre.Top), tenths(pre.Bottom)
 	dx, dy := tenths(ox), tenths(oy)
 	// The table's region: from under the bands above to the top of the page footer (the document footer lies inside it).
-	t := d.Bands.Detail.Elements[0]
-	if tenths(t.X)+dx < 0 || tenths(t.X)+tenths(t.Width)+dx > bw || top+ph+dh+dy < top || bottom-pf+dy > bottom {
-		return false
+	if d.Bands.Detail != nil {
+		t := d.Bands.Detail.Elements[0]
+		if tenths(t.X)+dx < 0 || tenths(t.X)+tenths(t.Width)+dx > bw || top+ph+dh+dy < top || bottom-pf+dy > bottom {
+			return false
+		}
 	}
 	// A band's top edge: the document footer's is anywhere in the table's region.
 	for _, band := range []struct {

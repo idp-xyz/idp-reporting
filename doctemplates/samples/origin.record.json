@@ -1,0 +1,192 @@
+{
+ "kind": "origin",
+ "file": "origin",
+ "name": "原产地证书 · Certificate of Origin",
+ "dataset": "origin",
+ "page": "A4 210×297",
+ "preset": "a4",
+ "counts": {
+  "nodes_in": 21,
+  "elements_out": 35,
+  "dropped": 0,
+  "substituted": 1
+ },
+ "entries": [
+  {
+   "code": "box_grown",
+   "detail": "文本框高度小于平台下限（5 毫米，且不小于所需行数的高度），已放大",
+   "nodes": [
+    "n1",
+    "n2"
+   ]
+  },
+  {
+   "code": "field_label",
+   "detail": "字段的标签在取值上方另出一个 8 磅文本",
+   "nodes": [
+    "n7",
+    "n8",
+    "n9",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n16",
+    "n51",
+    "n52",
+    "n53"
+   ]
+  },
+  {
+   "code": "field_label",
+   "detail": "字段的标签在取值左侧另出一个 8 磅文本（框不够高放不下上下两行）",
+   "nodes": [
+    "n10",
+    "n11"
+   ]
+  },
+  {
+   "code": "font_raised",
+   "detail": "字号 6.8 磅低于下限 8 磅，提高到 8 磅",
+   "nodes": [
+    "n2"
+   ]
+  },
+  {
+   "code": "font_raised",
+   "detail": "字号 7.1 磅低于下限 8 磅，提高到 8 磅",
+   "nodes": [
+    "n5"
+   ]
+  },
+  {
+   "code": "font_raised",
+   "detail": "字号 7 磅低于下限 8 磅，提高到 8 磅",
+   "nodes": [
+    "n26"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 10.5 磅取整为 11 磅",
+   "nodes": [
+    "n1"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 13.4 磅取整为 13 磅",
+   "nodes": [
+    "n3"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 8.3 磅取整为 8 磅",
+   "nodes": [
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n15",
+    "n16"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 8.2 磅取整为 8 磅",
+   "nodes": [
+    "n12",
+    "n13"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 7.8 磅取整为 8 磅",
+   "nodes": [
+    "n14"
+   ]
+  },
+  {
+   "code": "font_rounded",
+   "detail": "字号 7.7 磅取整为 8 磅",
+   "nodes": [
+    "n17"
+   ]
+  },
+  {
+   "code": "line_break",
+   "detail": "样例取值里的 16 处换行换成「 / 」，0 处其他控制字符换成空格（样例行不含控制字符）"
+  },
+  {
+   "code": "page_number",
+   "detail": "页码节点转成两个文字：左侧原文字，右侧页码（{page} / {pages}）",
+   "nodes": [
+    "n26"
+   ]
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 A4（210×297 毫米）即预设 a4"
+  },
+  {
+   "code": "rows_kept",
+   "detail": "保留全部 3 行样例数据"
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、行距",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n16",
+    "n51",
+    "n52",
+    "n53"
+   ]
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色",
+   "nodes": [
+    "n6",
+    "n26",
+    "n17"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "首列 25 → 32.5 毫米：平台的表格在首列放「承前（第 n 页）」「过次（转第 n 页）」「合计」，首列要放得下；多出的宽度从其余各列按比例让出",
+   "nodes": [
+    "n17"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "原型的表格没有累计和加和：数值列不标为度量列，平台的表格就不对它们求和",
+   "nodes": [
+    "n17"
+   ]
+  },
+  {
+   "code": "table_option",
+   "detail": "不转换：headerColor（表头底色）、minRowHeight、padding（行高与内边距，平台的行高由字号定）",
+   "nodes": [
+    "n17"
+   ]
+  }
+ ]
+}

@@ -38,7 +38,7 @@ func TestPresetTableIsConsistentAndA4IsWhatItAlwaysWas(t *testing.T) {
 			t.Errorf("%s: the strip's type", p.ID)
 		}
 	}
-	for _, want := range []string{"a4", "a4_landscape", "a5", "label_4x6in", "label_100x150", "label_100x100"} {
+	for _, want := range []string{"a4", "a4_landscape", "a5", "label_4x6in", "label_100x150", "label_100x100", "label_150x100"} {
 		if !ids[want] {
 			t.Errorf("preset %s missing", want)
 		}
@@ -99,7 +99,7 @@ func TestEveryPresetHoldsADocumentOfItsOwnWidthAndRefusesAWiderOne(t *testing.T)
 		}
 	}
 	// A 190 mm document is valid on A4 and on A4 landscape, and on no narrower page.
-	for preset, want := range map[string]bool{"": true, "a4": true, "a4_landscape": true, "a5": false, "label_4x6in": false, "label_100x150": false, "label_100x100": false} {
+	for preset, want := range map[string]bool{"": true, "a4": true, "a4_landscape": true, "a5": false, "label_4x6in": false, "label_100x150": false, "label_100x100": false, "label_150x100": false} {
 		d := presetDocument(t, "a4")
 		d.Page = nil
 		if preset != "" {

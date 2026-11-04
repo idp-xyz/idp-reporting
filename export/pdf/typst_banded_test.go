@@ -132,7 +132,7 @@ type bandedExpectation struct {
 	Kind       string           `json:"kind"`
 	File       string           `json:"file"`
 	Bands      []map[string]any `json:"bands"`
-	Table      map[string]any   `json:"table"`
+	Table      map[string]any   `json:"table,omitempty"` // absent for a form (S06-B): a document without a table has no table assertions
 	TablePages int              `json:"table_pages"`
 	Footer     *footerExpect    `json:"footer,omitempty"`
 	// A template that names a page (S06-B): the preset's numbers from the platform's table, the print offsets, the mode and the background.
@@ -210,6 +210,9 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 		t.Fatal(err)
 	}
 	e := bandedExpectation{Kind: "document2", File: name + ".pdf", TablePages: len(p.Pages)}
+	if d.Form() {
+		e.TablePages = 0
+	}
 	ox, oy, variables, _ := d.Overprint()
 	if d.Page != nil {
 		pre, _ := d.PagePreset()
@@ -228,7 +231,7 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 	if p.Footer != nil {
 		e.Footer = &footerExpect{Page: p.Footer.Page, Top: p.Footer.Top}
 		// A footer on a page of its own is not a table page.
-		if p.Footer.Page == len(p.Pages) && math.Abs(p.Footer.Top-(safeTop+oy+pageHeader)*mm) < 1e-6 && !pageHasTable(p.Pages[len(p.Pages)-1]) {
+		if !d.Form() && p.Footer.Page == len(p.Pages) && math.Abs(p.Footer.Top-(safeTop+oy+pageHeader)*mm) < 1e-6 && !pageHasTable(p.Pages[len(p.Pages)-1]) {
 			e.TablePages--
 		}
 	}
@@ -254,6 +257,10 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 		e.Bands = append(e.Bands, map[string]any{"name": band.name, "height": band.b.Height, "elements": items})
 	}
 	t2 := d.TableItem()
+	if t2 == nil {
+		writeEvidence(t, dir, name, e, pdf, extras)
+		return
+	}
 	columns := []map[string]any{}
 	for i, c := range t2.Columns {
 		col := table.Columns[i]
@@ -272,6 +279,12 @@ func bandedEvidence(t *testing.T, name string, pdf []byte, d doctemplates.Docume
 		columns = append(columns, map[string]any{"field": c.Field, "label": label, "width": c.Width, "align": c.Align, "metric": table.Metric[i] && (col.Type == "decimal" || col.Type == "integer"), "scale": col.Scale})
 	}
 	e.Table = map[string]any{"id": t2.ID, "x": t2.X, "width": t2.Width, "size": t2.FontSize, "columns": columns, "rows": table.Rows, "totals": map[string]string{}}
+	writeEvidence(t, dir, name, e, pdf, extras)
+}
+
+// writeEvidence writes a document and the expectation the checker holds it to.
+func writeEvidence(t *testing.T, dir, name string, e bandedExpectation, pdf []byte, extras evidenceExtras) {
+	t.Helper()
 	b, _ := json.MarshalIndent(e, "", " ")
 	files := map[string][]byte{name + ".pdf": pdf, name + ".json": b}
 	if e.Background {

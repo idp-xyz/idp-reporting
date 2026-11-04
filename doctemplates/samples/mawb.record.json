@@ -1,0 +1,325 @@
+{
+ "kind": "mawb",
+ "file": "mawb",
+ "name": "MAWB 航空主运单 · 套打",
+ "dataset": "mawb",
+ "page": "A4 210×297",
+ "preset": "a4",
+ "counts": {
+  "nodes_in": 72,
+  "elements_out": 72,
+  "dropped": 0,
+  "substituted": 0
+ },
+ "entries": [
+  {
+   "code": "box_grown",
+   "detail": "文本框宽度小于 10 毫米，放大到 10 毫米",
+   "nodes": [
+    "n1",
+    "n20",
+    "n21",
+    "n22",
+    "n23",
+    "n24",
+    "n25",
+    "n26",
+    "n27",
+    "n28",
+    "n29",
+    "n40",
+    "n41"
+   ]
+  },
+  {
+   "code": "box_grown",
+   "detail": "文本框高度小于平台下限（5 毫米，且不小于所需行数的高度），已放大",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n6",
+    "n9",
+    "n11",
+    "n12",
+    "n14",
+    "n15",
+    "n16",
+    "n17",
+    "n18",
+    "n19",
+    "n20",
+    "n21",
+    "n22",
+    "n23",
+    "n24",
+    "n25",
+    "n26",
+    "n27",
+    "n28",
+    "n29",
+    "n30",
+    "n31",
+    "n47",
+    "n48",
+    "n49",
+    "n51",
+    "n52",
+    "n53",
+    "n54",
+    "n55",
+    "n56",
+    "n57",
+    "n58",
+    "n59",
+    "n60",
+    "n61",
+    "n62",
+    "n64",
+    "n65",
+    "n66",
+    "n67",
+    "n68",
+    "n69",
+    "n70",
+    "n71",
+    "n72"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（-2.6 毫米）",
+   "nodes": [
+    "n6"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（-2.5 毫米）",
+   "nodes": [
+    "n9"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+5.1 毫米）",
+   "nodes": [
+    "n24",
+    "n41"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（-5.1 毫米）",
+   "nodes": [
+    "n27",
+    "n29"
+   ]
+  },
+  {
+   "code": "element_overlap",
+   "detail": "与先出现的元素重叠，纵向移到空处（+0.9 毫米）",
+   "nodes": [
+    "n30"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.848 缩放：字号 12 磅 → 10 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n72"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.848 缩放：字号 6.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n6",
+    "n9"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.848 缩放：字号 7.5 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n15",
+    "n18",
+    "n19",
+    "n20",
+    "n21",
+    "n22",
+    "n23",
+    "n24",
+    "n25",
+    "n30",
+    "n31",
+    "n66"
+   ]
+  },
+  {
+   "code": "font_scaled",
+   "detail": "整版按 0.848 缩放：字号 7 磅 → 8 磅（取整，范围 8～28 磅）",
+   "nodes": [
+    "n16",
+    "n17",
+    "n33",
+    "n34"
+   ]
+  },
+  {
+   "code": "form_fit",
+   "detail": "固定版式转成表单（没有明细带、没有明细表）：整版放在页眉区段，高度取最低元素的底边；外框 192×280 毫米；外框左上角对齐安全区左上角，整体等比缩小到 0.848（字号随之取整，不低于 8 磅）"
+  },
+  {
+   "code": "line_break",
+   "detail": "样例取值里的 16 处换行换成「 / 」，0 处其他控制字符换成空格（样例行不含控制字符）"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 collectWeight（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 prepaidValuation（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 collectValuation（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 prepaidTax（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 collectTax（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 collectDueAgent（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 collectDueCarrier（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 collectTotal（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 destinationCollect（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 destinationCharges（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "not_numeric",
+   "detail": "字段 destinationTotal（decimal）的取值不全是精确数字（有空值或非数字），样例里按文本处理"
+  },
+  {
+   "code": "overprint",
+   "detail": "套打（mode=variables）转成 page.print.variables_only：只印变量，文字、线、框不印；偏移取原型的偏移"
+  },
+  {
+   "code": "overprint",
+   "detail": "背景留空：原型的预印版面是自己画的图形，不是位图，平台的 page.print.background 需要一张 PNG"
+  },
+  {
+   "code": "page_background",
+   "detail": "版式参考图 \"mawb-v1\" 是原型自己画的图形，不是位图，不转换"
+  },
+  {
+   "code": "page_background",
+   "detail": "底图透明度 0.85 不转换"
+  },
+  {
+   "code": "page_size",
+   "detail": "纸张 A4（210×297 毫米）即预设 a4"
+  },
+  {
+   "code": "style_dropped",
+   "detail": "样式里平台没有的属性不转换：颜色、行距",
+   "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+    "n11",
+    "n12",
+    "n13",
+    "n14",
+    "n15",
+    "n16",
+    "n17",
+    "n18",
+    "n19",
+    "n20",
+    "n21",
+    "n22",
+    "n23",
+    "n24",
+    "n25",
+    "n26",
+    "n27",
+    "n28",
+    "n29",
+    "n30",
+    "n31",
+    "n32",
+    "n33",
+    "n34",
+    "n35",
+    "n36",
+    "n37",
+    "n38",
+    "n39",
+    "n40",
+    "n41",
+    "n42",
+    "n43",
+    "n44",
+    "n45",
+    "n46",
+    "n47",
+    "n48",
+    "n49",
+    "n50",
+    "n51",
+    "n52",
+    "n53",
+    "n54",
+    "n55",
+    "n56",
+    "n57",
+    "n58",
+    "n59",
+    "n60",
+    "n61",
+    "n62",
+    "n63",
+    "n64",
+    "n65",
+    "n66",
+    "n67",
+    "n68",
+    "n69",
+    "n70",
+    "n71",
+    "n72"
+   ]
+  }
+ ]
+}
