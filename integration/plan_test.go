@@ -101,6 +101,7 @@ func capacityPlans(t *testing.T, admin *pgxpool.Pool) {
 		"stored results":              {"assets", "assets_identity_kind_expires"},
 		"admissions in the last hour": {"jobs", "jobs_identity_created"},
 		"issue listing":               {"jobs", "jobs_identity_created"},
+		"job listing":                 {"jobs", "jobs_identity_created"},
 	}
 	newIndexes := []string{"jobs_identity_in_flight", "assets_identity_kind_expires", "jobs_identity_created"}
 	describe := func(nodes []planNode) string {
@@ -157,7 +158,7 @@ func capacityPlans(t *testing.T, admin *pgxpool.Pool) {
 						t.Errorf("%s (hot=%t) still scans %s sequentially: %s", st.Name, hot, n.Relation, describe(nodes))
 					}
 				}
-				if !found && st.Name != "issue listing" {
+				if !found && st.Name != "issue listing" && st.Name != "job listing" {
 					t.Errorf("%s (hot=%t) does not use %s: %s", st.Name, hot, w[1], describe(nodes))
 				}
 			}

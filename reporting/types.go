@@ -413,7 +413,8 @@ type IssueResult struct {
 // without one and its record carries the number the source product gave (S03-H). Cancel
 // cancels a queued job, and a running job of any kind but issue; a running issue job is
 // returned unchanged, because the product may already hold a reservation for it. Issues lists
-// an identity's issue jobs under the given integrations, newest first, at most limit of them.
+// an identity's issue jobs under the given integrations, newest first, at most limit of them;
+// Jobs lists its jobs of every kind the same way (S07-C).
 //
 // Fail and ResolveFailure are fenced by the claim. Fail fails a job that is running, at the
 // claim's generation, with a lease that has not run out by the store's clock; anything else is
@@ -450,6 +451,7 @@ type Repository interface {
 	Artifact(context.Context, Identity, string) (Artifact, error)
 	Issue(context.Context, Identity, string) (Issue, error)
 	Issues(context.Context, Identity, []string, int) ([]Job, error)
+	Jobs(context.Context, Identity, []string, int) ([]Job, error)
 	Sweep(context.Context, SweepOptions) (SweepResult, error)
 }
 
@@ -488,6 +490,7 @@ const MaxResultBytes = 1 << 20
 const MaxArtifactBytes = 8 << 20
 const MaxIssuePages = 100
 const MaxIssueListing = 100
+const MaxJobListing = 100
 const MaxTemplateBytes = 65536
 const SourcePageSize = 50
 const LeaseDuration = 30 * time.Second

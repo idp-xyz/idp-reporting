@@ -323,18 +323,21 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		return nil
 	})
-	bind("GET "+base+"/issues", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		values := req.URL.Query()
-		limit := 25
-		if len(values) > 1 || (len(values) == 1 && len(values["limit"]) != 1) {
-			return r.ErrInvalid
+	bind("GET "+base+"/jobs", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		limit, e := listingLimit(req, 50, r.MaxJobListing)
+		if e != nil {
+			return e
 		}
-		if len(values["limit"]) == 1 {
-			n, e := strconv.Atoi(values.Get("limit"))
-			if e != nil || n < 1 || n > r.MaxIssueListing {
-				return r.ErrInvalid
-			}
-			limit = n
+		v, e := service.Jobs(req.Context(), p, limit)
+		if e != nil {
+			return e
+		}
+		return send(w, 200, v)
+	})
+	bind("GET "+base+"/issues", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		limit, e := listingLimit(req, 25, r.MaxIssueListing)
+		if e != nil {
+			return e
 		}
 		v, e := service.Issues(req.Context(), p, limit)
 		if e != nil {
@@ -354,6 +357,22 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		return send(w, 200, v)
 	})
 	return secured(mux), nil
+}
+
+// listingLimit is the one query parameter a listing takes: limit, once, 1..most, or absent (fallback). Any other query is ErrInvalid.
+func listingLimit(req *http.Request, fallback, most int) (int, error) {
+	values := req.URL.Query()
+	if len(values) > 1 || (len(values) == 1 && len(values["limit"]) != 1) {
+		return 0, r.ErrInvalid
+	}
+	if len(values["limit"]) == 1 {
+		n, e := strconv.Atoi(values.Get("limit"))
+		if e != nil || n < 1 || n > most {
+			return 0, r.ErrInvalid
+		}
+		return n, nil
+	}
+	return fallback, nil
 }
 
 // capabilities is the one capability document. embedding is whether embed pages are configured for the caller's integrations

@@ -64,13 +64,17 @@ window.createReportingLibrary=function(ports){
   return {id:v.id,versions:v.version,binding:v.binding&&typeof v.binding==='object'?v.binding:null,name:text(v.name),schema:text(v.schema_version),preset:text(v.preset)||'a4',published:Number.isSafeInteger(v.published_version)?v.published_version:0,
    catalog:{domain:text(c.domain),flow:text(c.flow),favourite:c.favourite===true,archived:c.archived===true,collections:Array.isArray(c.collections)?c.collections.filter(x=>typeof x==='string'):[],last_opened:text(c.last_opened),revision:Number.isSafeInteger(c.revision)?c.revision:0}};
  }
+ // The latest refresh is the one that counts: the centre is shown again while a listing is still in flight (the crumb, then the rail), and the
+ // earlier answer, arriving after the later one, must not put back what it listed.
+ let refreshes=0;
  async function refresh(){
-  state.loading=true;state.failed='';render();
+  const seq=++refreshes;state.loading=true;state.failed='';render();
   try{
    const list=await ports.call('/document-templates',undefined,'模板列表');
+   if(seq!==refreshes)return;
    if(!Array.isArray(list)||list.length>64)throw Error('无法验证模板列表。');
    state.own=list.map(normalize).filter(Boolean);state.loaded=true;
-  }catch(e){if(e&&e.stale){state.loading=false;if(alive)render();return;}state.failed='模板列表读取失败。';}
+  }catch(e){if(seq!==refreshes)return;if(e&&e.stale){state.loading=false;if(alive)render();return;}state.failed='模板列表读取失败。';}
   state.loading=false;render();
  }
  async function loadSamples(){

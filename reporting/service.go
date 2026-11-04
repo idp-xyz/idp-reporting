@@ -516,6 +516,56 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 	return v, e
 }
 
+// Jobs lists the caller's jobs of every kind under the integrations the caller holds, newest first, at most limit of them (S07-C).
+// An entry is what the job says of itself (its kind, state, ids, code, and, for an issue, its template and, once it succeeded, its
+// number), with expired set as the poll sets it; the source is not asked and no result is authorized here: a result is authorized
+// when it is read (GET /jobs/{id}, the snapshot's rows, the artifact's content). An issue record that cannot be read as published is
+// an error for the whole page, as in Issues.
+func (s *Service) Jobs(ctx context.Context, p Principal, limit int) ([]JobView, error) {
+	if !p.Identity.Valid() {
+		return nil, ErrNotFound
+	}
+	if limit < 1 || limit > MaxJobListing {
+		return nil, ErrInvalid
+	}
+	integrations := s.held(p)
+	out := []JobView{}
+	if len(integrations) == 0 {
+		return out, nil
+	}
+	jobs, e := s.repo.Jobs(ctx, p.Identity, integrations, limit)
+	if e != nil {
+		return nil, e
+	}
+	for _, j := range jobs {
+		if _, _, e := s.source(p, j.Owner.Integration); e != nil {
+			return nil, ErrIntegrity
+		}
+		var v JobView
+		if s.expired(j) {
+			v, e = s.expiredView(ctx, p, j)
+		} else {
+			v, _, e = s.jobView(ctx, p, j)
+		}
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// held is the integrations of the principal that the service connects: the ones its listings are filtered by, in the repository.
+func (s *Service) held(p Principal) []string {
+	integrations := []string{}
+	for _, id := range p.Integrations {
+		if _, _, e := s.source(p, id); e == nil {
+			integrations = append(integrations, id)
+		}
+	}
+	return integrations
+}
+
 // Issues lists the caller's issue jobs under the integrations the caller holds, newest first,
 // with the record of each that succeeded. The listing fails closed: one record that cannot
 // be read as published (tampered, missing) is an error for the whole page.
@@ -526,12 +576,7 @@ func (s *Service) Issues(ctx context.Context, p Principal, limit int) ([]IssueVi
 	if limit < 1 || limit > MaxIssueListing {
 		return nil, ErrInvalid
 	}
-	integrations := []string{}
-	for _, id := range p.Integrations {
-		if _, _, e := s.source(p, id); e == nil {
-			integrations = append(integrations, id)
-		}
-	}
+	integrations := s.held(p)
 	out := []IssueView{}
 	if len(integrations) == 0 {
 		return out, nil

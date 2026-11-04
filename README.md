@@ -1,3 +1,10 @@
+# IDP Reporting Platform · S07-C
+
+2026-11-04。按身份列任务（docs/S07C_SCOPE.md）：
+
+- 服务端新增 `GET /jobs?limit=N`（1..100，默认 50）：当前身份在其持有的产品连接下的全部任务（快照、导出、出具），最新在前，每项即 `GET /jobs/{id}` 的任务视图（含 `expired` 与出具编号），不向来源重新授权——结果在读取时授权。仓库接口新增 `Jobs`（内存与 PostgreSQL 实现，`jobs_identity_created` 索引服务于它，计划测试与容量语句表已加入）。
+- 控制台的任务面板由此列表驱动：登录后、打开面板时、“刷新状态”时读取；不再是“本次会话任务”。列表之外（更早）的任务仍用“恢复查看”按 ID 打开。
+
 # IDP Reporting Platform · S07-B
 
 2026-11-04。ADR 0009 §5 的下一步（docs/S07B_SCOPE.md），同一套任务基线量前后：

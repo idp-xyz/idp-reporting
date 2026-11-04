@@ -130,7 +130,7 @@ ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;lef
 </div>
 
 <h2 id="p-overview">工作区概览</h2>
-<p>登录后的首页。四个计数卡：当前产品连接数、所选产品的数据集数、本次会话任务数、可用导出格式（来自服务端能力）。"可用数据集"列出当前产品连接的数据集，"打开"把它带到工作台；"数据中心"按钮进入数据中心。右侧是三步工作流程的提示。</p>
+<p>登录后的首页。四个计数卡：当前产品连接数、所选产品的数据集数、我的任务数（服务器上当前身份最近的 50 项）、可用导出格式（来自服务端能力）。"可用数据集"列出当前产品连接的数据集，"打开"把它带到工作台；"数据中心"按钮进入数据中心。右侧是三步工作流程的提示。</p>
 
 <h2 id="p-datacenter">数据中心</h2>
 <figure><img src="img/03-datacenter.png" alt="数据中心"><figcaption><b>数据中心</b>产品连接选择、数据集卡（名称、编号 · 版本、字段表：字段 / 类型 · 币种或单位、维度与指标数、打开工作台）。</figcaption></figure>
@@ -208,7 +208,7 @@ ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;lef
 
 <h2 id="p-tasks">任务面板</h2>
 <div class="pair">
-<figure><img src="img/16-tasks-panel.png" alt="任务面板"><figcaption><b>任务面板</b>应用栏"任务"在任何页面上拉开：恢复查看、本次会话任务（任务、ID、状态、操作：刷新 / 查看结果 / 下载 / 取消）。</figcaption></figure>
+<figure><img src="img/16-tasks-panel.png" alt="任务面板"><figcaption><b>任务面板</b>应用栏"任务"在任何页面上拉开：恢复查看、我的任务（服务器上当前身份最近的 50 项，最新在前；登录、打开面板与"刷新状态"时重新读取）。每行：任务、ID、状态、操作（刷新 / 查看结果 / 下载 / 取消）。</figcaption></figure>
 <figure><img src="img/17-tasks-restored.png" alt="按 ID 恢复"><figcaption><b>按 ID 恢复</b>粘贴任务 ID → 打开任务：只能恢复当前身份的任务；已过期的产物标为"已过期并清除"。</figcaption></figure>
 </div>
 <div class="note">任务列表只含<strong>本浏览器会话</strong>创建或恢复的任务——刷新页面后它是空的，但任务都在服务器上，用任务 ID 即可找回。这也是为什么造数据脚本会把它建的任务 ID 打印出来。</div>
@@ -283,7 +283,7 @@ ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;lef
 
 <h2 id="faq">常见问题与边界</h2>
 <table><tr><th>现象</th><th>原因与做法</th></tr>
-<tr><td>登录后任务面板是空的</td><td>任务列表只含本浏览器会话创建或恢复的任务。任务都在服务器上，用 ID 恢复。</td></tr>
+<tr><td>登录后任务面板里有别处创建的任务</td><td>列表来自服务器（<code>GET /jobs</code>）：当前身份最近的 50 项，不分会话。更早的任务用 ID 恢复；另一身份的任务永远不在列表里。</td></tr>
 <tr><td>登录后芯片是"未选择数据"</td><td>会话数据不入库。先查一次，或恢复一个快照任务后"查看结果"。</td></tr>
 <tr><td>看板 / 设计器说"请先选择数据"</td><td>它们绑定当前数据。任何页面上的"选择数据…"或页眉芯片都能打开抽屉。</td></tr>
 <tr><td>"发布"按钮显示"保存并发布"</td><td>画布有未保存修改，确认即先保存为新版本再发布；不想保存就取消。</td></tr>

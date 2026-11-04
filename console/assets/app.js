@@ -87,7 +87,9 @@
   const drawers=[];
   const drawer=makeDrawer('sh-d-data',[['.query-panel','sh-query-slot']],()=>$('query-companies').value?$('preview'):$('query-companies'));
   // The tasks panel (S07-B): the tasks page's restore row, list and refresh button, reachable from every shell through the rail.
-  const tasksPanel=makeDrawer('sh-d-tasks',[['#page-tasks .restore-panel','sh-tasks-slot'],['#page-tasks article.panel','sh-tasks-slot'],['#refresh-tasks','sh-tasks-foot']],()=>$('tasks-body').querySelector('button')||$('restore-id'),on=>{const b=document.querySelector('[data-panel="tasks"]');if(b)b.setAttribute('aria-expanded',String(on));});
+  const tasksPanel=makeDrawer('sh-d-tasks',[['#page-tasks .restore-panel','sh-tasks-slot'],['#page-tasks article.panel','sh-tasks-slot'],['#refresh-tasks','sh-tasks-foot']],()=>$('tasks-body').querySelector('button')||$('restore-id'),on=>{const b=document.querySelector('[data-panel="tasks"]');if(b)b.setAttribute('aria-expanded',String(on));
+    // Opening the panel reads the server's list again (S07-C), quietly: it does not hold the page, and what is on screen stays until the answer.
+    if(on&&state.session&&!state.starting){const m=mark();loadJobs().catch(error=>{if(!(error instanceof Stale))fail(error,m,{label:'任务列表'});});}});
   function dataSummary() {if(!state.lastResult||!state.query)return null;const q=state.query;const text=q.dataset.id+'@'+q.dataset.version+' · '+q.company_ids.join('、')+' · '+q.as_of;return {dataset:q.dataset.id+'@'+q.dataset.version,scope:q.company_ids.join('、'),date:q.as_of,kind:state.snapshot?'冻结快照':'查询预览',text};}
   function updateChip() {
     const chip=$('sh-data-chip');if(!chip)return;const s=dataSummary();
@@ -355,6 +357,8 @@
         await loadProduct(offered[0]);
         // The resource is prepared before anything can be started: a dataset selected under a query in flight would discard that query.
         if(embedded){busy(1);try{await prepareResource();}finally{if(epoch===state.epoch)busy(-1);}}
+        // The console's task list is the server's (S07-C); the embed shows one view and has no panel to fill.
+        else await loadJobs();
       }catch(error){fail(error);}
     }catch(error){if(!(error instanceof Stale)){disconnect(errorMessage(error));if(embed)embed.error(embedCode(error));}}
     finally{if(epoch===state.epoch)state.starting=false;if(!embedded&&!state.session)$('connect-button').disabled=false;}
@@ -496,6 +500,16 @@
   const validCode=c=>typeof c==='string'&&/^[A-Z][A-Z0-9_]{0,63}$/.test(c);
   function checkIssue(v,state){return !!v&&typeof v==='object'&&(state==='succeeded'?validNumber(v.number):v.number===undefined)&&isID(v.template_id)&&Number.isSafeInteger(v.template_version)&&v.template_version>=1&&typeof v.template_sha256==='string'&&/^[a-f0-9]{64}$/.test(v.template_sha256)&&(v.group===undefined?Number.isSafeInteger(v.row_index)&&v.row_index>=0:v.row_index===undefined&&window.reportingIssueGroup.valid(v.group));}
   function checkJob(j) {if(!j||!isID(j.job_id)||!['snapshot','export','issue'].includes(j.kind)||!Object.hasOwn(statuses,j.state)||(j.snapshot_id&&!isID(j.snapshot_id))||(j.artifact_id&&!isID(j.artifact_id))||(j.format!==undefined&&(j.kind==='snapshot'||j.format==='xlsx'||!Object.hasOwn(exportFormats,j.format)))||(j.kind==='issue')!==(j.issue!==undefined)||(j.kind==='issue'&&(j.format!=='pdf'||!checkIssue(j.issue,j.state)))||(j.error_code!==undefined&&(j.state!=='failed'||!validCode(j.error_code)))||(j.expired!==undefined&&(j.expired!==true||j.state!=='succeeded')))throw new Failure(0,'INVALID_RESPONSE');}
+  // The server's listing of the identity's jobs (S07-C): a list of at most 100 job views, each checked as a poll's answer is, no id twice.
+  function checkJobs(list) {if(!Array.isArray(list)||list.length>100)throw new Failure(0,'INVALID_RESPONSE');const seen=new Set();for(const j of list){checkJob(j);if(seen.has(j.job_id))throw new Failure(0,'INVALID_RESPONSE');seen.add(j.job_id);}}
+  // loadJobs makes the server's list the task list: the identity's newest 50 jobs in the server's order (GET /jobs), each keeping what this
+  // session knew of it (the query behind a snapshot); what the session knows and the server did not list (a restored job outside the window)
+  // stays, older than the listed. The list is read after sign-in, when the panel opens and by 刷新状态; what it says of a result is not an
+  // authorization: 查看结果 and 下载 ask the server, which asks the source, as they always did.
+  async function loadJobs() {const epoch=state.epoch;const list=await request('/jobs?limit=50');if(epoch!==state.epoch)throw new Stale();checkJobs(list);
+    const next=new Map();for(const [id,j] of state.jobs)if(!list.some(v=>v.job_id===id))next.set(id,j);
+    for(const j of list.slice().reverse())next.set(j.job_id,Object.assign({},state.jobs.get(j.job_id)||{},j));
+    state.jobs=next;renderJobs();return list.length;}
   function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
   async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)&&error.code!=='OVERLOADED'){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
@@ -578,7 +592,7 @@
   $('first-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,true)));$('next-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,false)));
   $('page-size').addEventListener('change',()=>{if(state.busy||state.catalogLoading){$('page-size').value=state.pageLimit;return;}if(state.snapshot){state.view++;perform(m=>loadSnapshot(state.snapshot,state.query,m,true));}});
   $('restore-job').addEventListener('click',()=>{const id=$('restore-id').value.trim();perform(async m=>{if(!isID(id))throw new Failure(400,'INVALID_REQUEST');await refreshJob(id);if(current(m))notify('已恢复当前身份可访问的任务。','success');},taskContext(id,'任务恢复'));});
-  $('refresh-tasks').addEventListener('click',()=>perform(async m=>{let complete=true;for(const id of Array.from(state.jobs.keys())){if(!current(m))throw new Stale();if(!await refreshTask(id,m))complete=false;}if(complete&&current(m))notify('已知任务状态已刷新。','success');},{label:'任务刷新'}));
+  $('refresh-tasks').addEventListener('click',()=>perform(async m=>{await loadJobs();if(!current(m))throw new Stale();let complete=true;for(const id of Array.from(state.jobs.keys())){if(!current(m))throw new Stale();if(!await refreshTask(id,m))complete=false;}if(complete&&current(m))notify('已知任务状态已刷新。','success');},{label:'任务刷新'}));
   if(!embedded)$('connection-overlay').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const first=$('access-token'),last=$('connect-button');if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
   if(!embedded)window.addEventListener('hashchange',()=>openPage(location.hash.slice(1)));
   if(embedded)startEmbed();else{openPage(location.hash.slice(1));disconnect();}
