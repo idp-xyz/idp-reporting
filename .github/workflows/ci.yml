@@ -173,6 +173,7 @@ jobs:
           node --check scripts/browser_embed_s03n.mjs
           node --check scripts/browser_console_s06c.mjs
           node --check scripts/ux_baseline_s07.mjs
+          node --check scripts/seed_demo_data.mjs
       - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:
