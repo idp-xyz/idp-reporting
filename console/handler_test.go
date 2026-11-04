@@ -29,6 +29,9 @@ func TestConsoleServesOnlyBundledAssetsAndPreservesAPI(t *testing.T) {
 		{"/console/embed.js", 200, "createReportingEmbed"}, {"/console/embed.css", 200, "data-theme"},
 		// The embed page is served only through the origin-checked /embed/ routes, never as a console asset.
 		{"/console/embed.html", 404, ""}, {"/console/private.json", 404, ""}, {"/console/assets/", 404, ""}, {"/api/reporting/v1/session", 401, "private-api"},
+		// The user manual (S07-D): the page as the directory, its stylesheet, screenshots and test data by name; no listing, no other file.
+		{"/console/manual/", 200, "用户手册"}, {"/console/manual/manual.css", 200, ".toc"}, {"/console/manual/img/01-signin.png", 200, "PNG"}, {"/console/manual/testdata/catalog.json", 200, "dataset"},
+		{"/console/manual/index.html", 404, ""}, {"/console/manual/img/", 404, ""}, {"/console/manual/testdata/", 404, ""}, {"/console/manual/manual.go", 404, ""}, {"/console/manual/img/x.svg", 404, ""}, {"/console/manual", 404, ""},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()

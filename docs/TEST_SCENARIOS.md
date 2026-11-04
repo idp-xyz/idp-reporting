@@ -16,6 +16,8 @@
 
 `-memory` 意味着重启即清空快照、任务与产物；模板、看板、布局在四个私有目录里，重启仍在（要全新环境就删掉 `idp-reporting-run/{templates,dashboards,layouts,backgrounds}` 下的文件后再起）。PostgreSQL 与对象存储模式需要数据库和 S3 兼容服务，CI 里跑，本机不做。
 
+用户手册在演示地址上：`http://127.0.0.1:7811/console/manual/`（应用栏底部与登录卡上的"帮助"图标；本仓库 `docs/manual/index.html` 是同一份）。
+
 ## 2. 模拟器里有什么
 
 一个身份：`platform_demo / user_a`（发行方 `urn:idp:contract-demo`），两个产品连接。没有第二个身份可登录，"另一个身份看不到我的东西"这类隔离只在 Go 测试里验证。
