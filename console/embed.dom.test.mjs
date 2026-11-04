@@ -453,7 +453,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   const consoleIds=new Set(idsOf(indexHtml)),embedIds=new Set(idsOf(embedHtml));
   assert.equal(new Set(idsOf(embedHtml)).size,idsOf(embedHtml).length,'an id is used twice in the embed page');
   // Everything the shared scripts look up is there, except what the embed must not have: the token form, the logout, the navigation of the pages it leaves out.
-  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system','nav-datasets','sh-data-chip','sh-data-text','sh-data-kind','sh-d-data','sh-d-data-title','sh-query-slot'];
+  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system','nav-datasets','sh-data-chip','sh-data-text','sh-data-kind','sh-d-data','sh-d-data-title','sh-query-slot','sh-d-tasks','sh-d-tasks-title','sh-tasks-slot','sh-tasks-foot'];
   assert.deepEqual([...consoleIds].filter(id=>!embedIds.has(id)).sort(),notInEmbed.sort());
   assert.deepEqual([...embedIds].filter(id=>!consoleIds.has(id)).sort(),['embed-inert','embed-retry','embed-state']);
   for(const html of [embedHtml]){const lower=html.toLowerCase();for(const banned of ['<style',' style=',' onclick=',' onload=',' onerror=','javascript:','<iframe','<form','<a '])assert.equal(lower.includes(banned),false,'the embed page contains '+banned);assert.equal([...html.matchAll(/<script/g)].length,[...html.matchAll(/<script src="\/console\/[a-z]+\.js" defer>/g)].length);}

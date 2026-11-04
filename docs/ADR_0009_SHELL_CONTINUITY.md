@@ -1,7 +1,7 @@
 # ADR 0009 · One navigation and one data context across the console's shells
 
-Date: 2026-11-03. Status: proposed (accepted on merge of S07-A). Implementation: S07-A (the application rail and the
-data drawer); later slices decide the rest on the evidence S07-A produces.
+Date: 2026-11-03. Status: accepted (merged with S07-A). Implementation: S07-A (the application rail and the data drawer), S07-B (the
+tasks panel and 保存并发布); later slices decide the rest on the evidence these produce.
 
 ## Context
 
@@ -12,10 +12,11 @@ centre, the dashboard studio), each with its own way out (the wordmark to the ov
 the centre, 返回设计器, 数据中心), and a data context (product, dataset, company scope, date, preview or frozen snapshot)
 that lives only in the workbench page: every designer starts with a card that sends the person back there.
 
-The task baseline of `scripts/ux_baseline_s07.mjs` on main 789b293 (docs/UX_BASELINE_S07.md): five tasks, 33 clicks,
-19 page switches, 15 shell changes, one dead end. Going from the document studio to the dashboard studio to the centre
-and back costs 7 clicks and 7 shell changes; publishing a dashboard from an empty session costs 10 clicks, 3 shell
-changes and a dead end. These are measured, not felt.
+The task baseline of `scripts/ux_baseline_s07.mjs` on main 789b293 (docs/UX_BASELINE_S07.md): five tasks, 34 clicks,
+19 page switches, 15 shell changes, two dead ends (the numbers of the script as it stands after S07-B, which also counts
+a publish refused for unsaved work as a dead end; the first measurement, before that rule, read 33 and one). Going from the document studio to the dashboard studio to the centre
+and back costs 7 clicks and 7 shell changes; publishing a dashboard from an empty session costs 11 clicks, 3 shell
+changes and two dead ends. These are measured, not felt.
 
 The question "is the console the primary surface" is answered by ADR 0006 and docs/s00/ARCHITECTURE.md: products embed
 the viewer, the dashboards and the document designer for their users; the console is the platform's own workbench for

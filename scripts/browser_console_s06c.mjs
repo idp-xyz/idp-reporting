@@ -90,7 +90,8 @@ const typeInto = async (sel, text) => { await click(sel); await evalJs(`${q(sel)
 const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'the console is idle', 40000);
 // A studio or the centre hides the console's navigation: the way out is their own wordmark, as a person would take it.
 // S07-A: the application rail is on every shell, so a page is one click away from anywhere.
-const nav = async page => { await click(`.app-rail [data-page="${page}"]`); await waitFor(`!document.getElementById('page-${page}').hidden`, 'page ' + page); await sleep(250); };
+const nav = async page => { if (page === 'tasks' && await evalJs(`!!document.querySelector('[data-panel="tasks"]')`)) { await evalJs(`document.querySelectorAll('.sh-overlay').forEach(o=>{if(!o.hidden)o.querySelector('[data-act=close]').click();})`); await click('.app-rail [data-panel="tasks"]'); await waitFor(`!document.getElementById('sh-d-tasks').hidden`, 'the tasks panel'); await sleep(250); return; }
+  await evalJs(`document.querySelectorAll('.sh-overlay').forEach(o=>{if(!o.hidden)o.querySelector('[data-act=close]').click();})`); await click(`.app-rail [data-page="${page}"]`); await waitFor(`!document.getElementById('page-${page}').hidden`, 'page ' + page); await sleep(250); };
 // The document, and in the dashboard studio each panel's own content (a closed drawer sits off-screen by a transform inside the studio's overflow:hidden box; that is not overflow a person sees).
 const overflow = () => evalJs(`(()=>{const d=document.documentElement,on=document.body.classList.contains('board-on');const panels=on?['bd-desk','bd-sidebar','bd-inspector','bd-studio'].map(id=>{const e=document.getElementById(id);const inner=id==='bd-studio'?[e.querySelector('.topbar'),e.querySelector('.statusbar')]:[e];return [id,...inner.map(x=>[x.scrollWidth,x.clientWidth])];}):[];const bad=panels.some(p=>p.slice(1).some(([s,c])=>s>c+1));return {doc:[d.scrollWidth,d.clientWidth],panels,over:d.scrollWidth>d.clientWidth+1||bad};})()`);
 const api = (method, path, body) => evalJs(`(async()=>{const r=await fetch('/api/reporting/v1'+${JSON.stringify(path)},{method:${JSON.stringify(method)},headers:{Authorization:'Bearer '+${JSON.stringify(token)},'Content-Type':'application/json'},body:${body === undefined ? 'undefined' : JSON.stringify(JSON.stringify(body))}});const t=await r.text();return {status:r.status,body:t?JSON.parse(t):null};})()`);
@@ -222,7 +223,9 @@ async function main() {
   await clickBtn('#bd-sidebar', '添加指标卡'); await sleep(150);
   check('a change after the save: · 有未保存修改, and 发布 refuses with the reason', await evalJs(`document.getElementById('bd-state').textContent==='已保存 v1 · 有未保存修改'`));
   await clickBtn('#bd-studio .topbar', '发布'); await sleep(300);
-  check('发布 with unsaved changes opens no dialog and says why', await evalJs(`document.getElementById('bd-d-publish').hidden&&document.getElementById('board-status').textContent==='请先保存当前修改，再发布该保存版本。'`));
+  await waitFor(`!document.getElementById('bd-d-publish').hidden`, 'the confirmation offering 保存并发布', 30000); await sleep(250);
+  check('发布 with unsaved changes offers 保存并发布 (S07-B)', await evalJs(`document.getElementById('bd-publish-confirm').textContent==='保存并发布'&&/先保存为版本 2/.test(document.getElementById('bd-publish-summary').textContent)`));
+  await shot('console-09a-dashboard-save-publish'); await key('Escape'); await sleep(200);
   await clickBtn('#bd-studio .topbar', '保存版本'); await waitFor(`document.getElementById('bd-state').textContent==='已保存 v2'`, 'saved v2', 30000); await idle();
   await clickBtn('#bd-studio .topbar', '发布'); await waitFor(`!document.getElementById('bd-d-publish').hidden`, 'the publish confirmation', 30000); await sleep(250);
   const summary = await evalJs(`Object.fromEntries([...document.querySelectorAll('#bd-publish-summary dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]))`);
@@ -245,8 +248,8 @@ async function main() {
 
   // ---- the session: tasks, system ---------------------------------------------------------------------------------------------------------
   await nav('tasks');
-  check('the tasks page lists the session\'s snapshot job with its state, under the BACKGROUND TASKS label', await evalJs(`document.getElementById('shell-label').textContent==='BACKGROUND TASKS'&&document.querySelectorAll('#tasks-body tr').length===1&&/已完成/.test(document.querySelector('#tasks-body tr').textContent)&&document.getElementById('tasks-note').textContent==='1 项'`));
-  await shot('console-12-tasks'); await contrast('tasks 1440 light');
+  check('the tasks panel (S07-B) opens over the current page with the session\'s snapshot job and its state', await evalJs(`!document.getElementById('sh-d-tasks').hidden&&document.getElementById('sh-tasks-slot').contains(document.getElementById('tasks-body'))&&document.querySelectorAll('#tasks-body tr').length===1&&/已完成/.test(document.querySelector('#tasks-body tr').textContent)&&document.getElementById('tasks-note').textContent==='1 项'`));
+  await shot('console-12-tasks'); await contrast('tasks panel 1440 light'); await key('Escape'); await sleep(200);
   await nav('system');
   check('the system page: the identity and the capabilities as definition lists', await evalJs(`document.getElementById('shell-label').textContent==='PLATFORM CAPABILITIES'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`));
   await shot('console-13-system'); await contrast('system 1440 light');

@@ -69,8 +69,9 @@
   const parked=[];
   function park(el,slot) {if(!el||!slot||el.parentNode===slot)return;parked.push({el,parent:el.parentNode,next:el.nextSibling,slot});slot.append(el);}
   function unpark(slot) {for(let i=parked.length-1;i>=0;i--){const p=parked[i];if(p.slot!==slot)continue;if(p.parent&&p.parent.isConnected){if(p.next&&p.next.parentNode===p.parent)p.parent.insertBefore(p.el,p.next);else p.parent.append(p.el);}parked.splice(i,1);}}
-  const drawer=(()=>{
-    const overlay=$('sh-d-data');if(!overlay)return {open(){},close(){},isOpen:()=>false};
+  // A drawer of the shell: modal, focus-trapped, Esc closes and the focus returns; while it is open the named console elements are parked in its slots and put back on close.
+  function makeDrawer(id,parks,focusIn,onToggle) {
+    const overlay=$(id);if(!overlay)return {open(){},close(){},isOpen:()=>false};
     let opener=null;
     const focusable=()=>Array.from(overlay.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(e=>!e.hidden&&!e.closest('[hidden]'));
     function trap(e) {
@@ -78,11 +79,15 @@
       if(e.key!=='Tab')return;const list=focusable();if(!list.length)return;const first=list[0],last=list[list.length-1];
       if(e.shiftKey&&(document.activeElement===first||!overlay.contains(document.activeElement))){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
     }
-    function open(from) {if(!overlay.hidden||!state.session)return;opener=from&&from.focus?from:document.activeElement;park(document.querySelector('.query-panel'),$('sh-query-slot'));overlay.hidden=false;document.querySelector('.shell').inert=true;document.addEventListener('keydown',trap,true);($('query-companies').value?$('preview'):$('query-companies')).focus();}
-    function close() {if(overlay.hidden)return;overlay.hidden=true;document.removeEventListener('keydown',trap,true);unpark($('sh-query-slot'));document.querySelector('.shell').inert=false;if(opener&&opener.isConnected)opener.focus();opener=null;}
+    function open(from) {if(!overlay.hidden||!state.session)return;for(const d of drawers)if(d!==api)d.close();opener=from&&from.focus?from:document.activeElement;for(const [sel,slot] of parks)park(document.querySelector(sel),$(slot));overlay.hidden=false;document.querySelector('.shell').inert=true;document.addEventListener('keydown',trap,true);(focusIn()||focusable()[0]||overlay).focus();if(onToggle)onToggle(true);}
+    function close() {if(overlay.hidden)return;overlay.hidden=true;document.removeEventListener('keydown',trap,true);for(const [,slot] of parks)unpark($(slot));document.querySelector('.shell').inert=false;if(onToggle)onToggle(false);if(opener&&opener.isConnected)opener.focus();opener=null;}
     overlay.querySelectorAll('[data-act=close]').forEach(b=>b.addEventListener('click',close));overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close();});
-    return {open,close,isOpen:()=>!overlay.hidden};
-  })();
+    const api={open,close,isOpen:()=>!overlay.hidden};drawers.push(api);return api;
+  }
+  const drawers=[];
+  const drawer=makeDrawer('sh-d-data',[['.query-panel','sh-query-slot']],()=>$('query-companies').value?$('preview'):$('query-companies'));
+  // The tasks panel (S07-B): the tasks page's restore row, list and refresh button, reachable from every shell through the rail.
+  const tasksPanel=makeDrawer('sh-d-tasks',[['#page-tasks .restore-panel','sh-tasks-slot'],['#page-tasks article.panel','sh-tasks-slot'],['#refresh-tasks','sh-tasks-foot']],()=>$('tasks-body').querySelector('button')||$('restore-id'),on=>{const b=document.querySelector('[data-panel="tasks"]');if(b)b.setAttribute('aria-expanded',String(on));});
   function dataSummary() {if(!state.lastResult||!state.query)return null;const q=state.query;const text=q.dataset.id+'@'+q.dataset.version+' · '+q.company_ids.join('、')+' · '+q.as_of;return {dataset:q.dataset.id+'@'+q.dataset.version,scope:q.company_ids.join('、'),date:q.as_of,kind:state.snapshot?'冻结快照':'查询预览',text};}
   function updateChip() {
     const chip=$('sh-data-chip');if(!chip)return;const s=dataSummary();
@@ -117,7 +122,7 @@
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
-    drawer.close();dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
+    for(const d of drawers)d.close();dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';if($('nav-datasets'))$('nav-datasets').textContent='0';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
@@ -277,6 +282,7 @@
   }
   function openPage(page) {
     if(embedded)return;
+    for(const d of drawers)d.close();
     if(!pages[page])page='overview';
     for(const name of Object.keys(pages))$('page-'+name).hidden=name!==page;
     document.querySelectorAll('.nav-item').forEach(b=>{const active=b.dataset.page===page;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
@@ -562,7 +568,7 @@
   }
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));
-  if(!embedded){$('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());$('sh-data-chip').addEventListener('click',()=>drawer.open($('sh-data-chip')));}
+  if(!embedded){$('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());$('sh-data-chip').addEventListener('click',()=>drawer.open($('sh-data-chip')));document.querySelectorAll('[data-panel="tasks"]').forEach(b=>b.addEventListener('click',()=>tasksPanel.isOpen()?tasksPanel.close():tasksPanel.open(b)));}
   for(const id of ['catalog-product','query-product'])$(id).addEventListener('change',()=>loadProduct($(id).value).catch(error=>fail(error)));
   $('query-dataset').addEventListener('change',()=>{queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';});
   for(const id of ['query-companies','query-date'])$(id).addEventListener('input',queryChanged);

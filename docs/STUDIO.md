@@ -342,3 +342,15 @@
 - 既有断言的适配：S06-C C1 的导航断言改为应用栏；S06-B C1/C4 的页眉按钮列表排除芯片；嵌入页“控制台有而嵌入页没有的 id”加芯片与抽屉的 id，看板区段的 `data-open` 控件只剩字标与面包屑，`data-act="data"` 三个按钮被规则隐藏。
 - 任务基线：`scripts/ux_baseline_s07.mjs`，前后数字在 `docs/UX_BASELINE_S07.md`。
 - 真实浏览器：`scripts/browser_console_s06c.mjs` 按应用栏的几何更新后重跑，证据在 `evidence/s07a/console/`。
+
+# 任务面板与保存并发布（S07-B）
+
+2026-11-04。`docs/S07B_SCOPE.md`。
+
+| 区域 | 控件 | 函数 |
+|---|---|---|
+| 应用栏“任务”（`data-panel="tasks"`） | 打开/关闭任务面板；`aria-expanded` 跟随 | `app.js` `tasksPanel`（与数据抽屉同一个 `makeDrawer`）：把任务页的恢复行、列表卡与“刷新状态”搬进 `#sh-tasks-slot` / `#sh-tasks-foot`，关闭时放回；两个抽屉互斥；`openPage` 关闭所有抽屉（“查看结果”因此落到工作台） |
+| 看板工作室“发布前确认” | 有未保存修改或尚未保存：按钮“保存并发布”，摘要写“先保存为版本 N，再发布它” | `board.js` `publish`/确认：`dashboard.save()` → `readRelease()` → `publish()`，每步失败即停（状态吐司说明） |
+| 文档工作室“发布前确认” | 同上：按钮“保存并发布”，脚注“先保存为新版本，再发布它” | `studio.js`：`api.save(then)`（`documents.js` 的 `saveServer(fresh, then)`）→ `api.readRelease(then)` → `api.publish()`；发布历史版本不变 |
+
+偏离与决定：任务页保留（`#tasks` 与概览计数仍可到达），只是不再是应用栏的目的地；面板初始焦点落在列表的第一个按钮（没有任务时落在恢复输入框）；“保存并发布”是两次既有请求的顺序执行，不引入新的语义，确认对话框如实写出先后。
