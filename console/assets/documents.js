@@ -224,7 +224,7 @@ window.createReportingDocuments=function(ports){
   let published=0;for(const [i,e] of v.history.entries()){if(!keys(e,['revision','action','version','at'])||e.revision!==i+1||!['publish','withdraw'].includes(e.action)||!Number.isSafeInteger(e.version)||(e.action==='publish'?(e.version<1||e.version>20):e.version!==0)||typeof e.at!=='string'||!Number.isFinite(Date.parse(e.at)))throw Error('无法验证发布历史。');published=e.action==='publish'?e.version:0;}
   if(published!==v.published_version)throw Error('发布历史与指针不一致。');release=v;$('doc-release-status').textContent='发布修订 '+v.revision+' · '+(v.published_version?'已发布版本 '+v.published_version:'当前未发布');$('doc-release-history').replaceChildren();for(const e of v.history)$('doc-release-history').append(node('li','修订 '+e.revision+' · '+(e.action==='publish'?'发布版本 '+e.version:'撤回')+' · '+e.at));touch();
  }
- function saveServer(fresh){action(()=>{validate(config);const prior=!fresh&&saved&&sameBinding(saved.config)?saved:null,document=canonical(config);resetRelease();ports.exchange('/document-templates',{method:'POST',body:{id:prior?.id||'',expected_version:prior?.version||0,config:document}},v=>{serverEntry(v,prior?.id,(prior?.version||0)+1);if(JSON.stringify(canonical(v.config))!==JSON.stringify(document))throw Error('服务器保存内容不一致。');saved=v;publishedOpen=false;resetRelease();$('doc-server-status').textContent='已保存模板 '+v.id+' · 版本 '+v.version;},'模板保存');});}
+ function saveServer(fresh,then){action(()=>{validate(config);const prior=!fresh&&saved&&sameBinding(saved.config)?saved:null,document=canonical(config);resetRelease();ports.exchange('/document-templates',{method:'POST',body:{id:prior?.id||'',expected_version:prior?.version||0,config:document}},v=>{serverEntry(v,prior?.id,(prior?.version||0)+1);if(JSON.stringify(canonical(v.config))!==JSON.stringify(document))throw Error('服务器保存内容不一致。');saved=v;publishedOpen=false;resetRelease();if(then)setTimeout(then,0);$('doc-server-status').textContent='已保存模板 '+v.id+' · 版本 '+v.version;},'模板保存');});}
  $('doc-server-save').addEventListener('click',()=>saveServer(false));$('doc-server-new').addEventListener('click',()=>saveServer(true));
  function listServer(then){action(()=>ports.exchange('/document-templates',undefined,values=>{if(!Array.isArray(values)||values.length>64||!values.every(v=>validID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw Error('无法验证模板列表。');$('doc-server-listing').replaceChildren();for(const v of values){const o=node('option',v.id+' · 最新版本 '+v.version);o.value=v.id;o.dataset.version=String(v.version);$('doc-server-listing').append(o);}$('doc-server-version').value=String(values[0]?.version||1);$('doc-server-status').textContent='当前身份可访问 '+values.length+' 个模板。';serverList=values;if(then)setTimeout(()=>then(values),0);},'模板列表'));}
  $('doc-server-list').addEventListener('click',()=>listServer());
@@ -919,6 +919,8 @@ window.createReportingDocuments=function(ports){
   loadVersions,fetchVersion,restoreVersion,loadChooser,readRelease,openPublishedOf,listServer,
   previewVersion:n=>action(()=>previewSaved(n)),
   publish:n=>changeRelease('publish',n),
+  // 保存并发布 (S07-B): a save that calls back once the server has the version, so the studio can read the release and publish it in one go.
+  save:then=>saveServer(false,then),
   withdraw:()=>changeRelease('withdraw'),
   validateNow(){const list=issues();status(list.length?'版式检查未通过：'+list[0].detail:'版式检查通过：模板符合当前数据集的全部规则；边界样本与 PDF 预览另行检查。');touch();return list;},
   sample:sampleJSON,

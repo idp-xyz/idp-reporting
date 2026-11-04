@@ -101,6 +101,12 @@ svg{vertical-align:middle;flex-shrink:0}
 .sh-drawer .footer-note{font-size:11px;color:var(--muted);margin-right:auto}
 .sh-drawer .query-panel{margin:0}
 .sh-drawer .query-fields{grid-template-columns:1fr 1fr}
+.sh-drawer .restore-panel{margin-bottom:14px}
+.sh-drawer .panel .table-wrap{overflow:auto}
+.sh-drawer .task-id{white-space:normal;overflow-wrap:anywhere;font-size:10px}
+.sh-drawer th,.sh-drawer td{padding:9px 12px;white-space:normal}
+.sh-drawer .tasks-table td:last-child button{margin:2px 4px 2px 0}
+.app-rail .nav-item[aria-expanded="true"]{background:var(--sel-bg);border-color:var(--light);color:var(--sel-ink)}
 .console-main{min-width:0;padding:28px 34px 0;max-width:1600px;width:100%;margin:0 auto;display:flex;flex-direction:column}
 .console-main>.page{flex:1}
 .console-footer{display:flex;justify-content:space-between;gap:20px;margin-top:36px;border-top:1px solid var(--line);padding:16px 0;color:var(--faint);font-size:10px;flex-wrap:wrap}

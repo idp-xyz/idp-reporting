@@ -1,6 +1,6 @@
 {
   "label": "before",
-  "generated": "2026-11-04T05:42:55.911Z",
+  "generated": "2026-11-04T07:13:47.717Z",
   "base": "http://127.0.0.1:7812",
   "tasks": [
     {
@@ -11,20 +11,20 @@
       "shells": 0,
       "dialogs": 0,
       "deadEnds": 0,
-      "seconds": 1.8,
+      "seconds": 2,
       "log": [
         "page page-overview → page-workspace"
       ]
     },
     {
       "name": "T2 从空会话发布一个带指标卡的看板",
-      "clicks": 10,
+      "clicks": 11,
       "texts": 2,
       "pages": 3,
       "shells": 3,
       "dialogs": 1,
-      "deadEnds": 1,
-      "seconds": 2.6,
+      "deadEnds": 2,
+      "seconds": 3.1,
       "log": [
         "page page-workspace → page-dashboard",
         "shell console → board-on",
@@ -102,12 +102,12 @@
     }
   ],
   "totals": {
-    "clicks": 33,
+    "clicks": 34,
     "texts": 5,
     "pages": 19,
     "shells": 15,
     "dialogs": 3,
-    "deadEnds": 1
+    "deadEnds": 2
   },
   "log": [
     "page page-overview → page-workspace",

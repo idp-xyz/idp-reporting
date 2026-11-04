@@ -76,6 +76,8 @@ async function openPage(name) {
   // The way a person gets to a page from wherever they are: the navigation if it is on screen (the rail of S07-A, or the console's column), else the way out the current shell offers.
   const onScreen = await evalJs(`(()=>{const b=document.querySelector('[data-page="${name}"]');if(!b)return false;const r=b.getBoundingClientRect();if(r.width===0)return false;const at=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!at&&(at===b||b.contains(at));})()`);
   if (onScreen) { await click(`[data-page="${name}"]`); await waitFor(`!document.getElementById('page-${name}').hidden`, 'page ' + name); await sleep(250); return; }
+  // S07-B: the tasks are a panel over the current page when the rail offers one.
+  if (name === 'tasks' && await evalJs(`!!document.querySelector('[data-panel="tasks"]')`)) { await click('[data-panel="tasks"]'); await waitFor(`!document.getElementById('sh-d-tasks').hidden`, 'the tasks panel'); await sleep(250); return; }
   const shell = await evalJs(`['studio-on','library-on','board-on'].find(c=>document.body.classList.contains(c))||'console'`);
   if (shell === 'board-on') await click('#bd-wordmark');
   else if (shell === 'studio-on') { await click('#st-wordmark'); await waitFor(`!document.getElementById('page-library').hidden`, 'centre'); await sleep(300); await clickBtn('#page-library .library-header', '数据中心'); }
@@ -117,9 +119,15 @@ async function main() {
     await clickBtn('.query-panel', '查询预览'); await waitFor(`!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`, 'preview', 60000);
     await openPage('dashboard');
     await clickBtn('#bd-sidebar', '添加指标卡');
-    await clickBtn('#bd-studio .topbar', '保存版本'); await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'saved', 30000); await idle();
-    await clickBtn('#bd-studio .topbar', '发布'); await waitFor(`!document.getElementById('bd-d-publish').hidden`, 'confirmation', 30000);
-    await clickBtn('#bd-d-publish', '确认发布'); await waitFor(`document.getElementById('bd-state').textContent==='已发布 v1'`, 'published', 30000); await idle();
+    // Publishing: a person presses 发布. Before S07-B the studio refused unsaved work (a dead end: save first, then 发布 again); after, the confirmation offers 保存并发布.
+    await clickBtn('#bd-studio .topbar', '发布'); await sleep(400);
+    if (await evalJs(`document.getElementById('bd-d-publish').hidden`)) {
+      await evalJs(`window.__ux.deadEnd()`);
+      await clickBtn('#bd-studio .topbar', '保存版本'); await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'saved', 30000); await idle();
+      await clickBtn('#bd-studio .topbar', '发布'); await waitFor(`!document.getElementById('bd-d-publish').hidden`, 'confirmation', 30000);
+      await clickBtn('#bd-d-publish', '确认发布');
+    } else await clickBtn('#bd-d-publish', '保存并发布');
+    await waitFor(`document.getElementById('bd-state').textContent==='已发布 v1'`, 'published', 30000); await idle();
   });
 
   // T3 · 把一个样例变成自己的模板并发布, from the template centre, with the session's data already queried (a preview, not a snapshot).

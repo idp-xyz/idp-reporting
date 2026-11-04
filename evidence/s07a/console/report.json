@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-04T05:50:47.123Z",
+  "generated": "2026-11-04T07:12:43.124Z",
   "base": "http://127.0.0.1:7812",
   "checks": [
     {
@@ -115,7 +115,7 @@
       "ok": true
     },
     {
-      "name": "发布 with unsaved changes opens no dialog and says why",
+      "name": "发布 with unsaved changes offers 保存并发布 (S07-B)",
       "ok": true
     },
     {
@@ -147,11 +147,11 @@
       "ok": true
     },
     {
-      "name": "the tasks page lists the session's snapshot job with its state, under the BACKGROUND TASKS label",
+      "name": "the tasks panel (S07-B) opens over the current page with the session's snapshot job and its state",
       "ok": true
     },
     {
-      "name": "contrast of every visible text ≥ 4.5:1 (tasks 1440 light)",
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks panel 1440 light)",
       "ok": true
     },
     {
@@ -667,8 +667,8 @@
       "failing": 0,
       "worst": []
     },
-    "contrast tasks 1440 light": {
-      "total": 38,
+    "contrast tasks panel 1440 light": {
+      "total": 28,
       "failing": 0,
       "worst": []
     },
@@ -698,7 +698,7 @@
       "worst": []
     },
     "contrast tasks 1440 dark": {
-      "total": 38,
+      "total": 28,
       "failing": 0,
       "worst": []
     },
@@ -728,7 +728,7 @@
       "worst": []
     },
     "contrast tasks 1280 light": {
-      "total": 38,
+      "total": 28,
       "failing": 0,
       "worst": []
     },
@@ -758,7 +758,7 @@
       "worst": []
     },
     "contrast tasks 1280 dark": {
-      "total": 38,
+      "total": 28,
       "failing": 0,
       "worst": []
     },
@@ -788,7 +788,7 @@
       "worst": []
     },
     "contrast tasks 768 light": {
-      "total": 37,
+      "total": 28,
       "failing": 0,
       "worst": []
     },
@@ -818,7 +818,7 @@
       "worst": []
     },
     "contrast tasks 768 dark": {
-      "total": 37,
+      "total": 28,
       "failing": 0,
       "worst": []
     },
@@ -848,7 +848,7 @@
       "worst": []
     },
     "contrast tasks 390 light": {
-      "total": 30,
+      "total": 26,
       "failing": 0,
       "worst": []
     },
@@ -878,7 +878,7 @@
       "worst": []
     },
     "contrast tasks 390 dark": {
-      "total": 30,
+      "total": 26,
       "failing": 0,
       "worst": []
     },

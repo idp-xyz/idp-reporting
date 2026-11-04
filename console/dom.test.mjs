@@ -3275,7 +3275,7 @@ test('S06-A A1/A5: the template\'s name is editable in place and validated like 
  a.$('st-ver-restore').click();assert.equal(isOpen(a,'versions'),false);assert.equal(cv.tpl(a).elements.length,1,'v1 is in the editor');assert.equal(a.$('st-state').textContent,'已保存 v2·有未保存修改','restoring is an unsaved change, not a save');assert.equal(a.$('doc-undo').disabled,false);
  assert.equal(a.trace.filter(t=>t.method==='POST'&&t.path.endsWith('/document-templates')).length,2,'nothing was saved by the restore');
  // Publish confirmation: what will be published; not while there is something unsaved; the confirm is the server's publication.
- q(a,'#st-publish').click();assert.equal(a.$('st-pub-confirm').disabled,true);assert.match(a.$('st-pub-saved').textContent,/需要先保存当前修改/);assert.equal(a.$('st-pub-version').textContent,'v2');a.$('st-d-publish').querySelector('.dialog-footer [data-act="close"]').click();
+ q(a,'#st-publish').click();assert.equal(a.$('st-pub-confirm').disabled,false,'S07-B: the unsaved changes can be saved and published in one go');assert.equal(a.$('st-pub-confirm').textContent.trim(),'保存并发布');assert.match(a.$('st-pub-saved').textContent,/需要先保存当前修改/);assert.equal(a.$('st-pub-version').textContent,'v2');a.$('st-d-publish').querySelector('.dialog-footer [data-act="close"]').click();
  a.click('doc-undo');assert.equal(a.$('st-state').textContent,'已保存 v2');
  q(a,'#st-publish').click();await until(()=>!a.$('st-pub-confirm').disabled,'release read');assert.equal(a.$('st-pub-name').textContent,'客户往来对账单');assert.equal(a.$('st-pub-dataset').textContent,'receivables.aging@1.0.0');assert.equal(a.$('st-pub-elements').textContent,'2 个组件');assert.match(a.$('st-pub-schema').textContent,/schema 1\./);assert.match(a.$('st-pub-pointer').textContent,/当前发布 无 → v2/);assert.match(a.$('st-pub-saved').textContent,/已明确引用不可变保存版本/);assert.match(a.$('st-pub-valid').textContent,/版式与数据绑定检查通过/);
  a.$('st-pub-confirm').click();assert.equal(isOpen(a,'publish'),false);await until(()=>a.$('doc-release-status').textContent.includes('已发布版本 2')&&!a.$('preview').disabled,'published v2');
@@ -3869,11 +3869,11 @@ test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation 
  assert.equal(header.querySelector('.environment').textContent,'合同模拟器');assert.equal(a.$('actor-label').textContent,'user_a');assert.equal(a.$('logout').disabled,false);assert.equal(a.$('logout').textContent.trim(),'退出工作区');
  // The navigation (S07-A: the application rail): eight named buttons in a nav, one aria-current, the counts.
  const nav=d.querySelector('nav.app-rail[aria-label="主导航"]');assert.ok(nav);
- assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page,b.getAttribute('aria-label')]),[['BUTTON','overview','工作区概览'],['BUTTON','catalog','数据中心'],['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','tasks','任务工作区'],['BUTTON','system','能力与环境']]);
+ assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page||'panel:'+b.dataset.panel,b.getAttribute('aria-label')]),[['BUTTON','overview','工作区概览'],['BUTTON','catalog','数据中心'],['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','panel:tasks','任务工作区'],['BUTTON','system','能力与环境']]);
  assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(a.$('task-count').textContent,'0');
  assert.equal(d.querySelector('.rail-status #connection-label').textContent,'API 已连接');assert.equal(a.$('tenant-label').textContent,'platform_demo');
  // Every page that is not a studio: the title block (eyebrow, title, lead), the wordmark's label, document.title, the active row; no studio shell is on.
- for(const [page,eyebrow,h1,title] of [['catalog','DATA CENTER','数据中心','数据中心'],['workspace','REPORT WORKBENCH','报表工作台','报表工作台'],['tasks','BACKGROUND TASKS','任务工作区','任务工作区'],['system','PLATFORM CAPABILITIES','能力与环境','能力与环境'],['overview','REPORTING WORKSPACE','让每一份数据，有据可查。','工作区概览']]){
+ for(const [page,eyebrow,h1,title] of [['catalog','DATA CENTER','数据中心','数据中心'],['workspace','REPORT WORKBENCH','报表工作台','报表工作台'],['system','PLATFORM CAPABILITIES','能力与环境','能力与环境'],['overview','REPORTING WORKSPACE','让每一份数据，有据可查。','工作区概览']]){
   d.querySelector('[data-page="'+page+'"]').click();
   const section=a.$('page-'+page);assert.equal(section.hidden,false,page);
   assert.equal(section.querySelector('.page-heading .eyebrow').textContent,eyebrow);assert.equal(section.querySelector('.page-heading h1').textContent,h1);assert.ok(section.querySelector('.page-heading p').textContent.length>0);
@@ -3934,7 +3934,7 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');d.querySelector('[data-page="dashboard"]').click();
  assert.equal(a.$('bd-state').textContent,'草稿');assert.equal(a.$('bd-start').hidden,true);assert.equal(a.$('bd-desk').hidden,false);
  assert.match(a.$('bd-ctx-source').textContent,/^receivables\.aging @ 1\.0\.0 · \d{4}-\d{2}-\d{2} · 当前查询预览$/);assert.equal(a.$('bd-status-source').textContent,a.$('bd-ctx-source').textContent);assert.equal(a.$('bd-side-dataset').textContent,'receivables.aging@1.0.0');assert.equal(a.$('bd-side-rows').textContent,'当前查询预览 · 3 行 · 3 个字段');assert.equal(a.$('bd-insp-dataset').textContent,'receivables.aging@1.0.0');
- a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先保存服务器看板版本，再发布该保存版本。');assert.equal(a.$('bd-d-publish').hidden,true);
+ a.$('bd-publish').click();await flush();assert.equal(a.$('bd-d-publish').hidden,false,'S07-B: nothing saved yet is saved first');assert.equal(a.$('bd-publish-confirm').textContent,'保存并发布');assert.match(a.$('bd-publish-note').textContent,/先保存为版本 1/);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('bd-d-publish').hidden,true);
  // The structure panel mirrors the cards and its buttons do what the cards' buttons do.
  a.click('board-add-metric');a.click('board-add-table');a.click('board-add-bar');
  assert.equal(a.$('bd-status-count').textContent,'3 / 12 个组件');assert.equal(a.$('board-count').textContent,'3 / 12 个组件');
@@ -3947,7 +3947,7 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  a.click('board-server-save');await until(()=>a.$('board-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'saved');
  assert.equal(a.$('bd-state').textContent,'已保存 v1');assert.match(a.$('bd-insp-meta').textContent,/^2 \/ 12 个组件 · 看板 [a-f0-9]{8} · 版本 1$/);
  a.click('board-add-metric');assert.equal(a.$('bd-state').textContent,'已保存 v1 · 有未保存修改');
- a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先保存当前修改，再发布该保存版本。');assert.equal(a.$('bd-d-publish').hidden,true);
+ a.$('bd-publish').click();await flush();assert.equal(a.$('bd-d-publish').hidden,false,'S07-B: unsaved changes are saved first');assert.equal(a.$('bd-publish-confirm').textContent,'保存并发布');assert.match(a.$('bd-publish-note').textContent,/先保存为新的不可变版本/);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('bd-d-publish').hidden,true);assert.equal(a.$('bd-state').textContent,'已保存 v1 · 有未保存修改','Esc saves nothing');
  a.click('board-server-save');await until(()=>a.$('board-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'saved v2');assert.equal(a.$('bd-state').textContent,'已保存 v2');
  a.$('bd-publish').focus();a.$('bd-publish').click();await until(()=>!a.$('bd-d-publish').hidden,'the confirmation');
  assert.equal(a.$('bd-studio').inert,true);assert.equal(d.activeElement.closest('#bd-d-publish')!==null,true,'focus is in the dialog');assert.equal(a.$('bd-d-publish').querySelector('[role=dialog]').getAttribute('aria-modal'),'true');
@@ -3975,9 +3975,9 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
 test('S07-A A1–A3: the rail stays on every shell; the chip names the data context; the drawer takes the query panel from the workbench and gives it back; a result from the drawer removes the dashboard\'s dead end without a page switch; the centre offers the drawer',async()=>{const a=app();try{
  const d=a.w.document;await a.login();
  const rail=d.querySelector('nav.app-rail[aria-label="主导航"]');assert.ok(rail);assert.equal(rail.closest('.shell'),null,'the rail is outside the shell the studios take over');
- assert.deepEqual([...rail.querySelectorAll('.nav-item')].map(b=>[b.dataset.page,b.getAttribute('aria-label'),b.querySelector('small').textContent]),[['overview','工作区概览','概览'],['catalog','数据中心','数据'],['workspace','报表工作台','报表'],['dashboard','看板工作室','看板'],['library','模板中心','模板'],['documents','文档工作室','文档'],['tasks','任务工作区','任务'],['system','能力与环境','能力']]);
+ assert.deepEqual([...rail.querySelectorAll('.nav-item')].map(b=>[b.dataset.page||'panel:'+b.dataset.panel,b.getAttribute('aria-label'),b.querySelector('small').textContent]),[['overview','工作区概览','概览'],['catalog','数据中心','数据'],['workspace','报表工作台','报表'],['dashboard','看板工作室','看板'],['library','模板中心','模板'],['documents','文档工作室','文档'],['panel:tasks','任务工作区','任务'],['system','能力与环境','能力']]);
  assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(rail.querySelector('.rail-status #connection-label').textContent,'API 已连接');
- for(const page of ['documents','library','dashboard','tasks']){d.querySelector('[data-page="'+page+'"]').click();assert.equal(rail.querySelector('[aria-current="page"]').dataset.page,page);assert.equal(rail.querySelectorAll('[aria-current]').length,1);}
+ for(const page of ['documents','library','dashboard','system']){d.querySelector('[data-page="'+page+'"]').click();assert.equal(rail.querySelector('[aria-current="page"]').dataset.page,page);assert.equal(rail.querySelectorAll('[aria-current]').length,1);}
  const chip=a.$('sh-data-chip');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-data-kind').hidden,true);assert.equal(chip.getAttribute('aria-haspopup'),'dialog');
  // Before any data the centre refuses with the drawer offered, never with the workbench; its chip is empty too.
  d.querySelector('[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&/个结果/.test(a.$('lib-count').textContent)&&!d.querySelector('#page-library .catalog-notice-line').hidden,'the centre listed with its refusal line',30000);
@@ -4002,5 +4002,48 @@ test('S07-A A1–A3: the rail stays on every shell; the chip names the data cont
  chip.click();assert.equal(a.$('sh-d-data').hidden,false);a.click('logout');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-d-data').hidden,true);assert.equal(a.$('page-workspace').contains(d.querySelector('.query-panel')),true,'the panel is back in the workbench');
  // No inline style or handler came with the rail, the chip or the drawer; every <use> still points at a symbol of the page.
  assert.equal(/\sstyle\s*=/i.test(html),false);for(const u of d.querySelectorAll('use'))assert.ok(d.getElementById(u.getAttribute('href').slice(1)),u.getAttribute('href'));
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
+
+// ---- S07-B: the tasks panel and 保存并发布 (docs/S07B_SCOPE.md) ----
+test('S07-B B1/B2: the tasks panel opens over any shell with the tasks page\'s rows and gives them back; 查看结果 from it lands in the workbench; 发布 with unsaved changes saves the next version and publishes it, in the dashboard studio and in the document studio',async()=>{const a=app();try{
+ const d=a.w.document;await a.login();
+ const rail=d.querySelector('nav.app-rail'),tasks=rail.querySelector('[data-panel="tasks"]');
+ assert.equal(tasks.getAttribute('aria-haspopup'),'dialog');assert.equal(tasks.getAttribute('aria-expanded'),'false');assert.equal(tasks.dataset.page,undefined);
+ // A snapshot through the data drawer from the dashboard studio (a job for the panel to show).
+ d.querySelector('[data-page="dashboard"]').click();a.$('bd-start-open').click();a.input('query-companies','company_demo');a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot');
+ assert.equal(a.$('page-dashboard').hidden,false);assert.equal(a.$('task-count').textContent,'1');
+ // The panel over the dashboard studio: the page's restore row, list and refresh button are in it; the rail's button says so.
+ tasks.click();assert.equal(a.$('sh-d-tasks').hidden,false);assert.equal(tasks.getAttribute('aria-expanded'),'true');assert.equal(d.querySelector('.shell').inert,true);
+ assert.equal(a.$('sh-tasks-slot').contains(a.$('tasks-body')),true);assert.equal(a.$('sh-tasks-slot').contains(a.$('restore-id')),true);assert.equal(a.$('sh-tasks-foot').contains(a.$('refresh-tasks')),true);assert.equal(a.$('tasks-body').rows.length,1);assert.equal(a.$('page-dashboard').hidden,false,'the page behind did not change');
+ assert.equal(d.activeElement.closest('#sh-d-tasks')!==null,true,'focus is in the panel');
+ // Esc gives everything back to the tasks page and the focus to the rail's button.
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-tasks').hidden,true);assert.equal(tasks.getAttribute('aria-expanded'),'false');assert.equal(a.$('page-tasks').contains(a.$('tasks-body')),true);assert.equal(a.$('page-tasks').querySelector('.page-heading').contains(a.$('refresh-tasks')),true);assert.equal(d.activeElement,tasks);
+ // 查看结果 from the panel: the workbench shows the snapshot, the panel is closed, its content is back.
+ tasks.click();[...a.$('tasks-body').querySelectorAll('button')].find(b=>b.textContent==='查看结果').click();await until(()=>!a.$('page-workspace').hidden&&a.$('result-kind').textContent==='冻结快照'&&!a.$('preview').disabled,'the result');
+ assert.equal(a.$('sh-d-tasks').hidden,true);assert.equal(a.$('page-tasks').contains(a.$('tasks-body')),true);
+ // The two panels never overlap: opening the data drawer closes the tasks panel.
+ tasks.click();assert.equal(a.$('sh-d-tasks').hidden,false);a.$('sh-data-chip').click();assert.equal(a.$('sh-d-tasks').hidden,true);assert.equal(a.$('sh-d-data').hidden,false);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ // The dashboard studio: 发布 with nothing saved opens 保存并发布; confirming saves version 1 and publishes it.
+ d.querySelector('[data-page="dashboard"]').click();a.click('board-add-metric');assert.equal(a.$('bd-state').textContent,'草稿');
+ a.$('bd-publish').click();await flush();assert.equal(a.$('bd-d-publish').hidden,false);assert.equal(a.$('bd-publish-confirm').textContent,'保存并发布');
+ const dl=Object.fromEntries([...a.$('bd-publish-summary').querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));assert.equal(dl['将发布的版本'],'先保存为版本 1，再发布它');assert.equal(dl['看板'],'新看板');
+ a.$('bd-publish-confirm').click();await until(()=>a.$('bd-state').textContent==='已发布 v1'&&!a.$('preview').disabled,'saved and published');
+ assert.equal(a.$('board-release-status').textContent,'发布修订 1 · 已发布版本 1');assert.match(a.$('board-server-status').textContent,/版本 1/);
+ // With unsaved changes on a saved dashboard: version 2 is saved and published; the badge goes through 已发布 v2.
+ a.click('board-add-table');assert.equal(a.$('bd-state').textContent,'已发布 v1 · 有未保存修改');
+ a.$('bd-publish').click();await flush();assert.equal(a.$('bd-publish-confirm').textContent,'保存并发布');assert.equal(Object.fromEntries([...a.$('bd-publish-summary').querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]))['将发布的版本'],'先保存为版本 2，再发布它');
+ a.$('bd-publish-confirm').click();await until(()=>a.$('bd-state').textContent==='已发布 v2'&&!a.$('preview').disabled,'v2 published');assert.equal(a.$('board-release-status').textContent,'发布修订 2 · 已发布版本 2');
+ // A clean saved version keeps 确认发布.
+ a.click('board-release-read');await until(()=>a.$('board-release-status').textContent.includes('修订 2')&&!a.$('preview').disabled,'release');
+ a.$('bd-publish').click();await until(()=>!a.$('bd-d-publish').hidden,'confirmation');assert.equal(a.$('bd-publish-confirm').textContent,'确认发布');d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ // The document studio: an unsaved change, 发布 → 保存并发布 → the next version is saved, read and published.
+ d.querySelector('[data-page="documents"]').click();await until(()=>!a.$('st-start').hidden===false||a.$('st-state').textContent.length>0,'studio');
+ a.$('st-card-text').click();assert.equal(a.$('st-state').textContent,'草稿');
+ a.$('st-publish').click();assert.equal(a.$('st-pub-confirm').disabled,false);assert.equal(a.$('st-pub-confirm').textContent.trim(),'保存并发布');assert.equal(a.$('st-pub-footnote').textContent,'先保存为新版本，再发布它');
+ a.$('st-pub-confirm').click();await until(()=>a.$('st-state').textContent==='已发布 v1'&&!a.$('preview').disabled,'template saved and published',20000);
+ assert.match(a.$('doc-release-status').textContent,/已发布版本 1/);
+ a.$('st-card-text').click();assert.equal(a.$('st-state').textContent,'已发布 v1·有未保存修改');
+ a.$('st-publish').click();assert.equal(a.$('st-pub-confirm').textContent.trim(),'保存并发布');a.$('st-pub-confirm').click();await until(()=>a.$('st-state').textContent==='已发布 v2'&&!a.$('preview').disabled,'v2 saved and published',20000);
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});

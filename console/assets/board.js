@@ -98,17 +98,24 @@ window.createReportingBoardStudio = function (ports) {
   async function publish(){
     const before=ports.dashboard.state();
     if(!before.result){say('请先选择数据：预览或冻结快照。');return;}
-    if(!before.saved){say('请先保存服务器看板版本，再发布该保存版本。');return;}
-    if(before.dirty){say('请先保存当前修改，再发布该保存版本。');return;}
-    await ports.dashboard.readRelease();
-    const s=ports.dashboard.state();if(!s.release||!s.saved)return;
+    // 保存并发布 (S07-B): unsaved changes, or no saved version yet, are saved as the next version first; the confirmation says so and does both.
+    saveFirst=!before.saved||before.dirty;
+    if(!saveFirst)await ports.dashboard.readRelease();
+    const s=ports.dashboard.state();if(!saveFirst&&(!s.release||!s.saved))return;
+    const next=s.saved?s.saved.version+1:1;
     const dl=$('bd-publish-summary');dl.replaceChildren();
-    for(const [k,v] of [['看板',s.saved.id],['将发布的版本','保存版本 '+s.saved.version],['数据集',s.binding?s.binding.dataset.id+'@'+s.binding.dataset.version:'—'],['组件',s.widgets+' 个'],['当前发布',s.release.published_version?'版本 '+s.release.published_version:'未发布'],['发布修订',String(s.release.revision)]])dl.append(h('dt',{text:k}),h('dd',{text:v}));
-    $('bd-publish-note').textContent=s.release.published_version===s.saved.version?'这个保存版本已经是当前发布版本；再次发布会记一次新的发布修订。':'发布后，打开已发布看板得到的就是这个版本；之后的保存不改变发布指针。';
+    for(const [k,v] of [['看板',s.saved?s.saved.id:'新看板'],['将发布的版本',saveFirst?'先保存为版本 '+next+'，再发布它':'保存版本 '+s.saved.version],['数据集',s.binding?s.binding.dataset.id+'@'+s.binding.dataset.version:'—'],['组件',s.widgets+' 个'],['当前发布',saveFirst?(s.release?(s.release.published_version?'版本 '+s.release.published_version:'未发布'):'保存后读取'):(s.release.published_version?'版本 '+s.release.published_version:'未发布')],['发布修订',saveFirst?(s.release?String(s.release.revision):'保存后读取'):String(s.release.revision)]])dl.append(h('dt',{text:k}),h('dd',{text:v}));
+    $('bd-publish-note').textContent=saveFirst?(s.saved?'画布有未保存的修改：先保存为新的不可变版本，再把发布指针移到它。':'这个看板还没有保存版本：先保存为版本 1，再发布它。'):(s.release.published_version===s.saved.version?'这个保存版本已经是当前发布版本；再次发布会记一次新的发布修订。':'发布后，打开已发布看板得到的就是这个版本；之后的保存不改变发布指针。');
+    $('bd-publish-confirm').textContent=saveFirst?'保存并发布':'确认发布';
     open('bd-d-publish',$('bd-publish'));
   }
+  let saveFirst=false;
   $('bd-publish').addEventListener('click',()=>{publish();});
-  $('bd-publish-confirm').addEventListener('click',async()=>{close();await ports.dashboard.publish();sync();});
+  $('bd-publish-confirm').addEventListener('click',async()=>{
+    close();
+    if(saveFirst){const was=ports.dashboard.state().saved;await ports.dashboard.save();const now=ports.dashboard.state();if(!now.saved||(was&&now.saved.version===was.version)){sync();return;}await ports.dashboard.readRelease();if(!ports.dashboard.state().release){sync();return;}}
+    await ports.dashboard.publish();sync();
+  });
   for(const b of qa('[data-act=help]'))b.addEventListener('click',()=>open('bd-d-help',b));
   // The data buttons (the start card, the context bar, the data panel) open the console's data drawer (S07-A); without one (the embed page) they go to the query form on the page.
   for(const b of qa('[data-act=data]'))b.addEventListener('click',()=>{if(ports.data)ports.data(b);else{const f=document.getElementById('query-companies');if(f)f.focus();}});

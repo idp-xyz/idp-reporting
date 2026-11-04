@@ -277,7 +277,10 @@ window.createReportingStudio=function(api){
  $('st-ver-publish').addEventListener('click',()=>{if(versionPick)openPublish(versionPick);});
  $('st-pub-confirm').addEventListener('click',()=>{
   if($('st-pub-confirm').disabled)return;
-  const n=publishPick||(S.saved?S.saved.version:0);api.publish(S.saved&&n===S.saved.version?undefined:n);close('publish');
+  const n=publishPick||(S.saved?S.saved.version:0),cur=!!S.saved&&n===S.saved.version,stale=!S.saved||(cur&&S.dirty);
+  // 保存并发布 (S07-B): the unsaved changes become the next version, its release state is read, and that version is published.
+  if(stale&&api.save){api.save(()=>api.readRelease(()=>api.publish()));close('publish');return;}
+  api.publish(cur?undefined:n);close('publish');
  });
  $('st-chooser-new').addEventListener('click',()=>{$('doc-reset').click();close('chooser');});
  $('st-chooser-import').addEventListener('click',()=>open('json'));
@@ -437,7 +440,7 @@ window.createReportingStudio=function(api){
   setCheck('st-pub-saved',stale,stale?'需要先保存当前修改':'已明确引用不可变保存版本',stale?(S.saved?'画布存在未保存的修改，自动草稿不等于保存版本。':'先保存第一个版本。'):'本次发布固定引用 v'+n+'。');
   setCheck('st-pub-valid',bad>0,bad?bad+' 项检查未通过':'版式与数据绑定检查通过',bad?(S.issues[0].detail||S.issues[0].title):'设计器的校验与最近一次边界样本检查均无问题；PDF 预览另行确认。');
   text('st-pub-dataset',S.query?S.query.dataset.id+'@'+S.query.dataset.version:'—');text('st-pub-elements',cur?S.count+' 个组件':'该版本的组件数见“版本”对话框');text('st-pub-schema',S.config?'schema '+S.config.schema_version:'—');
-  const blocked=stale||!S.release;$('st-pub-confirm').disabled=blocked;text('st-pub-footnote',blocked?(stale?'先保存再发布':'正在读取发布状态…'):'');
+  const combined=stale&&!!api.save&&(!S.saved||cur),blocked=combined?false:(stale||!S.release);$('st-pub-confirm').disabled=blocked;$('st-pub-confirm').lastChild.textContent=combined?'保存并发布':'确认发布';text('st-pub-footnote',blocked?(stale?'先保存再发布':'正在读取发布状态…'):combined?'先保存为新版本，再发布它':'');
  }
  function renderChooser(){
   once('chooser',JSON.stringify([S.chooser,S.query&&S.query.dataset,S.saved&&S.saved.id,S.serverList.length]),()=>{
