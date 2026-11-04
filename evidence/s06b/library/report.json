@@ -1,0 +1,246 @@
+{
+  "generated": "2026-11-03T11:21:40.562Z",
+  "base": "http://127.0.0.1:7850",
+  "checks": [
+    {
+      "name": "the identity's templates are seeded (server)",
+      "ok": true
+    },
+    {
+      "name": "the centre replaces the console shell",
+      "ok": true
+    },
+    {
+      "name": "geometry at 1440: header 68 px, sidebar 222 px, content from x = 256 (the prototype's numbers)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 (light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (1440 light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 (dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 (light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 (dark)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 in the card view",
+      "ok": true
+    },
+    {
+      "name": "the wizard fits at 1280",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 (light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 (dark)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (768 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 in the card view",
+      "ok": true
+    },
+    {
+      "name": "the wizard fits at 768",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 (light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 (dark)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (390 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 in the card view",
+      "ok": true
+    },
+    {
+      "name": "the wizard fits at 390",
+      "ok": true
+    },
+    {
+      "name": "search narrows the list to the matching template",
+      "ok": true
+    },
+    {
+      "name": "domain and flow filters give the two sea-freight templates",
+      "ok": true
+    },
+    {
+      "name": "the favourite is the server's (catalogue revision 2, favourite true)",
+      "ok": true
+    },
+    {
+      "name": "the new collection is in the sidebar and on the server",
+      "ok": true
+    },
+    {
+      "name": "focus returned to the 分类 button",
+      "ok": true
+    },
+    {
+      "name": "the sample's preview is a PDF (no dataset needed)",
+      "ok": true
+    },
+    {
+      "name": "the mapping is pre-filled where a column fits",
+      "ok": true
+    },
+    {
+      "name": "the copy opens in the studio by its name",
+      "ok": true
+    },
+    {
+      "name": "the studio's crumb opens the centre, which lists the copy",
+      "ok": true
+    },
+    {
+      "name": "返回设计器 returns to the studio with the template",
+      "ok": true
+    },
+    {
+      "name": "数据中心 is the console's data catalogue page",
+      "ok": true
+    },
+    {
+      "name": "the focus stays inside the wizard while Tab is pressed",
+      "ok": true
+    },
+    {
+      "name": "the wizard saved a template in the chosen flow (server)",
+      "ok": true
+    },
+    {
+      "name": "the blank template is on the 100 × 100 label preset (server)",
+      "ok": true
+    },
+    {
+      "name": "nothing in the browser's storage",
+      "ok": true
+    },
+    {
+      "name": "no page error",
+      "ok": true
+    }
+  ],
+  "failed": 0,
+  "evidence": {
+    "geometry": {
+      "header": {
+        "x": 0,
+        "y": 0,
+        "w": 1425,
+        "h": 68
+      },
+      "side": {
+        "x": 0,
+        "y": 68,
+        "w": 222,
+        "h": 5310.109375
+      },
+      "search": {
+        "x": 256,
+        "y": 203.09375,
+        "w": 1135,
+        "h": 48.59375
+      },
+      "card": {
+        "x": 256,
+        "y": 355.6875,
+        "w": 1135,
+        "h": 82
+      },
+      "h1": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      }
+    },
+    "contrast 1440 light": {
+      "total": 467,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 1440 dark": {
+      "total": 467,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 1280 light": {
+      "total": 467,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 1280 dark": {
+      "total": 467,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 768 light": {
+      "total": 467,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 768 dark": {
+      "total": 467,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 390 light": {
+      "total": 455,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast 390 dark": {
+      "total": 455,
+      "failing": 0,
+      "worst": []
+    }
+  },
+  "abort": null
+}

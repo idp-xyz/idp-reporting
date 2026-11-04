@@ -470,3 +470,56 @@ func TestCatalogMetadataRoundTripConflictLimitsAndLastOpened(t *testing.T) {
 		t.Fatal("anonymous")
 	}
 }
+
+// S06-B part 3: a card of the template centre shows the template's name, schema, page preset and published version, which the listing carries so that
+// the page does not open every template (opening one records last_opened, and a listing must not make every template "recent").
+func TestListingCarriesWhatACardShowsAndOpensNothing(t *testing.T) {
+	f := newSamplesFixture(t, false)
+	label := request(f.h, "POST", samplesBase+"/samples/usps/copy", f.copyBody(map[string]any{"trackingNumber": map[string]string{"column": "customer.id"}}, "标签副本"), true)
+	if label.Code != 201 {
+		t.Fatalf("copy: %d %s", label.Code, label.Body.String())
+	}
+	var made struct{ ID string }
+	json.Unmarshal(label.Body.Bytes(), &made)
+	save, _ := json.Marshal(map[string]any{"id": "", "expected_version": 0, "config": savedTemplate("customer.id")})
+	if request(f.h, "POST", samplesBase, save, true).Code != 201 {
+		t.Fatal("a 1.x save")
+	}
+	publish, _ := json.Marshal(map[string]any{"action": "publish", "version": 1, "expected_revision": 0})
+	if w := request(f.h, "POST", samplesBase+"/"+made.ID+"/release", publish, true); w.Code != 200 {
+		t.Fatalf("publish: %d %s", w.Code, w.Body.String())
+	}
+	var list []struct {
+		ID               string
+		Name             string
+		Schema           string `json:"schema_version"`
+		Preset           string
+		PublishedVersion int `json:"published_version"`
+		Catalog          struct {
+			LastOpened string `json:"last_opened"`
+		}
+	}
+	for range 2 {
+		if w := request(f.h, "GET", samplesBase, nil, true); w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	if len(list) != 2 {
+		t.Fatalf("%d templates", len(list))
+	}
+	for _, item := range list {
+		switch item.ID {
+		case made.ID:
+			if item.Name != "标签副本" || item.Schema != "2.1" || item.Preset != "label_4x6in" || item.PublishedVersion != 1 {
+				t.Fatalf("a published label: %+v", item)
+			}
+		default:
+			if item.Name != "" || item.Schema == "" || item.Preset != "a4" || item.PublishedVersion != 0 {
+				t.Fatalf("an unnamed unpublished 1.x template is A4: %+v", item)
+			}
+		}
+		if item.Catalog.LastOpened != "" {
+			t.Fatalf("listing opened a template: %+v", item)
+		}
+	}
+}

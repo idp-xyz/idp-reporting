@@ -210,7 +210,7 @@ window.createReportingStudio=function(api){
  // ---- clicks ------------------------------------------------------------------------------------------------------------------------------------
  const afterInsert=r=>{if(r==='table-options')open('insert');};
  const acts={
-  library:()=>openChooser(),help:()=>open('help'),versions:()=>openVersions(),preview:()=>openPreview(),publish:()=>openPublish(),
+  library:()=>api.library?api.library():openChooser(),chooser:()=>openChooser(),help:()=>open('help'),versions:()=>openVersions(),preview:()=>openPreview(),publish:()=>openPublish(),
   binding:openQuery,parameters:openQuery,'data-preview':openRows,
   'page-settings':()=>open('page'),bands:()=>open('bands'),grouping:()=>open('bands'),'print-settings':()=>open('print'),'insert-options':()=>open('insert'),
   issue:()=>open('issue'),

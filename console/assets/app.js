@@ -7,10 +7,12 @@
   const embedded = location.pathname.startsWith('/embed/');
   let embed = null, embedRequest = null;
   const $ = (id) => document.getElementById(id);
-  const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',documents:'文档模板设计器',tasks:'任务工作区',system:'能力与环境'};
+  const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',library:'模板中心',documents:'文档模板设计器',tasks:'任务工作区',system:'能力与环境'};
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
   const documents=window.createReportingDocuments({
+   // The studio's crumb, wordmark and rail go to the template centre (S06-B part 3); the embed page has no centre and keeps the template chooser.
+   ...(embedded?{}:{library:()=>openPage('library')}),
    // Private images (schema 2.1): an upload like a background's; the listing and the bytes of an image are read in the background (no busy state, no notice: the canvas shows a labelled box until they arrive).
    uploadImage:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('图片超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);let value;try{value=await request('/document-images',{method:'POST',body:{binding,image:btoa(raw)}});}catch(error){if(error&&error.status===400)error.code='IMAGE_INVALID';if(error&&error.status===413)error.code='IMAGE_LIMIT';if(error&&error.status===422)error.code='IMAGE_REFUSED';throw error;}if(!current(m))throw new Stale();apply(value);},{label:'图片上传',uncertain:'上传结果未确认；请刷新图片列表核对，勿直接重复上传。'}),
    background:(path,apply,failed)=>{if(!state.session)return false;const m=mark();request(path).then(value=>{if(current(m))apply(value);}).catch(error=>{if(!(error instanceof Stale)&&current(m))failed(error);});return true;},
@@ -28,6 +30,24 @@
     return true;
    },
    upload:(file,binding,apply)=>perform(async m=>{if(file.size<1||file.size>524288)throw Error('PNG超过512KiB。');const bytes=new Uint8Array(await file.arrayBuffer());if(!current(m))throw new Stale();if(bytes.length!==file.size)throw Error('文件读取长度不一致。');let raw='';for(const b of bytes)raw+=String.fromCharCode(b);const value=await request('/document-backgrounds',{method:'POST',body:{binding,png:btoa(raw)}});if(!current(m))throw new Stale();apply(value);},{label:'底稿上传',uncertain:'上传结果未确认；请刷新底稿列表核对，勿直接重复上传。'}),active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),issuance:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf')&&state.capabilities.issuance===true,snapshot:()=>state.snapshot,issue:(body,banded)=>perform(m=>createIssue(m,body,banded===true),{label:'正式出具',snapshot:body.snapshot_id,uncertain:'出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。'}),issued:(id,number,sha256)=>perform(m=>download(id,m,'pdf',issuedName(number),sha256),{label:'出具下载'}),exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);if(embedded)announce(path,options,value);},{label,uncertain:'写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}),check:(body,apply)=>perform(async m=>{let value;try{value=await request('/document-checks',{method:'POST',body});}catch(error){if(error&&error.status===404&&error.code==='REQUEST_FAILED'){error.status=0;error.code='CHECK_UNAVAILABLE';}if(error&&error.status===422)error.code='CHECK_UNSUPPORTED';throw error;}if(!current(m))throw new Stale();apply(value);},{label:'样本检查',snapshot:body.snapshot_id}),download:(body,path='/document-previews',onRefusal)=>perform(async m=>{let bytes;try{bytes=await request(path,{method:'POST',body,binary:'application/pdf'});}catch(error){if(error&&error.status===422&&error.code==='UNSUPPORTED_COMBINATION'){error.code='DOCUMENT_LAYOUT';if(error.detail&&current(m)&&onRefusal)onRefusal(error.detail);}throw error;}if(!current(m))throw new Stale();if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');documents.pdfPages(pdfPageCount(bytes));const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download='document-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('PDF预览已通过摘要校验，下载已发起。','success');},{label:'PDF预览',snapshot:body.snapshot_id,uncertain:'预览生成结果未确认；可重新生成，不会正式出具。'})});
+  // The template centre (library.js; the console only, the embed page has no such page): its ports are the request function, one verified PDF download, the notice and the studio's bridge.
+  const library=!embedded&&window.createReportingLibrary&&$('page-library')?window.createReportingLibrary({
+   call:async(path,options,label,messages)=>{
+    const m=mark(),stale=()=>Object.assign(Error('stale'),{stale:true});
+    try{const value=await request(path,options);if(!current(m))throw stale();return value;}
+    catch(error){if(error instanceof Stale||error.stale||!current(m))throw stale();notify(label+'：'+((messages&&messages[error.status])||errorMessage(error)),'error');throw error;}
+   },
+   pdf:async(path,label,name)=>{
+    const m=mark();
+    try{
+     const bytes=await request(path,{method:'POST',binary:'application/pdf'});if(!current(m))throw new Stale();
+     if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw new Failure(409,'INTEGRITY_FAILURE');
+     const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=node('a');link.href=url;link.download=name||'sample-preview.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+     notify('PDF预览已通过摘要校验，下载已发起。','success');
+    }catch(error){if(error instanceof Stale||!current(m))throw Object.assign(Error('stale'),{stale:true});notify(label+'：'+errorMessage(error),'error');throw error;}
+   },
+   notify,open:page=>openPage(page),previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),studio:()=>documents.bridge
+  }):null;
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   // detail is a layout or binding refusal's reason and place (S03-J), when the server named them and the shape is the known one.
   class Failure extends Error { constructor(status,code,detail) { super(code); this.status=status; this.code=code; if(detail!==undefined)this.detail=detail; } }
@@ -61,7 +81,7 @@
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
-    dashboard.clear(true);documents.clear(true);state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
+    dashboard.clear(true);documents.clear(true);if(library)library.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
@@ -226,6 +246,8 @@
     document.querySelectorAll('.nav-item').forEach(b=>{const active=b.dataset.page===page;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     $('breadcrumb-title').textContent=pages[page];history.replaceState(null,'','#'+page);
     document.body.classList.toggle('studio-on',page==='documents');
+    document.body.classList.toggle('library-on',page==='library');
+    if(page==='library'&&library&&state.session)library.show();
   }
   function selected() { return state.datasets.find(d=>d.dataset.id+'@'+d.dataset.version===$('query-dataset').value); }
   function datasetTitle(d) { const labels=d.columns.filter(c=>['decimal','integer'].includes(c.type)).map(c=>c.label);return labels.length?labels.join(' / '):d.dataset.id; }
@@ -282,7 +304,7 @@
       $('actor-label').textContent=session.identity.subject;$('tenant-label').textContent=session.identity.tenant;$('connection-label').textContent='API 已连接';$('connection-dot').className='status-dot connected';if(!embedded)$('logout').disabled=false;
       addDetails('identity-details',[['平台租户',session.identity.tenant],['当前主体',session.identity.subject],['发行方',session.identity.issuer],['产品连接',session.integrations.join('、')]]);
       addDetails('capability-details',[['来源配置',caps.profile],['数据类别','合同模拟器 / 合成数据'],['查询组合',caps.query_shapes],['导出格式',caps.formats.join('、')],['提交限额','进行中任务 '+caps.quotas.jobs_in_flight+' · 保留结果 '+caps.quotas.stored_results+' · 每小时提交 '+caps.quotas.admissions_per_hour],['生产准入',caps.production_approved===true?'已准入':'尚未准入']]);
-      $('connection-overlay').hidden=true;document.querySelector('.shell').inert=false;busy(0);
+      $('connection-overlay').hidden=true;document.querySelector('.shell').inert=false;busy(0);if(library&&!$('page-library').hidden)library.show();
       if(embedded){document.querySelector('.shell').hidden=false;showEmbedView();embed.expect(state.token);}else{openPage(location.hash.slice(1));$('main').focus();}
       state.starting=false;
       try{
