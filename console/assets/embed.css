@@ -1,6 +1,9 @@
 /* The embed pages (S03-N, ADR 0006; S06-C): the console's own stylesheet (styles.css) and studio stylesheet apply; this adds what a page in a
    product's frame needs. No script writes a style attribute and nothing here loads anything: the policy of the page allows styles from its own origin only. */
-.embed .shell{min-height:0;display:block}
+.embed .shell{min-height:0;display:block;padding:0}
+.embed .app-rail{display:none}
+/* The data buttons of the dashboard studio open the console's data drawer; the embed page has the query form in the view itself. */
+.embed #page-dashboard [data-act="data"]{display:none}
 .embed .console-main{max-width:none;padding:12px 14px 14px;margin:0;display:block}
 /* There is one view and nowhere to go: the buttons that open another console page are not shown. */
 .embed [data-open]{display:none}

@@ -12,7 +12,7 @@ window.createReportingDashboard = function (ports) {
   const field=id=>result.columns.find(c=>c.id===id);
   const numeric=id=>{const c=field(id);return c&&['decimal','integer'].includes(c.type);};
   const metric=id=>{const c=field(id);return c&&['decimal','integer'].includes(c.type)&&Object.hasOwn(result.totals,id);};
-  const ready=()=>{if(!ports.active()||!result||!query||typeof query.integration_id!=='string')throw Error('请先在工作台完成当前授权查询，并等待操作结束。');};
+  const ready=()=>{if(!ports.active()||!result||!query||typeof query.integration_id!=='string')throw Error('请先选择数据并完成查询，并等待操作结束。');};
   function validate(value) {
     if(!keys(value,['schema_version','kind','binding','widgets'])||value.schema_version!=='1.0'||value.kind!=='dashboard'||!keys(value.binding,['integration_id','dataset'])||!keys(value.binding.dataset,['id','version'])||!matches(value.binding)||!Array.isArray(value.widgets)||value.widgets.length>12)throw Error('看板配置或数据集绑定无效。');
     for(const w of value.widgets){
@@ -97,7 +97,7 @@ window.createReportingDashboard = function (ports) {
   }
   return {
     openServer,state,readRelease,publish:()=>changeRelease('publish'),
-    clear(logout=false){resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('board-server-listing').replaceChildren();$('board-server-version').value='1';$('board-server-status').textContent='查询当前授权结果后可使用服务器看板。';$('board-widgets').replaceChildren();$('board-metric').replaceChildren();$('board-columns').replaceChildren();$('board-category').replaceChildren();$('board-value').replaceChildren();$('board-json').value='';$('board-count').textContent='0 / 12 个组件';$('board-source').textContent='尚无当前授权结果';$('board-status').textContent='请先在工作台查询或打开快照。';frozen=false;tell();},
+    clear(logout=false){resetRelease();result=null;query=null;if(logout){config=null;saved=null;}$('board-server-listing').replaceChildren();$('board-server-version').value='1';$('board-server-status').textContent='查询当前授权结果后可使用服务器看板。';$('board-widgets').replaceChildren();$('board-metric').replaceChildren();$('board-columns').replaceChildren();$('board-category').replaceChildren();$('board-value').replaceChildren();$('board-json').value='';$('board-count').textContent='0 / 12 个组件';$('board-source').textContent='尚无当前授权结果';$('board-status').textContent='请先选择数据：预览或冻结快照。';frozen=false;tell();},
     refresh(value,q,snapshot){
       resetRelease();result=value;query=q;frozen=!!snapshot;if(saved&&!matches(saved.config.binding))saved=null;
       try{if(!config)throw Error();validate(config);}catch(_){config={schema_version:'1.0',kind:'dashboard',binding:binding(),widgets:[]};}

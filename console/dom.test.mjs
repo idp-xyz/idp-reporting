@@ -372,7 +372,7 @@ test('dashboard rejects unauthorized bindings, unknown widgets, fields and confi
 
 test('dashboard clears visible data on query changes, denial and logout',async()=>{let denied=false;const a=app(async(path)=>{if(denied&&path.endsWith('/queries'))return problem(503,'AUTHORITY_UNAVAILABLE');});try{
  await a.login();a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'authorized result');a.click('board-add-metric');a.click('board-save');assert.equal(a.$('board-widgets').children.length,1);
- a.input('query-date','2026-10-25');assert.equal(a.$('board-widgets').children.length,0);assert.equal(a.$('board-json').value,'');a.click('board-add-metric');assert.ok(a.$('board-status').textContent.includes('先在工作台'));denied=true;a.click('preview');await until(()=>a.$('notice').textContent.includes('不可用')&&!a.$('preview').disabled,'source outage');assert.equal(a.$('board-widgets').children.length,0);
+ a.input('query-date','2026-10-25');assert.equal(a.$('board-widgets').children.length,0);assert.equal(a.$('board-json').value,'');a.click('board-add-metric');assert.ok(a.$('board-status').textContent.includes('先选择数据'));denied=true;a.click('preview');await until(()=>a.$('notice').textContent.includes('不可用')&&!a.$('preview').disabled,'source outage');assert.equal(a.$('board-widgets').children.length,0);
  denied=false;a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'authorized again');assert.equal(a.$('board-widgets').children.length,1,'same binding preserves metadata after fresh authorization');a.click('logout');assert.equal(a.$('board-widgets').children.length,0);assert.equal(a.$('board-json').value,'');await a.login();a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'new session');assert.equal(a.$('board-widgets').children.length,0,'logout discards dashboard config');
 }finally{a.close();}});
 
@@ -3492,12 +3492,12 @@ test('S06-B C1: the template centre is a console page with the prototype\'s regi
  const w2=await seedTemplate(binding,'',{domain:'国际贸易',flow:'贸易单证'});
  const w3=await seedTemplate(binding,'归档的-'+tag,{domain:'通用业务',flow:'财务',archived:true});
  // The navigation entry and the page.
- assert.equal(q(a,'[data-page="library"]').textContent.trim().endsWith('模板中心'),true);
+ assert.equal(q(a,'[data-page="library"]').getAttribute('aria-label'),'模板中心');
  await centre(a);
  const d=a.w.document;assert.equal(d.body.classList.contains('library-on'),true);assert.equal(d.body.classList.contains('studio-on'),false);
  const text=s=>libq(a,s).textContent.replace(/\s+/g,' ').trim();
  assert.match(text('.wordmark'),/^IDP REPORTING\s*TEMPLATE WORKSPACE$/);
- assert.deepEqual(libqa(a,'.library-header .btn').map(b=>b.textContent.trim()),['返回设计器','数据中心','新建模板']);
+ assert.deepEqual(libqa(a,'.library-header .btn:not(#lib-data)').map(b=>b.textContent.trim()),['返回设计器','数据中心','新建模板']);assert.equal(libqa(a,'.library-header .btn')[0].id,'lib-data','the data chip leads the header (S07-A)');
  assert.equal(text('.library-eyebrow'),'DOCUMENT OPERATIONS');assert.equal(text('h1'),'模板中心');assert.equal(text('.catalog-top p'),'从业务流程找到模板，再选择版式、数据和版本。');
  assert.deepEqual(libqa(a,'.catalog-caption').map(c=>c.textContent.trim()),['快速访问','业务域全部','自定义集合']);
  assert.deepEqual(libqa(a,'.catalog-sidebar .catalog-nav').slice(0,4).map(b=>b.querySelector('span').textContent),['全部模板','我的收藏','最近使用','归档']);
@@ -3569,7 +3569,7 @@ test('S06-B C2: search, the filters, the sort, the views and the pages work on t
  navButton(a,'项目-'+tag).click();assert.deepEqual(names(),['乙-'+tag]);assert.equal(libq(a,'.sample-section').hidden,true);assert.equal(libq(a,'.catalog-results .pill').textContent,'集合：项目-'+tag);navButton(a,'项目-'+tag).click();assert.equal(names().length,3);
  // Sort 最近打开: opening a template (reading a version) records it; the order follows.
  assert.equal((await rest('/document-templates/'+ids.a+'?version=1')).status,200);await new Promise(r=>setTimeout(r,5));assert.equal((await rest('/document-templates/'+ids.b+'?version=1')).status,200);
- libq(a,'.library-header .btn').click();// 返回设计器, then back
+ libq(a,'.library-header .btn:not(#lib-data)').click();// 返回设计器, then back
  assert.equal(a.$('page-library').hidden,true);q(a,'[data-page="library"]').click();await until(()=>names().length===3&&['乙-','甲-'].every(n=>ownCard(a,n+tag).querySelector('.catalog-state small').textContent.includes('最近')),'reloaded');
  pick(a,'select[aria-label="模板排序"]','recent');assert.deepEqual(names().slice(0,2),['乙-'+tag,'甲-'+tag],'most recently opened first');
  navButton(a,'最近使用').click();assert.equal(libq(a,'h1').textContent,'最近使用');assert.deepEqual(names().slice(0,2),['乙-'+tag,'甲-'+tag]);assert.equal(ownCard(a,'丙-'+tag),undefined);
@@ -3645,7 +3645,7 @@ test('S06-B C4: 编辑 opens the latest version in the studio, and without a sna
  cardButton(ownCard(a,'编辑-'+tag),'编辑').click();await until(()=>!a.$('page-documents').hidden&&a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'opened in the studio');
  assert.equal(a.w.document.body.classList.contains('studio-on'),true);assert.equal(a.$('st-name').textContent,'编辑-'+tag);assert.equal(a.$('page-library').hidden,true);
  // The crumb, the rail and the wordmark of the studio open the centre; 返回设计器 returns with the same template.
- for(const sel of ['#st-crumb','#st-wordmark','#st-rail-library']){q(a,sel).click();assert.equal(a.$('page-library').hidden,false,sel);assert.equal(a.$('page-documents').hidden,true);libqa(a,'.library-header .btn')[0].click();assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('st-name').textContent,'编辑-'+tag);}
+ for(const sel of ['#st-crumb','#st-wordmark','#st-rail-library']){q(a,sel).click();assert.equal(a.$('page-library').hidden,false,sel);assert.equal(a.$('page-documents').hidden,true);libqa(a,'.library-header .btn:not(#lib-data)')[0].click();assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('st-name').textContent,'编辑-'+tag);}
  // The name button of the card opens the same way; and the opened version is recorded as the last opened.
  q(a,'#st-crumb').click();navButton(a,'最近使用').click();await until(()=>ownCard(a,'编辑-'+tag),'the opened template is in 最近使用');
  // Another data set: the card's reason differs.
@@ -3867,12 +3867,11 @@ test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation 
  const header=d.querySelector('.console-header');assert.ok(header);
  assert.equal(header.querySelector('.wordmark b').textContent,'REPORTING');assert.equal(a.$('shell-label').textContent,'REPORTING WORKSPACE');
  assert.equal(header.querySelector('.environment').textContent,'合同模拟器');assert.equal(a.$('actor-label').textContent,'user_a');assert.equal(a.$('logout').disabled,false);assert.equal(a.$('logout').textContent.trim(),'退出工作区');
- // The navigation column: the prototype's catalog-nav rows with counts, buttons in a nav, one aria-current.
- const nav=d.querySelector('.console-nav nav[aria-label="主导航"]');assert.ok(nav);
- assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page,b.querySelector('span').textContent.trim()]),[['BUTTON','overview','工作区概览'],['BUTTON','catalog','数据中心'],['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','tasks','任务工作区'],['BUTTON','system','能力与环境']]);
- assert.deepEqual([...nav.querySelectorAll('.catalog-caption')].map(e=>e.textContent),['工作空间','平台']);
+ // The navigation (S07-A: the application rail): eight named buttons in a nav, one aria-current, the counts.
+ const nav=d.querySelector('nav.app-rail[aria-label="主导航"]');assert.ok(nav);
+ assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page,b.getAttribute('aria-label')]),[['BUTTON','overview','工作区概览'],['BUTTON','catalog','数据中心'],['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','tasks','任务工作区'],['BUTTON','system','能力与环境']]);
  assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(a.$('task-count').textContent,'0');
- assert.equal(d.querySelector('.catalog-footnote #connection-label').textContent,'API 已连接');assert.equal(a.$('tenant-label').textContent,'platform_demo');
+ assert.equal(d.querySelector('.rail-status #connection-label').textContent,'API 已连接');assert.equal(a.$('tenant-label').textContent,'platform_demo');
  // Every page that is not a studio: the title block (eyebrow, title, lead), the wordmark's label, document.title, the active row; no studio shell is on.
  for(const [page,eyebrow,h1,title] of [['catalog','DATA CENTER','数据中心','数据中心'],['workspace','REPORT WORKBENCH','报表工作台','报表工作台'],['tasks','BACKGROUND TASKS','任务工作区','任务工作区'],['system','PLATFORM CAPABILITIES','能力与环境','能力与环境'],['overview','REPORTING WORKSPACE','让每一份数据，有据可查。','工作区概览']]){
   d.querySelector('[data-page="'+page+'"]').click();
@@ -3915,7 +3914,7 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  assert.deepEqual([...s.children].map(e=>e.tagName.toLowerCase()+'.'+e.className.split(' ')[0]),['header.topbar','nav.toolrail','aside.sidebar','main.workarea','aside.inspector','footer.statusbar']);
  assert.match(s.querySelector('.topbar .wordmark').textContent.replace(/\s+/g,' ').trim(),/^IDP REPORTING\s*DASHBOARD STUDIO$/);assert.equal(a.$('bd-crumb').textContent.trim(),'报表工作台');assert.equal(a.$('bd-title').textContent,'看板');
  assert.deepEqual(['bd-help','bd-versions','board-server-save','bd-publish'].map(id=>a.$(id).getAttribute('aria-label')||a.$(id).textContent.trim()),['看板说明与操作帮助','版本','保存版本','发布']);
- assert.equal(a.$('bd-state').textContent,'未查询');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-desk').hidden,true);assert.equal(a.$('bd-start-open').dataset.open,'workspace');
+ assert.equal(a.$('bd-state').textContent,'未查询');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-desk').hidden,true);assert.equal(a.$('bd-start-open').dataset.act,'data');
  // Every old control is in the page once, in its region.
  const where={'board-metric':'#bd-sidebar','board-add-metric':'#bd-sidebar','board-columns':'#bd-sidebar','board-add-table':'#bd-sidebar','board-category':'#bd-sidebar','board-value':'#bd-sidebar','board-add-bar':'#bd-sidebar','board-reset':'#bd-sidebar','board-count':'#bd-sidebar','board-source':'#bd-sidebar','board-widgets':'#bd-workarea','board-status':'#bd-workarea','board-server-save':'#bd-studio>.topbar','board-server-new':'#bd-ipanel-versions','board-server-list':'#bd-ipanel-versions','board-server-listing':'#bd-ipanel-versions','board-server-version':'#bd-ipanel-versions','board-server-open':'#bd-ipanel-versions','board-server-status':'#bd-ipanel-properties','board-release-read':'#bd-ipanel-versions','board-release-publish':'#bd-ipanel-versions','board-release-withdraw':'#bd-ipanel-versions','board-published-open':'#bd-ipanel-versions','board-release-status':'#bd-ipanel-versions','board-release-history':'#bd-ipanel-versions','board-save':'#bd-ipanel-file','board-json':'#bd-ipanel-file','board-open':'#bd-ipanel-file'};
  for(const [id,region] of Object.entries(where)){assert.equal(d.querySelectorAll('#'+id).length,1,id);assert.ok(a.$(id).closest(region),id+' is in '+region);}
@@ -3930,7 +3929,7 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  tabs[2].dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));assert.equal(tabs[1].getAttribute('aria-selected'),'true');assert.equal(a.$('bd-ipanel-versions').hidden,false);assert.equal(d.activeElement,tabs[1]);
  // 版本 opens the inspector's tab; 发布 before a result, before a save and with unsaved changes says why and opens nothing.
  tabs[0].click();a.$('bd-versions').click();assert.equal(a.$('bd-ipanel-versions').hidden,false);assert.equal(d.activeElement,a.$('bd-itab-versions'));
- a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先在工作台查询或打开快照。');assert.equal(a.$('bd-d-publish').hidden,true);
+ a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先选择数据：预览或冻结快照。');assert.equal(a.$('bd-d-publish').hidden,true);
  // A result: the desk, 草稿, the context bar, the status bar and the panels name the binding.
  a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');d.querySelector('[data-page="dashboard"]').click();
  assert.equal(a.$('bd-state').textContent,'草稿');assert.equal(a.$('bd-start').hidden,true);assert.equal(a.$('bd-desk').hidden,false);
@@ -3969,5 +3968,38 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  assert.equal(/https?:\/\//.test(boardScript.replace(/\/\/.*$/gm,'').replace(/http:\/\/www\.w3\.org\/2000\/svg/g,'')),false,'board.js has no external address');
  // Sign out clears the studio: 未查询, the start card, the components view, the properties tab.
  a.click('logout');assert.equal(a.$('bd-state').textContent,'未查询');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-layers').children.length,0);assert.equal(a.$('bd-ipanel-properties').hidden,false);assert.equal(a.$('bd-sidebar').getAttribute('aria-labelledby'),'bd-rail-components');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
+
+// ---- S07-A: the application rail, the data chip and the data drawer (docs/ADR_0009_SHELL_CONTINUITY.md, docs/S07A_SCOPE.md) ----
+test('S07-A A1–A3: the rail stays on every shell; the chip names the data context; the drawer takes the query panel from the workbench and gives it back; a result from the drawer removes the dashboard\'s dead end without a page switch; the centre offers the drawer',async()=>{const a=app();try{
+ const d=a.w.document;await a.login();
+ const rail=d.querySelector('nav.app-rail[aria-label="主导航"]');assert.ok(rail);assert.equal(rail.closest('.shell'),null,'the rail is outside the shell the studios take over');
+ assert.deepEqual([...rail.querySelectorAll('.nav-item')].map(b=>[b.dataset.page,b.getAttribute('aria-label'),b.querySelector('small').textContent]),[['overview','工作区概览','概览'],['catalog','数据中心','数据'],['workspace','报表工作台','报表'],['dashboard','看板工作室','看板'],['library','模板中心','模板'],['documents','文档工作室','文档'],['tasks','任务工作区','任务'],['system','能力与环境','能力']]);
+ assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(rail.querySelector('.rail-status #connection-label').textContent,'API 已连接');
+ for(const page of ['documents','library','dashboard','tasks']){d.querySelector('[data-page="'+page+'"]').click();assert.equal(rail.querySelector('[aria-current="page"]').dataset.page,page);assert.equal(rail.querySelectorAll('[aria-current]').length,1);}
+ const chip=a.$('sh-data-chip');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-data-kind').hidden,true);assert.equal(chip.getAttribute('aria-haspopup'),'dialog');
+ // The dashboard's start card opens the drawer: the query panel moves in, the focus goes to the company field, the shell is inert.
+ d.querySelector('[data-page="dashboard"]').click();assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-start-open').textContent.trim(),'选择数据…');assert.equal(a.$('bd-start').querySelector('[data-open]'),null,'no way out to another page');
+ a.$('bd-start-open').click();assert.equal(a.$('sh-d-data').hidden,false);assert.equal(a.$('sh-query-slot').contains(d.querySelector('.query-panel')),true);assert.equal(d.activeElement,a.$('query-companies'));assert.equal(d.querySelector('.shell').inert,true);assert.equal(a.$('sh-d-data').querySelector('[role=dialog]').getAttribute('aria-modal'),'true');
+ // Esc gives the panel back to the workbench where it was, and the focus to the button.
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-data').hidden,true);assert.equal(a.$('page-workspace').querySelector('.page-heading').nextElementSibling.classList.contains('query-panel'),true);assert.equal(d.activeElement,a.$('bd-start-open'));assert.equal(d.querySelector('.shell').inert,false);
+ // A preview run inside the drawer: the drawer closes, the panel is back, the chip names the context, the start card gives way; the page did not change.
+ a.$('bd-ctx-data').click();assert.equal(a.$('sh-d-data').hidden,false);
+ a.input('query-companies','company_demo');a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'preview from the drawer');
+ assert.equal(a.$('sh-d-data').hidden,true);assert.equal(a.$('page-workspace').contains(d.querySelector('.query-panel')),true);assert.equal(a.$('page-dashboard').hidden,false,'still in the dashboard studio');assert.equal(a.$('bd-start').hidden,true);assert.equal(a.$('bd-state').textContent,'草稿');
+ assert.equal(chip.classList.contains('is-empty'),false);assert.match(a.$('sh-data-text').textContent,/^receivables\.aging@1\.0\.0 · company_demo · \d{4}-\d{2}-\d{2}$/);assert.equal(a.$('sh-data-kind').textContent,'查询预览');
+ // The snapshot from the header's chip: the company is known, so the focus goes to the action; the chip then says 冻结快照 and the centre's chip agrees.
+ chip.click();assert.equal(a.$('sh-d-data').hidden,false);assert.equal(d.activeElement,a.$('preview'));
+ a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot');assert.equal(a.$('sh-d-data').hidden,true);assert.equal(a.$('sh-data-kind').textContent,'冻结快照');assert.equal(d.activeElement,chip);
+ d.querySelector('[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&!!a.$('lib-data'),'centre');
+ assert.equal(a.$('lib-data').textContent.trim().endsWith('· 冻结快照'),true);assert.equal(a.$('lib-data').classList.contains('is-empty'),false);
+ // Sign out empties the chip and closes the drawer; a fresh session's centre refuses with the drawer offered, never with the workbench.
+ a.click('logout');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-d-data').hidden,true);
+ await a.login();d.querySelector('[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&!a.$('lib-count').textContent.includes('读取'),'the centre listed',30000);await until(()=>!d.querySelector('#page-library .catalog-notice-line').hidden,'the refusal line',12000);
+ const line=d.querySelector('#page-library .catalog-notice-line');assert.match(line.textContent,/先选择数据集并预览或冻结快照/);assert.equal(line.textContent.includes('工作台'),false);assert.equal(a.$('lib-data').textContent.trim(),'未选择数据');
+ line.querySelector('button').click();assert.equal(a.$('sh-d-data').hidden,false);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-data').hidden,true);assert.equal(d.activeElement,line.querySelector('button'));
+ // No inline style or handler came with the rail, the chip or the drawer; every <use> still points at a symbol of the page.
+ assert.equal(/\sstyle\s*=/i.test(html),false);for(const u of d.querySelectorAll('use'))assert.ok(d.getElementById(u.getAttribute('href').slice(1)),u.getAttribute('href'));
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});

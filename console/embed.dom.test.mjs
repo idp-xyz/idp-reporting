@@ -453,7 +453,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   const consoleIds=new Set(idsOf(indexHtml)),embedIds=new Set(idsOf(embedHtml));
   assert.equal(new Set(idsOf(embedHtml)).size,idsOf(embedHtml).length,'an id is used twice in the embed page');
   // Everything the shared scripts look up is there, except what the embed must not have: the token form, the logout, the navigation of the pages it leaves out.
-  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system','nav-datasets'];
+  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system','nav-datasets','sh-data-chip','sh-data-text','sh-data-kind','sh-d-data','sh-d-data-title','sh-query-slot'];
   assert.deepEqual([...consoleIds].filter(id=>!embedIds.has(id)).sort(),notInEmbed.sort());
   assert.deepEqual([...embedIds].filter(id=>!consoleIds.has(id)).sort(),['embed-inert','embed-retry','embed-state']);
   for(const html of [embedHtml]){const lower=html.toLowerCase();for(const banned of ['<style',' style=',' onclick=',' onload=',' onerror=','javascript:','<iframe','<form','<a '])assert.equal(lower.includes(banned),false,'the embed page contains '+banned);assert.equal([...html.matchAll(/<script/g)].length,[...html.matchAll(/<script src="\/console\/[a-z]+\.js" defer>/g)].length);}
@@ -535,7 +535,8 @@ test('the embedded dashboard studio: the query form waits in its start card, the
     a.give();await a.connected();await until(()=>a.$('query-dataset').value===DATASET.id+'@'+DATASET.version,'dataset of the dashboard');
     assert.equal(a.w.document.body.classList.contains('board-on'),true,'the dashboard studio is on');
     assert.equal(a.$('bd-start').contains(a.w.document.querySelector('.query-panel')),true,'the query form waits in the start card');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-state').textContent,'未查询');
-    assert.deepEqual([...a.w.document.querySelectorAll('#page-dashboard [data-open]')].map(e=>e.id||e.textContent.trim()),['bd-wordmark','bd-crumb','回工作台查询','bd-ctx-workspace','bd-start-open'],'the controls that open another console page: the wordmark, the crumb, the data panel\'s and the context bar\'s 回工作台查询, the start card\'s button; the embed hides every one of them');
+    assert.deepEqual([...a.w.document.querySelectorAll('#page-dashboard [data-open]')].map(e=>e.id||e.textContent.trim()),['bd-wordmark','bd-crumb'],'the controls that open another console page: the wordmark and the crumb; the embed hides both (S07-A: the data buttons open the console\'s drawer and are hidden here by the page\'s other rule)');
+    assert.deepEqual([...a.w.document.querySelectorAll('#page-dashboard [data-act="data"]')].map(e=>e.id),['bd-data-open','bd-ctx-data','bd-start-open'],'the data buttons: the data panel\'s, the context bar\'s, the start card\'s');assert.match(await readFile(join(root,'console/assets/embed.css'),'utf8'),/\.embed #page-dashboard \[data-act="data"\]\{display:none\}/);
     assert.equal(a.w.document.querySelector('.console-header, .console-nav, nav[aria-label="主导航"], .console-footer'),null,'no console chrome in the frame');
     await queried(a);await until(()=>a.$('board-widgets').children.length===1&&a.$('board-server-status').textContent.includes(id),'dashboard opened');
     assert.equal(a.$('bd-start').hidden,true,'the data is here: the desk takes over');assert.equal(a.$('bd-desk').hidden,false);assert.equal(a.$('bd-state').textContent,'已保存 v1');

@@ -89,12 +89,8 @@ const clickBtn = (scope, text) => clickExpr(btnIn(scope, text), scope + ' ' + te
 const typeInto = async (sel, text) => { await click(sel); await evalJs(`${q(sel)}.select()`); await send('Input.insertText', {text}); await sleep(120); };
 const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'the console is idle', 40000);
 // A studio or the centre hides the console's navigation: the way out is their own wordmark, as a person would take it.
-const leave = async () => {
-  if (await evalJs(`document.body.classList.contains('board-on')`)) { await click('#bd-wordmark'); await waitFor(`!document.getElementById('page-overview').hidden`, 'out of the dashboard studio'); }
-  if (await evalJs(`document.body.classList.contains('studio-on')`)) { await click('#st-wordmark'); await waitFor(`!document.getElementById('page-library').hidden`, 'out of the document studio'); await sleep(300); }
-  if (await evalJs(`document.body.classList.contains('library-on')`)) { await clickBtn('#page-library .library-header', '数据中心'); await waitFor(`!document.getElementById('page-catalog').hidden`, 'out of the centre'); }
-};
-const nav = async page => { await leave(); await click(`[data-page="${page}"]`); await waitFor(`!document.getElementById('page-${page}').hidden`, 'page ' + page); await sleep(250); };
+// S07-A: the application rail is on every shell, so a page is one click away from anywhere.
+const nav = async page => { await click(`.app-rail [data-page="${page}"]`); await waitFor(`!document.getElementById('page-${page}').hidden`, 'page ' + page); await sleep(250); };
 // The document, and in the dashboard studio each panel's own content (a closed drawer sits off-screen by a transform inside the studio's overflow:hidden box; that is not overflow a person sees).
 const overflow = () => evalJs(`(()=>{const d=document.documentElement,on=document.body.classList.contains('board-on');const panels=on?['bd-desk','bd-sidebar','bd-inspector','bd-studio'].map(id=>{const e=document.getElementById(id);const inner=id==='bd-studio'?[e.querySelector('.topbar'),e.querySelector('.statusbar')]:[e];return [id,...inner.map(x=>[x.scrollWidth,x.clientWidth])];}):[];const bad=panels.some(p=>p.slice(1).some(([s,c])=>s>c+1));return {doc:[d.scrollWidth,d.clientWidth],panels,over:d.scrollWidth>d.clientWidth+1||bad};})()`);
 const api = (method, path, body) => evalJs(`(async()=>{const r=await fetch('/api/reporting/v1'+${JSON.stringify(path)},{method:${JSON.stringify(method)},headers:{Authorization:'Bearer '+${JSON.stringify(token)},'Content-Type':'application/json'},body:${body === undefined ? 'undefined' : JSON.stringify(JSON.stringify(body))}});const t=await r.text();return {status:r.status,body:t?JSON.parse(t):null};})()`);
@@ -162,10 +158,10 @@ async function main() {
   await waitFor(`document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`, 'signed in', 30000); await sleep(400);
 
   // ---- the shell at 1440, beside the prototype's library and data centre ----------------------------------------------------------------
-  const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.console-header'),nav:r('.console-nav'),heading:r('#page-overview .page-heading'),wordmark:r('.console-header .wordmark'),logout:r('#logout')};})()`);
+  const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.console-header'),rail:r('.app-rail'),heading:r('#page-overview .page-heading'),wordmark:r('.console-header .wordmark'),logout:r('#logout'),chip:r('#sh-data-chip')};})()`);
   evidence.geometry = geo;
-  check('geometry at 1440: header 68 px, navigation column 222 px, content from x = 256 (the prototype\'s library numbers)', geo.header.h === 68 && geo.nav.w === 222 && Math.abs(geo.heading.x - 256) <= 1, {geo, protoGeo});
-  check('the navigation: eight rows under 工作空间 and 平台, the active one marked, the counts of the data centre and the tasks', await evalJs(`(()=>{const n=document.querySelector('.console-nav nav[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.querySelector('span').textContent.trim());return JSON.stringify(rows)===JSON.stringify(['工作区概览','数据中心','报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='overview'&&document.getElementById('nav-datasets').textContent==='1'&&document.getElementById('task-count').textContent==='0';})()`));
+  check('geometry at 1440: header 68 px, the application rail 56 px, content from x = 90 (the prototype\'s library header and padding beside the rail; S07-A)', geo.header.h === 68 && geo.rail.w === 56 && geo.rail.x === 0 && Math.abs(geo.heading.x - 90) <= 1 && geo.chip.h < 40, {geo, protoGeo});
+  check('the navigation: the rail\'s eight named buttons, the active one marked, the counts of the data centre and the tasks', await evalJs(`(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['工作区概览','数据中心','报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='overview'&&document.getElementById('nav-datasets').textContent==='1'&&document.getElementById('task-count').textContent==='0';})()`));
   check('the header: wordmark label REPORTING WORKSPACE, the environment tag, the identity, 退出工作区', await evalJs(`document.getElementById('shell-label').textContent==='REPORTING WORKSPACE'&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`));
   await shot('console-01-overview');
   await pair('pair-shell', 'proto-library', 'console-01-overview');
@@ -177,16 +173,22 @@ async function main() {
   await pair('pair-datacenter', 'proto-datacenter', 'console-02-datacenter');
   await contrast('data centre 1440 light');
   await nav('dashboard');
-  check('the dashboard studio before a result: the start card, 未查询, the console chrome gone', await evalJs(`document.body.classList.contains('board-on')&&!document.getElementById('bd-start').hidden&&document.getElementById('bd-state').textContent==='未查询'&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&getComputedStyle(document.querySelector('.console-nav')).display==='none'`));
+  check('the dashboard studio before a result: the start card with 选择数据…, 未查询, the console header gone, the rail still there and the studio beside it', await evalJs(`(()=>{const r=document.querySelector('.app-rail').getBoundingClientRect(),s=document.getElementById('bd-studio').getBoundingClientRect();return document.body.classList.contains('board-on')&&!document.getElementById('bd-start').hidden&&document.getElementById('bd-start-open').textContent.trim()==='选择数据…'&&document.getElementById('bd-state').textContent==='未查询'&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&r.width===56&&Math.abs(s.left-56)<=1;})()`));
   await shot('console-05-dashboard-start');
   await contrast('dashboard start 1440 light');
+  // The data drawer from the start card (S07-A): the query panel moves in and back, a preview from inside closes it.
+  await click('#bd-start-open'); await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer'); await sleep(250);
+  check('the start card opens the data drawer with the workbench\'s query panel inside, focus on the company field', await evalJs(`document.getElementById('sh-query-slot').contains(document.querySelector('.query-panel'))&&document.activeElement.id==='query-companies'&&document.querySelector('.shell').inert`));
+  await shot('console-05b-data-drawer');
+  await key('Escape'); await sleep(200);
+  check('Esc gives the panel back to the workbench and the focus to the button', await evalJs(`document.getElementById('sh-d-data').hidden&&document.getElementById('page-workspace').contains(document.querySelector('.query-panel'))&&document.activeElement.id==='bd-start-open'`));
   await nav('workspace');
   await shot('console-03-workbench');
   await contrast('workbench 1440 light');
 
   // ---- the session: the workbench ----------------------------------------------------------------------------------------------------
   await nav('catalog'); await clickBtn('#catalog-grid .catalog-card', '打开工作台'); await waitFor(`!document.getElementById('page-workspace').hidden`, 'the workbench from the card');
-  check('打开工作台 on the data centre card selects the dataset in the workbench', await evalJs(`document.getElementById('query-dataset').value==='receivables.aging@1.0.0'&&document.querySelector('.console-nav [aria-current="page"]').dataset.page==='workspace'`));
+  check('打开工作台 on the data centre card selects the dataset in the workbench', await evalJs(`document.getElementById('query-dataset').value==='receivables.aging@1.0.0'&&document.querySelector('.app-rail [aria-current="page"]').dataset.page==='workspace'`));
   await typeInto('#query-companies', 'company_demo');
   await clickBtn('#page-workspace', '查询预览'); await waitFor(`!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`, 'preview', 30000);
   check('the preview: 查询预览 badge, rows in the table, the total card', await evalJs(`document.getElementById('result-kind').textContent==='查询预览'&&document.querySelectorAll('#result-table tbody tr').length===3&&document.querySelector('#result-summary strong').textContent==='9007199254740993.01'`));
@@ -250,10 +252,10 @@ async function main() {
   await shot('console-13-system'); await contrast('system 1440 light');
   // The centre and the studio keep their own shells; the console chrome gives way to them too.
   await nav('library'); await waitFor(`document.querySelectorAll('#page-library .sample-card').length>=37`, 'the centre', 30000); await sleep(300);
-  check('the template centre still takes the screen without the console chrome', await evalJs(`document.body.classList.contains('library-on')&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&getComputedStyle(document.querySelector('.console-nav')).display==='none'`));
+  check('the template centre takes the screen beside the rail, without the console header', await evalJs(`document.body.classList.contains('library-on')&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&Math.abs(document.getElementById('page-library').getBoundingClientRect().left-56)<=1&&!!document.getElementById('lib-data')`));
   await shot('console-14-library');
   await nav('documents'); await sleep(600);
-  check('the document studio still takes the screen without the console chrome', await evalJs(`document.body.classList.contains('studio-on')&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&getComputedStyle(document.querySelector('.console-nav')).display==='none'`));
+  check('the document studio takes the screen beside the rail, without the console header', await evalJs(`document.body.classList.contains('studio-on')&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&Math.abs(document.querySelector('#page-documents .studio').getBoundingClientRect().left-56)<=1`));
   await shot('console-15-studio');
 
   // ---- dark at 1440 ----------------------------------------------------------------------------------------------------------------------
@@ -273,8 +275,8 @@ async function main() {
       }
     }
     await viewport(w, h, 'light', mobile);
-    const navGeo = await evalJs(`(()=>{const n=document.querySelector('.console-nav').getBoundingClientRect();return {w:n.width,h:n.height,row:getComputedStyle(document.querySelector('.console-nav')).flexDirection};})()`);
-    check(`the navigation column at ${w}: ${w <= 700 ? 'a horizontal chip row' : w <= 1100 ? '190 px' : '222 px'}`, w <= 700 ? navGeo.row === 'row' : navGeo.w === (w <= 1100 ? 190 : 222), navGeo);
+    const navGeo = await evalJs(`(()=>{const n=document.querySelector('.app-rail').getBoundingClientRect();return {w:n.width,h:n.height,row:getComputedStyle(document.querySelector('.app-rail')).flexDirection};})()`);
+    check(`the rail at ${w}: ${w <= 700 ? 'a horizontal strip at the top, 48 px' : '56 px at the left edge'}`, w <= 700 ? navGeo.row === 'row' && navGeo.h === 48 : navGeo.w === 56, navGeo);
     // The dashboard studio's drawers at the narrow widths.
     await nav('dashboard');
     if (w <= 950) {

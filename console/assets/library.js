@@ -139,7 +139,7 @@ window.createReportingLibrary=function(ports){
  const filtered=()=>!!(state.search||state.domain||state.flow||state.collection||state.status!=='all');
  function reason(t){
   const s=studio();
-  if(!s||!s.ready())return '先在报表工作台查询数据并创建冻结快照：设计器需要当前授权的数据集。';
+  if(!s||!s.ready())return '先选择数据集并预览或冻结快照：设计器需要当前授权的数据集。';
   const b=s.binding();
   if(t&&(!t.binding||!t.binding.dataset||t.binding.integration_id!==b.integration_id||t.binding.dataset.id!==b.dataset.id||t.binding.dataset.version!==b.dataset.version))return '这个模板绑定的数据集与当前快照的数据集不同；请先查询它绑定的数据集。';
   return '';
@@ -226,7 +226,7 @@ window.createReportingLibrary=function(ports){
   ui.samplesCount.textContent=state.samplesLoaded?samples.length+' 个示例'+(filtered()&&samples.length!==state.samples.length?'（共 '+state.samples.length+' 个）':''):'正在读取…';
   const groups=DOMAINS.map(d=>[d,samples.filter(s=>s.domain===d.id)]).filter(g=>g[1].length);
   ui.sampleBody.replaceChildren(...(groups.length?groups.map(([d,items])=>h('section',{class:'sample-group','aria-label':d.id},h('h3',{text:d.id+' · '+items.length}),h('ul',{class:'catalog-items '+(state.view==='grid'?'is-grid':'is-list'),role:'list'},items.map(s=>h('li',null,sampleCard(s)))))):[h('p',{class:'catalog-hint',text:state.samplesLoaded?'没有匹配的示例。':'正在读取示例模板…'})]));
-  ui.notice.textContent=reason(null)&&state.loaded?reason(null):'';ui.notice.hidden=!ui.notice.textContent;
+  const why=state.loaded?reason(null):'';ui.notice.replaceChildren(...(why?[document.createTextNode(why+' '),...(ports.data?[btn('选择数据…',()=>ports.data(ui.notice.querySelector('button')),'small','database')]:[])]:[]));ui.notice.hidden=!why;
  }
  function clearFilters(){state.search='';state.domain='';state.flow='';state.collection='';state.status='all';state.page=0;ui.search.value='';ui.status.value='all';render();}
 
@@ -510,6 +510,7 @@ window.createReportingLibrary=function(ports){
   const header=h('header',{class:'library-header'},
    h('div',{class:'wordmark'},h('span',{class:'brand-icon','aria-hidden':'true'},icon('layers')),h('span',null,'IDP ',h('b',{text:'REPORTING'}),h('small',{text:'TEMPLATE WORKSPACE'}))),
    h('span',{class:'flex'}),
+   ...(ports.data?[(ui.dataChip=btn('未选择数据',()=>ports.data(ui.dataChip),'data-chip is-empty','database',{id:'lib-data',title:'当前数据：选择产品连接、数据集、公司范围与时点'}))]:[]),
    btn('返回设计器',()=>ports.open('documents'),null,'left'),btn('数据中心',()=>ports.open('catalog'),null,'database'),btn('新建模板',newTemplate,'primary','plus',{id:'lib-new'}));
   const main=h('main',{class:'catalog-main','aria-labelledby':'lib-title'},
    h('div',{class:'catalog-top'},h('div',null,h('div',{class:'library-eyebrow',text:'DOCUMENT OPERATIONS'}),ui.title,h('p',{text:'从业务流程找到模板，再选择版式、数据和版本。'})),h('div',{class:'catalog-stats'},available,h('span',{text:'可用模板'}),domains,h('span',{text:'业务域'}))),
@@ -529,10 +530,13 @@ window.createReportingLibrary=function(ports){
  }
  root.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('button');if(b)trigger=b;},true);
  build();
- return {
+ const api={
   // The page is shown: (re)read the identity's templates (their last-opened times and revisions move) and, once, the sample pack.
-  show(){alive=1;render();refresh();if(!state.samplesLoaded)loadSamples();ui.title.focus();},
+  show(){alive=1;api.data();refresh();if(!state.samplesLoaded)loadSamples();ui.title.focus();},
+  // The data chip in the header (S07-A): the console's current data context, refreshed whenever it changes.
+  data(){const d=ports.dataSummary?ports.dataSummary():null;if(ui.dataChip){ui.dataChip.replaceChildren(icon('database'),document.createTextNode(d?d.text+' · '+d.kind:'未选择数据'));ui.dataChip.classList.toggle('is-empty',!d);ui.dataChip.title=d?'当前数据：'+d.text+' · '+d.kind+'（点击修改）':'当前数据：选择产品连接、数据集、公司范围与时点';}if(alive)render();},
   clear(){alive=0;for(const d of dialogs.slice())d.close();dialogs=[];ui.shell.inert=false;Object.assign(state,{own:[],samples:[],loaded:false,loading:false,samplesLoaded:false,failed:'',quick:'all',domain:'',flow:'',collection:'',search:'',status:'all',sort:'name',view:'list',page:0,pageSize:24});state.details.clear();queue=Promise.resolve();ui.search.value='';ui.status.value='all';ui.sort.value='name';root.querySelectorAll('.catalog-items').forEach(e=>e.replaceChildren());ui.side.replaceChildren();},
   refresh,
  };
+ return api;
 };
