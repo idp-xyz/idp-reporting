@@ -87,7 +87,7 @@ Product page to frame:
 | Message | Fields | Meaning |
 |---|---|---|
 | `reporting:token` | `token` | The user's platform access token (an RFC 6750 b64token, at most 32 KiB). |
-| `reporting:theme` | `theme`: `light` or `dark` | Colour scheme of the frame (the dark palette is coarse; light is the console's own). |
+| `reporting:theme` | `theme`: `light` or `dark` | Colour scheme of the frame: the console's own light and dark tokens (`styles.css`, selected by `data-theme` on the document; S06-C). |
 
 Frame to product page:
 

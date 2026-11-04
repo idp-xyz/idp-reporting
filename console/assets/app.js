@@ -7,9 +7,12 @@
   const embedded = location.pathname.startsWith('/embed/');
   let embed = null, embedRequest = null;
   const $ = (id) => document.getElementById(id);
-  const pages = {overview:'工作区概览',catalog:'数据目录',workspace:'报表工作台',dashboard:'看板设计器',library:'模板中心',documents:'文档模板设计器',tasks:'任务工作区',system:'能力与环境'};
+  const pages = {overview:'工作区概览',catalog:'数据中心',workspace:'报表工作台',dashboard:'看板工作室',library:'模板中心',documents:'文档工作室',tasks:'任务工作区',system:'能力与环境'};
+  // The shell's wordmark names the page (S06-C); the studios and the centre carry their own wordmarks.
+  const labels = {overview:'REPORTING WORKSPACE',catalog:'DATA CENTER',workspace:'REPORT WORKBENCH',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
+  let board=null;
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
-  const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
+  const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,changed:()=>{if(board)board.sync();},exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
   const documents=window.createReportingDocuments({
    // The studio's crumb, wordmark and rail go to the template centre (S06-B part 3); the embed page has no centre and keeps the template chooser.
    ...(embedded?{}:{library:()=>openPage('library')}),
@@ -48,12 +51,17 @@
    },
    notify,open:page=>openPage(page),previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),studio:()=>documents.bridge
   }):null;
+  // The dashboard studio (board.js, S06-C): the studio's regions around the dashboard's controls, in the console and in the embed page alike.
+  board=window.createReportingBoardStudio?window.createReportingBoardStudio({dashboard,open:page=>openPage(page)}):null;
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   // detail is a layout or binding refusal's reason and place (S03-J), when the server named them and the shape is the known one.
   class Failure extends Error { constructor(status,code,detail) { super(code); this.status=status; this.code=code; if(detail!==undefined)this.detail=detail; } }
   class Stale extends Error {}
   function node(tag,text,className) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text; if(className)n.className=className; return n; }
   function button(text,fn,className) { const b=node('button',text,'button '+(className||'quiet small')); b.type='button'; b.addEventListener('click',fn); return b; }
+  // An icon of the shell's sprite (index.html and embed.html hold the same symbols).
+  function icon(name) { const s=document.createElementNS('http://www.w3.org/2000/svg','svg'); s.setAttribute('class','ic'); s.setAttribute('aria-hidden','true'); s.setAttribute('focusable','false'); const u=document.createElementNS('http://www.w3.org/2000/svg','use'); u.setAttribute('href','#s-'+name); s.append(u); return s; }
+  function iconBox(name,className) { const box=node('span',undefined,className); box.append(icon(name)); return box; }
   // The page count of a PDF the server rendered, read from its page tree (/Type /Page objects, or the /Count of /Pages), for the studio's pager; 1 when it cannot be read.
   function pdfPageCount(bytes) {let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));const leaves=(text.match(/\/Type\s*\/Page(?![A-Za-z])/g)||[]).length,counts=[...text.matchAll(/\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)/g)].map(m=>Number(m[1])).concat([...text.matchAll(/\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages/g)].map(m=>Number(m[1])));const n=Math.max(leaves,...counts,1);return Number.isSafeInteger(n)&&n<=1000?n:1;}
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
@@ -76,15 +84,15 @@
     $('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
-    $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(node('span','▤','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
+    $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(iconBox('table','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
     $('result-kind').textContent='尚未查询';$('result-kind').className='badge neutral';$('result-title').textContent='查询结果';
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
-    dashboard.clear(true);documents.clear(true);if(library)library.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
+    dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
-    $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
+    $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';if($('nav-datasets'))$('nav-datasets').textContent='0';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
     $('query-companies').value='';$('query-date').value='';$('query-timezone').textContent='—';$('query-currency').textContent='—';$('query-shape').textContent='选择数据集后显示批准组合';
     $('restore-id').value='';if(!embedded)$('access-token').value='';$('actor-label').textContent='未连接';$('tenant-label').textContent='访问令牌仅保留在本次会话';$('connection-label').textContent='尚未连接';$('connection-dot').className='status-dot';if(!embedded)$('logout').disabled=true;
@@ -244,10 +252,12 @@
     if(!pages[page])page='overview';
     for(const name of Object.keys(pages))$('page-'+name).hidden=name!==page;
     document.querySelectorAll('.nav-item').forEach(b=>{const active=b.dataset.page===page;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
-    $('breadcrumb-title').textContent=pages[page];history.replaceState(null,'','#'+page);
+    $('shell-label').textContent=labels[page]||'REPORTING WORKSPACE';document.title='IDP Reporting · '+pages[page];history.replaceState(null,'','#'+page);
     document.body.classList.toggle('studio-on',page==='documents');
     document.body.classList.toggle('library-on',page==='library');
+    document.body.classList.toggle('board-on',page==='dashboard');
     if(page==='library'&&library&&state.session)library.show();
+    if(page==='dashboard'&&board)board.show();
   }
   function selected() { return state.datasets.find(d=>d.dataset.id+'@'+d.dataset.version===$('query-dataset').value); }
   function datasetTitle(d) { const labels=d.columns.filter(c=>['decimal','integer'].includes(c.type)).map(c=>c.label);return labels.length?labels.join(' / '):d.dataset.id; }
@@ -255,17 +265,17 @@
   function dateInZone(zone) { try {const parts=new Intl.DateTimeFormat('en',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>parts.find(p=>p.type===t).value;return get('year')+'-'+get('month')+'-'+get('day');}catch(_){return '';} }
   function queryChanged() {if(state.catalogLoading)return;state.view++;clearResult();const d=selected();$('query-timezone').textContent=d?.timezone||'—';$('query-currency').textContent=d?.currency_policy?d.currency_policy.id+' @ '+d.currency_policy.version:'无换算政策';$('query-shape').textContent=d?d.dimensions.length+' 个维度 / '+d.metrics.length+' 个指标':'选择数据集后显示批准组合';}
   function renderCatalog() {
-    $('overview-datasets').textContent=state.catalogLoading?'—':String(state.datasets.length);
+    $('overview-datasets').textContent=state.catalogLoading?'—':String(state.datasets.length);if($('nav-datasets'))$('nav-datasets').textContent=state.catalogLoading?'0':String(state.datasets.length);
     const overview=$('overview-catalog');overview.replaceChildren();const catalog=$('catalog-grid');catalog.replaceChildren();
     if(!state.datasets.length){const message=state.catalogLoading?'正在读取当前授权目录…':'当前身份尚无可用数据集。';overview.append(node('div',message,'empty compact'));catalog.append(node('div',message,'empty compact'));return;}
     for(const d of state.datasets) {
-      const row=node('div',undefined,'dataset-row');const info=node('div',undefined,'dataset-info');info.append(node('span','▤','dataset-icon'));
+      const row=node('div',undefined,'dataset-row');const info=node('div',undefined,'dataset-info');info.append(iconBox('table','dataset-icon'));
       const label=node('div');label.append(node('h3',datasetTitle(d)),node('p',d.dataset.id+' · v'+d.dataset.version));info.append(label);
-      row.append(info,button('打开 →',()=>chooseDataset(d),'quiet small'));overview.append(row);
-      const card=node('article',undefined,'panel catalog-card');const top=node('div',undefined,'card-top');top.append(node('span','▤','dataset-icon'),node('span','已发布组合','badge'));card.append(top,node('h2',datasetTitle(d)),node('p',d.dataset.id+' · v'+d.dataset.version,'description'));
-      const columns=node('div',undefined,'column-list');
+      row.append(info,button('打开',()=>chooseDataset(d),'quiet small'));overview.append(row);
+      const card=node('article',undefined,'panel catalog-card');const top=node('div',undefined,'card-top');top.append(iconBox('table','dataset-icon'),node('span','已发布组合','badge'));card.append(top,node('h2',datasetTitle(d)),node('p',d.dataset.id+' · v'+d.dataset.version,'description'));
+      const columns=node('div',undefined,'column-list');const head=node('div',undefined,'column-line');head.append(node('b','字段'),node('code','类型 · 币种或单位'));columns.append(head);
       for(const c of d.columns) { const line=node('div',undefined,'column-line');line.append(node('b',c.label),node('code',c.type+(c.currency?' · '+c.currency:'')+(c.unit?' · '+c.unit:'')));columns.append(line); }
-      card.append(columns);const bottom=node('div',undefined,'card-bottom');bottom.append(node('small',d.dimensions.length+' 个维度 · '+d.metrics.length+' 个指标'),button('打开工作台 →',()=>chooseDataset(d),'secondary small'));card.append(bottom);catalog.append(card);
+      card.append(columns);const bottom=node('div',undefined,'card-bottom');bottom.append(node('small',d.dimensions.length+' 个维度 · '+d.metrics.length+' 个指标'),button('打开工作台',()=>chooseDataset(d),'secondary small'));card.append(bottom);catalog.append(card);
     }
   }
   function chooseDataset(d) {$('query-dataset').value=d.dataset.id+'@'+d.dataset.version;queryChanged();$('query-date').value=dateInZone(d.timezone);openPage('workspace');}
@@ -319,6 +329,7 @@
   function showEmbedView() {
     for(const name of ['workspace','dashboard','documents'])$('page-'+name).hidden=name!==embedRequest.page;
     document.body.classList.toggle('studio-on',embedRequest.page==='documents');
+    document.body.classList.toggle('board-on',embedRequest.page==='dashboard');if(embedRequest.page==='dashboard'&&board)board.show();
     const panel=document.querySelector('.query-panel'),target=$('page-'+embedRequest.page);
     if(panel.closest('.page')!==target)target.querySelector('.page-heading').after(panel);
   }

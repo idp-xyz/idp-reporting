@@ -1,0 +1,878 @@
+{
+  "generated": "2026-11-04T03:06:21.144Z",
+  "base": "http://127.0.0.1:7812",
+  "checks": [
+    {
+      "name": "the prototype opens its 数据中心 view from the library header",
+      "ok": true
+    },
+    {
+      "name": "the sign-in card: the wordmark, 进入报表工作区, a password field, 连接工作区; the shell behind is inert",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (sign-in 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "geometry at 1440: header 68 px, navigation column 222 px, content from x = 256 (the prototype's library numbers)",
+      "ok": true
+    },
+    {
+      "name": "the navigation: eight rows under 工作空间 and 平台, the active one marked, the counts of the data centre and the tasks",
+      "ok": true
+    },
+    {
+      "name": "the header: wordmark label REPORTING WORKSPACE, the environment tag, the identity, 退出工作区",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 (light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "the data centre: the label DATA CENTER, the product chips, the dataset card with its column table",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (data centre 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "the dashboard studio before a result: the start card, 未查询, the console chrome gone",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard start 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workbench 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "打开工作台 on the data centre card selects the dataset in the workbench",
+      "ok": true
+    },
+    {
+      "name": "the preview: 查询预览 badge, rows in the table, the total card",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workbench snapshot 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "the snapshot: 冻结快照, the pager, the task count rises",
+      "ok": true
+    },
+    {
+      "name": "with a result: the desk, 草稿, the binding in the context bar, the panels and the status bar",
+      "ok": true
+    },
+    {
+      "name": "three widgets on the desk, counted in the panel and the status bar",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow in the dashboard studio at 1440",
+      "ok": true
+    },
+    {
+      "name": "the structure panel's 下移 reorders the desk like the card's button",
+      "ok": true
+    },
+    {
+      "name": "the rail is a vertical tablist: ArrowDown selects and focuses the next panel",
+      "ok": true
+    },
+    {
+      "name": "保存版本 in the topbar saves on the server: the badge says 已保存 v1, the inspector names the dashboard",
+      "ok": true
+    },
+    {
+      "name": "版本 opens the inspector's 版本 tab and focuses it",
+      "ok": true
+    },
+    {
+      "name": "a change after the save: · 有未保存修改, and 发布 refuses with the reason",
+      "ok": true
+    },
+    {
+      "name": "发布 with unsaved changes opens no dialog and says why",
+      "ok": true
+    },
+    {
+      "name": "the confirmation names the saved version, the dataset, the widgets and the current pointer, and holds the focus",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (publish confirmation 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "Tab stays inside the confirmation",
+      "ok": true
+    },
+    {
+      "name": "Esc closes the confirmation, publishes nothing and returns the focus to 发布",
+      "ok": true
+    },
+    {
+      "name": "确认发布 publishes the saved version: 已发布 v2 in the badge and the status bar, the release history has the entry",
+      "ok": true
+    },
+    {
+      "name": "the server agrees: one dashboard, version 2 published",
+      "ok": true
+    },
+    {
+      "name": "the help dialog closes on Esc and returns the focus",
+      "ok": true
+    },
+    {
+      "name": "the tasks page lists the session's snapshot job with its state, under the BACKGROUND TASKS label",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "the system page: the identity and the capabilities as definition lists",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 1440 light)",
+      "ok": true
+    },
+    {
+      "name": "the template centre still takes the screen without the console chrome",
+      "ok": true
+    },
+    {
+      "name": "the document studio still takes the screen without the console chrome",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 dark (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 dark (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 dark (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 dark (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 dark (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 1440 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1440 dark (system)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 light (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 light (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 light (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 light (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 light (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 light (system)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 1280 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 dark (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 dark (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 dark (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 dark (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 dark (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 1280 dark (system)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 1280 dark)",
+      "ok": true
+    },
+    {
+      "name": "the navigation column at 1280: 222 px",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 light (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 light (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 light (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 light (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 light (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 light (system)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 768 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 dark (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 768 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 dark (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 768 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 dark (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 768 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 dark (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 768 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 dark (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 768 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 768 dark (system)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 768 dark)",
+      "ok": true
+    },
+    {
+      "name": "the navigation column at 768: 190 px",
+      "ok": true
+    },
+    {
+      "name": "the inspector opens as a drawer at 768 and fits",
+      "ok": true
+    },
+    {
+      "name": "Esc closes the drawer at 768",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 light (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 light (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 light (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 light (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 light (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 light (system)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 390 light)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 dark (overview)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (overview 390 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 dark (catalog)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (catalog 390 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 dark (workspace)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (workspace 390 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 dark (dashboard)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (dashboard 390 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 dark (tasks)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (tasks 390 dark)",
+      "ok": true
+    },
+    {
+      "name": "no horizontal overflow at 390 dark (system)",
+      "ok": true
+    },
+    {
+      "name": "contrast of every visible text ≥ 4.5:1 (system 390 dark)",
+      "ok": true
+    },
+    {
+      "name": "the navigation column at 390: a horizontal chip row",
+      "ok": true
+    },
+    {
+      "name": "the inspector opens as a drawer at 390 and fits",
+      "ok": true
+    },
+    {
+      "name": "Esc closes the drawer at 390",
+      "ok": true
+    },
+    {
+      "name": "the side panel opens as a drawer at 390 and fits",
+      "ok": true
+    },
+    {
+      "name": "退出工作区: the card is back, the shell inert, the identity and the counts cleared, nothing in the browser's storage",
+      "ok": true
+    },
+    {
+      "name": "no page error",
+      "ok": true
+    }
+  ],
+  "failed": 0,
+  "evidence": {
+    "prototypeGeometry": {
+      "header": {
+        "x": 0,
+        "y": 0,
+        "w": 1425,
+        "h": 68
+      },
+      "side": {
+        "x": 0,
+        "y": 68,
+        "w": 222,
+        "h": 2617.625
+      },
+      "top": {
+        "x": 256,
+        "y": 96,
+        "w": 1135,
+        "h": 85.28125
+      }
+    },
+    "prototypeDataCentre": {
+      "sidebar": {
+        "x": 0,
+        "y": 68,
+        "w": 260,
+        "h": 830
+      },
+      "main": {
+        "x": 260,
+        "y": 68,
+        "w": 1180,
+        "h": 830
+      },
+      "head": {
+        "x": 290,
+        "y": 93,
+        "w": 1120,
+        "h": 84.984375
+      }
+    },
+    "contrast sign-in 1440 light": {
+      "total": 6,
+      "failing": 0,
+      "worst": []
+    },
+    "geometry": {
+      "header": {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 68
+      },
+      "nav": {
+        "x": 0,
+        "y": 68,
+        "w": 222,
+        "h": 832
+      },
+      "heading": {
+        "x": 256,
+        "y": 96,
+        "w": 1150,
+        "h": 78.21875
+      },
+      "wordmark": {
+        "x": 36,
+        "y": 16.5,
+        "w": 144.046875,
+        "h": 34
+      },
+      "logout": {
+        "x": 1297,
+        "y": 16.5,
+        "w": 107,
+        "h": 34
+      }
+    },
+    "contrast overview 1440 light": {
+      "total": 56,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast data centre 1440 light": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard start 1440 light": {
+      "total": 53,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workbench 1440 light": {
+      "total": 68,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workbench snapshot 1440 light": {
+      "total": 102,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 1440 light": {
+      "total": 92,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast publish confirmation 1440 light": {
+      "total": 19,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 1440 light": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 1440 light": {
+      "total": 51,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 1440 dark": {
+      "total": 57,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 1440 dark": {
+      "total": 43,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 1440 dark": {
+      "total": 102,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 1440 dark": {
+      "total": 108,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 1440 dark": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 1440 dark": {
+      "total": 51,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 1280 light": {
+      "total": 57,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 1280 light": {
+      "total": 43,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 1280 light": {
+      "total": 102,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 1280 light": {
+      "total": 107,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 1280 light": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 1280 light": {
+      "total": 51,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 1280 dark": {
+      "total": 57,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 1280 dark": {
+      "total": 43,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 1280 dark": {
+      "total": 102,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 1280 dark": {
+      "total": 107,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 1280 dark": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 1280 dark": {
+      "total": 51,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 768 light": {
+      "total": 56,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 768 light": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 768 light": {
+      "total": 101,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 768 light": {
+      "total": 86,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 768 light": {
+      "total": 41,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 768 light": {
+      "total": 50,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 768 dark": {
+      "total": 56,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 768 dark": {
+      "total": 42,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 768 dark": {
+      "total": 101,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 768 dark": {
+      "total": 86,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 768 dark": {
+      "total": 41,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 768 dark": {
+      "total": 50,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 390 light": {
+      "total": 46,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 390 light": {
+      "total": 32,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 390 light": {
+      "total": 91,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 390 light": {
+      "total": 76,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 390 light": {
+      "total": 31,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 390 light": {
+      "total": 40,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast overview 390 dark": {
+      "total": 46,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast catalog 390 dark": {
+      "total": 32,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast workspace 390 dark": {
+      "total": 91,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast dashboard 390 dark": {
+      "total": 76,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast tasks 390 dark": {
+      "total": 31,
+      "failing": 0,
+      "worst": []
+    },
+    "contrast system 390 dark": {
+      "total": 40,
+      "failing": 0,
+      "worst": []
+    }
+  },
+  "abort": null
+}

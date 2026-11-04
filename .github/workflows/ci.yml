@@ -161,6 +161,7 @@ jobs:
         run: |
           node --check console/assets/app.js
           node --check console/assets/dashboard.js
+          node --check console/assets/board.js
           node --check console/assets/documents.js
           node --check console/assets/canvas.js
           node --check console/assets/embed.js
@@ -170,6 +171,7 @@ jobs:
           node --check scripts/browser_canvas_s03i.mjs
           node --check scripts/browser_canvas_s03l.mjs
           node --check scripts/browser_embed_s03n.mjs
+          node --check scripts/browser_console_s06c.mjs
       - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:
