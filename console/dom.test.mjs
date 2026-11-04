@@ -3996,7 +3996,8 @@ test('S07-A A1–A3: the rail stays on every shell; the chip names the data cont
  assert.equal(a.$('lib-data').textContent.trim().endsWith('· 冻结快照'),true);assert.equal(a.$('lib-data').classList.contains('is-empty'),false);
  // Sign out empties the chip and closes the drawer; a fresh session's centre refuses with the drawer offered, never with the workbench.
  a.click('logout');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-d-data').hidden,true);
- await a.login();d.querySelector('[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&!a.$('lib-count').textContent.includes('读取'),'the centre listed',30000);await until(()=>!d.querySelector('#page-library .catalog-notice-line').hidden,'the refusal line',12000);
+ await a.login();d.querySelector('[data-page="library"]').click();
+ for(const end=Date.now()+30000;;){const line=d.querySelector('#page-library .catalog-notice-line');if(!a.$('page-library').hidden&&/个结果/.test(a.$('lib-count').textContent)&&!line.hidden)break;if(Date.now()>end)assert.fail('the centre listed with its refusal line: count="'+a.$('lib-count').textContent+'" notice="'+line.textContent+'" hidden='+line.hidden+' notice-top="'+a.$('notice').textContent+'"');await sleep(25);}
  const line=d.querySelector('#page-library .catalog-notice-line');assert.match(line.textContent,/先选择数据集并预览或冻结快照/);assert.equal(line.textContent.includes('工作台'),false);assert.equal(a.$('lib-data').textContent.trim(),'未选择数据');
  line.querySelector('button').click();assert.equal(a.$('sh-d-data').hidden,false);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-data').hidden,true);assert.equal(d.activeElement,line.querySelector('button'));
  // No inline style or handler came with the rail, the chip or the drawer; every <use> still points at a symbol of the page.
