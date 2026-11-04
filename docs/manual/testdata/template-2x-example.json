@@ -1,0 +1,422 @@
+{
+  "schema_version": "2.1",
+  "kind": "document",
+  "name": "演示 · 客户往来对账单",
+  "binding": {
+    "integration_id": "brant-contract-demo",
+    "dataset": {
+      "id": "receivables.aging",
+      "version": "1.0.0"
+    }
+  },
+  "page": {
+    "preset": "a4"
+  },
+  "bands": {
+    "page_header": {
+      "height": 33,
+      "elements": [
+        {
+          "id": "e1",
+          "type": "rect",
+          "x": 8,
+          "y": 7,
+          "width": 72,
+          "height": 12,
+          "stroke": 0.75,
+          "fill": "none"
+        },
+        {
+          "id": "e2",
+          "type": "text",
+          "source": "literal",
+          "text": "企业标识",
+          "field": "",
+          "wrap": false,
+          "x": 8,
+          "y": 10.5,
+          "width": 72,
+          "height": 5,
+          "font_size": 9,
+          "align": "center",
+          "bold": false
+        },
+        {
+          "id": "e3",
+          "type": "text",
+          "source": "literal",
+          "text": "客户往来对账单",
+          "field": "",
+          "wrap": false,
+          "x": 100,
+          "y": 3,
+          "width": 82,
+          "height": 13,
+          "font_size": 22,
+          "align": "right",
+          "bold": true
+        },
+        {
+          "id": "e4",
+          "type": "text",
+          "source": "literal",
+          "text": "CUSTOMER STATEMENT",
+          "field": "",
+          "wrap": false,
+          "x": 100,
+          "y": 18,
+          "width": 82,
+          "height": 5,
+          "font_size": 8,
+          "align": "right",
+          "bold": false
+        },
+        {
+          "id": "e5",
+          "type": "line",
+          "x1": 8,
+          "y1": 31.2,
+          "x2": 182,
+          "y2": 31.2,
+          "stroke": 0.75
+        }
+      ]
+    },
+    "document_header": {
+      "height": 62,
+      "elements": [
+        {
+          "id": "e6",
+          "type": "text",
+          "source": "literal",
+          "text": "客户名称",
+          "field": "",
+          "wrap": false,
+          "x": 8,
+          "y": 5,
+          "width": 104,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e7",
+          "type": "text",
+          "source": "field",
+          "text": "",
+          "field": "customer.id",
+          "wrap": false,
+          "x": 8,
+          "y": 10,
+          "width": 104,
+          "height": 8,
+          "font_size": 12,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e8",
+          "type": "text",
+          "source": "literal",
+          "text": "单据编号",
+          "field": "",
+          "wrap": false,
+          "x": 122,
+          "y": 5,
+          "width": 60,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e9",
+          "type": "text",
+          "source": "literal",
+          "text": "[单据编号]",
+          "field": "",
+          "wrap": false,
+          "x": 122,
+          "y": 10,
+          "width": 60,
+          "height": 8,
+          "font_size": 10,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e10",
+          "type": "text",
+          "source": "literal",
+          "text": "业务期间",
+          "field": "",
+          "wrap": false,
+          "x": 8,
+          "y": 22,
+          "width": 104,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e11",
+          "type": "text",
+          "source": "literal",
+          "text": "[业务期间]",
+          "field": "",
+          "wrap": false,
+          "x": 8,
+          "y": 27,
+          "width": 104,
+          "height": 6,
+          "font_size": 10,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e12",
+          "type": "text",
+          "source": "literal",
+          "text": "结算币种",
+          "field": "",
+          "wrap": false,
+          "x": 122,
+          "y": 22,
+          "width": 60,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e13",
+          "type": "text",
+          "source": "literal",
+          "text": "CNY",
+          "field": "",
+          "wrap": false,
+          "x": 122,
+          "y": 27,
+          "width": 60,
+          "height": 6,
+          "font_size": 10,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e14",
+          "type": "text",
+          "source": "literal",
+          "text": "本期应收 · 示例合计",
+          "field": "",
+          "wrap": false,
+          "x": 8,
+          "y": 38,
+          "width": 57,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e15",
+          "type": "text",
+          "source": "group_sum",
+          "text": "",
+          "field": "ar.open_balance",
+          "wrap": false,
+          "x": 8,
+          "y": 43,
+          "width": 57,
+          "height": 8,
+          "font_size": 12,
+          "align": "left",
+          "bold": true
+        },
+        {
+          "id": "e16",
+          "type": "text",
+          "source": "literal",
+          "text": "本期已收 · 示例合计",
+          "field": "",
+          "wrap": false,
+          "x": 66,
+          "y": 38,
+          "width": 57,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e17",
+          "type": "text",
+          "source": "literal",
+          "text": "[本期已收]",
+          "field": "",
+          "wrap": false,
+          "x": 66,
+          "y": 43,
+          "width": 57,
+          "height": 8,
+          "font_size": 12,
+          "align": "left",
+          "bold": true
+        },
+        {
+          "id": "e18",
+          "type": "text",
+          "source": "literal",
+          "text": "本期差额 · 示例合计",
+          "field": "",
+          "wrap": false,
+          "x": 124,
+          "y": 38,
+          "width": 57,
+          "height": 5,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        }
+      ]
+    },
+    "detail": {
+      "elements": [
+        {
+          "id": "e19",
+          "type": "table",
+          "x": 8,
+          "width": 174,
+          "font_size": 9,
+          "columns": [
+            {
+              "field": "customer.id",
+              "width": 63,
+              "align": "left",
+              "label": "记账日期"
+            },
+            {
+              "field": "aging.bucket",
+              "width": 54.6,
+              "align": "left",
+              "label": "单据编号"
+            },
+            {
+              "field": "ar.open_balance",
+              "width": 56.4,
+              "align": "right",
+              "label": "本期应收"
+            }
+          ]
+        }
+      ]
+    },
+    "document_footer": {
+      "height": 29,
+      "elements": [
+        {
+          "id": "e20",
+          "type": "text",
+          "source": "literal",
+          "text": "请核对以上业务明细，如有差异，请于收到本单后 5 个工作日内与我们联系。\n本单据为业务核对凭据，款项以实际到账及双方确认为准。",
+          "field": "",
+          "wrap": true,
+          "x": 8,
+          "y": 2,
+          "width": 174,
+          "height": 12,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e21",
+          "type": "rect",
+          "x": 8,
+          "y": 19,
+          "width": 70,
+          "height": 7,
+          "stroke": 0.5,
+          "fill": "none"
+        },
+        {
+          "id": "e22",
+          "type": "text",
+          "source": "literal",
+          "text": "客户确认 / 签章",
+          "field": "",
+          "wrap": false,
+          "x": 8,
+          "y": 19,
+          "width": 70,
+          "height": 7,
+          "font_size": 10,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e23",
+          "type": "rect",
+          "x": 112,
+          "y": 19,
+          "width": 70,
+          "height": 7,
+          "stroke": 0.5,
+          "fill": "none"
+        },
+        {
+          "id": "e24",
+          "type": "text",
+          "source": "literal",
+          "text": "制单人 / 日期",
+          "field": "",
+          "wrap": false,
+          "x": 112,
+          "y": 19,
+          "width": 70,
+          "height": 7,
+          "font_size": 10,
+          "align": "left",
+          "bold": false
+        }
+      ]
+    },
+    "page_footer": {
+      "height": 10,
+      "elements": [
+        {
+          "id": "e25",
+          "type": "text",
+          "source": "literal",
+          "text": "远山贸易 · 业务往来核对",
+          "field": "",
+          "wrap": true,
+          "x": 8,
+          "y": 0,
+          "width": 94.7,
+          "height": 9,
+          "font_size": 8,
+          "align": "left",
+          "bold": false
+        },
+        {
+          "id": "e26",
+          "type": "text",
+          "source": "page",
+          "text": "第 {page} / {pages} 页",
+          "field": "",
+          "wrap": false,
+          "x": 103.7,
+          "y": 0,
+          "width": 78.3,
+          "height": 9,
+          "font_size": 8,
+          "align": "right",
+          "bold": false
+        }
+      ]
+    }
+  }
+}

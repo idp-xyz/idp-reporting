@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IDP Reporting 控制台用户手册（含测试数据与案例）</title>
+<style>
+:root{--ink:#253851;--text:#43576a;--muted:#586a82;--line:#e0e6ee;--bg:#f7f9fc;--panel:#fff;--blue:#4261df;--sel:#eaf0ff;--soft:#f5f8fd;--amber-bg:#fff3de;--amber:#8a5a0c;--green-bg:#e6f4ee;--green:#1d6b52;--red-bg:#fceeee;--red:#a84444;--mono:"SFMono-Regular",Consolas,Menlo,monospace}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font:14px/1.75 Inter,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;color:var(--text);background:var(--bg)}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+nav.toc{position:sticky;top:0;height:100vh;overflow:auto;background:var(--panel);border-right:1px solid var(--line);padding:22px 16px}
+nav.toc .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+nav.toc .brand .sq{width:30px;height:32px;border-radius:7px;background:var(--blue);display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+nav.toc .brand b{font-size:12px;letter-spacing:.02em;color:var(--ink)}nav.toc .brand small{display:block;font-size:9px;letter-spacing:.18em;color:var(--muted)}
+nav.toc .cap{font-size:10px;letter-spacing:.08em;color:var(--muted);margin:14px 10px 6px;text-transform:uppercase}
+nav.toc a{display:block;padding:6px 10px;border-radius:6px;color:var(--text);font-size:12.5px}
+nav.toc a:hover{background:var(--soft);text-decoration:none}nav.toc a.sub{padding-left:22px;font-size:12px;color:var(--muted)}
+main{padding:36px 48px 80px;max-width:1120px}
+h1{font-size:30px;letter-spacing:-.02em;color:var(--ink);margin:0 0 6px}
+h2{font-size:21px;color:var(--ink);margin:52px 0 14px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:16px;color:var(--ink);margin:30px 0 10px}
+h4{font-size:14px;color:var(--ink);margin:18px 0 6px}
+p{margin:8px 0}
+.lead{font-size:15px;color:var(--muted)}
+.meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0 26px}
+.meta span{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+figure{margin:16px 0 22px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+figure img{display:block;width:100%;height:auto}
+figure figcaption{padding:10px 14px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line)}
+figure figcaption b{color:var(--ink);font-weight:600;margin-right:6px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pair figure{margin:0}
+.phone{max-width:420px}
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:12px 0 18px}
+th{background:var(--soft);text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:9px 12px;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+code,kbd{font-family:var(--mono);font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink)}
+pre{background:#1f2840;color:#e3e9f2;padding:14px 16px;border-radius:8px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
+pre code{background:none;border:0;color:inherit;padding:0}
+.note{padding:12px 16px;margin:14px 0;border-left:3px solid #aebee9;background:var(--soft);border-radius:0 8px 8px 0;font-size:13px}
+.warn{border-left-color:#e0c391;background:#fffbf3}
+.pill{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:600;margin-right:4px}
+.pill.b{background:var(--sel);color:#4659b3}.pill.g{background:var(--green-bg);color:var(--green)}.pill.a{background:var(--amber-bg);color:var(--amber)}.pill.r{background:var(--red-bg);color:var(--red)}
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:8px 0}
+ol.steps li{position:relative;padding:4px 0 4px 34px;margin:0}
+ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:7px;width:22px;height:22px;border-radius:50%;background:var(--sel);color:#3459ba;font-size:11px;font-weight:700;display:grid;place-items:center}
+.case{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.case h4{margin:0 0 6px;display:flex;gap:10px;align-items:center}
+.case .id{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.case dl{display:grid;grid-template-columns:72px 1fr;gap:4px 12px;margin:8px 0 0;font-size:13px}
+.case dt{color:var(--muted)}.case dd{margin:0}
+.files li{margin:3px 0}
+@media (max-width:900px){.layout{grid-template-columns:1fr}nav.toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:24px 18px 60px}.pair{grid-template-columns:1fr}}
+@media print{nav.toc{display:none}.layout{display:block}main{max-width:none;padding:0}h2{break-before:page}figure{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="brand"><span class="sq">IDP</span><span><b>IDP REPORTING</b><small>USER MANUAL</small></span></div>
+  <div class="cap">开始</div>
+  <a href="#intro">关于本手册</a>
+  <a href="#quick">十分钟上手</a>
+  <a href="#tour">界面导览</a>
+  <div class="cap">页面手册</div>
+  <a href="#p-overview">工作区概览</a>
+  <a href="#p-datacenter">数据中心</a>
+  <a href="#p-workbench">报表工作台</a>
+  <a href="#p-dashboard">看板工作室</a>
+  <a href="#p-library">模板中心</a>
+  <a href="#p-studio">文档工作室</a>
+  <a href="#p-tasks">任务面板</a>
+  <a href="#p-system">能力与环境</a>
+  <div class="cap">测试</div>
+  <a href="#data">测试数据</a>
+  <a href="#data-sim" class="sub">模拟器里的数据</a>
+  <a href="#data-modes" class="sub">环境模式</a>
+  <a href="#data-seed" class="sub">一键造数据</a>
+  <a href="#data-files" class="sub">随手册附带的数据文件</a>
+  <a href="#cases">测试案例集</a>
+  <div class="cap">附录</div>
+  <a href="#faq">常见问题与边界</a>
+  <a href="#keys">快捷键与术语</a>
+  <a href="#auto">自动化测试入口</a>
+</nav>
+<main>
+<h1>IDP Reporting 控制台用户手册</h1>
+<p class="lead">面向报表与单据的设计者、以及负责验收的测试人员。手册以 2026-11-04 的 main 分支为准（S07-B 之后），截图来自本机演示服务上的真实操作，测试数据来自合同模拟器与随附的造数据脚本。</p>
+<div class="meta"><span>版本 main · 2026-11-04</span><span>演示地址 http://127.0.0.1:7811/console/</span><span>数据来源 合同模拟器（合成数据）</span><span>浏览器 Chrome 156，1440 × 900</span></div>
+
+<h2 id="intro">关于本手册</h2>
+<p>IDP Reporting 是一个独立的报表与单据平台：它从来源产品（现在是模拟器）取得<strong>已授权</strong>的数据，让设计者在控制台里查询、冻结快照、导出、设计看板与单据模板、发布版本、正式出具带编号的文件；来源产品也可以把其中的视图嵌进自己的页面（嵌入页）。平台不自己编号、不绕过来源授权、不在浏览器里存任何数据或令牌。</p>
+<p>本手册分三部分：<a href="#quick">十分钟上手</a>与<a href="#tour">界面导览</a>让你先把主要路径走一遍；<a href="#p-overview">页面手册</a>逐页说明每个控件；<a href="#data">测试数据</a>与<a href="#cases">测试案例集</a>给出可重复的数据、步骤与预期，并附带数据文件。</p>
+<div class="note">本手册里的"当前数据"指一次查询的上下文：产品连接、数据集、公司范围、数据时点，以及它是"查询预览"（可能被截断的实时结果）还是"冻结快照"（服务端固定的一份结果，分页稳定、可导出、可正式出具）。看板、模板、出具都绑定在它上面。</div>
+
+<h2 id="quick">十分钟上手</h2>
+<ol class="steps">
+<li><strong>登录。</strong>打开控制台，粘贴访问令牌（演示环境在 <code>idp-reporting-run/token</code>），点"连接工作区"。令牌只在内存里，退出即清除。</li>
+<li><strong>选择数据。</strong>页眉右侧的"未选择数据"芯片，或任何页面上的"选择数据…"，都会拉开数据抽屉：选产品连接与数据集，公司范围填 <code>company_demo</code>，点"查询预览"或"创建快照"。结果一到，抽屉自动关闭，芯片写出数据集、公司、时点与状态。</li>
+<li><strong>看结果、导出。</strong>报表工作台显示表格与服务端合计；有了冻结快照就能导出 Excel / PDF，下载前会校验文件摘要。</li>
+<li><strong>组一个看板。</strong>看板工作室：添加指标卡、明细表、柱状图，点"发布"——有未保存修改时它会先保存为新版本再发布。</li>
+<li><strong>从样例做一张单据。</strong>模板中心的 37 个示例模板任选一个"复制到我的模板"，把示例字段对应到你的数据集字段，进入文档工作室调整后发布。</li>
+<li><strong>正式出具。</strong>用"打开已发布版本"打开一个已发布模板，在"检查与发布 → 正式出具"里按冻结快照的某一行出具，来源产品确认后拿到编号（如 <code>AR-000001</code>）并下载。</li>
+<li><strong>随时看任务。</strong>应用栏的"任务"在任何页面上拉开任务面板：快照、导出、出具任务的状态、取消、下载、查看结果，以及按任务 ID 恢复。</li>
+</ol>
+<div class="pair">
+<figure><img src="img/01-signin.png" alt="登录卡"><figcaption><b>登录</b>访问令牌只在内存中使用，退出后清除。</figcaption></figure>
+<figure><img src="img/05-data-drawer.png" alt="数据抽屉"><figcaption><b>数据抽屉</b>从看板起始卡拉开：产品连接、数据集、公司范围、时点，查询预览或创建快照。</figcaption></figure>
+</div>
+
+<h2 id="tour">界面导览</h2>
+<p>控制台有一条<strong>常驻的应用栏</strong>（左侧 56 px）：概览、数据、报表、看板、模板、文档、任务、能力。它在所有页面上都在，包括三个全屏工作区。页面本身分两类：</p>
+<ul>
+<li><strong>带页眉的页面</strong>（概览、数据中心、报表工作台、能力与环境）：页眉里有页面标签、"当前数据"芯片、环境标记、身份与"退出工作区"。</li>
+<li><strong>全屏工作区</strong>（文档工作室、模板中心、看板工作室）：各有自己的顶栏、工具栏、侧栏、检查器与状态栏，按设计原型的样式；它们从应用栏右侧开始。</li>
+</ul>
+<figure><img src="img/02-overview.png" alt="工作区概览"><figcaption><b>概览</b>左侧应用栏（数据与任务带角标）、页眉（数据芯片、环境标记、身份、退出）、四个计数卡、可用数据集与三步工作流程。</figcaption></figure>
+<figure><img src="img/24-studio.png" alt="文档工作室"><figcaption><b>文档工作室</b>顶栏（模板名、状态徽标、版本、保存版本、预览与导出、发布）、五个功能区页签、组件库、A4 画布、页面属性检查器、状态栏。应用栏仍在最左侧。</figcaption></figure>
+<div class="pair">
+<figure><img src="img/34-dark-overview.png" alt="暗色主题"><figcaption><b>暗色</b>跟随系统偏好；嵌入页由产品页面指定。</figcaption></figure>
+<figure><img src="img/35-dark-dashboard.png" alt="暗色看板工作室"><figcaption><b>暗色看板工作室</b>同一套令牌推导。</figcaption></figure>
+</div>
+<div class="pair">
+<figure class="phone"><img src="img/36-phone-overview.png" alt="手机宽度"><figcaption><b>390 px</b>应用栏变为顶部横条，页眉只留芯片与退出。</figcaption></figure>
+<figure class="phone"><img src="img/38-phone-studio.png" alt="手机宽度的工作室"><figcaption><b>390 px 的工作室</b>侧栏与检查器变成抽屉。</figcaption></figure>
+</div>
+
+<h2 id="p-overview">工作区概览</h2>
+<p>登录后的首页。四个计数卡：当前产品连接数、所选产品的数据集数、本次会话任务数、可用导出格式（来自服务端能力）。"可用数据集"列出当前产品连接的数据集，"打开"把它带到工作台；"数据中心"按钮进入数据中心。右侧是三步工作流程的提示。</p>
+
+<h2 id="p-datacenter">数据中心</h2>
+<figure><img src="img/03-datacenter.png" alt="数据中心"><figcaption><b>数据中心</b>产品连接选择、数据集卡（名称、编号 · 版本、字段表：字段 / 类型 · 币种或单位、维度与指标数、打开工作台）。</figcaption></figure>
+<p>目录来自来源产品，只读：这里看不到也改不了数据集定义。切换产品连接会清空当前结果（旧结果不能冒充新查询）。"刷新目录"重新读取当前授权的数据集。</p>
+
+<h2 id="p-workbench">报表工作台</h2>
+<figure><img src="img/07-workbench-preview.png" alt="查询预览"><figcaption><b>查询预览</b>四个字段、元信息行（时区、币种政策、批准组合）、"查询预览 / 创建快照"，合计卡与结果表。金额按原始精度显示：<code>9007199254740893.00</code> 一位不差。</figcaption></figure>
+<figure><img src="img/08-workbench-snapshot.png" alt="冻结快照"><figcaption><b>冻结快照</b>徽标变为"冻结快照"，表格有分页器（每页 2 / 25 / 50 行），"重新校验 / 导出 Excel / 导出 PDF"可用。</figcaption></figure>
+<h3>控件</h3>
+<table><tr><th>控件</th><th>作用</th></tr>
+<tr><td>产品连接 / 已发布数据集</td><td>当前授权目录里的组合；改动即清空结果。</td></tr>
+<tr><td>公司范围</td><td>公司 ID，多个以逗号分隔；仍由来源产品授权（演示里只有 <code>company_demo</code> 会通过）。</td></tr>
+<tr><td>数据时点</td><td>查询的 as-of 日期，默认按数据集时区的今天。</td></tr>
+<tr><td>查询预览</td><td>实时结果，可能是有界预览；不能导出。</td></tr>
+<tr><td>创建快照</td><td>后台任务生成冻结结果；分页稳定；可导出、可出具。</td></tr>
+<tr><td>重新校验</td><td>重新读取当前快照页或重新预览。</td></tr>
+<tr><td>导出 Excel / PDF</td><td>导出任务完成后下载；下载前校验内容类型、文件头与 SHA-256。PDF 仅在服务端启用渲染器时出现。</td></tr>
+<tr><td>报表布局设计器</td><td>折叠区：选择列、顺序、对齐，保存服务器版本、发布、打开已发布版本。只影响屏幕显示，Excel 仍导出完整列。</td></tr></table>
+<figure><img src="img/09-layout-designer.png" alt="报表布局设计器"><figcaption><b>报表布局设计器</b>列与对齐、服务器版本与发布。</figcaption></figure>
+<div class="pair">
+<figure><img src="img/10-refused-company.png" alt="越权公司被拒"><figcaption><b>越权</b><code>company_other</code> 被来源拒绝，不显示任何行。</figcaption></figure>
+<figure><img src="img/11-shipment-preview.png" alt="第二个产品连接"><figcaption><b>第二个产品连接</b>运单数据集：整数 <code>9007199254740993</code> 原样显示，无币种。</figcaption></figure>
+</div>
+
+<h2 id="p-dashboard">看板工作室</h2>
+<figure><img src="img/04-dashboard-start.png" alt="看板起始卡"><figcaption><b>还没有数据时</b>起始卡提供"选择数据…"，就地打开数据抽屉。</figcaption></figure>
+<figure><img src="img/12-dashboard-widgets.png" alt="看板组件"><figcaption><b>三种组件</b>指标卡（服务端原范围合计）、明细表（当前结果页）、当前页柱状图（前 50 行，中央零线，负数向左，精确值见标签）。左侧组件库，右侧检查器，底部状态栏。</figcaption></figure>
+<div class="pair">
+<figure><img src="img/13-dashboard-structure.png" alt="结构面板"><figcaption><b>组件与顺序</b>上移 / 下移 / 移除，与卡片上的按钮同一功能。</figcaption></figure>
+<figure><img src="img/14-dashboard-save-publish.png" alt="保存并发布"><figcaption><b>发布前确认</b>有未保存修改时按钮是"保存并发布"：先保存为下一版本，再把发布指针移过去。</figcaption></figure>
+</div>
+<figure><img src="img/15-dashboard-versions.png" alt="版本页签"><figcaption><b>检查器 · 版本</b>我的服务器看板、打开某版本、另存为新看板；发布指针：刷新状态与历史、发布、撤回、打开已发布看板。</figcaption></figure>
+<h3>状态徽标</h3>
+<table><tr><th>徽标</th><th>含义</th></tr>
+<tr><td><span class="pill b">未查询</span></td><td>没有当前数据。</td></tr>
+<tr><td><span class="pill b">草稿</span></td><td>有数据，尚未保存到服务器。</td></tr>
+<tr><td><span class="pill b">已保存 vN</span></td><td>与服务器第 N 版一致。</td></tr>
+<tr><td><span class="pill g">已发布 vN</span></td><td>发布指针指向第 N 版（需读过发布状态）。</td></tr>
+<tr><td><span class="pill a">… · 有未保存修改</span></td><td>画布与保存版本不同；"发布"会先保存。</td></tr></table>
+<div class="note">看板只保存组件与字段绑定，不含数据、令牌或公司范围；每个看板至多 12 个组件，配置至多 64 KiB；"文件"页签可导出 / 导入 JSON。</div>
+
+<h2 id="p-library">模板中心</h2>
+<figure><img src="img/18-library.png" alt="模板中心"><figcaption><b>模板中心</b>左栏快捷访问与业务域（带数）、自定义集合；页眉数据芯片、返回设计器、数据中心、新建模板；搜索、筛选、列表 / 卡片视图；我的模板卡片（状态徽标、版本数、收藏、分类、复制、归档、编辑）；下方是 37 个示例模板。</figcaption></figure>
+<div class="pair">
+<figure><img src="img/19-sample-preview.png" alt="示例预览"><figcaption><b>示例预览</b>字段表与"生成 PDF 预览"（用示例自带行，带 PREVIEW 标记）。</figcaption></figure>
+<figure><img src="img/20-sample-mapping.png" alt="字段映射"><figcaption><b>复制到我的模板</b>每个示例字段槽 → 数据集字段或字面文字；按名称与类型预填；表格列不能是字面量（会被去掉）。</figcaption></figure>
+</div>
+<div class="pair">
+<figure><img src="img/21-wizard.png" alt="新建模板向导"><figcaption><b>新建模板</b>业务流程 → 版式（示例或空白 + 页面预设）→ 数据 → 名称。</figcaption></figure>
+<figure><img src="img/22-classify.png" alt="分类对话框"><figcaption><b>分类</b>业务域、流程、自定义集合（至多 16 个）；写入带修订号，冲突时刷新。</figcaption></figure>
+</div>
+<figure><img src="img/23-library-grid.png" alt="卡片视图"><figcaption><b>卡片视图</b>同一列表的另一种排布。</figcaption></figure>
+<div class="note">收藏、最近使用、归档、集合都保存在服务器上，只属于当前身份；示例只读，复制后才是你的模板；没有当前数据时，编辑与复制会说明原因并提供"选择数据…"。</div>
+
+<h2 id="p-studio">文档工作室</h2>
+<p>画布显示版面，不显示数据；正式输出一律由服务端渲染（PDF），浏览器预览只是画布。模板有两代：1.x 单页文本模板（固定文字、行字段、合计），2.x 分带模板（页眉 / 报表头 / 明细 / 报表尾 / 页脚，明细表流式分页、承前过次、分组合计，2.1 起含条码、二维码、图片）。</p>
+<div class="pair">
+<figure><img src="img/25-studio-insert.png" alt="插入页签"><figcaption><b>插入</b>文本、绑定字段、动态明细表、分隔线、矩形、图片、条形码、二维码、页码；不支持的（水印）置灰并说明。</figcaption></figure>
+<figure><img src="img/26-studio-data-panel.png" alt="数据与字段"><figcaption><b>数据与字段</b>数据集卡、单据级字段与明细级字段，"+" 插入字段或列。</figcaption></figure>
+</div>
+<div class="pair">
+<figure><img src="img/27-studio-check.png" alt="边界样本检查"><figcaption><b>检查</b>边界样本：用模板检查快照的首行、末行与最长 / 最短值的行，不渲染 PDF。</figcaption></figure>
+<figure><img src="img/28-studio-versions.png" alt="版本历史"><figcaption><b>版本历史与发布指针</b>预览此版本、恢复到编辑器（恢复 ≠ 重新发布）、撤回发布、发布此保存版本。</figcaption></figure>
+</div>
+<div class="pair">
+<figure><img src="img/29-studio-publish.png" alt="发布前确认"><figcaption><b>发布前确认</b>版本、名称、数据集、元素数、校验状态；有未保存修改时按钮为"保存并发布"。</figcaption></figure>
+<figure><img src="img/30-studio-preview.png" alt="预览与导出"><figcaption><b>预览与导出</b>服务端按冻结快照渲染的 PDF，带 PREVIEW 标记，页码器显示页数。</figcaption></figure>
+</div>
+<h3>正式出具</h3>
+<div class="pair">
+<figure><img src="img/31-studio-issue-dialog.png" alt="正式出具对话框"><figcaption><b>正式出具与出具记录</b>只接受"打开已发布版本"后未改动的发布版本，按冻结快照的行（2.0 模板按分组）生成。</figcaption></figure>
+<figure><img src="img/32-issued.png" alt="出具完成"><figcaption><b>出具完成</b>来源产品确认编号 <code>No. AR-000001</code>，PDF 通过摘要校验后下载为 <code>issued-AR-000001.pdf</code>。</figcaption></figure>
+</div>
+<div class="note warn">编号由来源产品分配、文件由来源产品确认，平台不自己编号。排队中的出具任务可取消，执行中的不能；失败时任务列表写明原因（<code>AUTH_SCOPE_DENIED</code> 来源拒绝、<code>ISSUE_UNRECONCILED</code> 未能作废预留，需联系管理员）。</div>
+
+<h2 id="p-tasks">任务面板</h2>
+<div class="pair">
+<figure><img src="img/16-tasks-panel.png" alt="任务面板"><figcaption><b>任务面板</b>应用栏"任务"在任何页面上拉开：恢复查看、本次会话任务（任务、ID、状态、操作：刷新 / 查看结果 / 下载 / 取消）。</figcaption></figure>
+<figure><img src="img/17-tasks-restored.png" alt="按 ID 恢复"><figcaption><b>按 ID 恢复</b>粘贴任务 ID → 打开任务：只能恢复当前身份的任务；已过期的产物标为"已过期并清除"。</figcaption></figure>
+</div>
+<div class="note">任务列表只含<strong>本浏览器会话</strong>创建或恢复的任务——刷新页面后它是空的，但任务都在服务器上，用任务 ID 即可找回。这也是为什么造数据脚本会把它建的任务 ID 打印出来。</div>
+
+<h2 id="p-system">能力与环境</h2>
+<figure><img src="img/33-system.png" alt="能力与环境"><figcaption><b>能力与环境</b>当前身份（租户、主体、发行方、产品连接）与服务端声明的能力（来源配置、查询组合、导出格式、提交限额、生产准入）。</figcaption></figure>
+
+<h2 id="data">测试数据</h2>
+<h3 id="data-sim">模拟器里的数据</h3>
+<p>演示服务的"来源产品"是合同模拟器，数据与授权规则写死在 <code>adapters/contractsim</code> 里，每次都一样。一个身份 <code>platform_demo / user_a</code>，两个产品连接：</p>
+<table><tr><th>产品连接</th><th>数据集</th><th>列</th><th><code>company_demo</code> 可见的行</th><th>用来测什么</th></tr>
+<tr><td><code>brant-contract-demo</code></td><td><code>receivables.aging@1.0.0</code><br>时区 Asia/Shanghai<br>币种政策 ledger_base@1.0.0</td><td>客户 <code>customer.id</code>（文本）<br>账龄区间 <code>aging.bucket</code>（文本）<br>应收余额 <code>ar.open_balance</code>（decimal 2 位，CNY）</td><td><code>customer_a / current / 100.25</code><br><code>customer_b / 1_30 / -0.24</code><br><code>customer_c / 31_60 / 9007199254740893.00</code><br>合计 <code>9007199254740993.01</code></td><td>超过 2^53 的金额必须原样显示；负数；合计与分页；分组出具</td></tr>
+<tr><td><code>shipment-contract-demo</code></td><td><code>shipments.daily@1.0.0</code><br>无币种政策</td><td>目的国、服务（文本）<br>运单数 <code>shipment.count</code>（integer，单位 shipment）</td><td><code>CN / express / 9007199254740993</code><br><code>DE / standard / 7</code></td><td>整数超大值；无币种；第二个产品连接</td></tr></table>
+<ul>
+<li>每份数据各有一行 <code>secret</code>（<code>hidden / 999.99</code>、<code>US / hidden / 999</code>）<strong>不在授权行里</strong>：任何查询、快照、导出、出具都不应出现它。</li>
+<li>各有一行属于 <code>company_other</code>：公司范围填它会被来源拒绝。</li>
+<li>数据时点可以任填，模拟器不按日期过滤。</li>
+<li>每身份上限：模板 64、看板 16、布局 16、未过期结果 64、进行中任务 8、每小时提交 120、并发查询 4。</li>
+<li>出具合同版本 2（支持分组出具），编号前缀 <code>AR</code>（财务）/ <code>SH</code>（运单）。</li>
+</ul>
+<h3 id="data-modes">环境模式</h3>
+<p>同一个二进制、不同参数，就是不同的测试模式（<code>idp-reporting-run/scenario-7811.sh &lt;mode&gt;</code>）：</p>
+<table><tr><th>模式</th><th>参数</th><th>用来测什么</th></tr>
+<tr><td><code>normal</code></td><td><code>-memory</code> + Typst 三参数 + 四个私有目录</td><td>全部功能，含 PDF</td></tr>
+<tr><td><code>paused</code></td><td>加 <code>-pause-workers</code></td><td>任务只入队不执行：取消排队任务、按 ID 恢复、状态刷新</td></tr>
+<tr><td><code>quota</code></td><td>加 <code>-quota-jobs 1 -quota-results 2 -quota-admissions 3 -quota-queries 1</code></td><td>四种限额拒绝及提示文字</td></tr>
+<tr><td><code>nopdf</code></td><td>去掉 Typst 参数</td><td>能力无 pdf：PDF 按钮消失、预览被明确拒绝</td></tr>
+<tr><td><code>sweep</code></td><td>加 <code>-sweep-interval 1m</code></td><td>保留期清理</td></tr></table>
+<p><code>-memory</code> 意味着重启即清空快照、任务与产物；模板、看板、布局在私有目录里，重启仍在。</p>
+<h3 id="data-seed">一键造数据</h3>
+<pre><code>node scripts/seed_demo_data.mjs --token-file ../idp-reporting-run/token --base http://127.0.0.1:7811 --out /tmp/seed.json</code></pre>
+<p>脚本只走公开 API，对正在跑的演示做：两个数据集各一次预览、一份冻结快照、Excel 与 PDF 导出；8 个 1.x 模板（四个业务域、集合 <code>客户A</code> / <code>上海仓</code>、收藏、归档、已发布、第 2 版）；4 个按字段映射复制的样例副本（对账单、波次拣货单、海运订舱、商业发票）；2 个看板（草稿、已发布三组件）；1 个已发布的报表列布局。可重复跑（到上限会跳过并说明），<code>--only jobs,templates,samples,dashboards,layout</code> 选择部分。</p>
+<h3 id="data-files">随手册附带的数据文件</h3>
+<p>以下文件由 2026-11-04 的演示导出，可直接用于手测（导入按钮）或作为接口调用的样本：</p>
+<ul class="files">
+<li><a href="testdata/catalog.json">catalog.json</a> — 两个产品连接的目录（数据集、列、维度、指标、时区、币种政策）。</li>
+<li><a href="testdata/query-receivables.aging.json">query-receivables.aging.json</a>、<a href="testdata/query-shipments.daily.json">query-shipments.daily.json</a> — 控制台发给 <code>POST /queries</code> 与 <code>POST /snapshot-jobs</code> 的查询规格。</li>
+<li><a href="testdata/result-receivables.aging.json">result-receivables.aging.json</a>、<a href="testdata/result-shipments.daily.json">result-shipments.daily.json</a> — 查询结果（列、行、合计、完整性、证据）；<a href="testdata/rows-receivables.aging.csv">rows-receivables.aging.csv</a>、<a href="testdata/rows-shipments.daily.csv">rows-shipments.daily.csv</a> 是同一组行的 CSV。</li>
+<li><a href="testdata/template-1x-example.json">template-1x-example.json</a> — 一个 1.0 单页模板（可在文档工作室"导入模板 JSON"打开）。</li>
+<li><a href="testdata/template-2x-example.json">template-2x-example.json</a> — 从示例"客户往来对账单"复制出的 2.1 分带模板（含明细表、group_sum、页码）。</li>
+<li><a href="testdata/dashboard-example.json">dashboard-example.json</a> — 三组件看板配置（看板工作室"文件 → 打开看板配置"）。</li>
+<li><a href="testdata/report-layout-example.json">report-layout-example.json</a> — 报表列布局（工作台"打开布局"）。</li>
+<li><a href="testdata/samples-list.json">samples-list.json</a> — 37 个示例模板的清单（业务域、流程、预设、元素与字段数）。</li>
+<li><a href="testdata/my-templates-listing.json">my-templates-listing.json</a> — 造数据后"我的模板"列表（含目录元数据：域、流程、收藏、归档、集合、修订号、最近打开）。</li>
+<li><a href="testdata/session-and-capabilities.json">session-and-capabilities.json</a> — 当前身份与服务端能力（格式、限额）。</li></ul>
+
+<h2 id="cases">测试案例集</h2>
+<p>每个案例给出目的、前置数据、步骤与预期；"自动化"指已有的覆盖（DOM = 经真实 Go 服务的 jsdom 测试；浏览器 = Windows Chrome 脚本；基线 = 任务基线脚本；Go = 服务端测试）。全部案例的更细清单在 <code>docs/TEST_SCENARIOS.md</code>。</p>
+
+<div class="case"><h4><span class="id">C01</span>登录与退出</h4><dl><dt>前置</dt><dd>令牌文件</dd><dt>步骤</dt><dd>① 粘贴错误令牌连接 ② 粘贴正确令牌连接 ③ 做一次查询 ④ 退出工作区</dd><dt>预期</dt><dd>① 卡片内红字、令牌框清空；② 连接点变绿、页眉 <code>user_a</code>、数据角标 1；④ 表格、任务、芯片、看板、模板中心全部清空，浏览器存储为空</dd><dt>自动化</dt><dd>DOM、浏览器</dd></dl></div>
+<div class="case"><h4><span class="id">C02</span>精度与合计</h4><dl><dt>前置</dt><dd>应收余额数据集，<code>company_demo</code></dd><dt>步骤</dt><dd>查询预览</dd><dt>预期</dt><dd>3 行；<code>9007199254740893.00</code> 与 <code>-0.24</code> 原样；合计卡 <code>9007199254740993.01</code>；数值列右对齐（图 <a href="#p-workbench">07</a>）</dd><dt>自动化</dt><dd>DOM、浏览器</dd></dl></div>
+<div class="case"><h4><span class="id">C03</span>越权公司与隐藏行</h4><dl><dt>前置</dt><dd>同上</dd><dt>步骤</dt><dd>① 公司范围 <code>company_other</code> 预览 ② 任何查询、快照、导出里找 <code>hidden</code></dd><dt>预期</dt><dd>① 提示"当前身份无权访问"，无行（图 10）；② 永远找不到 <code>hidden / 999.99</code></dd><dt>自动化</dt><dd>DOM、Go</dd></dl></div>
+<div class="case"><h4><span class="id">C04</span>冻结快照、分页、导出</h4><dl><dt>前置</dt><dd>预览后</dd><dt>步骤</dt><dd>① 创建快照 ② 每页改为 2 行，下一页 ③ 导出 Excel ④ 导出 PDF</dd><dt>预期</dt><dd>① 徽标"冻结快照"；② 第 2 页内容与首页一致（同一快照）；③④ 下载并提示"已通过摘要校验"；<code>nopdf</code> 模式下④的按钮不出现</dd><dt>自动化</dt><dd>DOM、工作簿校验脚本</dd></dl></div>
+<div class="case"><h4><span class="id">C05</span>数据时点变化清空结果</h4><dl><dt>前置</dt><dd>有结果</dd><dt>步骤</dt><dd>改日期</dd><dt>预期</dt><dd>结果立刻清空；看板与设计器回到"未查询"</dd><dt>自动化</dt><dd>DOM</dd></dl></div>
+<div class="case"><h4><span class="id">C06</span>数据抽屉</h4><dl><dt>前置</dt><dd>刚登录，无结果</dd><dt>步骤</dt><dd>① 看板工作室起始卡"选择数据…" ② 填 <code>company_demo</code> 预览 ③ 页眉芯片再开一次 ④ Esc</dd><dt>预期</dt><dd>① 抽屉里是工作台的查询面板，焦点在公司范围；② 结果到来抽屉关闭、看板起始卡让位、页面不切换、芯片写出上下文；③ 焦点落在"查询预览"；④ 面板回到工作台，焦点回到芯片</dd><dt>自动化</dt><dd>DOM（S07-A）、基线</dd></dl></div>
+<div class="case"><h4><span class="id">C07</span>看板：组件、结构、保存并发布</h4><dl><dt>前置</dt><dd>有结果</dd><dt>步骤</dt><dd>① 添加指标卡、明细表、柱状图 ② 结构面板把第一个下移 ③ 发布 → 保存并发布 ④ 再添加一个组件，发布</dd><dt>预期</dt><dd>① 三张卡（图 12）；② 桌面顺序同步；③ 徽标 已发布 v1，发布历史 1 条；④ 徽标先 "已发布 v1 · 有未保存修改"，确认后 已发布 v2</dd><dt>自动化</dt><dd>DOM（S06-C、S07-B）、浏览器</dd></dl></div>
+<div class="case"><h4><span class="id">C08</span>看板配置的校验</h4><dl><dt>前置</dt><dd>有组件</dd><dt>步骤</dt><dd>文件页签 → 生成配置 → 改 JSON（字段改成 <code>unapproved</code>、类型改成 <code>html</code>、加第 13 个组件、填 65 KB）→ 打开</dd><dt>预期</dt><dd>每种改动都被拒绝并说明，桌面不变</dd><dt>自动化</dt><dd>DOM</dd></dl></div>
+<div class="case"><h4><span class="id">C09</span>模板中心：筛选、收藏、分类、归档</h4><dl><dt>前置</dt><dd>造数据脚本</dd><dt>步骤</dt><dd>① 快捷访问与业务域切换 ② 搜索"对账" ③ 星标一张 ④ 分类加集合 ⑤ 归档一张，到"归档"里恢复</dd><dt>预期</dt><dd>计数与服务端一致；归档的不在"全部"里；另一个标签页同时改会得到 409 并刷新</dd><dt>自动化</dt><dd>DOM（S06-B）、浏览器</dd></dl></div>
+<div class="case"><h4><span class="id">C10</span>示例预览与复制</h4><dl><dt>前置</dt><dd>有当前数据（预览即可）</dd><dt>步骤</dt><dd>① 任一示例 → 预览 → 生成 PDF 预览 ② 复制 → 映射（客户 → customer.id，金额 → ar.open_balance）→ 复制并进入设计器</dd><dt>预期</dt><dd>① PDF 带 PREVIEW，用示例自带行；② 副本是 2.1 模板版本 1，在工作室打开；没有数据时拒绝行提供"选择数据…"</dd><dt>自动化</dt><dd>DOM、基线</dd></dl></div>
+<div class="case"><h4><span class="id">C11</span>新建向导到标签预设</h4><dl><dt>前置</dt><dd>有当前数据</dd><dt>步骤</dt><dd>新建模板 → 空白模板 → 预设 <code>label_100x100</code> → 下一步 → 名称 → 创建</dd><dt>预期</dt><dd>画布按 100 × 100 mm 画，仍有印章条；列取结果前几列</dd><dt>自动化</dt><dd>DOM、浏览器</dd></dl></div>
+<div class="case"><h4><span class="id">C12</span>文档工作室：边界样本与预览</h4><dl><dt>前置</dt><dd>冻结快照，打开一张模板</dd><dt>步骤</dt><dd>① 检查与发布 → 边界样本 ② 预览与导出</dd><dt>预期</dt><dd>① 检查页签列出首行、末行、最长 / 最短值的行与结论（图 27）；② PDF 预览带 PREVIEW，页码器显示页数</dd><dt>自动化</dt><dd>DOM（有 Typst 时）</dd></dl></div>
+<div class="case"><h4><span class="id">C13</span>版本、恢复与撤回</h4><dl><dt>前置</dt><dd>保存两版（造数据里"客户往来对账单"有 v1、v2）</dd><dt>步骤</dt><dd>版本对话框：预览 v1 → 恢复到编辑器 → 发布 v2 → 撤回发布</dd><dt>预期</dt><dd>恢复只是未保存修改，不改发布指针；撤回后"当前发布 无"</dd><dt>自动化</dt><dd>DOM（S06-A）</dd></dl></div>
+<div class="case"><h4><span class="id">C14</span>保存并发布（文档）</h4><dl><dt>前置</dt><dd>模板有未保存修改</dd><dt>步骤</dt><dd>发布</dd><dt>预期</dt><dd>按钮"保存并发布"、脚注"先保存为新版本，再发布它"；确认后徽标 已发布 vN</dd><dt>自动化</dt><dd>DOM（S07-B）</dd></dl></div>
+<div class="case"><h4><span class="id">C15</span>正式出具（按行）</h4><dl><dt>前置</dt><dd>已发布 1.x 模板（如"演示 · 出库装箱单"）、冻结快照、<code>normal</code> 模式</dd><dt>步骤</dt><dd>① 模板中心 → 编辑 ② 打开已发布版本 ③ 检查与发布 → 正式出具 ④ 出具第 1 行</dd><dt>预期</dt><dd>任务先"编号待来源产品确认"，成功后 <code>No. AR-0000NN</code>，下载 <code>issued-AR-0000NN.pdf</code>（图 31、32）；改动画布后再出具被拒</dd><dt>自动化</dt><dd>DOM（S03-G/H）</dd></dl></div>
+<div class="case"><h4><span class="id">C16</span>正式出具（按分组）</h4><dl><dt>前置</dt><dd>已发布 2.0 分带模板，分组字段 = 客户</dd><dt>步骤</dt><dd>出具面板选分组 <code>customer_c</code></dd><dt>预期</dt><dd>任务标题带分组键；运单数据集前缀 <code>SH</code></dd><dt>自动化</dt><dd>DOM（S03-K）</dd></dl></div>
+<div class="case"><h4><span class="id">C17</span>任务面板与按 ID 恢复</h4><dl><dt>前置</dt><dd>造数据脚本打印的任务 ID</dd><dt>步骤</dt><dd>① 在看板工作室里打开任务面板 ② 粘贴 ID → 打开任务 ③ 查看结果 ④ 伪造一个 ID</dd><dt>预期</dt><dd>① 面板盖在当前页上，Esc 放回；② 任务出现在列表；③ 落到工作台并关面板；④ "未找到"</dd><dt>自动化</dt><dd>DOM（S07-B）、基线</dd></dl></div>
+<div class="case"><h4><span class="id">C18</span>排队任务的取消</h4><dl><dt>前置</dt><dd><code>paused</code> 模式</dd><dt>步骤</dt><dd>创建快照 → 任务面板 → 取消</dd><dt>预期</dt><dd>任务停在"排队中"，取消后"已取消"，没有结果可查看</dd><dt>自动化</dt><dd>DOM（恢复夹具）、手工</dd></dl></div>
+<div class="case"><h4><span class="id">C19</span>限额拒绝</h4><dl><dt>前置</dt><dd><code>quota</code> 模式</dd><dt>步骤</dt><dd>① 连点两次创建快照 ② 第三个结果 ③ 第四次提交 ④ 两个标签页同时预览</dd><dt>预期</dt><dd>依次："已达到进行中任务上限 (1)"、"保留结果上限 (2)"、"每小时提交上限 (3)"、"查询进行中过多 (1)"；页面不清空</dd><dt>自动化</dt><dd>DOM（S04-D）、Go</dd></dl></div>
+<div class="case"><h4><span class="id">C20</span>未确认的提交不重复</h4><dl><dt>前置</dt><dd>能瞬间断开服务（关掉再起）</dd><dt>步骤</dt><dd>点创建快照时断开 → 再点一次</dd><dt>预期</dt><dd>两次请求用同一个 Idempotency-Key，服务端只建一个任务</dd><dt>自动化</dt><dd>DOM</dd></dl></div>
+<div class="case"><h4><span class="id">C21</span>嵌入页</h4><dl><dt>前置</dt><dd>起服务时加 <code>-embed-origin brant-contract-demo=http://127.0.0.1:7902</code>；<code>python3 -m http.server 7902 --bind 127.0.0.1 -d console/embed-host</code></dd><dt>步骤</dt><dd>打开 <code>http://127.0.0.1:7902/?platform=http://127.0.0.1:7811&amp;integration=brant-contract-demo&amp;view=dashboard</code></dd><dt>预期</dt><dd>框架内只有视图（无导航、登录、应用栏、芯片），高度随内容；陌生来源框住得到 403</dd><dt>自动化</dt><dd>嵌入 DOM、浏览器脚本</dd></dl></div>
+<div class="case"><h4><span class="id">C22</span>宽度、主题、键盘</h4><dl><dt>前置</dt><dd>任意</dd><dt>步骤</dt><dd>1440 / 1280 / 768 / 390；系统暗色；只用 Tab / 方向键 / Esc</dd><dt>预期</dt><dd>无横向溢出；对比度 ≥ 4.5:1；对话框焦点循环与归还；画布方向键移动 0.1 mm</dd><dt>自动化</dt><dd>浏览器脚本、DOM</dd></dl></div>
+
+<h2 id="faq">常见问题与边界</h2>
+<table><tr><th>现象</th><th>原因与做法</th></tr>
+<tr><td>登录后任务面板是空的</td><td>任务列表只含本浏览器会话创建或恢复的任务。任务都在服务器上，用 ID 恢复。</td></tr>
+<tr><td>登录后芯片是"未选择数据"</td><td>会话数据不入库。先查一次，或恢复一个快照任务后"查看结果"。</td></tr>
+<tr><td>看板 / 设计器说"请先选择数据"</td><td>它们绑定当前数据。任何页面上的"选择数据…"或页眉芯片都能打开抽屉。</td></tr>
+<tr><td>"发布"按钮显示"保存并发布"</td><td>画布有未保存修改，确认即先保存为新版本再发布；不想保存就取消。</td></tr>
+<tr><td>模板中心里"编辑"是灰的</td><td>没有当前数据，或模板绑定的数据集与当前数据集不同；提示里写了原因。</td></tr>
+<tr><td>导出 PDF 按钮不见了 / 样例预览被拒</td><td>服务端未启用 PDF 渲染器（<code>nopdf</code> 模式）；能力页会显示导出格式只有 xlsx。</td></tr>
+<tr><td>出具按钮不出现</td><td>只有"打开已发布版本"后未改动的模板才能出具；需要冻结快照。</td></tr>
+<tr><td>只有一个身份</td><td>演示只有 <code>user_a</code>；"另一个身份看不到我的东西"在服务端测试里验证。</td></tr>
+<tr><td>来源拒绝 / 不可用 / 出具未对账</td><td>本机 UI 无法触发，属于服务端测试夹具。</td></tr></table>
+
+<h2 id="keys">快捷键与术语</h2>
+<table><tr><th>快捷键</th><th>作用（文档工作室）</th></tr>
+<tr><td><kbd>Ctrl/⌘ K</kbd></td><td>搜索命令（命令面板）</td></tr>
+<tr><td><kbd>Ctrl/⌘ S</kbd></td><td>保存版本</td></tr>
+<tr><td><kbd>Ctrl/⌘ D</kbd></td><td>创建所选元素的副本</td></tr>
+<tr><td><kbd>Ctrl/⌘ C / X / V</kbd></td><td>复制 / 剪切 / 粘贴元素（模板内剪贴板）</td></tr>
+<tr><td><kbd>方向键</kbd> / <kbd>Shift</kbd> + 点击 / <kbd>Space</kbd> + 拖动</td><td>微调 0.1 mm / 多选 / 平移画布</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>关闭对话框、抽屉、面板，焦点回到打开它的控件</td></tr></table>
+<table><tr><th>术语</th><th>含义</th></tr>
+<tr><td>查询预览</td><td>实时结果，可能是有界预览；不能导出、不能出具。</td></tr>
+<tr><td>冻结快照</td><td>服务端固定的一份结果；分页稳定；可导出、可出具；有保留期。</td></tr>
+<tr><td>保存版本</td><td>模板 / 看板 / 布局在服务端的不可变版本（v1、v2 …）。</td></tr>
+<tr><td>发布</td><td>把发布指针移到某个保存版本；撤回是单独操作；恢复到编辑器不是发布。</td></tr>
+<tr><td>正式出具</td><td>按已发布模板与冻结快照的行（或分组）生成带编号的正式文件，编号由来源产品分配。</td></tr>
+<tr><td>示例模板</td><td>随平台提供的 37 个只读样例；复制后才是你的模板。</td></tr>
+<tr><td>页面预设</td><td>A4 / A4 横 / A5 / 4×6 in / 100×150 / 100×100 标签。</td></tr></table>
+
+<h2 id="auto">自动化测试入口</h2>
+<pre><code>source ../idp-reporting-run/testenv.sh              # Go 1.26 工具链与 Typst 环境变量
+node --test console/dom.test.mjs console/embed.dom.test.mjs   # 183 + 24 项，经真实 Go 服务
+go test ./...                                       # 服务端（PG / S3 部分在 CI）
+node scripts/ux_baseline_s07.mjs --out out.json --token-file ../idp-reporting-run/token --label now --base http://127.0.0.1:7811
+node scripts/browser_console_s06c.mjs --out out --token-file ../idp-reporting-run/token --proto &lt;原型.html&gt; --base http://127.0.0.1:7811
+node scripts/seed_demo_data.mjs --token-file ../idp-reporting-run/token --base http://127.0.0.1:7811</code></pre>
+<p>浏览器脚本需要一个开着远程调试端口的 Chrome：<code>--headless=new --remote-debugging-port=9347 --user-data-dir=&lt;空目录&gt; --no-proxy-server</code>。更多：<code>docs/TEST_SCENARIOS.md</code>、<code>docs/CONSOLE.md</code>、<code>docs/STUDIO.md</code>、<code>docs/EMBEDDING.md</code>。</p>
+</main>
+</div>
+</body>
+</html>

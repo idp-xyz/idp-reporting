@@ -1,0 +1,42 @@
+{
+  "columns": [
+    {
+      "id": "shipment.destination_country",
+      "label": "目的国",
+      "type": "string"
+    },
+    {
+      "id": "shipment.service_code",
+      "label": "服务",
+      "type": "string"
+    },
+    {
+      "id": "shipment.count",
+      "label": "运单数",
+      "type": "integer",
+      "unit": "shipment"
+    }
+  ],
+  "rows": [
+    [
+      "CN",
+      "express",
+      "9007199254740993"
+    ],
+    [
+      "DE",
+      "standard",
+      "7"
+    ]
+  ],
+  "totals": {
+    "shipment.count": "9007199254741000"
+  },
+  "completeness": "complete",
+  "evidence": {
+    "query_hash": "6fd4fd04e724533c021b769da1cf3a3695e6fdacb85a0048d4adc57b45010cee",
+    "source_snapshot_ref": "cc4fe1d74096d87a44c90c9d2554722b",
+    "source_watermark": "fixture-v1",
+    "data_class": "contract-simulator"
+  }
+}

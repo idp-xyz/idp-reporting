@@ -1,0 +1,368 @@
+[
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "运输 / 货代",
+      "favourite": false,
+      "flow": "航空运输",
+      "last_opened": "2026-11-04T08:27:53.330311959Z",
+      "revision": 1
+    },
+    "id": "9d48be86a04e432402ed2b8c2afd22e8",
+    "name": "MAWB 航空主运单 · 套打",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "2.1",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "仓储 WMS",
+      "favourite": false,
+      "flow": "出库",
+      "last_opened": "2026-11-04T04:44:14.705833884Z",
+      "revision": 1
+    },
+    "id": "3027e29d81e037e33ffdc46568277427",
+    "name": "出库装箱单",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "2.1",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [
+        "客户A"
+      ],
+      "domain": "通用业务",
+      "favourite": true,
+      "flow": "财务",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "b1324ffbc510d8db89d2e7d05eeb7c91",
+    "name": "演示 · 客户往来对账单",
+    "preset": "a4",
+    "published_version": 1,
+    "schema_version": "1.0",
+    "version": 2
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "通用业务",
+      "favourite": false,
+      "flow": "销售",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "a2d66533c722f659563cff5244334f9d",
+    "name": "演示 · 销售订单",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "1.0",
+    "version": 2
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [
+        "上海仓"
+      ],
+      "domain": "仓储 WMS",
+      "favourite": false,
+      "flow": "出库",
+      "last_opened": "2026-11-04T08:28:02.65154779Z",
+      "revision": 1
+    },
+    "id": "51da2b4f1455c6063fcb8bd3adf457f4",
+    "name": "演示 · 出库装箱单",
+    "preset": "a4",
+    "published_version": 1,
+    "schema_version": "1.0",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "仓储 WMS",
+      "favourite": false,
+      "flow": "出库",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "1f4d82c61a9e9f62717433df52e7a78b",
+    "name": "演示 · 波次拣货单",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "1.0",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "运输 / 货代",
+      "favourite": false,
+      "flow": "海运",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "908ce71a72cdbfcf97adc313809da630",
+    "name": "演示 · 海运订舱委托 · Ocean Booking",
+    "preset": "a4",
+    "published_version": 1,
+    "schema_version": "1.0",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [
+        "客户A"
+      ],
+      "domain": "国际贸易",
+      "favourite": false,
+      "flow": "贸易单证",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "07bb074d268287ec47debe47113681c3",
+    "name": "演示 · 商业发票 · Commercial Invoice",
+    "preset": "a4",
+    "published_version": 1,
+    "schema_version": "1.0",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "运输 / 货代",
+      "favourite": true,
+      "flow": "航空运输",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "36a2cb0bf263aca634deeae9bc263db2",
+    "name": "演示 · 航空运单 · Air Waybill (MAWB)",
+    "preset": "a4",
+    "published_version": 1,
+    "schema_version": "1.0",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": true,
+      "collections": [],
+      "domain": "仓储 WMS",
+      "favourite": false,
+      "flow": "入库",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "361c1d5b5c5c1ff691dd2e4df13d5bdc",
+    "name": "演示 · 旧版入库单（已归档）",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "1.0",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": true,
+      "collections": [],
+      "domain": "通用业务",
+      "favourite": false,
+      "flow": "财务",
+      "last_opened": "",
+      "revision": 2
+    },
+    "id": "b4280da8686a1094a9491fe8bd3ff728",
+    "name": "我的对账单",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "2.1",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "通用业务",
+      "favourite": false,
+      "flow": "财务",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "48a74dc30c0c17e796ddb0904a2730d7",
+    "name": "演示 · 客户往来对账单",
+    "preset": "a4",
+    "published_version": 1,
+    "schema_version": "2.1",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "仓储 WMS",
+      "favourite": false,
+      "flow": "出库",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "17ea8449416f82dadc0589ab30a6500f",
+    "name": "演示 · WMS · 波次拣货单",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "2.1",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "运输 / 货代",
+      "favourite": false,
+      "flow": "海运",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "57f1f9c643d415dd5cd3d2f4c937e144",
+    "name": "演示 · 海运订舱委托 · Ocean Booking",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "2.1",
+    "version": 1
+  },
+  {
+    "binding": {
+      "integration_id": "brant-contract-demo",
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      }
+    },
+    "catalog": {
+      "archived": false,
+      "collections": [],
+      "domain": "国际贸易",
+      "favourite": false,
+      "flow": "贸易单证",
+      "last_opened": "",
+      "revision": 1
+    },
+    "id": "84ad0de6bdd03aabe53bd2cdc7b45926",
+    "name": "演示 · 商业发票 · Commercial Invoice",
+    "preset": "a4",
+    "published_version": 0,
+    "schema_version": "2.1",
+    "version": 1
+  }
+]

@@ -1,0 +1,81 @@
+{
+  "brant-contract-demo": [
+    {
+      "dataset": {
+        "id": "receivables.aging",
+        "version": "1.0.0"
+      },
+      "columns": [
+        {
+          "id": "customer.id",
+          "label": "客户",
+          "type": "string"
+        },
+        {
+          "id": "aging.bucket",
+          "label": "账龄区间",
+          "type": "string"
+        },
+        {
+          "id": "ar.open_balance",
+          "label": "应收余额",
+          "type": "decimal",
+          "scale": 2,
+          "currency": "CNY"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "ar.open_balance",
+          "version": "1.0.0"
+        }
+      ],
+      "dimensions": [
+        "customer.id",
+        "aging.bucket"
+      ],
+      "currency_policy": {
+        "id": "ledger_base",
+        "version": "1.0.0"
+      },
+      "timezone": "Asia/Shanghai"
+    }
+  ],
+  "shipment-contract-demo": [
+    {
+      "dataset": {
+        "id": "shipments.daily",
+        "version": "1.0.0"
+      },
+      "columns": [
+        {
+          "id": "shipment.destination_country",
+          "label": "目的国",
+          "type": "string"
+        },
+        {
+          "id": "shipment.service_code",
+          "label": "服务",
+          "type": "string"
+        },
+        {
+          "id": "shipment.count",
+          "label": "运单数",
+          "type": "integer",
+          "unit": "shipment"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "shipment.count",
+          "version": "1.0.0"
+        }
+      ],
+      "dimensions": [
+        "shipment.destination_country",
+        "shipment.service_code"
+      ],
+      "timezone": "Asia/Shanghai"
+    }
+  ]
+}

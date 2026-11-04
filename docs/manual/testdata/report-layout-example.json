@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "binding": {
+    "integration_id": "brant-contract-demo",
+    "dataset": {
+      "id": "receivables.aging",
+      "version": "1.0.0"
+    }
+  },
+  "columns": [
+    {
+      "id": "ar.open_balance",
+      "align": "right"
+    },
+    {
+      "id": "aging.bucket",
+      "align": "left"
+    },
+    {
+      "id": "customer.id",
+      "align": "left"
+    }
+  ]
+}
