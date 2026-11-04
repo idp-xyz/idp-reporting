@@ -3979,6 +3979,10 @@ test('S07-A A1–A3: the rail stays on every shell; the chip names the data cont
  assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(rail.querySelector('.rail-status #connection-label').textContent,'API 已连接');
  for(const page of ['documents','library','dashboard','tasks']){d.querySelector('[data-page="'+page+'"]').click();assert.equal(rail.querySelector('[aria-current="page"]').dataset.page,page);assert.equal(rail.querySelectorAll('[aria-current]').length,1);}
  const chip=a.$('sh-data-chip');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-data-kind').hidden,true);assert.equal(chip.getAttribute('aria-haspopup'),'dialog');
+ // Before any data the centre refuses with the drawer offered, never with the workbench; its chip is empty too.
+ d.querySelector('[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&/个结果/.test(a.$('lib-count').textContent)&&!d.querySelector('#page-library .catalog-notice-line').hidden,'the centre listed with its refusal line',30000);
+ const line=d.querySelector('#page-library .catalog-notice-line');assert.match(line.textContent,/先选择数据集并预览或冻结快照/);assert.equal(line.textContent.includes('工作台'),false);assert.equal(a.$('lib-data').textContent.trim(),'未选择数据');assert.equal(a.$('lib-data').classList.contains('is-empty'),true);
+ line.querySelector('button').click();assert.equal(a.$('sh-d-data').hidden,false);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-data').hidden,true);assert.equal(d.activeElement,line.querySelector('button'));
  // The dashboard's start card opens the drawer: the query panel moves in, the focus goes to the company field, the shell is inert.
  d.querySelector('[data-page="dashboard"]').click();assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-start-open').textContent.trim(),'选择数据…');assert.equal(a.$('bd-start').querySelector('[data-open]'),null,'no way out to another page');
  a.$('bd-start-open').click();assert.equal(a.$('sh-d-data').hidden,false);assert.equal(a.$('sh-query-slot').contains(d.querySelector('.query-panel')),true);assert.equal(d.activeElement,a.$('query-companies'));assert.equal(d.querySelector('.shell').inert,true);assert.equal(a.$('sh-d-data').querySelector('[role=dialog]').getAttribute('aria-modal'),'true');
@@ -3994,12 +3998,8 @@ test('S07-A A1–A3: the rail stays on every shell; the chip names the data cont
  a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot');assert.equal(a.$('sh-d-data').hidden,true);assert.equal(a.$('sh-data-kind').textContent,'冻结快照');assert.equal(d.activeElement,chip);
  d.querySelector('[data-page="library"]').click();await until(()=>!a.$('page-library').hidden&&!!a.$('lib-data'),'centre');
  assert.equal(a.$('lib-data').textContent.trim().endsWith('· 冻结快照'),true);assert.equal(a.$('lib-data').classList.contains('is-empty'),false);
- // Sign out empties the chip and closes the drawer; a fresh session's centre refuses with the drawer offered, never with the workbench.
- a.click('logout');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-d-data').hidden,true);
- await a.login();d.querySelector('[data-page="library"]').click();
- for(const end=Date.now()+30000;;){const line=d.querySelector('#page-library .catalog-notice-line');if(!a.$('page-library').hidden&&/个结果/.test(a.$('lib-count').textContent)&&!line.hidden)break;if(Date.now()>end)assert.fail('the centre listed with its refusal line: count="'+a.$('lib-count').textContent+'" notice="'+line.textContent+'" hidden='+line.hidden+' notice-top="'+a.$('notice').textContent+'"');await sleep(25);}
- const line=d.querySelector('#page-library .catalog-notice-line');assert.match(line.textContent,/先选择数据集并预览或冻结快照/);assert.equal(line.textContent.includes('工作台'),false);assert.equal(a.$('lib-data').textContent.trim(),'未选择数据');
- line.querySelector('button').click();assert.equal(a.$('sh-d-data').hidden,false);d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-data').hidden,true);assert.equal(d.activeElement,line.querySelector('button'));
+ // Sign out empties the chip and closes the drawer.
+ chip.click();assert.equal(a.$('sh-d-data').hidden,false);a.click('logout');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-d-data').hidden,true);assert.equal(a.$('page-workspace').contains(d.querySelector('.query-panel')),true,'the panel is back in the workbench');
  // No inline style or handler came with the rail, the chip or the drawer; every <use> still points at a symbol of the page.
  assert.equal(/\sstyle\s*=/i.test(html),false);for(const u of d.querySelectorAll('use'))assert.ok(d.getElementById(u.getAttribute('href').slice(1)),u.getAttribute('href'));
  assert.equal(a.errors.length,0,a.errors.join('|'));
