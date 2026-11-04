@@ -127,17 +127,29 @@ func TestQueriesInFlightBoundOneIdentityAndLeaveAnotherAlone(t *testing.T) {
 	if _, e := w.s.Query(context.Background(), w.p2, contractsim.FinancialQuery()); e != nil {
 		t.Fatal("another identity was held by the first:", e)
 	}
-	// A query finishing frees its slot.
+	// A query finishing frees its slot. The release wakes whichever of the two held queries the runtime queued on the
+	// channel first; which one that is depends on scheduling (under the race detector on a slow machine it was the second,
+	// and the first then sat held until its work deadline). The test takes whichever finished and keeps the other for the end.
 	w.a.release <- struct{}{}
-	if e := <-one; e != nil {
-		t.Fatal(e)
+	var other chan error
+	select {
+	case e := <-one:
+		if e != nil {
+			t.Fatal(e)
+		}
+		other = two
+	case e := <-two:
+		if e != nil {
+			t.Fatal(e)
+		}
+		other = one
 	}
 	w.a.hold.Store(holdNone)
 	if _, e := w.s.Query(context.Background(), w.p, contractsim.FinancialQuery()); e != nil {
 		t.Fatal("the slot was not given back when a query finished:", e)
 	}
 	w.a.release <- struct{}{}
-	if e := <-two; e != nil {
+	if e := <-other; e != nil {
 		t.Fatal(e)
 	}
 }
