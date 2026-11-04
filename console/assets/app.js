@@ -49,10 +49,11 @@
      notify('PDF预览已通过摘要校验，下载已发起。','success');
     }catch(error){if(error instanceof Stale||!current(m))throw Object.assign(Error('stale'),{stale:true});notify(label+'：'+errorMessage(error),'error');throw error;}
    },
-   notify,open:page=>openPage(page),previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),studio:()=>documents.bridge
+   notify,open:page=>openPage(page),previews:()=>!!state.capabilities&&Array.isArray(state.capabilities.formats)&&state.capabilities.formats.includes('pdf'),studio:()=>documents.bridge,
+   data:from=>drawer.open(from),dataSummary:()=>dataSummary()
   }):null;
   // The dashboard studio (board.js, S06-C): the studio's regions around the dashboard's controls, in the console and in the embed page alike.
-  board=window.createReportingBoardStudio?window.createReportingBoardStudio({dashboard,open:page=>openPage(page)}):null;
+  board=window.createReportingBoardStudio?window.createReportingBoardStudio({dashboard,open:page=>openPage(page),...(embedded?{}:{data:from=>drawer.open(from)})}):null;
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   // detail is a layout or binding refusal's reason and place (S03-J), when the server named them and the shape is the known one.
   class Failure extends Error { constructor(status,code,detail) { super(code); this.status=status; this.code=code; if(detail!==undefined)this.detail=detail; } }
@@ -62,6 +63,33 @@
   // An icon of the shell's sprite (index.html and embed.html hold the same symbols).
   function icon(name) { const s=document.createElementNS('http://www.w3.org/2000/svg','svg'); s.setAttribute('class','ic'); s.setAttribute('aria-hidden','true'); s.setAttribute('focusable','false'); const u=document.createElementNS('http://www.w3.org/2000/svg','use'); u.setAttribute('href','#s-'+name); s.append(u); return s; }
   function iconBox(name,className) { const box=node('span',undefined,className); box.append(icon(name)); return box; }
+  // S07-A (ADR 0009): one data context, reachable from everywhere. The workbench's query panel is moved into the data drawer while it is open and put
+  // back after (the parking the document studio uses for its own 参数与筛选 drawer); the chip in the header, the centre and the dashboard studio names
+  // the context the console already holds (state.query, state.lastResult, state.snapshot). The embed page has neither chip nor drawer.
+  const parked=[];
+  function park(el,slot) {if(!el||!slot||el.parentNode===slot)return;parked.push({el,parent:el.parentNode,next:el.nextSibling,slot});slot.append(el);}
+  function unpark(slot) {for(let i=parked.length-1;i>=0;i--){const p=parked[i];if(p.slot!==slot)continue;if(p.parent&&p.parent.isConnected){if(p.next&&p.next.parentNode===p.parent)p.parent.insertBefore(p.el,p.next);else p.parent.append(p.el);}parked.splice(i,1);}}
+  const drawer=(()=>{
+    const overlay=$('sh-d-data');if(!overlay)return {open(){},close(){},isOpen:()=>false};
+    let opener=null;
+    const focusable=()=>Array.from(overlay.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(e=>!e.hidden&&!e.closest('[hidden]'));
+    function trap(e) {
+      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}
+      if(e.key!=='Tab')return;const list=focusable();if(!list.length)return;const first=list[0],last=list[list.length-1];
+      if(e.shiftKey&&(document.activeElement===first||!overlay.contains(document.activeElement))){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+    }
+    function open(from) {if(!overlay.hidden||!state.session)return;opener=from&&from.focus?from:document.activeElement;park(document.querySelector('.query-panel'),$('sh-query-slot'));overlay.hidden=false;document.querySelector('.shell').inert=true;document.addEventListener('keydown',trap,true);($('query-companies').value?$('preview'):$('query-companies')).focus();}
+    function close() {if(overlay.hidden)return;overlay.hidden=true;document.removeEventListener('keydown',trap,true);unpark($('sh-query-slot'));document.querySelector('.shell').inert=false;if(opener&&opener.isConnected)opener.focus();opener=null;}
+    overlay.querySelectorAll('[data-act=close]').forEach(b=>b.addEventListener('click',close));overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close();});
+    return {open,close,isOpen:()=>!overlay.hidden};
+  })();
+  function dataSummary() {if(!state.lastResult||!state.query)return null;const q=state.query;const text=q.dataset.id+'@'+q.dataset.version+' · '+q.company_ids.join('、')+' · '+q.as_of;return {dataset:q.dataset.id+'@'+q.dataset.version,scope:q.company_ids.join('、'),date:q.as_of,kind:state.snapshot?'冻结快照':'查询预览',text};}
+  function updateChip() {
+    const chip=$('sh-data-chip');if(!chip)return;const s=dataSummary();
+    chip.classList.toggle('is-empty',!s);$('sh-data-text').textContent=s?s.text:'未选择数据';$('sh-data-kind').hidden=!s;$('sh-data-kind').textContent=s?s.kind:'';$('sh-data-kind').className='pill '+(s&&s.kind==='冻结快照'?'green':'blue');
+    chip.title=s?'当前数据：'+s.text+' · '+s.kind+'（点击修改）':'选择产品连接、数据集、公司范围与时点';
+    if(library&&library.data)library.data();
+  }
   // The page count of a PDF the server rendered, read from its page tree (/Type /Page objects, or the /Count of /Pages), for the studio's pager; 1 when it cannot be read.
   function pdfPageCount(bytes) {let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));const leaves=(text.match(/\/Type\s*\/Page(?![A-Za-z])/g)||[]).length,counts=[...text.matchAll(/\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)/g)].map(m=>Number(m[1])).concat([...text.matchAll(/\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages/g)].map(m=>Number(m[1])));const n=Math.max(leaves,...counts,1);return Number.isSafeInteger(n)&&n<=1000?n:1;}
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
@@ -85,11 +113,11 @@
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
     $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(iconBox('table','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
-    $('result-kind').textContent='尚未查询';$('result-kind').className='badge neutral';$('result-title').textContent='查询结果';
+    $('result-kind').textContent='尚未查询';$('result-kind').className='badge neutral';$('result-title').textContent='查询结果';updateChip();
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
-    dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
+    drawer.close();dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';if($('nav-datasets'))$('nav-datasets').textContent='0';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
@@ -435,6 +463,7 @@
     $('result-pager').hidden=!meta;
     if(meta){$('page-info').textContent='第 '+state.page+' 页 · 共 '+meta.total+' 行';$('next-page').disabled=!state.cursor;$('first-page').disabled=state.page<=1;}
     $('export').disabled=!state.snapshot||state.busy>0;$('export-pdf').disabled=!state.snapshot||state.busy>0;
+    updateChip();if(drawer.isOpen())drawer.close();
     if(embedded)setTimeout(openResource,0);
   }
   function renderJobs() {
@@ -533,7 +562,7 @@
   }
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));
-  if(!embedded){$('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());}
+  if(!embedded){$('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());$('sh-data-chip').addEventListener('click',()=>drawer.open($('sh-data-chip')));}
   for(const id of ['catalog-product','query-product'])$(id).addEventListener('change',()=>loadProduct($(id).value).catch(error=>fail(error)));
   $('query-dataset').addEventListener('change',()=>{queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';});
   for(const id of ['query-companies','query-date'])$(id).addEventListener('input',queryChanged);

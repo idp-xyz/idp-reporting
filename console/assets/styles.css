@@ -3,7 +3,7 @@
    notes), written for every page that is not a studio, and the dashboard studio (#page-dashboard) built from the document studio's regions.
    Light values are the prototype's except the text colours that did not reach 4.5:1 (docs/STUDIO.md "控制台外壳", deviation list); dark values are
    derived and measured. The canvas rules (cv-*, cv2-*) follow after the marker "canvas". No inline style, no script, no external resource. */
-:root{--bg:#f7f9fc;--panel:#fff;--ink:#253851;--text:#43576a;--muted:#586a82;--faint:#5d6c84;--line:#e0e6ee;--line2:#e6ebf3;--field:#dce3ee;--blue:#4261df;--blue-dark:#314dbe;--navy:#2c3b5b;--light:#eaf0ff;--sel-bg:#eaf0ff;--sel-ink:#3459ba;--hover:#f2f5fb;
+:root{--app-rail:56px;--app-rail-top:0px;--bg:#f7f9fc;--panel:#fff;--ink:#253851;--text:#43576a;--muted:#586a82;--faint:#5d6c84;--line:#e0e6ee;--line2:#e6ebf3;--field:#dce3ee;--blue:#4261df;--blue-dark:#314dbe;--navy:#2c3b5b;--light:#eaf0ff;--sel-bg:#eaf0ff;--sel-ink:#3459ba;--hover:#f2f5fb;
  --green:#1d6b52;--amber:#8a5a0c;--red:#a8432b;--eyebrow:#4a6291;--desk:#edf0f5;--rail:#f8f9fc;--soft:#f5f8fd;--soft-line:#e3eaf5;--icon-bg:#f4f7fc;--icon-line:#e1e8f4;--icon-ink:#5f7aa3;
  --pill-bg:#f0f3f7;--pill:#586a82;--pill-blue-bg:#eef1ff;--pill-blue:#4659b3;--pill-green-bg:#e6f4ee;--pill-green:#1d6b52;--pill-amber-bg:#fff3de;--pill-amber:#8a5a0c;--pill-red-bg:#fceeee;--pill-red:#a84444;
  --note-bg:#f6f8fc;--note-line:#d8e3f5;--err-bg:#fff6f2;--err-line:#f0d9cf;--err:#a8432b;--ok-bg:#eef8f3;--ok-line:#d8ebe4;--ok:#2f6d55;--info-bg:#edf5fe;--info-line:#d9e7f5;--info:#3b6a9c;--tag-bg:#fbf4e8;--tag-line:#eee4d2;--tag:#7c5a1e;
@@ -39,6 +39,7 @@ h1{font-size:22px;letter-spacing:-.02em;font-weight:650;line-height:1.35;overflo
 h2{font-size:14px;font-weight:650;letter-spacing:-.01em}
 h3{font-size:12px;font-weight:600}
 a{color:var(--sel-ink)}
+#main:focus-visible{outline:none}
 .skip{position:fixed;left:20px;top:-80px;background:var(--panel);color:var(--ink);padding:10px;z-index:100;border-radius:5px}
 .skip:focus{top:10px}
 .sprite{position:absolute;width:0;height:0;overflow:hidden}
@@ -53,9 +54,22 @@ svg{vertical-align:middle;flex-shrink:0}
 .help{font-size:11px;color:var(--muted)}
 .noscript{position:fixed;bottom:15px;left:15px;right:15px;z-index:100;background:var(--tag-bg);color:var(--tag);border:1px solid var(--tag-line);padding:15px;text-align:center;font-size:12px;border-radius:6px}
 
-/* ---- the shell: header, navigation column, main column (the prototype's library-header + catalog-layout) ---- */
-.shell{min-height:100vh;display:flex;flex-direction:column}
-.console-header{height:68px;display:flex;align-items:center;gap:16px;padding:0 36px;background:var(--panel);border-bottom:1px solid var(--line2);position:sticky;top:0;z-index:30}
+/* ---- the shell (S07-A, ADR 0009): the application rail at the left edge of every shell, then the header and the main column ---- */
+.shell{min-height:100vh;display:flex;flex-direction:column;padding-left:var(--app-rail);padding-top:var(--app-rail-top)}
+.app-rail{position:fixed;top:0;left:0;bottom:0;width:var(--app-rail);z-index:50;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 8px;background:var(--panel);border-right:1px solid var(--line)}
+.rail-brand{display:grid;place-items:center;margin-bottom:8px;text-decoration:none}
+.rail-brand .brand-icon{width:30px;height:32px}
+.rail-brand .brand-icon .ic{width:17px;height:17px}
+.app-rail .nav-item{position:relative;width:48px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1px solid transparent;border-radius:6px;background:none;color:var(--muted);padding:0;margin:0}
+.app-rail .nav-item .ic{width:17px;height:17px}
+.app-rail .nav-item small{font-size:9px;line-height:1.2;letter-spacing:.02em}
+.app-rail .nav-item:hover{color:var(--sel-ink);background:var(--hover)}
+.app-rail .nav-item.active{background:var(--sel-bg);border-color:var(--light);color:var(--sel-ink);font-weight:600}
+.app-rail .nav-item b,.nav-count{position:absolute;top:4px;right:4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--pill-blue-bg);color:var(--pill-blue);font-size:9px;line-height:16px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+.app-rail .nav-item.active b{background:var(--blue);color:#fff}
+.rail-status{margin-top:4px;display:grid;place-items:center;height:24px}
+.rail-status .status-dot{margin:0}
+.console-header{height:68px;display:flex;align-items:center;gap:14px;padding:0 36px;background:var(--panel);border-bottom:1px solid var(--line2);position:sticky;top:var(--app-rail-top);z-index:30}
 .wordmark{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);white-space:nowrap;font-size:17px;letter-spacing:-.03em;line-height:1.15;background:none;border:0;padding:0;text-align:left}
 .wordmark b{font-size:12px;font-weight:650;letter-spacing:.01em;color:var(--ink)}
 .wordmark small{display:block;font-size:7px;letter-spacing:.19em;color:var(--faint);margin-top:3px;text-transform:uppercase}
@@ -63,24 +77,30 @@ svg{vertical-align:middle;flex-shrink:0}
 .brand-icon .ic{width:19px;height:19px;stroke-width:1.8}
 .environment{font-size:10px;color:var(--tag);background:var(--tag-bg);border:1px solid var(--tag-line);border-radius:4px;padding:3px 8px;white-space:nowrap}
 .actor{font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.console-layout{display:grid;grid-template-columns:222px minmax(0,1fr);flex:1;min-height:calc(100dvh - 68px)}
-.console-nav{background:var(--panel);border-right:1px solid var(--line);padding:20px 13px;display:flex;flex-direction:column;gap:0}
-.console-nav nav{display:flex;flex-direction:column}
-.catalog-caption{font-size:10px;color:var(--faint);letter-spacing:.02em;padding:0 12px;margin:0 0 6px}
-.catalog-caption.second{margin-top:18px}
-.catalog-nav,.nav-item{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;padding:10px 12px;margin:3px 0;border:0;border-radius:6px;background:none;text-align:left;color:var(--muted);font-size:12px}
-.nav-item>span{display:flex;align-items:center;gap:9px;min-width:0;overflow-wrap:anywhere}
-.nav-item .ic{width:15px;height:15px;color:var(--faint)}
-.nav-item b,.nav-count{font-weight:500;color:var(--faint);font-size:10px;font-variant-numeric:tabular-nums}
-.nav-item:hover{background:var(--hover)}
-.nav-item.active{background:var(--sel-bg);color:var(--sel-ink);font-weight:600}
-.nav-item.active .ic,.nav-item.active b{color:var(--sel-ink)}
-.catalog-footnote{margin-top:auto;padding:14px 12px 0;border-top:1px solid var(--line);font-size:10px;line-height:1.8;color:var(--faint)}
-.catalog-footnote .row{align-items:flex-start;gap:9px}
-.catalog-footnote b{display:block;font-size:11px;font-weight:550;color:var(--text)}
-.catalog-footnote small{display:block;font-size:10px;max-width:170px;overflow-wrap:anywhere}
+.console-layout{flex:1;min-height:calc(100dvh - 68px - var(--app-rail-top))}
 .status-dot{width:7px;height:7px;background:#a5b2c0;border-radius:50%;display:inline-block;flex:0 0 auto;margin-top:7px}
 .status-dot.connected{background:var(--green);box-shadow:0 0 0 3px var(--ok-bg)}
+/* the data chip (the header, the centre's header): the current data context, and the way to the data drawer */
+.data-chip{display:inline-flex;align-items:center;gap:8px;max-width:460px;min-width:0;flex:0 1 auto;padding:6px 11px;border:1px solid var(--field);border-radius:6px;background:var(--soft);font-size:11px;color:var(--text);cursor:pointer;line-height:1.5}
+.data-chip .ic{width:14px;height:14px;color:var(--icon-ink);flex-shrink:0}
+.data-chip span:not(.pill){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+.data-chip .pill{padding:1px 6px;font-size:10px}
+.data-chip.is-empty{border-style:dashed;background:transparent;color:var(--muted)}
+.data-chip:hover{border-color:var(--ring)}
+/* the data drawer: the workbench's query panel while it is open */
+.sh-overlay{position:fixed;inset:0;z-index:120;background:var(--overlay);display:flex;justify-content:flex-end;align-items:stretch}
+.sh-overlay[hidden]{display:none}
+.sh-drawer{width:min(600px,100vw);height:100%;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;box-shadow:-10px 0 40px var(--shadow)}
+.sh-drawer .dialog-head{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:14px}
+.sh-drawer .dialog-head h2{font-size:15px}
+.sh-drawer .dialog-head p{font-size:11px;color:var(--muted);margin-top:4px}
+.sh-drawer .head-title{display:flex;align-items:center;gap:11px}
+.sh-drawer .head-icon{width:31px;height:31px;background:var(--icon-bg);color:var(--icon-ink);display:grid;place-items:center;border-radius:7px;flex-shrink:0}
+.sh-drawer .dialog-body{padding:18px 22px;overflow:auto;min-height:0;flex:1}
+.sh-drawer .dialog-footer{padding:13px 22px;display:flex;align-items:center;justify-content:flex-end;gap:8px;background:var(--soft);border-top:1px solid var(--line)}
+.sh-drawer .footer-note{font-size:11px;color:var(--muted);margin-right:auto}
+.sh-drawer .query-panel{margin:0}
+.sh-drawer .query-fields{grid-template-columns:1fr 1fr}
 .console-main{min-width:0;padding:28px 34px 0;max-width:1600px;width:100%;margin:0 auto;display:flex;flex-direction:column}
 .console-main>.page{flex:1}
 .console-footer{display:flex;justify-content:space-between;gap:20px;margin-top:36px;border-top:1px solid var(--line);padding:16px 0;color:var(--faint);font-size:10px;flex-wrap:wrap}
@@ -248,11 +268,11 @@ tbody tr:last-child td{border-bottom:0}
 .connect-error{font-size:11px;color:var(--err);margin-top:12px}
 
 /* ---- the dashboard studio (#page-dashboard): the document studio's regions (studio.css) with the dashboard's functions ---- */
-body.board-on .console-header,body.board-on .console-nav,body.board-on .console-footer,body.board-on .skip{display:none}
+body.board-on .console-header,body.board-on .console-footer,body.board-on .skip{display:none}
 body.board-on .console-layout{display:block;min-height:0}
 body.board-on .console-main{max-width:none;margin:0;padding:0}
 body.board-on #notice{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);z-index:60;margin:0;max-width:min(680px,92vw);box-shadow:0 8px 30px #23396026}
-#page-dashboard .bstudio{position:fixed;inset:0;z-index:40;display:grid;grid-template-columns:54px 244px minmax(360px,1fr) 286px;grid-template-rows:64px minmax(0,1fr) 31px;background:var(--bg);color:var(--ink);font-size:12px;line-height:1.55;overflow:hidden}
+#page-dashboard .bstudio{position:fixed;inset:var(--app-rail-top) 0 0 var(--app-rail);z-index:40;display:grid;grid-template-columns:54px 244px minmax(360px,1fr) 286px;grid-template-rows:64px minmax(0,1fr) 31px;background:var(--bg);color:var(--ink);font-size:12px;line-height:1.55;overflow:hidden}
 #page-dashboard .topbar{grid-column:1/-1;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 20px;z-index:25}
 #page-dashboard .wordmark{width:204px}
 #page-dashboard .top-divider{height:22px;width:1px;background:var(--line2);margin:0 10px}
@@ -302,6 +322,7 @@ body.board-on #notice{position:fixed;left:50%;bottom:52px;transform:translateX(-
 #page-dashboard .context-dataset .dataset-icon .ic{width:12px;height:12px}
 #page-dashboard .context-dataset span.text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text)}
 #page-dashboard .context-link{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);padding:2px 3px;background:none;border:0}
+#page-dashboard .context-link:hover{color:var(--sel-ink)}
 #page-dashboard .context-link .ic{width:12px;height:12px}
 #page-dashboard .studio-start{flex:1;background:var(--desk);padding:34px 40px;overflow:auto}
 #page-dashboard .studio-start .page-heading{max-width:720px;margin:0 auto 18px;align-items:center;gap:20px}
@@ -376,9 +397,9 @@ body.board-on #notice{position:fixed;left:50%;bottom:52px;transform:translateX(-
 /* ---- widths ---- */
 @media (min-width:1600px){#page-dashboard .bstudio{grid-template-columns:58px 264px minmax(450px,1fr) 310px}#page-dashboard .topbar{padding:0 24px}}
 @media (max-width:1320px){#page-dashboard .bstudio{grid-template-columns:49px 216px minmax(320px,1fr) 256px}#page-dashboard .topbar{padding:0 12px;gap:7px}#page-dashboard .wordmark{width:169px;font-size:15px}#page-dashboard .wordmark b{font-size:10px}#page-dashboard .crumb{display:none}#page-dashboard .top-divider{margin:0 5px}#page-dashboard .topbar .btn{padding:7px 9px;font-size:11px}}
-@media (max-width:1100px){.console-layout{grid-template-columns:190px minmax(0,1fr)}.console-header{padding:0 20px}.console-main{padding:23px 20px 0}.catalog-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-grid{grid-template-columns:1fr}.query-fields,.dc-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.actor{display:none}.system-grid{grid-template-columns:1fr}}
+@media (max-width:1100px){.console-header{padding:0 20px;gap:10px}.data-chip{max-width:300px}.console-main{padding:23px 20px 0}.catalog-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-grid{grid-template-columns:1fr}.query-fields,.dc-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.actor{display:none}.system-grid{grid-template-columns:1fr}}
 @media (max-width:950px){#page-dashboard .bstudio{grid-template-columns:48px 205px minmax(300px,1fr)}#page-dashboard .inspector{position:absolute;right:0;top:64px;bottom:31px;width:270px;z-index:45;transform:translateX(100%);box-shadow:-6px 0 25px #213b5f13;transition:transform .2s}#page-dashboard .inspector.open{transform:translateX(0)}#page-dashboard .mobile-button{display:inline-flex!important}#page-dashboard .topbar .wordmark{width:150px}#page-dashboard .topbar .state-badge{display:none}#page-dashboard .topbar .btn[data-act=versions]{font-size:0;gap:0;padding:8px}#page-dashboard .topbar .btn[data-act=versions] .ic{font-size:initial}#page-dashboard .board-grid{grid-template-columns:1fr}}
-@media (max-width:700px){.console-layout{display:block;min-height:0}.console-nav{flex-direction:row;overflow-x:auto;gap:6px;padding:10px;border-right:0;border-bottom:1px solid var(--line)}.console-nav nav{flex-direction:row;gap:6px}.nav-item{width:auto;white-space:nowrap;flex-shrink:0;padding:8px 11px;font-size:11px;margin:0}.nav-item b{margin-left:4px}.catalog-caption,.catalog-footnote{display:none}.console-header{height:56px;padding:0 14px;gap:10px}.wordmark{font-size:15px}.environment{display:none}.console-main{padding:18px 14px 0}.page-heading{flex-wrap:wrap;gap:12px;margin-bottom:18px}.page-heading>.btn,.page-heading>.button,.page-heading>.badge{margin-top:0}h1{font-size:20px}.catalog-stats{gap:10px;margin-bottom:16px}.catalog-stats .metric-card{padding:14px}.metric-card strong{font-size:22px}.dc-source-cards,.catalog-grid{grid-template-columns:1fr}.query-fields,.dc-form-grid{grid-template-columns:1fr;padding:16px 16px 8px}.query-meta{padding:0 16px 14px}.query-actions{padding:12px 16px;display:block}.query-actions .help{display:block;max-width:none;margin-bottom:12px}.panel-heading,.dc-section-head{padding:14px 16px 12px}.dataset-list{padding:0 16px 6px}.details{padding:0 16px 14px}.details>div{grid-template-columns:80px 1fr}th,td{padding:10px 14px}.restore-panel input{min-width:0;width:100%}.connection-card{padding:26px 22px 20px}.console-footer{display:block;margin-top:24px}.console-footer span{display:block;margin-bottom:6px}}
+@media (max-width:700px){:root{--app-rail:0px;--app-rail-top:48px}.app-rail{top:0;left:0;right:0;bottom:auto;width:auto;height:48px;flex-direction:row;gap:2px;padding:0 6px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}.rail-brand{margin:0 6px 0 0}.rail-brand .brand-icon{width:26px;height:28px}.app-rail .nav-item{width:auto;height:40px;flex-direction:row;gap:6px;padding:0 9px;flex-shrink:0}.app-rail .nav-item b{position:static;margin-left:2px}.rail-status{display:none}.console-layout{min-height:0}.console-header{height:56px;padding:0 10px;gap:8px}.console-header .wordmark>span:not(.brand-icon){display:none}.data-chip{flex:1 1 auto;max-width:none;padding:6px 8px}.data-chip .pill{display:none}#logout{font-size:0;gap:0;padding:8px}#logout .ic{font-size:initial}.wordmark{font-size:15px}.environment{display:none}.console-main{padding:18px 14px 0}.page-heading{flex-wrap:wrap;gap:12px;margin-bottom:18px}.page-heading>.btn,.page-heading>.button,.page-heading>.badge{margin-top:0}h1{font-size:20px}.catalog-stats{gap:10px;margin-bottom:16px}.catalog-stats .metric-card{padding:14px}.metric-card strong{font-size:22px}.dc-source-cards,.catalog-grid{grid-template-columns:1fr}.query-fields,.dc-form-grid{grid-template-columns:1fr;padding:16px 16px 8px}.query-meta{padding:0 16px 14px}.query-actions{padding:12px 16px;display:block}.query-actions .help{display:block;max-width:none;margin-bottom:12px}.panel-heading,.dc-section-head{padding:14px 16px 12px}.dataset-list{padding:0 16px 6px}.details{padding:0 16px 14px}.details>div{grid-template-columns:80px 1fr}th,td{padding:10px 14px}.restore-panel input{min-width:0;width:100%}.connection-card{padding:26px 22px 20px}.console-footer{display:block;margin-top:24px}.console-footer span{display:block;margin-bottom:6px}}
 @media (max-width:660px){#page-dashboard .bstudio{grid-template-columns:42px minmax(0,1fr);grid-template-rows:58px minmax(0,1fr) 29px}#page-dashboard .sidebar{position:absolute;left:42px;top:58px;bottom:29px;width:min(300px,calc(100vw - 42px));z-index:44;transform:translateX(-110%);box-shadow:6px 0 25px #213b5f13;transition:transform .2s}#page-dashboard .sidebar.open{transform:translateX(0)}#page-dashboard .inspector{top:auto;bottom:29px;left:42px;right:0;width:auto;height:min(70dvh,520px);transform:translateY(110%);border-left:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0}#page-dashboard .inspector.open{transform:translateY(0)}#page-dashboard .topbar{padding:0 10px}#page-dashboard .topbar .wordmark{width:auto}#page-dashboard .topbar .wordmark>span:not(.brand-icon){display:none}#page-dashboard .topbar .btn{font-size:0;gap:0;padding:8px}#page-dashboard .topbar .btn .ic{font-size:initial}#page-dashboard .board-desk{padding:14px 12px 70px}#page-dashboard .contextbar{padding:0 10px}#page-dashboard .context-link{display:none}#page-dashboard .studio-start{padding:18px 14px}#page-dashboard .overlay{padding:10px}#page-dashboard .dialog{max-height:calc(100dvh - 20px)}#page-dashboard .dialog-head{padding:15px 17px}#page-dashboard .dialog-body{padding:16px}#page-dashboard .help-grid{grid-template-columns:1fr}#page-dashboard .board-value{font-size:clamp(16px,6vw,24px)}}
 @media (prefers-reduced-motion:reduce){#page-dashboard .inspector,#page-dashboard .sidebar,.btn,.button,.form-panel>summary::before{transition:none}}
 @media (forced-colors:active){.nav-item.active,.btn.primary,.button.primary{forced-color-adjust:none;background:Highlight;color:HighlightText}.board-chart-bar{background:Highlight}.board-chart-track{background:Canvas;border:1px solid CanvasText}}

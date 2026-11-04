@@ -79,7 +79,7 @@ window.createReportingBoardStudio = function (ports) {
     for(const id of ['bd-ctx-source','bd-status-source'])$(id).textContent=source;
     const name=s.binding?s.binding.dataset.id+'@'+s.binding.dataset.version:'尚无当前授权结果';
     $('bd-side-dataset').textContent=name;$('bd-data-name').textContent=name;$('bd-insp-dataset').textContent=s.binding?s.binding.dataset.id+'@'+s.binding.dataset.version:'数据集待绑定';
-    $('bd-side-rows').textContent=s.result?(s.snapshot?'冻结快照当前页':'当前查询预览')+' · '+s.rows+' 行 · '+s.columns+' 个字段':'先在工作台查询或打开快照。';
+    $('bd-side-rows').textContent=s.result?(s.snapshot?'冻结快照当前页':'当前查询预览')+' · '+s.rows+' 行 · '+s.columns+' 个字段':'选择数据后在此组合组件。';
     const count=$('board-count').textContent;$('bd-status-count').textContent=count;$('bd-insp-meta').textContent=count+(s.saved?' · 看板 '+s.saved.id.slice(0,8)+' · 版本 '+s.saved.version:' · 尚未保存到服务器');
     structure();
   }
@@ -97,7 +97,7 @@ window.createReportingBoardStudio = function (ports) {
   $('bd-versions').addEventListener('click',()=>{showTab('versions');if(narrowInspector())toggleInspector(true);else $('bd-itab-versions').focus();});
   async function publish(){
     const before=ports.dashboard.state();
-    if(!before.result){say('请先在工作台查询或打开快照。');return;}
+    if(!before.result){say('请先选择数据：预览或冻结快照。');return;}
     if(!before.saved){say('请先保存服务器看板版本，再发布该保存版本。');return;}
     if(before.dirty){say('请先保存当前修改，再发布该保存版本。');return;}
     await ports.dashboard.readRelease();
@@ -110,6 +110,8 @@ window.createReportingBoardStudio = function (ports) {
   $('bd-publish').addEventListener('click',()=>{publish();});
   $('bd-publish-confirm').addEventListener('click',async()=>{close();await ports.dashboard.publish();sync();});
   for(const b of qa('[data-act=help]'))b.addEventListener('click',()=>open('bd-d-help',b));
+  // The data buttons (the start card, the context bar, the data panel) open the console's data drawer (S07-A); without one (the embed page) they go to the query form on the page.
+  for(const b of qa('[data-act=data]'))b.addEventListener('click',()=>{if(ports.data)ports.data(b);else{const f=document.getElementById('query-companies');if(f)f.focus();}});
   for(const b of qa('[data-act=toggle-sidebar]'))b.addEventListener('click',()=>toggleSidebar());
   for(const b of qa('[data-act=toggle-inspector]'))b.addEventListener('click',()=>toggleInspector());
   sync();

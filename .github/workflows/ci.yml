@@ -172,6 +172,7 @@ jobs:
           node --check scripts/browser_canvas_s03l.mjs
           node --check scripts/browser_embed_s03n.mjs
           node --check scripts/browser_console_s06c.mjs
+          node --check scripts/ux_baseline_s07.mjs
       - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:
