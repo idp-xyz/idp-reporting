@@ -11,12 +11,17 @@ import (
 	"regexp"
 	"time"
 
+	"idp.local/reporting/docs"
 	"idp.local/reporting/embedding"
 	r "idp.local/reporting/reporting"
 )
 
 //go:embed assets/index.html assets/embed.html assets/app.js assets/dashboard.js assets/documents.js assets/canvas.js assets/studio.js assets/library.js assets/board.js assets/embed.js assets/styles.css assets/studio.css assets/library.css assets/embed.css
 var assets embed.FS
+
+// manualPath is what of the manual is served: the page (as the directory, so that its relative links resolve), the stylesheet, a
+// screenshot, a test data file. index.html by name is not (the file server would redirect it), nor a directory.
+var manualPath = regexp.MustCompile(`^/console/manual/(|manual\.css|img/[a-z0-9-]+\.png|testdata/[A-Za-z0-9][A-Za-z0-9._-]*\.(json|csv))$`)
 
 // policy is the console's Content-Security-Policy with the given frame-ancestors source list: 'none' for every page of the
 // console and for every answer that is not an allowed embed page, one exact origin for an allowed embed page. Nothing else
@@ -47,6 +52,11 @@ func HandlerWithEmbedding(api http.Handler, embed *embedding.Config) (http.Handl
 		return nil, err
 	}
 	files := http.StripPrefix("/console/", http.FileServer(http.FS(bundled)))
+	manualFS, err := fs.Sub(docs.Manual, "manual")
+	if err != nil {
+		return nil, err
+	}
+	manual := http.StripPrefix("/console/manual/", http.FileServer(http.FS(manualFS)))
 	mux := http.NewServeMux()
 	mux.Handle("/api/reporting/", api)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, req *http.Request) {
@@ -62,6 +72,16 @@ func HandlerWithEmbedding(api http.Handler, embed *embedding.Config) (http.Handl
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			files.ServeHTTP(w, req)
 		default:
+			// The user manual (S07-D): its page, its stylesheet, its screenshots and its test data by name; no listing, nothing else.
+			if manualPath.MatchString(req.URL.Path) {
+				w.Header().Set("Content-Security-Policy", policy("'none'"))
+				w.Header().Set("Cache-Control", "no-store")
+				w.Header().Set("X-Content-Type-Options", "nosniff")
+				w.Header().Set("X-Frame-Options", "DENY")
+				w.Header().Set("Referrer-Policy", "no-referrer")
+				manual.ServeHTTP(w, req)
+				return
+			}
 			http.NotFound(w, req)
 		}
 	})

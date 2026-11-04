@@ -4091,3 +4091,19 @@ test('S07-C: the task list is the identity\'s jobs on the server, newest first; 
  a.click('logout');assert.equal(a.$('tasks-body').rows.length,0);assert.equal(a.$('task-count').textContent,'0');
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});
+
+// ---- S07-D: the help icon and the manual the server serves ----
+test('S07-D: the help icon on the rail and on the sign-in card opens the user manual, which the server serves at /console/manual/ with the console\'s headers',async()=>{const a=app();try{
+ const d=a.w.document;
+ for(const [id,where] of [['connect-help','the sign-in card'],['rail-help','the rail']]){const link=a.$(id);assert.ok(link,where);assert.equal(link.tagName,'A',where);assert.equal(link.href,url+'/console/manual/',where);assert.equal(link.target,'_blank',where);assert.equal(link.rel,'noopener',where);assert.equal(link.getAttribute('aria-label'),'用户手册（新窗口）',where);assert.ok(link.querySelector('use[href="#s-help"]'),where);}
+ assert.equal(a.$('connect-help').closest('.connection-card')!==null,true);assert.equal(a.$('rail-help').closest('nav.app-rail')!==null,true);assert.equal(a.$('rail-help').classList.contains('nav-item'),false,'not one of the eight destinations');
+ await a.login();assert.equal(a.$('rail-help').href,url+'/console/manual/');
+ const page=await fetch(url+'/console/manual/');const html=await page.text();
+ assert.equal(page.status,200);assert.ok(html.includes('IDP Reporting 控制台用户手册'));assert.ok(html.includes('<link rel="stylesheet" href="manual.css">'));assert.equal(html.includes('<style'),false,'no inline style under the console\'s policy');
+ assert.equal(page.headers.get('content-security-policy').includes("style-src 'self'"),true);assert.equal(page.headers.get('x-frame-options'),'DENY');
+ for(const [path,status,type] of [['/console/manual/manual.css',200,'text/css'],['/console/manual/img/01-signin.png',200,'image/png'],['/console/manual/testdata/catalog.json',200,'application/json'],['/console/manual/img/',404,''],['/console/manual/index.html',404,'']]){const r=await fetch(url+path);assert.equal(r.status,status,path);if(type)assert.ok(r.headers.get('content-type').startsWith(type),path+' '+r.headers.get('content-type'));}
+ // Every image and test data file the manual links to is served.
+ const refs=[...html.matchAll(/(?:src|href)="((?:img|testdata)\/[^"]+)"/g)].map(m=>m[1]);assert.ok(refs.length>=40,String(refs.length));
+ for(const ref of new Set(refs)){const r=await fetch(url+'/console/manual/'+ref);assert.equal(r.status,200,ref);}
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
