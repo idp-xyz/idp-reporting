@@ -70,7 +70,7 @@ window.createReportingLibrary=function(ports){
    const list=await ports.call('/document-templates',undefined,'模板列表');
    if(!Array.isArray(list)||list.length>64)throw Error('无法验证模板列表。');
    state.own=list.map(normalize).filter(Boolean);state.loaded=true;
-  }catch(e){if(e&&e.stale)return;state.failed='模板列表读取失败。';}
+  }catch(e){if(e&&e.stale){state.loading=false;if(alive)render();return;}state.failed='模板列表读取失败。';}
   state.loading=false;render();
  }
  async function loadSamples(){
