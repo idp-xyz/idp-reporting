@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "kind": "dashboard",
+  "binding": {
+    "integration_id": "brant-contract-demo",
+    "dataset": {
+      "id": "receivables.aging",
+      "version": "1.0.0"
+    }
+  },
+  "widgets": [
+    {
+      "type": "metric",
+      "field": "ar.open_balance"
+    },
+    {
+      "type": "table",
+      "columns": [
+        "customer.id",
+        "aging.bucket",
+        "ar.open_balance"
+      ]
+    },
+    {
+      "type": "bar",
+      "field": "ar.open_balance",
+      "category": "customer.id"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "integration_id": "brant-contract-demo",
+  "dataset": {
+    "id": "receivables.aging",
+    "version": "1.0.0"
+  },
+  "company_ids": [
+    "company_demo"
+  ],
+  "metrics": [
+    {
+      "id": "ar.open_balance",
+      "version": "1.0.0"
+    }
+  ],
+  "dimensions": [
+    "customer.id",
+    "aging.bucket"
+  ],
+  "filters": [],
+  "sort": [],
+  "as_of": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "page": {
+    "limit": 50
+  },
+  "currency_policy": {
+    "id": "ledger_base",
+    "version": "1.0.0"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "session": {
+    "identity": {
+      "issuer": "urn:idp:contract-demo",
+      "subject": "user_a",
+      "tenant": "platform_demo"
+    },
+    "integrations": [
+      "brant-contract-demo",
+      "shipment-contract-demo"
+    ]
+  },
+  "capabilities": {
+    "embedding": false,
+    "formats": [
+      "xlsx",
+      "pdf"
+    ],
+    "issuance": true,
+    "production_approved": false,
+    "profile": "S01-B-contract-simulators",
+    "query_shapes": "published catalog only",
+    "quotas": {
+      "admissions_per_hour": 120,
+      "jobs_in_flight": 8,
+      "queries_in_flight": 4,
+      "stored_results": 64
+    },
+    "routes": [
+      "GET /catalog",
+      "POST /queries",
+      "POST /snapshot-jobs",
+      "GET /jobs/{id}",
+      "POST /jobs/{id}/cancel",
+      "GET /snapshots/{id}/rows",
+      "POST /exports",
+      "GET /artifacts/{id}/content",
+      "GET /issues",
+      "GET /issues/{id}"
+    ],
+    "source_interfaces": [
+      "DescribeCatalog",
+      "PrepareRead",
+      "ReadPage",
+      "AuthorizeCurrent"
+    ],
+    "template_routes": [
+      "POST /issues",
+      "GET, POST /document-templates",
+      "GET /document-templates/{id}",
+      "GET, POST /document-templates/{id}/release",
+      "GET /document-templates/{id}/published",
+      "POST /document-templates/{id}/previews"
+    ]
+  }
+}

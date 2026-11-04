@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "integration_id": "shipment-contract-demo",
+  "dataset": {
+    "id": "shipments.daily",
+    "version": "1.0.0"
+  },
+  "company_ids": [
+    "company_demo"
+  ],
+  "metrics": [
+    {
+      "id": "shipment.count",
+      "version": "1.0.0"
+    }
+  ],
+  "dimensions": [
+    "shipment.destination_country",
+    "shipment.service_code"
+  ],
+  "filters": [],
+  "sort": [],
+  "as_of": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "page": {
+    "limit": 50
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "kind": "document",
+  "name": "演示 · 出库装箱单",
+  "binding": {
+    "integration_id": "brant-contract-demo",
+    "dataset": {
+      "id": "receivables.aging",
+      "version": "1.0.0"
+    }
+  },
+  "elements": [
+    {
+      "id": "n1",
+      "source": "literal",
+      "field": "",
+      "text": "出库装箱单",
+      "x": 10,
+      "y": 25,
+      "width": 190,
+      "height": 12,
+      "font_size": 18,
+      "align": "left"
+    }
+  ]
+}

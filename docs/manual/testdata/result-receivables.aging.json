@@ -1,0 +1,48 @@
+{
+  "columns": [
+    {
+      "id": "customer.id",
+      "label": "客户",
+      "type": "string"
+    },
+    {
+      "id": "aging.bucket",
+      "label": "账龄区间",
+      "type": "string"
+    },
+    {
+      "id": "ar.open_balance",
+      "label": "应收余额",
+      "type": "decimal",
+      "scale": 2,
+      "currency": "CNY"
+    }
+  ],
+  "rows": [
+    [
+      "customer_a",
+      "current",
+      "100.25"
+    ],
+    [
+      "customer_b",
+      "1_30",
+      "-0.24"
+    ],
+    [
+      "customer_c",
+      "31_60",
+      "9007199254740893.00"
+    ]
+  ],
+  "totals": {
+    "ar.open_balance": "9007199254740993.01"
+  },
+  "completeness": "complete",
+  "evidence": {
+    "query_hash": "f75d2f3d75fec9944af5605beba13309f1c38b52bf0592f0d5798db82f86b392",
+    "source_snapshot_ref": "e685b4cdf8e7444daac6e5c740e837fa",
+    "source_watermark": "fixture-v1",
+    "data_class": "contract-simulator"
+  }
+}
