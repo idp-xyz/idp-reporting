@@ -5,13 +5,13 @@
 // Everything goes through the public API with the demo's bearer token, exactly as the console does; nothing is written anywhere else.
 // Safety: --base must be loopback because the token is sent to it. The script is additive: run it twice and you have two of everything, up to
 // the identity's caps (64 templates, 16 layouts, 16 dashboards), which it respects and reports.
-// Usage: node scripts/seed_demo_data.mjs --token-file FILE [--base http://127.0.0.1:7811] [--prefix 演示] [--only jobs,templates,samples,dashboards,layout]
-import {readFileSync} from 'node:fs';
+// Usage: node scripts/seed_demo_data.mjs --token-file FILE [--base http://127.0.0.1:7811] [--prefix 演示] [--only jobs,templates,samples,dashboards,layout] [--out FILE.json]
+import {readFileSync, writeFileSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 
-const usage = why => { console.error(why + '\nusage: --token-file FILE [--base http://127.0.0.1:7811] [--prefix TEXT] [--only jobs,templates,samples,dashboards,layout]'); process.exit(2); };
+const usage = why => { console.error(why + '\nusage: --token-file FILE [--base http://127.0.0.1:7811] [--prefix TEXT] [--only jobs,templates,samples,dashboards,layout] [--out FILE.json]'); process.exit(2); };
 let args;
-try { ({values: args} = parseArgs({options: {'token-file': {type: 'string'}, base: {type: 'string'}, prefix: {type: 'string'}, only: {type: 'string'}}, strict: true})); } catch (e) { usage(e.message); }
+try { ({values: args} = parseArgs({options: {'token-file': {type: 'string'}, base: {type: 'string'}, prefix: {type: 'string'}, only: {type: 'string'}, out: {type: 'string'}}, strict: true})); } catch (e) { usage(e.message); }
 if (!args['token-file']) usage('--token-file is required');
 const base = args.base || 'http://127.0.0.1:7811', prefix = args.prefix || '演示';
 let baseUrl; try { baseUrl = new URL(base); } catch { usage('--base is not a valid URL'); }
@@ -141,6 +141,7 @@ async function main() {
   console.log('\n| 造出的数据 | 说明 |\n|---|---|');
   for (const [w, d] of made) console.log(`| ${w} | ${d} |`);
   if (skipped.length) { console.log('\n| 跳过 | 原因 |\n|---|---|'); for (const [w, d] of skipped) console.log(`| ${w} | ${d} |`); }
-  console.log(`\n本身份现有模板 ${(await api('GET', '/document-templates')).length} / 64，看板 ${(await api('GET', '/dashboards')).length} / 16。登录后：任务面板里有快照与导出任务；数据芯片仍是“未选择数据”（会话数据不入库，先查询一次或从任务“查看结果”）。`);
+  if (args.out) writeFileSync(args.out, JSON.stringify({generated: new Date().toISOString(), base, made, skipped, snapshots}, null, 2));
+  console.log(`\n本身份现有模板 ${(await api('GET', '/document-templates')).length} / 64，看板 ${(await api('GET', '/dashboards')).length} / 16。任务列表只含本浏览器会话创建或恢复的任务：把上表里的任务 ID 粘进任务面板的“恢复查看”即可看到、下载、查看结果。数据芯片在登录后是“未选择数据”：先查询一次，或恢复一个快照任务后“查看结果”。`);
 }
 main().catch(e => { console.error('ABORT', e.message, e.body ? JSON.stringify(e.body).slice(0, 300) : ''); process.exit(1); });
