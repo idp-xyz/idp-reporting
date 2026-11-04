@@ -80,10 +80,12 @@ async function embedPage({view='dashboard',resource,integration=FINANCE,parent=H
   if(observer)w.ResizeObserver=class{constructor(callback){observers.push(callback);}observe(){}disconnect(){}};
   w.fetch=async(path,options={})=>{
     const headers={...(options.headers||{})};
-    trace.push({method:options.method||'GET',path:String(path),headers,credentials:options.credentials,body:options.body});
+    const entry={method:options.method||'GET',path:String(path),headers,credentials:options.credentials,body:options.body,answered:false};trace.push(entry);
     const given=(headers.Authorization||'').replace(/^Bearer /,'');
-    if(intercept){const answer=await intercept(String(path),options,given);if(answer)return answer;}
-    return fetch(url+path,{...options,headers:{...headers,...(accepted.has(given)?{Authorization:'Bearer '+accepted.get(given)}:{})}});
+    try{
+      if(intercept){const answer=await intercept(String(path),options,given);if(answer)return answer;}
+      return await fetch(url+path,{...options,headers:{...headers,...(accepted.has(given)?{Authorization:'Bearer '+accepted.get(given)}:{})}});
+    }finally{entry.answered=true;}
   };
   w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(boardScript);w.eval(embedScript);w.eval(appScript);
   const $=id=>w.document.getElementById(id);
@@ -352,8 +354,9 @@ test('a token a parent pushes unasked is adopted only for the same identity, and
       assert.equal(a.messages('reporting:token-request').length,1,'asked a minute before the expiry');
       a.w.eval('Date.now=window.__now');
       // The reply, unasked or not, is adopted for the same identity: the next request carries it.
-      a.give(FRESH);await until(()=>a.trace.some(t=>t.path.endsWith('/session')&&t.headers.Authorization==='Bearer '+FRESH),'checked');
-      await sleep(40);a.input('query-companies','company_demo');a.click('preview');await until(()=>!a.$('result-table-wrap').hidden,'result');
+      // Adopted once the session check with it has been answered and read (the request alone is not the adoption: a slow answer left the next request on the old token).
+      a.give(FRESH);await until(()=>a.trace.some(t=>t.path.endsWith('/session')&&t.headers.Authorization==='Bearer '+FRESH&&t.answered),'checked');
+      await sleep(60);a.input('query-companies','company_demo');a.click('preview');await until(()=>!a.$('result-table-wrap').hidden,'result');
       assert.equal(a.trace.filter(t=>t.path.endsWith('/queries')).at(-1).headers.Authorization,'Bearer '+FRESH);
       // A token that is not a JWT has no expiry to read: nothing is scheduled for it (the first one scheduled the only one).
       const count=a.timers.filter(t=>t.ms>26000&&t.ms<=2147483647).length;a.give(FRESH2);await sleep(60);
