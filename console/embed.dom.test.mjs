@@ -372,9 +372,10 @@ test('the size is told to the parent in whole pixels whenever it changes, and no
     await until(()=>a.messages('reporting:resize').length>=1,'first size');
     assert.deepEqual(a.messages('reporting:resize').at(-1),{type:'reporting:resize',v:1,height:413});
     const count=a.messages('reporting:resize').length;a.observers[0]();await sleep(90);assert.equal(a.messages('reporting:resize').length,count,'an unchanged height is not repeated');
-    height=980;a.observers[0]();a.observers[0]();await sleep(90);
+    // A change is told once its 50 ms timer has run: the test waits for the message, then a while longer to see that no second one follows.
+    height=980;a.observers[0]();a.observers[0]();await until(()=>a.messages('reporting:resize').length>count,'the new size');await sleep(90);
     assert.deepEqual(a.messages('reporting:resize').slice(count),[{type:'reporting:resize',v:1,height:980}],'coalesced into one');
-    height=0;a.observers[0]();await sleep(90);assert.equal(a.messages('reporting:resize').at(-1).height,0);
+    height=0;a.observers[0]();await until(()=>a.messages('reporting:resize').at(-1).height===0,'a zero height');
     for(const s of a.sent)assert.equal(s.targetOrigin,HOST);
   }finally{a.close();}
 });
