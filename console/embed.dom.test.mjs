@@ -13,7 +13,7 @@ import {JSDOM,VirtualConsole} from 'jsdom';
 
 const root=resolve(import.meta.dirname,'..');
 const read=name=>readFile(join(root,'console/assets',name),'utf8');
-const [indexHtml,embedHtml,appScript,dashboardScript,canvasScript,studioScript,documentsScript,embedScript]=await Promise.all(['index.html','embed.html','app.js','dashboard.js','canvas.js','studio.js','documents.js','embed.js'].map(read));
+const [indexHtml,embedHtml,appScript,dashboardScript,canvasScript,studioScript,documentsScript,embedScript,boardScript]=await Promise.all(['index.html','embed.html','app.js','dashboard.js','canvas.js','studio.js','documents.js','embed.js','board.js'].map(read));
 const token=randomBytes(32).toString('hex');
 const pdfConfigured=['REPORTING_TYPST','REPORTING_TYPST_SHA256','REPORTING_PDF_FONTS'].every(k=>process.env[k]);
 if(process.env.REPORTING_PDF_REQUIRE==='1'&&!pdfConfigured)throw new Error('REPORTING_PDF_REQUIRE=1 but the Typst binary, its checksum or the fonts are not configured');
@@ -85,7 +85,7 @@ async function embedPage({view='dashboard',resource,integration=FINANCE,parent=H
     if(intercept){const answer=await intercept(String(path),options,given);if(answer)return answer;}
     return fetch(url+path,{...options,headers:{...headers,...(accepted.has(given)?{Authorization:'Bearer '+accepted.get(given)}:{})}});
   };
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(embedScript);w.eval(appScript);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(boardScript);w.eval(embedScript);w.eval(appScript);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
   const click=id=>$(id).click();
@@ -438,7 +438,7 @@ test('the console page loads none of the embed code, and answers no message',asy
   const errors=[],virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',e=>errors.push(e.message));
   const dom=new JSDOM(indexHtml,{url:url+'/console/',runScripts:'outside-only',virtualConsole});const w=dom.window;
   const calls=[];w.fetch=async p=>{calls.push(p);return new Response('{}');};Object.defineProperty(w,'crypto',{value:webcrypto});w.TextDecoder=TextDecoder;w.TextEncoder=TextEncoder;
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(appScript);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(documentsScript);w.eval(boardScript);w.eval(appScript);
   const other=new JSDOM('',{url:HOST+'/'}).window;
   w.dispatchEvent(new w.MessageEvent('message',{data:{type:'reporting:token',v:1,token},origin:HOST,source:other}));
   await sleep(40);
@@ -453,7 +453,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   const consoleIds=new Set(idsOf(indexHtml)),embedIds=new Set(idsOf(embedHtml));
   assert.equal(new Set(idsOf(embedHtml)).size,idsOf(embedHtml).length,'an id is used twice in the embed page');
   // Everything the shared scripts look up is there, except what the embed must not have: the token form, the logout, the navigation of the pages it leaves out.
-  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system'];
+  const notInEmbed=['logout','connect-form','access-token','connect-button','page-overview','page-catalog','page-library','page-tasks','page-system','nav-datasets'];
   assert.deepEqual([...consoleIds].filter(id=>!embedIds.has(id)).sort(),notInEmbed.sort());
   assert.deepEqual([...embedIds].filter(id=>!consoleIds.has(id)).sort(),['embed-inert','embed-retry','embed-state']);
   for(const html of [embedHtml]){const lower=html.toLowerCase();for(const banned of ['<style',' style=',' onclick=',' onload=',' onerror=','javascript:','<iframe','<form','<a '])assert.equal(lower.includes(banned),false,'the embed page contains '+banned);assert.equal([...html.matchAll(/<script/g)].length,[...html.matchAll(/<script src="\/console\/[a-z]+\.js" defer>/g)].length);}
@@ -523,6 +523,23 @@ test('the embed page is not touched by the template centre: no page, no script, 
     assert.equal(a.w.createReportingLibrary,undefined);assert.equal(a.$('page-library'),null);
     a.give();await a.connected();await queried(a);await until(()=>a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'template opened');
     a.$('st-crumb').click();assert.equal(a.$('st-d-chooser').classList.contains('open'),true,'with no centre in the embed, the crumb opens the template chooser');
+    assert.equal(a.errors.length,0,a.errors.join('|'));
+  }finally{a.close();}
+});
+
+// S06-C: the embed page shows the same dashboard studio (the section is byte for byte the console's, tested above); the query form waits in the
+// start card until the data is there; the controls that open another console page all carry data-open, which the embed's one rule hides; no chrome.
+test('the embedded dashboard studio: the query form waits in its start card, the studio takes the frame without the console chrome, and the controls that open another page are the hidden ones',async()=>{
+  const id=await seedDashboard();
+  const a=await embedPage({view:'dashboard',resource:{dashboard:id}});try{
+    a.give();await a.connected();await until(()=>a.$('query-dataset').value===DATASET.id+'@'+DATASET.version,'dataset of the dashboard');
+    assert.equal(a.w.document.body.classList.contains('board-on'),true,'the dashboard studio is on');
+    assert.equal(a.$('bd-start').contains(a.w.document.querySelector('.query-panel')),true,'the query form waits in the start card');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-state').textContent,'未查询');
+    assert.deepEqual([...a.w.document.querySelectorAll('#page-dashboard [data-open]')].map(e=>e.id||e.textContent.trim()),['bd-wordmark','bd-crumb','回工作台查询','bd-ctx-workspace','bd-start-open'],'the controls that open another console page: the wordmark, the crumb, the data panel\'s and the context bar\'s 回工作台查询, the start card\'s button; the embed hides every one of them');
+    assert.equal(a.w.document.querySelector('.console-header, .console-nav, nav[aria-label="主导航"], .console-footer'),null,'no console chrome in the frame');
+    await queried(a);await until(()=>a.$('board-widgets').children.length===1&&a.$('board-server-status').textContent.includes(id),'dashboard opened');
+    assert.equal(a.$('bd-start').hidden,true,'the data is here: the desk takes over');assert.equal(a.$('bd-desk').hidden,false);assert.equal(a.$('bd-state').textContent,'已保存 v1');
+    assert.equal(a.$('bd-status-count').textContent,'1 / 12 个组件');assert.match(a.$('bd-ctx-source').textContent,/^receivables\.aging @ 1\.0\.0 · /);
     assert.equal(a.errors.length,0,a.errors.join('|'));
   }finally{a.close();}
 });

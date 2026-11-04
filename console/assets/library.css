@@ -16,10 +16,10 @@
  --overlay:#05080f99;--shadow:#00000066;--focus:#9db0ff;--ring:#9db0ff}
 
 /* The library fills the viewport and the console's own chrome gives way to it, as for the studio. */
-body.library-on .sidebar,body.library-on .body>.topbar,body.library-on footer,body.library-on .skip{display:none}
+body.library-on .console-header,body.library-on .console-nav,body.library-on .console-footer,body.library-on .skip{display:none}
+body.library-on .console-layout{display:block;min-height:0}
 body.library-on .shell{display:block}
-body.library-on .body{display:block;margin:0;min-height:0}
-body.library-on main{max-width:none;margin:0;padding:0}
+body.library-on .console-main{max-width:none;margin:0;padding:0}
 body.library-on #notice{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:300;margin:0;max-width:min(680px,92vw);box-shadow:0 8px 30px #23396026}
 #page-library{position:fixed;inset:0;z-index:40;overflow:auto;background:var(--bg);color:var(--ink);font-size:12px;line-height:1.55}
 #page-library[hidden]{display:none}

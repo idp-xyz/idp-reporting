@@ -18,6 +18,7 @@ const canvasScript=await readFile(join(root,'console/assets/canvas.js'),'utf8');
 const studioScript=await readFile(join(root,'console/assets/studio.js'),'utf8');
 const documentsScript=await readFile(join(root,'console/assets/documents.js'),'utf8');
 const libraryScript=await readFile(join(root,'console/assets/library.js'),'utf8');
+const boardScript=await readFile(join(root,'console/assets/board.js'),'utf8');
 const token=randomBytes(32).toString('hex');
 const artifactDir=process.env.REPORTING_S03A_EVIDENCE_DIR;
 const pdfConfigured=['REPORTING_TYPST','REPORTING_TYPST_SHA256','REPORTING_PDF_FONTS'].every(k=>process.env[k]);
@@ -52,7 +53,7 @@ function app(intercept){
   w.URL.revokeObjectURL=id=>blobs.delete(id);
   w.HTMLAnchorElement.prototype.click=function(){if(this.download){const blob=blobs.get(this.href);downloads.push({name:this.download,blob});}};
   w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}return fetch(url+path,options);};
-  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(libraryScript);w.eval(documentsScript);w.eval(script);
+  w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(libraryScript);w.eval(boardScript);w.eval(documentsScript);w.eval(script);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
   const click=id=>$(id).click();
@@ -2920,7 +2921,7 @@ test('the fourth quota is refused in any shape but the exact one',async()=>{
 // ======================================================================================================================================
 const q=(a,sel)=>a.w.document.querySelector(sel),qa=(a,sel)=>[...a.w.document.querySelectorAll(sel)];
 const ribbonTab=(a,name)=>q(a,'[data-ribbon="'+name+'"]').click();
-const railTab=(a,name)=>q(a,'[data-side="'+name+'"]').click();
+const railTab=(a,name)=>q(a,'#page-documents [data-side="'+name+'"]').click();
 const card=(a,kind)=>q(a,'[data-insert="'+kind+'"]');
 const to2=a=>{cv.load(a,cv.four(a));a.click('doc-convert');assert.equal(cv.tpl(a).schema_version,'2.0');return cv.tpl(a);};
 const all2=t=>Object.entries(t.bands).flatMap(([band,b])=>b.elements.map(e=>({band,e})));
@@ -2933,7 +2934,7 @@ test('S06-A A1: the studio is the documents page: its regions, labels and tabs a
  const d=a.w.document,text=s=>d.querySelector(s).textContent.replace(/\s+/g,' ').trim();
  assert.equal(d.body.classList.contains('studio-on'),true);
  d.querySelector('[data-page="workspace"]').click();assert.equal(d.body.classList.contains('studio-on'),false,'the console keeps its shell on its other pages');d.querySelector('[data-page="documents"]').click();assert.equal(d.body.classList.contains('studio-on'),true);
- assert.match(text('.wordmark'),/^IDP REPORTING\s*DOCUMENT STUDIO$/);assert.equal(text('#st-crumb'),'模板中心');
+ assert.match(text('#page-documents .wordmark'),/^IDP REPORTING\s*DOCUMENT STUDIO$/);assert.equal(text('#st-crumb'),'模板中心');
  assert.deepEqual(['#titleButton','#st-help','#st-versions','#doc-server-save','#previewButton','#st-publish'].map(s=>q(a,s).getAttribute('aria-label')||text(s)),['重命名模板','设计说明与操作帮助','版本','保存版本','预览与导出','发布']);
  assert.equal(text('#st-state'),'草稿');assert.equal(text('#st-name'),'未命名模板');
  const tabs=qa(a,'[data-ribbon]');assert.deepEqual(tabs.map(t=>t.textContent),['设计','插入','数据','页面','检查与发布']);assert.equal(tabs[0].parentElement.getAttribute('role'),'tablist');
@@ -2951,7 +2952,7 @@ test('S06-A A1: the studio is the documents page: its regions, labels and tabs a
  q(a,'#st-tab-insert').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));assert.equal(a.w.document.activeElement.id,'st-tab-data');assert.equal(q(a,'#st-tab-data').getAttribute('aria-selected'),'true');assert.equal(q(a,'#st-tab-data').tabIndex,0);assert.equal(q(a,'#st-tab-insert').tabIndex,-1);
  a.w.document.activeElement.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}));assert.equal(a.w.document.activeElement.id,'st-tab-check');
  // The rail: four tabs that switch the side panel, then the template centre and help.
- const rail=qa(a,'[data-side]');assert.deepEqual(rail.map(t=>t.getAttribute('aria-label')),['组件库','数据与字段','区段与图层','资源与样式']);assert.deepEqual(rail.map(t=>t.getAttribute('role')),Array(4).fill('tab'));assert.equal(rail[0].parentElement.getAttribute('aria-orientation'),'vertical');
+ const rail=qa(a,'#page-documents [data-side]');assert.deepEqual(rail.map(t=>t.getAttribute('aria-label')),['组件库','数据与字段','区段与图层','资源与样式']);assert.deepEqual(rail.map(t=>t.getAttribute('role')),Array(4).fill('tab'));assert.equal(rail[0].parentElement.getAttribute('aria-orientation'),'vertical');
  assert.deepEqual([q(a,'#st-rail-library'),q(a,'#st-rail-help')].map(b=>b.getAttribute('aria-label')),['模板中心','设计说明']);
  railTab(a,'structure');assert.deepEqual(qa(a,'#sidebar .side-view').map(v=>v.hidden),[true,true,false,true]);assert.equal(q(a,'#sidebar').getAttribute('aria-labelledby'),'st-rail-structure');assert.equal(q(a,'#sidebar h2:not([hidden])')!==null,true);railTab(a,'components');
  // The work area and the status bar.
@@ -3157,7 +3158,7 @@ test('S06-A A2: the panels are built from the real snapshot and template: the da
 test('S06-A A4: the inspector is the page\'s or the element\'s, in the prototype\'s groups, with the tabs 属性 / 规则 / 检查',async()=>{const a=await designer();try{
  to2(a);
  assert.equal(a.$('st-insp-title').textContent,'页面属性');assert.equal(a.$('st-insp-sub').textContent,'纸张、区段与打印设置');
- assert.deepEqual(qa(a,'[data-prop-tab]').map(t=>[t.getAttribute('role'),t.getAttribute('aria-selected')]),[['tab','true'],['tab','false'],['tab','false']]);assert.equal(q(a,'[data-prop-tab]').parentElement.getAttribute('role'),'tablist');
+ assert.deepEqual(qa(a,'#page-documents [data-prop-tab]').map(t=>[t.getAttribute('role'),t.getAttribute('aria-selected')]),[['tab','true'],['tab','false'],['tab','false']]);assert.equal(q(a,'#page-documents [data-prop-tab]').parentElement.getAttribute('role'),'tablist');
  assert.equal(a.$('st-page-dataset').textContent,'receivables.aging@1.0.0');assert.equal(a.$('st-page-meta').textContent,'A4 · 自动分页 · 重复表头');
  assert.deepEqual(['st-page-rows','st-page-json','st-page-preview'].map(id=>a.$(id).textContent.trim()),['编辑业务样本','导出JSON样本','输出预览']);
  assert.match(q(a,'#st-insp-page .info-box').textContent,/页面尺寸\s*210 × 297 mm/);assert.deepEqual(['st-page-paper','st-page-bands'].map(id=>a.$(id).textContent.trim()),['纸张与页边距','区段设置']);
@@ -3852,3 +3853,121 @@ test('S06-B C10: logging out clears the centre, and a stale answer cannot fill i
  assert.equal(a.errors.length,0,a.errors.join('|'));
  }finally{release();a.close();}});
 });
+
+// ---- S06-C: the console shell, the sign-in card and the dashboard studio (docs/S06C_SCOPE.md, docs/STUDIO.md "控制台外壳" and "看板工作室") ----
+test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation column on every page that is not a studio; the sign-in card; the label, the title and the active row follow the page; the data centre and the overview',async()=>{const a=app();try{
+ const d=a.w.document;
+ // Before sign-in: the card has the wordmark, the title, the token field and the button; the shell behind is inert.
+ assert.equal(a.$('connection-overlay').hidden,false);assert.equal(d.querySelector('.shell').inert,true);
+ assert.equal(d.querySelector('.connection-card h1').textContent,'进入报表工作区');assert.match(d.querySelector('.connection-card .wordmark').textContent.replace(/\s+/g,' ').trim(),/^IDP REPORTING\s*DOCUMENT PLATFORM$/);
+ assert.equal(a.$('access-token').type,'password');assert.equal(a.$('connect-button').textContent.trim(),'连接工作区');
+ await a.login();
+ assert.equal(d.querySelector('.shell').inert,false);
+ // The header: the wordmark with the page's label, the environment tag, the identity, 退出工作区.
+ const header=d.querySelector('.console-header');assert.ok(header);
+ assert.equal(header.querySelector('.wordmark b').textContent,'REPORTING');assert.equal(a.$('shell-label').textContent,'REPORTING WORKSPACE');
+ assert.equal(header.querySelector('.environment').textContent,'合同模拟器');assert.equal(a.$('actor-label').textContent,'user_a');assert.equal(a.$('logout').disabled,false);assert.equal(a.$('logout').textContent.trim(),'退出工作区');
+ // The navigation column: the prototype's catalog-nav rows with counts, buttons in a nav, one aria-current.
+ const nav=d.querySelector('.console-nav nav[aria-label="主导航"]');assert.ok(nav);
+ assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page,b.querySelector('span').textContent.trim()]),[['BUTTON','overview','工作区概览'],['BUTTON','catalog','数据中心'],['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','tasks','任务工作区'],['BUTTON','system','能力与环境']]);
+ assert.deepEqual([...nav.querySelectorAll('.catalog-caption')].map(e=>e.textContent),['工作空间','平台']);
+ assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(a.$('task-count').textContent,'0');
+ assert.equal(d.querySelector('.catalog-footnote #connection-label').textContent,'API 已连接');assert.equal(a.$('tenant-label').textContent,'platform_demo');
+ // Every page that is not a studio: the title block (eyebrow, title, lead), the wordmark's label, document.title, the active row; no studio shell is on.
+ for(const [page,eyebrow,h1,title] of [['catalog','DATA CENTER','数据中心','数据中心'],['workspace','REPORT WORKBENCH','报表工作台','报表工作台'],['tasks','BACKGROUND TASKS','任务工作区','任务工作区'],['system','PLATFORM CAPABILITIES','能力与环境','能力与环境'],['overview','REPORTING WORKSPACE','让每一份数据，有据可查。','工作区概览']]){
+  d.querySelector('[data-page="'+page+'"]').click();
+  const section=a.$('page-'+page);assert.equal(section.hidden,false,page);
+  assert.equal(section.querySelector('.page-heading .eyebrow').textContent,eyebrow);assert.equal(section.querySelector('.page-heading h1').textContent,h1);assert.ok(section.querySelector('.page-heading p').textContent.length>0);
+  assert.equal(a.$('shell-label').textContent,eyebrow);assert.equal(d.title,'IDP Reporting · '+title);
+  const active=nav.querySelector('.nav-item.active');assert.equal(active.dataset.page,page);assert.equal(active.getAttribute('aria-current'),'page');assert.equal(nav.querySelectorAll('[aria-current]').length,1);
+  assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[false,false,false],page+' keeps the shell');
+ }
+ // The studios and the centre take the screen: one body class each.
+ d.querySelector('[data-page="dashboard"]').click();assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[false,false,true]);assert.equal(d.title,'IDP Reporting · 看板工作室');
+ d.querySelector('[data-page="documents"]').click();assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[true,false,false]);assert.equal(d.title,'IDP Reporting · 文档工作室');
+ d.querySelector('[data-page="library"]').click();assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[false,true,false]);
+ // The data centre: the product chip row, the dataset card with its column table, 打开工作台 selects the dataset in the workbench.
+ d.querySelector('[data-page="catalog"]').click();
+ assert.equal(a.$('page-catalog').querySelector('.dc-chips select').id,'catalog-product');assert.equal(a.$('refresh-catalog').textContent.trim(),'刷新目录');
+ const cardEl=a.$('catalog-grid').querySelector('.catalog-card');assert.ok(cardEl);assert.equal(cardEl.querySelector('h2').textContent,'应收余额');assert.equal(cardEl.querySelector('.description').textContent,'receivables.aging · v1.0.0');assert.equal(cardEl.querySelector('.badge').textContent,'已发布组合');
+ assert.deepEqual([...cardEl.querySelectorAll('.column-line b')].map(e=>e.textContent),['字段','客户','账龄区间','应收余额']);assert.deepEqual([...cardEl.querySelectorAll('.column-line code')].map(e=>e.textContent).slice(1),['string','string','decimal · CNY']);
+ assert.equal(cardEl.querySelector('.card-bottom small').textContent,'2 个维度 · 1 个指标');
+ cardEl.querySelector('.card-bottom button').click();assert.equal(a.$('page-workspace').hidden,false);assert.equal(a.$('query-dataset').value,'receivables.aging@1.0.0');assert.equal(nav.querySelector('.nav-item.active').dataset.page,'workspace');
+ // The overview: the four counters, the dataset rows with 打开, the steps.
+ d.querySelector('[data-page="overview"]').click();
+ assert.deepEqual([...a.$('page-overview').querySelectorAll('.catalog-stats .metric-card strong')].map(e=>e.id),['overview-products','overview-datasets','overview-jobs','overview-formats']);
+ assert.equal(a.$('overview-datasets').textContent,'1');assert.equal(a.$('overview-products').textContent,'2');assert.equal(a.$('overview-formats').textContent.includes('XLSX'),true);
+ const rowEl=a.$('overview-catalog').querySelector('.dataset-row');assert.equal(rowEl.querySelector('h3').textContent,'应收余额');assert.equal(rowEl.querySelector('p').textContent,'receivables.aging · v1.0.0');assert.equal(rowEl.querySelector('button').textContent,'打开');
+ rowEl.querySelector('button').click();assert.equal(a.$('page-workspace').hidden,false);
+ assert.deepEqual([...a.$('page-overview').querySelectorAll('.steps b')].map(e=>e.textContent),['选择已发布数据集','预览并创建快照','生成 Excel 并下载']);
+ // The page has no inline style or handler; every <use> of the page points at a symbol the page holds.
+ assert.equal(/\sstyle\s*=/i.test(html),false);assert.equal(/\son[a-z]+\s*=/i.test(html),false);assert.equal(/<style[\s>]/i.test(html),false);
+ for(const u of d.querySelectorAll('use'))assert.ok(d.getElementById(u.getAttribute('href').slice(1)),u.getAttribute('href')+' is a symbol of the page');
+ // Sign out: the card is back, the shell inert, the counts and the identity reset.
+ a.click('logout');assert.equal(a.$('connection-overlay').hidden,false);assert.equal(d.querySelector('.shell').inert,true);assert.equal(a.$('nav-datasets').textContent,'0');assert.equal(a.$('actor-label').textContent,'未连接');assert.equal(a.$('connection-label').textContent,'尚未连接');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
+
+test('S06-C C6: the dashboard studio: the regions, every old control under its old id in its new region, the badge\'s transitions, the structure panel, the publish confirmation, the drawers, and the source of board.js',async()=>{const a=app();try{
+ const d=a.w.document;await a.login();
+ d.querySelector('[data-page="dashboard"]').click();assert.equal(d.body.classList.contains('board-on'),true);
+ const s=a.$('bd-studio');
+ assert.deepEqual([...s.children].map(e=>e.tagName.toLowerCase()+'.'+e.className.split(' ')[0]),['header.topbar','nav.toolrail','aside.sidebar','main.workarea','aside.inspector','footer.statusbar']);
+ assert.match(s.querySelector('.topbar .wordmark').textContent.replace(/\s+/g,' ').trim(),/^IDP REPORTING\s*DASHBOARD STUDIO$/);assert.equal(a.$('bd-crumb').textContent.trim(),'报表工作台');assert.equal(a.$('bd-title').textContent,'看板');
+ assert.deepEqual(['bd-help','bd-versions','board-server-save','bd-publish'].map(id=>a.$(id).getAttribute('aria-label')||a.$(id).textContent.trim()),['看板说明与操作帮助','版本','保存版本','发布']);
+ assert.equal(a.$('bd-state').textContent,'未查询');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-desk').hidden,true);assert.equal(a.$('bd-start-open').dataset.open,'workspace');
+ // Every old control is in the page once, in its region.
+ const where={'board-metric':'#bd-sidebar','board-add-metric':'#bd-sidebar','board-columns':'#bd-sidebar','board-add-table':'#bd-sidebar','board-category':'#bd-sidebar','board-value':'#bd-sidebar','board-add-bar':'#bd-sidebar','board-reset':'#bd-sidebar','board-count':'#bd-sidebar','board-source':'#bd-sidebar','board-widgets':'#bd-workarea','board-status':'#bd-workarea','board-server-save':'#bd-studio>.topbar','board-server-new':'#bd-ipanel-versions','board-server-list':'#bd-ipanel-versions','board-server-listing':'#bd-ipanel-versions','board-server-version':'#bd-ipanel-versions','board-server-open':'#bd-ipanel-versions','board-server-status':'#bd-ipanel-properties','board-release-read':'#bd-ipanel-versions','board-release-publish':'#bd-ipanel-versions','board-release-withdraw':'#bd-ipanel-versions','board-published-open':'#bd-ipanel-versions','board-release-status':'#bd-ipanel-versions','board-release-history':'#bd-ipanel-versions','board-save':'#bd-ipanel-file','board-json':'#bd-ipanel-file','board-open':'#bd-ipanel-file'};
+ for(const [id,region] of Object.entries(where)){assert.equal(d.querySelectorAll('#'+id).length,1,id);assert.ok(a.$(id).closest(region),id+' is in '+region);}
+ for(const b of s.querySelectorAll('button'))assert.ok((b.getAttribute('aria-label')||b.textContent).trim().length>0,'a button of the studio has a name');
+ // The rail switches the side views and the inspector's tabs the panels, by click and by arrow keys.
+ const rail=[...s.querySelectorAll('.rail-tabs [role=tab]')];assert.deepEqual(rail.map(b=>b.getAttribute('aria-label')),['组件库','组件与顺序','数据来源']);
+ rail[1].click();assert.deepEqual([...s.querySelectorAll('.side-view')].map(v=>v.hidden),[true,false,true]);assert.equal(a.$('bd-sidebar').getAttribute('aria-labelledby'),'bd-rail-structure');
+ rail[1].dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));assert.equal(rail[2].getAttribute('aria-selected'),'true');assert.equal(d.activeElement,rail[2]);assert.deepEqual(rail.map(b=>b.tabIndex),[-1,-1,0]);
+ rail[0].click();
+ const tabs=[...s.querySelectorAll('.inspector-tabs [role=tab]')];assert.deepEqual(tabs.map(t=>t.textContent),['属性','版本','文件']);
+ tabs[2].click();assert.deepEqual(['bd-ipanel-properties','bd-ipanel-versions','bd-ipanel-file'].map(id=>a.$(id).hidden),[true,true,false]);
+ tabs[2].dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));assert.equal(tabs[1].getAttribute('aria-selected'),'true');assert.equal(a.$('bd-ipanel-versions').hidden,false);assert.equal(d.activeElement,tabs[1]);
+ // 版本 opens the inspector's tab; 发布 before a result, before a save and with unsaved changes says why and opens nothing.
+ tabs[0].click();a.$('bd-versions').click();assert.equal(a.$('bd-ipanel-versions').hidden,false);assert.equal(d.activeElement,a.$('bd-itab-versions'));
+ a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先在工作台查询或打开快照。');assert.equal(a.$('bd-d-publish').hidden,true);
+ // A result: the desk, 草稿, the context bar, the status bar and the panels name the binding.
+ a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');d.querySelector('[data-page="dashboard"]').click();
+ assert.equal(a.$('bd-state').textContent,'草稿');assert.equal(a.$('bd-start').hidden,true);assert.equal(a.$('bd-desk').hidden,false);
+ assert.match(a.$('bd-ctx-source').textContent,/^receivables\.aging @ 1\.0\.0 · \d{4}-\d{2}-\d{2} · 当前查询预览$/);assert.equal(a.$('bd-status-source').textContent,a.$('bd-ctx-source').textContent);assert.equal(a.$('bd-side-dataset').textContent,'receivables.aging@1.0.0');assert.equal(a.$('bd-side-rows').textContent,'当前查询预览 · 3 行 · 3 个字段');assert.equal(a.$('bd-insp-dataset').textContent,'receivables.aging@1.0.0');
+ a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先保存服务器看板版本，再发布该保存版本。');assert.equal(a.$('bd-d-publish').hidden,true);
+ // The structure panel mirrors the cards and its buttons do what the cards' buttons do.
+ a.click('board-add-metric');a.click('board-add-table');a.click('board-add-bar');
+ assert.equal(a.$('bd-status-count').textContent,'3 / 12 个组件');assert.equal(a.$('board-count').textContent,'3 / 12 个组件');
+ rail[1].click();const rows=[...a.$('bd-layers').children];assert.deepEqual(rows.map(r=>r.querySelector('span').textContent),['1 · 应收余额','2 · 明细表 · 当前结果页','3 · 应收余额 · 当前页柱状图']);assert.equal(a.$('bd-layers-empty').hidden,true);
+ assert.deepEqual(rows.map(r=>[...r.querySelectorAll('button')].map(b=>b.getAttribute('aria-label'))),[['上移：应收余额','下移：应收余额','移除：应收余额'],['上移：明细表 · 当前结果页','下移：明细表 · 当前结果页','移除：明细表 · 当前结果页'],['上移：应收余额 · 当前页柱状图','下移：应收余额 · 当前页柱状图','移除：应收余额 · 当前页柱状图']]);
+ assert.equal(rows[0].querySelectorAll('button')[0].disabled,true,'the first cannot move up');assert.equal(rows[2].querySelectorAll('button')[1].disabled,true,'the last cannot move down');
+ rows[0].querySelectorAll('button')[1].click();assert.equal(a.$('board-widgets').children[0].querySelector('h3').textContent,'明细表 · 当前结果页');assert.deepEqual([...a.$('bd-layers').children].map(r=>r.querySelector('span').textContent),['1 · 明细表 · 当前结果页','2 · 应收余额','3 · 应收余额 · 当前页柱状图']);
+ a.$('bd-layers').children[0].querySelectorAll('button')[2].click();assert.equal(a.$('board-widgets').children.length,2);assert.equal(a.$('bd-layers').children.length,2);
+ // Save: 已保存 v1; a change: · 有未保存修改 and no publishing; saved again: the confirmation reads the release, names what it publishes, traps the focus, publishes; 已发布 v2 follows.
+ a.click('board-server-save');await until(()=>a.$('board-server-status').textContent.includes('版本 1')&&!a.$('preview').disabled,'saved');
+ assert.equal(a.$('bd-state').textContent,'已保存 v1');assert.match(a.$('bd-insp-meta').textContent,/^2 \/ 12 个组件 · 看板 [a-f0-9]{8} · 版本 1$/);
+ a.click('board-add-metric');assert.equal(a.$('bd-state').textContent,'已保存 v1 · 有未保存修改');
+ a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先保存当前修改，再发布该保存版本。');assert.equal(a.$('bd-d-publish').hidden,true);
+ a.click('board-server-save');await until(()=>a.$('board-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'saved v2');assert.equal(a.$('bd-state').textContent,'已保存 v2');
+ a.$('bd-publish').focus();a.$('bd-publish').click();await until(()=>!a.$('bd-d-publish').hidden,'the confirmation');
+ assert.equal(a.$('bd-studio').inert,true);assert.equal(d.activeElement.closest('#bd-d-publish')!==null,true,'focus is in the dialog');assert.equal(a.$('bd-d-publish').querySelector('[role=dialog]').getAttribute('aria-modal'),'true');
+ const summary=Object.fromEntries([...a.$('bd-publish-summary').querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+ assert.match(summary['看板'],/^[a-f0-9]{32}$/);assert.equal(summary['将发布的版本'],'保存版本 2');assert.equal(summary['数据集'],'receivables.aging@1.0.0');assert.equal(summary['组件'],'3 个');assert.equal(summary['当前发布'],'未发布');assert.equal(summary['发布修订'],'0');
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('bd-d-publish').hidden,true);assert.equal(d.activeElement,a.$('bd-publish'));assert.equal(a.$('bd-studio').inert,false);assert.equal(a.$('board-release-status').textContent,'发布修订 0 · 当前未发布','nothing was published');
+ a.$('bd-publish').click();await until(()=>!a.$('bd-d-publish').hidden,'the confirmation again');
+ const last=[...a.$('bd-d-publish').querySelectorAll('button')].pop();last.focus();d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert.equal(d.activeElement.closest('#bd-d-publish')!==null,true,'Tab stays in the dialog');
+ a.$('bd-publish-confirm').click();await until(()=>a.$('bd-state').textContent==='已发布 v2'&&!a.$('preview').disabled,'published');
+ assert.equal(a.$('board-release-status').textContent,'发布修订 1 · 已发布版本 2');assert.equal(a.$('bd-d-publish').hidden,true);assert.equal(a.$('bd-status-state').textContent.trim(),'已发布 v2');
+ a.click('board-add-metric');assert.equal(a.$('bd-state').textContent,'已发布 v2 · 有未保存修改');
+ // The help dialog, the drawers' toggles, Esc on a drawer.
+ a.$('bd-help').click();assert.equal(a.$('bd-d-help').hidden,false);assert.equal(a.$('bd-d-help').querySelector('[role=dialog]').getAttribute('aria-modal'),'true');d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('bd-d-help').hidden,true);assert.equal(d.activeElement,a.$('bd-help'));
+ a.$('bd-ctx-inspector').click();assert.equal(a.$('bd-inspector').classList.contains('open'),true);a.$('bd-insp-close').click();assert.equal(a.$('bd-inspector').classList.contains('open'),false);
+ s.querySelector('[data-act="toggle-sidebar"]').click();assert.equal(a.$('bd-sidebar').classList.contains('open'),true);s.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('bd-sidebar').classList.contains('open'),false);
+ // The source: the DOM API only, no storage, no dynamic code, nothing from outside.
+ for(const pattern of [/\.innerHTML/,/\.outerHTML/,/insertAdjacentHTML/,/document\.write/,/\beval\(/,/new Function/,/\.srcdoc/,/setAttribute\(\s*['"]on/,/\.style\b/,/setAttribute\(\s*['"]style/,/\bfetch\(/,/XMLHttpRequest/,/localStorage|sessionStorage|indexedDB|document\.cookie/,/createElement\(\s*['"](script|iframe|link|style)['"]/])assert.equal(pattern.test(boardScript.replace(/\/\/.*$/gm,'')),false,'board.js contains '+pattern);
+ assert.equal(/https?:\/\//.test(boardScript.replace(/\/\/.*$/gm,'').replace(/http:\/\/www\.w3\.org\/2000\/svg/g,'')),false,'board.js has no external address');
+ // Sign out clears the studio: 未查询, the start card, the components view, the properties tab.
+ a.click('logout');assert.equal(a.$('bd-state').textContent,'未查询');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-layers').children.length,0);assert.equal(a.$('bd-ipanel-properties').hidden,false);assert.equal(a.$('bd-sidebar').getAttribute('aria-labelledby'),'bd-rail-components');
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});

@@ -1,0 +1,309 @@
+// Real-browser acceptance for the S06-C console shell and dashboard studio (ADR 0008 §4, docs/S06C_SCOPE.md, docs/STUDIO.md "控制台外壳" and "看板工作室"):
+// real mouse and keyboard input over the Chrome DevTools Protocol. The console's pages are shown at 1440 px beside the prototype's two non-studio
+// screens (IDP_Reporting_Designer_UIUX_V3.0.html: the 模板中心 view, whose header and left column are the shell's specification, and the 数据中心 view),
+// alone at 1280, 768 and 390 px in the light and the dark scheme (no horizontal overflow, the contrast of every visible text measured), and a session
+// follows: sign in, the overview, the data centre, the workbench (preview, snapshot), the dashboard studio (three widgets, the structure panel, save,
+// the versions tab, the publish confirmation, the help), the tasks page, the system page, sign out.
+// Visual sameness is judged by a person from the screenshots (docs/STUDIO.md says so); this script measures what it can and records the rest.
+// Not part of `npm test` and not CI: it needs a running reporting-demo started with a dashboard directory, and a Chrome started with
+//   --headless=new --remote-debugging-port=<cdp> --user-data-dir=<empty temp dir> --no-proxy-server
+// It exits 1 when any check fails or the run aborts, and 2 on bad arguments; report.json is written either way.
+// Safety: --base must be loopback because the bearer token is typed into the page. The prototype is served from a loopback port of its own (--proto-port) for the
+// duration of the run. The script reads and writes only the page it drives and its own files in --out (PNGs and report.json); it removes nothing else.
+// Usage: node scripts/browser_console_s06c.mjs --out DIR --token-file FILE --proto FILE [--base http://127.0.0.1:PORT] [--cdp PORT] [--proto-port PORT]
+import {readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync} from 'node:fs';
+import {createServer} from 'node:http';
+import {parseArgs} from 'node:util';
+import {join} from 'node:path';
+
+const usage = why => { console.error(why + '\nusage: --out DIR --token-file FILE --proto FILE [--base http://127.0.0.1:PORT] [--cdp PORT] [--proto-port PORT]'); process.exit(2); };
+let args;
+try {
+  ({values: args} = parseArgs({options: {out: {type: 'string'}, 'token-file': {type: 'string'}, proto: {type: 'string'}, base: {type: 'string'}, cdp: {type: 'string'}, 'proto-port': {type: 'string'}}, strict: true}));
+} catch (e) { usage(e.message); }
+if (!args.out || !args['token-file'] || !args.proto) usage('--out, --token-file and --proto are required');
+const base = args.base || 'http://127.0.0.1:7850', cdp = args.cdp || '9347', protoPort = Number(args['proto-port'] || 7851), outDir = args.out;
+let baseUrl;
+try { baseUrl = new URL(base); } catch { usage('--base is not a valid URL'); }
+if (baseUrl.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(baseUrl.hostname)) usage('--base must be an http loopback address');
+const token = readFileSync(args['token-file'], 'utf8').trim(), proto = readFileSync(args.proto);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+mkdirSync(outDir, {recursive: true});
+
+const checks = [], evidence = {};
+const check = (name, ok, detail) => { checks.push({name, ok: !!ok, detail: ok ? undefined : detail}); console.log(ok ? 'PASS' : 'FAIL', name, ok ? '' : JSON.stringify(detail)); };
+
+function connect(url) {
+  const ws = new WebSocket(url), pending = new Map();
+  let nextId = 1;
+  ws.onmessage = ev => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { const {res, rej} = pending.get(m.id); pending.delete(m.id); m.error ? rej(new Error(m.error.message)) : res(m.result); } };
+  ws.onclose = () => { for (const {rej} of pending.values()) rej(new Error('CDP connection closed')); pending.clear(); };
+  const ready = new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('websocket failed: ' + url)); });
+  const send = (method, params = {}, timeout = 40000) => new Promise((res, rej) => {
+    const id = nextId++, timer = setTimeout(() => { pending.delete(id); rej(new Error('CDP timeout: ' + method)); }, timeout);
+    pending.set(id, {res: v => { clearTimeout(timer); res(v); }, rej: e => { clearTimeout(timer); rej(e); }});
+    ws.send(JSON.stringify({id, method, params}));
+  });
+  return {ready, send, close: () => ws.close()};
+}
+let page;
+const send = (...a) => page.send(...a);
+const evalJs = async expr => {
+  const r = await send('Runtime.evaluate', {expression: expr, awaitPromise: true, returnByValue: true});
+  if (r.exceptionDetails) throw new Error('eval failed: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text));
+  return r.result.value;
+};
+const waitFor = async (expr, label, limit = 15000) => {
+  const end = Date.now() + limit;
+  while (Date.now() < end) { if (await evalJs(`Boolean(${expr})`).catch(() => false)) return; await sleep(80); }
+  throw new Error('timeout waiting for: ' + label);
+};
+const OWN_FILE = /^(proto|console|pair|session|zz-failure)-[\w-]+\.png$|^report\.json$/;
+for (const f of readdirSync(outDir)) if (OWN_FILE.test(f)) rmSync(join(outDir, f));
+const shots = new Map();
+const shot = async name => { const data = (await send('Page.captureScreenshot', {format: 'png'})).data; shots.set(name, data); writeFileSync(join(outDir, name + '.png'), Buffer.from(data, 'base64')); console.log('shot', name); };
+const viewport = async (w, h, scheme = 'light', mobile = false) => {
+  await send('Emulation.setDeviceMetricsOverride', {width: w, height: h, deviceScaleFactor: 1, mobile});
+  await send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-color-scheme', value: scheme}]});
+  await sleep(500);
+};
+
+// ---- real input -------------------------------------------------------------------------------------------------------------------
+const mouse = (type, x, y) => send('Input.dispatchMouseEvent', {type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mouseReleased' || type === 'mouseMoved' ? 0 : 1, clickCount: type === 'mouseMoved' ? 0 : 1});
+const KEYS = {Escape: [27, 'Escape'], Enter: [13, 'Enter'], Tab: [9, 'Tab'], ArrowDown: [40, 'ArrowDown'], ArrowRight: [39, 'ArrowRight']};
+const key = async (name, shift = false) => {
+  const [vk, code] = KEYS[name], modifiers = shift ? 8 : 0;
+  await send('Input.dispatchKeyEvent', {type: 'rawKeyDown', key: name, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers});
+  await send('Input.dispatchKeyEvent', {type: 'keyUp', key: name, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers});
+};
+const centreOf = expr => evalJs(`(()=>{const e=${expr};if(!e)return null;e.scrollIntoView({block:'center',inline:'nearest'});const b=e.getBoundingClientRect();return [b.left+b.width/2,b.top+b.height/2];})()`);
+const clickExpr = async (expr, label) => {
+  const at = await centreOf(expr);
+  if (!at) throw new Error('nothing to click: ' + (label || expr));
+  await mouse('mouseMoved', at[0], at[1]); await mouse('mousePressed', at[0], at[1]); await mouse('mouseReleased', at[0], at[1]); await sleep(80);
+};
+const q = sel => `document.querySelector(${JSON.stringify(sel)})`;
+const click = sel => clickExpr(q(sel), sel);
+const btnIn = (scope, text) => `[...document.querySelectorAll(${JSON.stringify(scope + ' button')})].find(b=>(b.getAttribute('aria-label')||b.textContent).trim().startsWith(${JSON.stringify(text)}))`;
+const clickBtn = (scope, text) => clickExpr(btnIn(scope, text), scope + ' ' + text);
+const typeInto = async (sel, text) => { await click(sel); await evalJs(`${q(sel)}.select()`); await send('Input.insertText', {text}); await sleep(120); };
+const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'the console is idle', 40000);
+// A studio or the centre hides the console's navigation: the way out is their own wordmark, as a person would take it.
+const leave = async () => {
+  if (await evalJs(`document.body.classList.contains('board-on')`)) { await click('#bd-wordmark'); await waitFor(`!document.getElementById('page-overview').hidden`, 'out of the dashboard studio'); }
+  if (await evalJs(`document.body.classList.contains('studio-on')`)) { await click('#st-wordmark'); await waitFor(`!document.getElementById('page-library').hidden`, 'out of the document studio'); await sleep(300); }
+  if (await evalJs(`document.body.classList.contains('library-on')`)) { await clickBtn('#page-library .library-header', '数据中心'); await waitFor(`!document.getElementById('page-catalog').hidden`, 'out of the centre'); }
+};
+const nav = async page => { await leave(); await click(`[data-page="${page}"]`); await waitFor(`!document.getElementById('page-${page}').hidden`, 'page ' + page); await sleep(250); };
+// The document, and in the dashboard studio each panel's own content (a closed drawer sits off-screen by a transform inside the studio's overflow:hidden box; that is not overflow a person sees).
+const overflow = () => evalJs(`(()=>{const d=document.documentElement,on=document.body.classList.contains('board-on');const panels=on?['bd-desk','bd-sidebar','bd-inspector','bd-studio'].map(id=>{const e=document.getElementById(id);const inner=id==='bd-studio'?[e.querySelector('.topbar'),e.querySelector('.statusbar')]:[e];return [id,...inner.map(x=>[x.scrollWidth,x.clientWidth])];}):[];const bad=panels.some(p=>p.slice(1).some(([s,c])=>s>c+1));return {doc:[d.scrollWidth,d.clientWidth],panels,over:d.scrollWidth>d.clientWidth+1||bad};})()`);
+const api = (method, path, body) => evalJs(`(async()=>{const r=await fetch('/api/reporting/v1'+${JSON.stringify(path)},{method:${JSON.stringify(method)},headers:{Authorization:'Bearer '+${JSON.stringify(token)},'Content-Type':'application/json'},body:${body === undefined ? 'undefined' : JSON.stringify(JSON.stringify(body))}});const t=await r.text();return {status:r.status,body:t?JSON.parse(t):null};})()`);
+
+// The contrast of every visible text of the page against the colour behind it (WCAG ratio; the colour behind is composited from the ancestors' fills).
+// Decorative glyphs (aria-hidden), screen-reader-only text, hidden sections, closed dialogs and disabled controls are left out.
+const AUDIT = `(()=>{
+const parse=c=>{const m=c.match(/rgba?\\(([^)]+)\\)/);if(!m)return null;const p=m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number);return {r:p[0],g:p[1],b:p[2],a:p.length>3?p[3]:1};};
+const lum=c=>{const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);};return .2126*f(c.r)+.7152*f(c.g)+.0722*f(c.b);};
+const over=(t,b)=>({r:t.r*t.a+b.r*(1-t.a),g:t.g*t.a+b.g*(1-t.a),b:t.b*t.a+b.b*(1-t.a),a:1});
+const bgOf=el=>{const layers=[];for(let e=el;e;e=e.parentElement){const c=parse(getComputedStyle(e).backgroundColor);if(c&&c.a>0){layers.push(c);if(c.a>=1)break;}}let out=layers.length&&layers[layers.length-1].a>=1?layers.pop():parse(getComputedStyle(document.documentElement).backgroundColor)||{r:255,g:255,b:255,a:1};for(let i=layers.length-1;i>=0;i--)out=over(layers[i],out);return out;};
+const out=[],root=document.body,walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),seen=new Set();let n;
+const controls=root.querySelectorAll('input,select,textarea');
+const visible=el=>{const cs=getComputedStyle(el);if(cs.visibility==='hidden'||cs.display==='none')return false;const b=el.getBoundingClientRect();return b.width>0&&b.height>0&&b.right>0&&b.bottom>0&&b.left<innerWidth&&b.top<innerHeight*4;};
+const audit=(el,t)=>{if(!visible(el))return;const cs=getComputedStyle(el);const fg=parse(cs.color),bg=bgOf(el),f2=over({...fg,a:fg.a*(parseFloat(cs.opacity)||1)},bg),L1=lum(f2),L2=lum(bg),r=(Math.max(L1,L2)+.05)/(Math.min(L1,L2)+.05);out.push({text:String(t).slice(0,28),ratio:Math.round(r*100)/100,size:cs.fontSize,disabled:!!el.closest('button:disabled,[aria-disabled="true"],:disabled'),id:el.id||String(el.className).slice(0,24)});};
+while(n=walker.nextNode()){const t=n.nodeValue.trim();if(!t)continue;const el=n.parentElement;if(seen.has(el))continue;seen.add(el);
+ if(el.closest('svg')||el.closest('.sr-only')||el.closest('[hidden]')||el.closest('[aria-hidden="true"]')||el.closest('.empty-icon')||el.closest('noscript')||el.closest('.overlay:not(.open)')&&!el.closest('#page-dashboard')||el.closest('.connection-overlay')&&document.getElementById('connection-overlay').hidden)continue;
+ if(el.closest('[inert]'))continue;
+ audit(el,t);}
+for(const c of controls){if(c.closest('[hidden]')||c.closest('[inert]'))continue;if(c.tagName==='SELECT'&&c.selectedOptions[0])audit(c,c.selectedOptions[0].text);else if(c.value)audit(c,c.value);}
+const bad=out.filter(o=>o.ratio<4.5&&!o.disabled);return {total:out.length,failing:bad.length,worst:bad.sort((a,b)=>a.ratio-b.ratio).slice(0,12)};})()`;
+const contrast = async (name, least = 10) => { const r = await evalJs(AUDIT); evidence['contrast ' + name] = r; check(`contrast of every visible text ≥ 4.5:1 (${name})`, r.failing === 0 && r.total > least, r); };
+
+// A composite of two screenshots side by side (the prototype left, the console right), drawn on the page's own canvas.
+async function pair(name, left, right) {
+  const png = await evalJs(`(async()=>{const load=d=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src='data:image/png;base64,'+d;});const a=await load(${JSON.stringify(shots.get(left))}),b=await load(${JSON.stringify(shots.get(right))});const c=document.createElement('canvas');c.width=a.width+b.width+20;c.height=Math.max(a.height,b.height);const x=c.getContext('2d');x.fillStyle='#888';x.fillRect(0,0,c.width,c.height);x.drawImage(a,0,0);x.drawImage(b,a.width+20,0);return c.toDataURL('image/png').split(',')[1];})()`);
+  writeFileSync(join(outDir, name + '.png'), Buffer.from(png, 'base64')); console.log('shot', name);
+}
+
+const PAGES = ['overview', 'catalog', 'workspace', 'dashboard', 'tasks', 'system'];
+let protoServer;
+async function main() {
+  protoServer = createServer((req, res) => { res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}); res.end(proto); });
+  await new Promise((res, rej) => { protoServer.once('error', rej); protoServer.listen(protoPort, '127.0.0.1', res); });
+  const list = await (await fetch(`http://127.0.0.1:${cdp}/json/list`)).json();
+  const target = list.find(t => t.type === 'page');
+  if (!target) throw new Error('no page target on the debugging port');
+  page = connect(target.webSocketDebuggerUrl); await page.ready;
+  await send('Page.enable'); await send('Runtime.enable');
+  await send('Page.bringToFront'); await send('Emulation.setFocusEmulationEnabled', {enabled: true});
+  await send('Browser.setDownloadBehavior', {behavior: 'deny'}).catch(() => {});
+  await viewport(1440, 900);
+
+  // ---- the prototype's two non-studio screens: the library (the shell's specification) and the data centre --------------------------
+  await send('Page.navigate', {url: `http://127.0.0.1:${protoPort}/`});
+  await waitFor(`document.readyState==='complete'&&!!document.querySelector('.ribbon-tabs')`, 'the prototype'); await sleep(900);
+  await evalJs(`document.querySelector('.toolrail [data-act="library"]').click()`); await sleep(900);
+  await shot('proto-library');
+  const protoGeo = await evalJs(`(()=>{const r=s=>{const e=document.querySelector(s);if(!e)return null;const b=e.getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.library-header'),side:r('.catalog-sidebar'),top:r('.catalog-top')};})()`);
+  evidence.prototypeGeometry = protoGeo;
+  await evalJs(`(()=>{const b=[...document.querySelectorAll('.library-header button')].find(b=>b.textContent.trim().startsWith('数据中心'));if(b)b.click();})()`); await sleep(900);
+  const dcShown = await evalJs(`(()=>{const v=document.getElementById('dataCenterView');return !!v&&!v.hidden;})()`);
+  check('the prototype opens its 数据中心 view from the library header', dcShown, dcShown);
+  await shot('proto-datacenter');
+  evidence.prototypeDataCentre = await evalJs(`(()=>{const r=s=>{const e=document.querySelector(s);if(!e)return null;const b=e.getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {sidebar:r('#dataCenterView .dc-sidebar'),main:r('#dataCenterView .dc-main'),head:r('#dataCenterView .dc-page-head')};})()`);
+
+  // ---- the console: the sign-in card --------------------------------------------------------------------------------------------------
+  await send('Page.navigate', {url: base + '/console/'});
+  await waitFor(`document.readyState==='complete'&&!!document.getElementById('access-token')`, 'the console'); await sleep(400);
+  await evalJs(`window.addEventListener('error',e=>{(window.__errors||(window.__errors=[])).push(e.message);})`);
+  check('the sign-in card: the wordmark, 进入报表工作区, a password field, 连接工作区; the shell behind is inert', await evalJs(`(()=>{const c=document.querySelector('.connection-card');return c.querySelector('h1').textContent==='进入报表工作区'&&/IDP REPORTING\\s*DOCUMENT PLATFORM/.test(c.querySelector('.wordmark').textContent.replace(/\\s+/g,' '))&&document.getElementById('access-token').type==='password'&&document.getElementById('connect-button').textContent.trim()==='连接工作区'&&document.querySelector('.shell').inert===true;})()`));
+  await shot('console-00-signin');
+  await contrast('sign-in 1440 light', 3);
+  await typeInto('#access-token', token); await clickBtn('.connection-card', '连接工作区');
+  await waitFor(`document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`, 'signed in', 30000); await sleep(400);
+
+  // ---- the shell at 1440, beside the prototype's library and data centre ----------------------------------------------------------------
+  const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.console-header'),nav:r('.console-nav'),heading:r('#page-overview .page-heading'),wordmark:r('.console-header .wordmark'),logout:r('#logout')};})()`);
+  evidence.geometry = geo;
+  check('geometry at 1440: header 68 px, navigation column 222 px, content from x = 256 (the prototype\'s library numbers)', geo.header.h === 68 && geo.nav.w === 222 && Math.abs(geo.heading.x - 256) <= 1, {geo, protoGeo});
+  check('the navigation: eight rows under 工作空间 and 平台, the active one marked, the counts of the data centre and the tasks', await evalJs(`(()=>{const n=document.querySelector('.console-nav nav[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.querySelector('span').textContent.trim());return JSON.stringify(rows)===JSON.stringify(['工作区概览','数据中心','报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='overview'&&document.getElementById('nav-datasets').textContent==='1'&&document.getElementById('task-count').textContent==='0';})()`));
+  check('the header: wordmark label REPORTING WORKSPACE, the environment tag, the identity, 退出工作区', await evalJs(`document.getElementById('shell-label').textContent==='REPORTING WORKSPACE'&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`));
+  await shot('console-01-overview');
+  await pair('pair-shell', 'proto-library', 'console-01-overview');
+  check('no horizontal overflow at 1440 (light)', !(await overflow()).over, await overflow());
+  await contrast('overview 1440 light');
+  await nav('catalog');
+  check('the data centre: the label DATA CENTER, the product chips, the dataset card with its column table', await evalJs(`(()=>{const c=document.querySelector('#catalog-grid .catalog-card');return document.getElementById('shell-label').textContent==='DATA CENTER'&&document.title==='IDP Reporting · 数据中心'&&!!document.querySelector('#page-catalog .dc-chips select')&&!!c&&c.querySelectorAll('.column-line').length===4;})()`));
+  await shot('console-02-datacenter');
+  await pair('pair-datacenter', 'proto-datacenter', 'console-02-datacenter');
+  await contrast('data centre 1440 light');
+  await nav('dashboard');
+  check('the dashboard studio before a result: the start card, 未查询, the console chrome gone', await evalJs(`document.body.classList.contains('board-on')&&!document.getElementById('bd-start').hidden&&document.getElementById('bd-state').textContent==='未查询'&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&getComputedStyle(document.querySelector('.console-nav')).display==='none'`));
+  await shot('console-05-dashboard-start');
+  await contrast('dashboard start 1440 light');
+  await nav('workspace');
+  await shot('console-03-workbench');
+  await contrast('workbench 1440 light');
+
+  // ---- the session: the workbench ----------------------------------------------------------------------------------------------------
+  await nav('catalog'); await clickBtn('#catalog-grid .catalog-card', '打开工作台'); await waitFor(`!document.getElementById('page-workspace').hidden`, 'the workbench from the card');
+  check('打开工作台 on the data centre card selects the dataset in the workbench', await evalJs(`document.getElementById('query-dataset').value==='receivables.aging@1.0.0'&&document.querySelector('.console-nav [aria-current="page"]').dataset.page==='workspace'`));
+  await typeInto('#query-companies', 'company_demo');
+  await clickBtn('#page-workspace', '查询预览'); await waitFor(`!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`, 'preview', 30000);
+  check('the preview: 查询预览 badge, rows in the table, the total card', await evalJs(`document.getElementById('result-kind').textContent==='查询预览'&&document.querySelectorAll('#result-table tbody tr').length===3&&document.querySelector('#result-summary strong').textContent==='9007199254740993.01'`));
+  await clickBtn('#page-workspace', '创建快照'); await waitFor(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`, 'snapshot', 60000); await sleep(400);
+  await shot('console-04-workbench-snapshot'); await contrast('workbench snapshot 1440 light');
+  check('the snapshot: 冻结快照, the pager, the task count rises', await evalJs(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('result-pager').hidden&&document.getElementById('task-count').textContent==='1'`));
+
+  // ---- the session: the dashboard studio ----------------------------------------------------------------------------------------------
+  await nav('dashboard');
+  check('with a result: the desk, 草稿, the binding in the context bar, the panels and the status bar', await evalJs(`document.getElementById('bd-start').hidden&&!document.getElementById('bd-desk').hidden&&document.getElementById('bd-state').textContent==='草稿'&&/receivables\\.aging @ 1\\.0\\.0 · .* · 冻结快照当前页/.test(document.getElementById('bd-ctx-source').textContent)&&document.getElementById('bd-status-source').textContent===document.getElementById('bd-ctx-source').textContent&&document.getElementById('bd-side-dataset').textContent==='receivables.aging@1.0.0'`));
+  await clickBtn('#bd-sidebar', '添加指标卡'); await clickBtn('#bd-sidebar', '添加明细表'); await clickBtn('#bd-sidebar', '添加当前页柱状图'); await sleep(300);
+  check('three widgets on the desk, counted in the panel and the status bar', await evalJs(`document.getElementById('board-widgets').children.length===3&&document.getElementById('bd-status-count').textContent==='3 / 12 个组件'&&document.getElementById('board-count').textContent==='3 / 12 个组件'`));
+  await shot('console-06-dashboard-widgets'); await contrast('dashboard 1440 light');
+  check('no horizontal overflow in the dashboard studio at 1440', !(await overflow()).over, await overflow());
+  await click('#bd-rail-structure'); await sleep(250); await shot('console-07-dashboard-structure');
+  const before = await evalJs(`[...document.querySelectorAll('#bd-layers .layer-row span')].map(e=>e.textContent)`);
+  await clickExpr(`document.querySelectorAll('#bd-layers .layer-row')[0].querySelectorAll('button')[1]`, 'move the first widget down'); await sleep(200);
+  const after = await evalJs(`[...document.querySelectorAll('#bd-layers .layer-row span')].map(e=>e.textContent)`);
+  check('the structure panel\'s 下移 reorders the desk like the card\'s button', before[0].endsWith('应收余额') && after[0].endsWith('明细表 · 当前结果页') && await evalJs(`document.getElementById('board-widgets').children[0].querySelector('h3').textContent==='明细表 · 当前结果页'`), {before, after});
+  await click('#bd-rail-components');
+  // The rail by keyboard: ArrowDown moves the selection and the focus.
+  await click('#bd-rail-components'); await key('ArrowDown'); await sleep(120);
+  check('the rail is a vertical tablist: ArrowDown selects and focuses the next panel', await evalJs(`document.activeElement.id==='bd-rail-structure'&&document.getElementById('bd-rail-structure').getAttribute('aria-selected')==='true'&&!document.querySelector('#bd-sidebar [data-view="structure"]').hidden`));
+  await click('#bd-rail-components');
+  await clickBtn('#bd-studio .topbar', '保存版本'); await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'saved', 30000); await idle();
+  check('保存版本 in the topbar saves on the server: the badge says 已保存 v1, the inspector names the dashboard', await evalJs(`/看板 [a-f0-9]{8} · 版本 1/.test(document.getElementById('bd-insp-meta').textContent)`), await evalJs(`document.getElementById('bd-insp-meta').textContent`));
+  await clickBtn('#bd-studio .topbar', '版本'); await sleep(250);
+  check('版本 opens the inspector\'s 版本 tab and focuses it', await evalJs(`!document.getElementById('bd-ipanel-versions').hidden&&document.activeElement.id==='bd-itab-versions'`));
+  await clickBtn('#bd-ipanel-versions', '刷新我的看板'); await waitFor(`document.getElementById('board-server-listing').options.length===1`, 'listing', 20000); await idle(); await sleep(200);
+  await shot('console-08-dashboard-versions');
+  await clickBtn('#bd-sidebar', '添加指标卡'); await sleep(150);
+  check('a change after the save: · 有未保存修改, and 发布 refuses with the reason', await evalJs(`document.getElementById('bd-state').textContent==='已保存 v1 · 有未保存修改'`));
+  await clickBtn('#bd-studio .topbar', '发布'); await sleep(300);
+  check('发布 with unsaved changes opens no dialog and says why', await evalJs(`document.getElementById('bd-d-publish').hidden&&document.getElementById('board-status').textContent==='请先保存当前修改，再发布该保存版本。'`));
+  await clickBtn('#bd-studio .topbar', '保存版本'); await waitFor(`document.getElementById('bd-state').textContent==='已保存 v2'`, 'saved v2', 30000); await idle();
+  await clickBtn('#bd-studio .topbar', '发布'); await waitFor(`!document.getElementById('bd-d-publish').hidden`, 'the publish confirmation', 30000); await sleep(250);
+  const summary = await evalJs(`Object.fromEntries([...document.querySelectorAll('#bd-publish-summary dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]))`);
+  check('the confirmation names the saved version, the dataset, the widgets and the current pointer, and holds the focus', summary['将发布的版本'] === '保存版本 2' && summary['数据集'] === 'receivables.aging@1.0.0' && summary['组件'] === '4 个' && summary['当前发布'] === '未发布' && await evalJs(`!!document.activeElement.closest('#bd-d-publish')&&document.getElementById('bd-studio').inert`), summary);
+  await shot('console-09-dashboard-publish-confirm'); await contrast('publish confirmation 1440 light');
+  await key('Tab'); await key('Tab'); await key('Tab'); await key('Tab');
+  check('Tab stays inside the confirmation', await evalJs(`!!document.activeElement.closest('#bd-d-publish')`));
+  await key('Escape'); await sleep(150);
+  check('Esc closes the confirmation, publishes nothing and returns the focus to 发布', await evalJs(`document.getElementById('bd-d-publish').hidden&&document.activeElement.id==='bd-publish'&&!document.getElementById('bd-studio').inert&&document.getElementById('board-release-status').textContent==='发布修订 0 · 当前未发布'`));
+  await clickBtn('#bd-studio .topbar', '发布'); await waitFor(`!document.getElementById('bd-d-publish').hidden`, 'the confirmation again', 30000);
+  await clickBtn('#bd-d-publish', '确认发布'); await waitFor(`document.getElementById('bd-state').textContent==='已发布 v2'`, 'published', 30000); await idle(); await sleep(200);
+  check('确认发布 publishes the saved version: 已发布 v2 in the badge and the status bar, the release history has the entry', await evalJs(`document.getElementById('bd-status-state').textContent.trim()==='已发布 v2'&&document.getElementById('board-release-status').textContent==='发布修订 1 · 已发布版本 2'&&document.getElementById('board-release-history').children.length===1`));
+  await shot('console-10-dashboard-published');
+  const boards = (await api('GET', '/dashboards')).body;
+  const release = boards.length === 1 ? (await api('GET', `/dashboards/${boards[0].id}/release`)).body : null;
+  check('the server agrees: one dashboard, version 2 published', boards.length === 1 && boards[0].version === 2 && release && release.published_version === 2, {boards, release});
+  await clickBtn('#bd-studio .topbar', '看板说明与操作帮助'); await waitFor(`!document.getElementById('bd-d-help').hidden`, 'the help'); await sleep(200); await shot('console-11-dashboard-help');
+  await key('Escape'); await sleep(150);
+  check('the help dialog closes on Esc and returns the focus', await evalJs(`document.getElementById('bd-d-help').hidden&&document.activeElement.id==='bd-help'`));
+
+  // ---- the session: tasks, system ---------------------------------------------------------------------------------------------------------
+  await nav('tasks');
+  check('the tasks page lists the session\'s snapshot job with its state, under the BACKGROUND TASKS label', await evalJs(`document.getElementById('shell-label').textContent==='BACKGROUND TASKS'&&document.querySelectorAll('#tasks-body tr').length===1&&/已完成/.test(document.querySelector('#tasks-body tr').textContent)&&document.getElementById('tasks-note').textContent==='1 项'`));
+  await shot('console-12-tasks'); await contrast('tasks 1440 light');
+  await nav('system');
+  check('the system page: the identity and the capabilities as definition lists', await evalJs(`document.getElementById('shell-label').textContent==='PLATFORM CAPABILITIES'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`));
+  await shot('console-13-system'); await contrast('system 1440 light');
+  // The centre and the studio keep their own shells; the console chrome gives way to them too.
+  await nav('library'); await waitFor(`document.querySelectorAll('#page-library .sample-card').length>=37`, 'the centre', 30000); await sleep(300);
+  check('the template centre still takes the screen without the console chrome', await evalJs(`document.body.classList.contains('library-on')&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&getComputedStyle(document.querySelector('.console-nav')).display==='none'`));
+  await shot('console-14-library');
+  await nav('documents'); await sleep(600);
+  check('the document studio still takes the screen without the console chrome', await evalJs(`document.body.classList.contains('studio-on')&&getComputedStyle(document.querySelector('.console-header')).display==='none'&&getComputedStyle(document.querySelector('.console-nav')).display==='none'`));
+  await shot('console-15-studio');
+
+  // ---- dark at 1440 ----------------------------------------------------------------------------------------------------------------------
+  await viewport(1440, 900, 'dark');
+  for (const p of PAGES) { await nav(p); await contrast(`${p} 1440 dark`); check(`no horizontal overflow at 1440 dark (${p})`, !(await overflow()).over, await overflow()); if (['overview', 'catalog', 'workspace', 'dashboard'].includes(p)) await shot(`console-1440-dark-${p}`); }
+  await viewport(1440, 900, 'light');
+
+  // ---- alone at 1280, 768, 390, light and dark ---------------------------------------------------------------------------------------------
+  for (const [w, h, mobile] of [[1280, 800, false], [768, 900, false], [390, 844, true]]) {
+    for (const scheme of ['light', 'dark']) {
+      await viewport(w, h, scheme, mobile); await sleep(300);
+      for (const p of PAGES) {
+        await nav(p);
+        const o = await overflow(); check(`no horizontal overflow at ${w} ${scheme} (${p})`, !o.over, o);
+        await contrast(`${p} ${w} ${scheme}`);
+        if (['overview', 'workspace', 'dashboard'].includes(p)) await shot(`console-${w}-${scheme}-${p}`);
+      }
+    }
+    await viewport(w, h, 'light', mobile);
+    const navGeo = await evalJs(`(()=>{const n=document.querySelector('.console-nav').getBoundingClientRect();return {w:n.width,h:n.height,row:getComputedStyle(document.querySelector('.console-nav')).flexDirection};})()`);
+    check(`the navigation column at ${w}: ${w <= 700 ? 'a horizontal chip row' : w <= 1100 ? '190 px' : '222 px'}`, w <= 700 ? navGeo.row === 'row' : navGeo.w === (w <= 1100 ? 190 : 222), navGeo);
+    // The dashboard studio's drawers at the narrow widths.
+    await nav('dashboard');
+    if (w <= 950) {
+      await click('#bd-ctx-inspector'); await sleep(350);
+      check(`the inspector opens as a drawer at ${w} and fits`, await evalJs(`(()=>{const i=document.getElementById('bd-inspector'),b=i.getBoundingClientRect();return i.classList.contains('open')&&b.right<=innerWidth+1&&b.left>=0;})()`), await evalJs(`JSON.stringify(document.getElementById('bd-inspector').getBoundingClientRect())`));
+      await shot(`console-${w}-dashboard-inspector`); await key('Escape'); await sleep(250);
+      check(`Esc closes the drawer at ${w}`, await evalJs(`!document.getElementById('bd-inspector').classList.contains('open')`));
+    }
+    if (w <= 660) {
+      await click('#bd-rail-structure'); await sleep(350);
+      check(`the side panel opens as a drawer at ${w} and fits`, await evalJs(`(()=>{const s=document.getElementById('bd-sidebar'),b=s.getBoundingClientRect();return s.classList.contains('open')&&b.left>=0&&b.right<=innerWidth+1;})()`), await evalJs(`JSON.stringify(document.getElementById('bd-sidebar').getBoundingClientRect())`));
+      await shot(`console-${w}-dashboard-sidebar`); await key('Escape'); await sleep(250);
+    }
+  }
+  await viewport(1440, 900, 'light');
+
+  // ---- sign out --------------------------------------------------------------------------------------------------------------------------
+  await nav('overview');
+  await clickBtn('.console-header', '退出工作区'); await sleep(300);
+  check('退出工作区: the card is back, the shell inert, the identity and the counts cleared, nothing in the browser\'s storage', await evalJs(`!document.getElementById('connection-overlay').hidden&&document.querySelector('.shell').inert===true&&document.getElementById('actor-label').textContent==='未连接'&&document.getElementById('nav-datasets').textContent==='0'&&document.getElementById('access-token').value===''&&localStorage.length===0&&sessionStorage.length===0`));
+  await shot('session-signout');
+  check('no page error', await evalJs(`!window.__errors`), await evalJs(`JSON.stringify(window.__errors||[])`));
+}
+
+let failure = null;
+try { await main(); } catch (e) { failure = e; console.error('ABORT', e.stack || e); try { await shot('zz-failure-state'); } catch {} }
+protoServer?.close();
+const failed = checks.filter(c => !c.ok);
+writeFileSync(join(outDir, 'report.json'), JSON.stringify({generated: new Date().toISOString(), base, checks, failed: failed.length, evidence, abort: failure ? String(failure.message) : null}, null, 2));
+console.log(`${checks.length - failed.length}/${checks.length} checks passed${failure ? '; aborted: ' + failure.message : ''}`);
+page?.close();
+process.exit(failure || failed.length ? 1 : 0);
