@@ -4060,6 +4060,8 @@ test('S07-C: the task list is the identity\'s jobs on the server, newest first; 
  // Signed in: the list is the server's, in its order, and the counts say so (the tests before this one left jobs on the shared server).
  await a.login();
  let server=await listed();assert.ok(server.length<=50);
+ // The list is read after the sign-in's own requests (the session, the capabilities, the product); with many jobs on the shared server it takes a moment.
+ await until(()=>a.trace.some(v=>v.path.endsWith('/jobs?limit=50'))&&ids().length===server.length,'the list after sign-in: '+ids().length+' of '+server.length,10000);
  assert.deepEqual(ids(),server.map(j=>j.job_id));assert.equal(a.$('task-count').textContent,String(server.length));assert.equal(a.$('overview-jobs').textContent,String(server.length));assert.equal(a.$('tasks-note').textContent,server.length+' 项');
  assert.equal(a.trace.filter(v=>v.path.endsWith('/jobs?limit=50')).length,1);
  // A snapshot from the console goes first, and the count rises by one: the session's jobs join the listed ones (the server's window is 50; what this session knows beyond it stays, up to 100).
