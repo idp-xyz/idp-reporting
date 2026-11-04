@@ -183,6 +183,7 @@ logs and asserts them. Before 009 the stored-results count is a `Seq Scan` on `a
 | stored results | Index Only Scan `assets_identity_kind_expires` (a bitmap scan of it for the identity with the long history) |
 | admissions in the last hour | Index Only Scan `jobs_identity_created` (a bitmap scan of it for the long history) |
 | issue listing | typical identity: Index Scan on the unique key; long history at 30,000 rows: Index Scan `jobs_identity_created`; long history at 1,000,000 rows: Bitmap Heap Scan on the unique key and a sort of 20,000 rows (150 ms) |
+| job listing (S07-C, `GET /jobs`, 50) | the issue listing's statement without `kind='issue'`: at 30,000 rows an Index Scan of `jobs_identity_created` for both identities (the plan test logs it; held to the issue listing's rule, no sequential scan); not measured at a million rows |
 
 The sweep's statements (`TestPostgresMigrations/capacity_plans_*/the_sweeps_statements`, as the sweep role in the worker scope, 2,000 expired artifacts and jobs under 30,000 jobs) are held to the same rule and the reduction must read `jobs_reducible`; their plans are logged. No sequential scan of `jobs` or `assets` remains in any of them. The row-level policies add their predicates to the plans and the indexes are used
 with them in force.

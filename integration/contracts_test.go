@@ -12,6 +12,7 @@ import (
 	"idp.local/reporting/storage/memory"
 	"idp.local/reporting/storage/postgres"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -534,6 +535,71 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 	})
 	// A group issue job (S03-K) is stored with its group in place of a row and publishes a record that keeps it: both
 	// stores hand back the group they were given, and refuse a record whose group is not the job's.
+	t.Run("jobs_listing_newest_first_under_the_identity_and_its_integrations", func(t *testing.T) {
+		// S07-C: Jobs is Issues for every kind: the identity's jobs under the given integrations, newest first, at most limit of them.
+		v := env(t, factory(t))
+		first := freeze(t, v, contractsim.FinancialQuery(), "a")
+		second := freeze(t, v, contractsim.ShipmentQuery(), "b")
+		third := export(t, v, first.SnapshotID, "c")
+		fourth, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "d")
+		if e != nil || fourth.State != "queued" {
+			t.Fatal(fourth, e)
+		}
+		ids := func(jobs []r.Job) []string {
+			out := []string{}
+			for _, j := range jobs {
+				out = append(out, j.ID)
+			}
+			return out
+		}
+		both := []string{contractsim.FinanceIntegration, contractsim.ShipmentIntegration}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, both, 10); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID, second.ID, first.ID}) {
+			t.Fatal(ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, []string{contractsim.FinanceIntegration}, 10); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID, first.ID}) {
+			t.Fatal(ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, both, 2); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID}) {
+			t.Fatal(ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, both, r.MaxJobListing); e != nil || len(jobs) != 4 || jobs[0].State != "queued" || jobs[1].Kind != "export" || jobs[1].ArtifactID != third.ArtifactID || jobs[3].SnapshotID != first.SnapshotID {
+			t.Fatal(jobs, e)
+		}
+		for _, c := range []struct {
+			i            r.Identity
+			integrations []string
+			limit        int
+		}{{v.p.Identity, both, 0}, {v.p.Identity, both, r.MaxJobListing + 1}, {v.p.Identity, nil, 10}, {r.Identity{}, both, 10}} {
+			_, e := v.repo.Jobs(ctx, c.i, c.integrations, c.limit)
+			mustError(t, e, r.ErrInvalid)
+		}
+		stranger := v.p.Identity
+		stranger.Subject = "someone_else"
+		if jobs, e := v.repo.Jobs(ctx, stranger, both, 10); e != nil || len(jobs) != 0 {
+			t.Fatal(jobs, e)
+		}
+		// Through the service: the views, in the same order, each what its poll shows; a principal without integrations gets an empty page.
+		views, e := v.s.Jobs(ctx, v.p, 10)
+		if e != nil || len(views) != 4 || views[0].ID != fourth.ID || views[0].State != "queued" || views[1].ID != third.ID || views[1].ArtifactID != third.ArtifactID || views[2].ID != second.ID || views[2].SnapshotID != second.SnapshotID || views[3].ID != first.ID || views[3].Expired {
+			t.Fatalf("%+v %v", views, e)
+		}
+		if _, e = v.s.Jobs(ctx, v.p, 0); !errors.Is(e, r.ErrInvalid) {
+			t.Fatal("limit 0 accepted")
+		}
+		if _, e = v.s.Jobs(ctx, v.p, r.MaxJobListing+1); !errors.Is(e, r.ErrInvalid) {
+			t.Fatal("limit above the maximum accepted")
+		}
+		none := v.p
+		none.Integrations = nil
+		if views, e := v.s.Jobs(ctx, none, 10); e != nil || len(views) != 0 {
+			t.Fatal(views, e)
+		}
+		other := v.p
+		other.Subject = "someone_else"
+		if views, e := v.s.Jobs(ctx, other, 10); e != nil || len(views) != 0 {
+			t.Fatal(views, e)
+		}
+	})
 	t.Run("a_group_issue_job_and_its_record_round_trip", func(t *testing.T) {
 		v := env(t, factory(t))
 		snap := freeze(t, v, contractsim.FinancialQuery(), "snap")

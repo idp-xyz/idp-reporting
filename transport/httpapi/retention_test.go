@@ -150,6 +150,21 @@ func TestViewsAfterCleanupOverHTTP(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list) != 1 || !expired(list[0]) || list[0]["number"] != issue.Issue.Number {
 		t.Fatal("the issue listing after the sweep", w.Code, w.Body.String())
 	}
+	// The jobs listing (S07-C) shows the three as the poll does: succeeded, expired, their ids kept, the issue's number from its record.
+	w = request(h, "GET", base+"/jobs?limit=10", nil, true)
+	var jobs []map[string]any
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &jobs) != nil || len(jobs) != 3 {
+		t.Fatal("the jobs listing after the sweep", w.Code, w.Body.String())
+	}
+	for _, j := range jobs {
+		if !expired(j) || j["state"] != "succeeded" {
+			t.Fatal("a listed job after the sweep", j)
+		}
+	}
+	listedIssue, _ := jobs[0]["issue"].(map[string]any)
+	if jobs[0]["job_id"] != issue.ID || jobs[1]["job_id"] != export.ID || jobs[2]["job_id"] != snap.ID || listedIssue == nil || listedIssue["number"] != issue.Issue.Number || jobs[1]["artifact_id"] != export.ArtifactID || jobs[2]["snapshot_id"] != snap.SnapshotID {
+		t.Fatal("the jobs listing after the sweep", jobs)
+	}
 	for _, path := range []string{"/artifacts/" + export.ArtifactID + "/content", "/artifacts/" + issue.ArtifactID + "/content", "/snapshots/" + snap.SnapshotID + "/rows?limit=1"} {
 		if code, body := get(path); code != 404 || body["error"] != "NOT_FOUND" {
 			t.Fatal("what was swept", path, code, body)

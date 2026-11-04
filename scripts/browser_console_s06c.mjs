@@ -162,7 +162,9 @@ async function main() {
   const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.console-header'),rail:r('.app-rail'),heading:r('#page-overview .page-heading'),wordmark:r('.console-header .wordmark'),logout:r('#logout'),chip:r('#sh-data-chip')};})()`);
   evidence.geometry = geo;
   check('geometry at 1440: header 68 px, the application rail 56 px, content from x = 90 (the prototype\'s library header and padding beside the rail; S07-A)', geo.header.h === 68 && geo.rail.w === 56 && geo.rail.x === 0 && Math.abs(geo.heading.x - 90) <= 1 && geo.chip.h < 40, {geo, protoGeo});
-  check('the navigation: the rail\'s eight named buttons, the active one marked, the counts of the data centre and the tasks', await evalJs(`(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['工作区概览','数据中心','报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='overview'&&document.getElementById('nav-datasets').textContent==='1'&&document.getElementById('task-count').textContent==='0';})()`));
+  check('the navigation: the rail\'s eight named buttons, the active one marked, the counts of the data centre and the tasks', await evalJs(`(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['工作区概览','数据中心','报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='overview'&&document.getElementById('nav-datasets').textContent==='1'&&/^\d+$/.test(document.getElementById('task-count').textContent);})()`));
+  // S07-C: the task count is the server's listing of the identity's jobs (at most 50), not this session's; it rises by one with the snapshot below.
+  const tasksBefore = Number(await evalJs(`document.getElementById('task-count').textContent`));
   check('the header: wordmark label REPORTING WORKSPACE, the environment tag, the identity, 退出工作区', await evalJs(`document.getElementById('shell-label').textContent==='REPORTING WORKSPACE'&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`));
   await shot('console-01-overview');
   await pair('pair-shell', 'proto-library', 'console-01-overview');
@@ -195,7 +197,7 @@ async function main() {
   check('the preview: 查询预览 badge, rows in the table, the total card', await evalJs(`document.getElementById('result-kind').textContent==='查询预览'&&document.querySelectorAll('#result-table tbody tr').length===3&&document.querySelector('#result-summary strong').textContent==='9007199254740993.01'`));
   await clickBtn('#page-workspace', '创建快照'); await waitFor(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`, 'snapshot', 60000); await sleep(400);
   await shot('console-04-workbench-snapshot'); await contrast('workbench snapshot 1440 light');
-  check('the snapshot: 冻结快照, the pager, the task count rises', await evalJs(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('result-pager').hidden&&document.getElementById('task-count').textContent==='1'`));
+  check('the snapshot: 冻结快照, the pager, the task count rises', await evalJs(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('result-pager').hidden&&document.getElementById('task-count').textContent===String(tasksBefore + 1)`));
 
   // ---- the session: the dashboard studio ----------------------------------------------------------------------------------------------
   await nav('dashboard');
@@ -248,7 +250,7 @@ async function main() {
 
   // ---- the session: tasks, system ---------------------------------------------------------------------------------------------------------
   await nav('tasks');
-  check('the tasks panel (S07-B) opens over the current page with the session\'s snapshot job and its state', await evalJs(`!document.getElementById('sh-d-tasks').hidden&&document.getElementById('sh-tasks-slot').contains(document.getElementById('tasks-body'))&&document.querySelectorAll('#tasks-body tr').length===1&&/已完成/.test(document.querySelector('#tasks-body tr').textContent)&&document.getElementById('tasks-note').textContent==='1 项'`));
+  check('the tasks panel (S07-B, S07-C) opens over the current page with the identity\'s jobs from the server, the session\'s snapshot job first and finished', await evalJs(`!document.getElementById('sh-d-tasks').hidden&&document.getElementById('sh-tasks-slot').contains(document.getElementById('tasks-body'))&&document.querySelectorAll('#tasks-body tr').length===${tasksBefore} + 1&&/报表快照/.test(document.querySelector('#tasks-body tr').cells[0].textContent)&&/已完成/.test(document.querySelector('#tasks-body tr').textContent)&&document.getElementById('tasks-note').textContent===(${tasksBefore} + 1)+' 项'`));
   await shot('console-12-tasks'); await contrast('tasks panel 1440 light'); await key('Escape'); await sleep(200);
   await nav('system');
   check('the system page: the identity and the capabilities as definition lists', await evalJs(`document.getElementById('shell-label').textContent==='PLATFORM CAPABILITIES'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`));

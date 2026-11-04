@@ -142,6 +142,6 @@ async function main() {
   for (const [w, d] of made) console.log(`| ${w} | ${d} |`);
   if (skipped.length) { console.log('\n| 跳过 | 原因 |\n|---|---|'); for (const [w, d] of skipped) console.log(`| ${w} | ${d} |`); }
   if (args.out) writeFileSync(args.out, JSON.stringify({generated: new Date().toISOString(), base, made, skipped, snapshots}, null, 2));
-  console.log(`\n本身份现有模板 ${(await api('GET', '/document-templates')).length} / 64，看板 ${(await api('GET', '/dashboards')).length} / 16。任务列表只含本浏览器会话创建或恢复的任务：把上表里的任务 ID 粘进任务面板的“恢复查看”即可看到、下载、查看结果。数据芯片在登录后是“未选择数据”：先查询一次，或恢复一个快照任务后“查看结果”。`);
+  console.log(`\n本身份现有模板 ${(await api('GET', '/document-templates')).length} / 64，看板 ${(await api('GET', '/dashboards')).length} / 16。任务面板列出服务器上当前身份最近的 50 项任务（S07-C），上表的任务都在其中；更早的任务用“恢复查看”按 ID 打开。数据芯片在登录后是“未选择数据”：先查询一次，或恢复一个快照任务后“查看结果”。`);
 }
 main().catch(e => { console.error('ABORT', e.message, e.body ? JSON.stringify(e.body).slice(0, 300) : ''); process.exit(1); });

@@ -42,7 +42,10 @@ before(async()=>{
 });
 after(async()=>{if(child&&child.exitCode===null){child.kill('SIGTERM');await new Promise(resolve=>child.once('exit',resolve));}if(temporary)await rm(temporary,{recursive:true});});
 
-function app(intercept){
+// app(intercept, options): the console in jsdom against the real server. The server and its identity are shared by every test of this
+// file, so the server's job listing (S07-C, GET /jobs) would show each test the jobs of the tests before it: by default the harness answers
+// it with an empty list and a test sees its own jobs only, as it did when the list was the session's; options.listing=true lets it through.
+function app(intercept,options){
   const errors=[];const downloads=[];const trace=[];const virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',error=>{if(!error.message.includes('navigation'))errors.push(error.message);});
   const dom=new JSDOM(html,{url:url+'/console/',runScripts:'outside-only',pretendToBeVisual:true,virtualConsole});
   const w=dom.window;
@@ -52,7 +55,8 @@ function app(intercept){
   w.URL.createObjectURL=blob=>{const id='blob:fixture-'+blobs.size;blobs.set(id,blob);return id;};
   w.URL.revokeObjectURL=id=>blobs.delete(id);
   w.HTMLAnchorElement.prototype.click=function(){if(this.download){const blob=blobs.get(this.href);downloads.push({name:this.download,blob});}};
-  w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}return fetch(url+path,options);};
+  w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}if(!listing&&/\/jobs\?limit=\d+$/.test(String(path)))return json([]);return fetch(url+path,options);};
+  const listing=!!options?.listing;
   w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(libraryScript);w.eval(boardScript);w.eval(documentsScript);w.eval(script);
   const $=id=>w.document.getElementById(id);
   const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('input',{bubbles:true}));};
@@ -4045,5 +4049,45 @@ test('S07-B B1/B2: the tasks panel opens over any shell with the tasks page\'s r
  assert.match(a.$('doc-release-status').textContent,/已发布版本 1/);
  a.$('st-card-text').click();assert.equal(a.$('st-state').textContent,'已发布 v1·有未保存修改');
  a.$('st-publish').click();assert.equal(a.$('st-pub-confirm').textContent.trim(),'保存并发布');a.$('st-pub-confirm').click();await until(()=>a.$('st-state').textContent==='已发布 v2'&&!a.$('preview').disabled,'v2 saved and published',20000);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
+
+// ---- S07-C: the task list is the server's (docs/S07C_SCOPE.md) ----
+test('S07-C: the task list is the identity\'s jobs on the server, newest first; the count follows it; opening the panel and 刷新状态 read it again; a job restored by its id is not listed twice',async()=>{const a=app(null,{listing:true});try{
+ const d=a.w.document;
+ const listed=async()=>(await fetch(url+'/api/reporting/v1/jobs?limit=50',authorized)).json();
+ const ids=()=>[...a.$('tasks-body').rows].map(r=>r.cells[1].textContent);
+ // Signed in: the list is the server's, in its order, and the counts say so (the tests before this one left jobs on the shared server).
+ await a.login();
+ let server=await listed();assert.ok(server.length<=50);
+ assert.deepEqual(ids(),server.map(j=>j.job_id));assert.equal(a.$('task-count').textContent,String(server.length));assert.equal(a.$('overview-jobs').textContent,String(server.length));assert.equal(a.$('tasks-note').textContent,server.length+' 项');
+ assert.equal(a.trace.filter(v=>v.path.endsWith('/jobs?limit=50')).length,1);
+ // A snapshot from the console goes first, and the count rises by one: the session's jobs join the listed ones (the server's window is 50; what this session knows beyond it stays, up to 100).
+ const before=server.length;a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot');
+ assert.equal(ids().length,before+1);assert.equal(a.$('task-count').textContent,String(before+1));assert.equal(a.$('tasks-body').rows[0].cells[0].textContent,'报表快照');
+ // A job made elsewhere (another session, the API) is not known until the list is read again: opening the panel reads it, quietly.
+ const catalog=await (await fetch(url+'/api/reporting/v1/catalog?integration_id='+encodeURIComponent(a.$('query-product').value),authorized)).json();
+ const dataset=catalog.find(c=>c.dataset.id+'@'+c.dataset.version===a.$('query-dataset').value);
+ const spec={schema_version:'1.0',integration_id:a.$('query-product').value,dataset:dataset.dataset,company_ids:['company_demo'],metrics:dataset.metrics,dimensions:dataset.dimensions,filters:[],sort:[],as_of:a.$('query-date').value,timezone:dataset.timezone,page:{limit:50}};
+ if(dataset.currency_policy)spec.currency_policy=dataset.currency_policy;
+ const elsewhere=async key=>{const w=await fetch(url+'/api/reporting/v1/snapshot-jobs',{method:'POST',headers:{...authorized.headers,'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify(spec)});assert.equal(w.status,202);return (await w.json()).job_id;};
+ const first=await elsewhere('s07c-'+randomBytes(4).toString('hex'));assert.equal(ids().includes(first),false);
+ const tasks=d.querySelector('nav.app-rail [data-panel="tasks"]');tasks.click();assert.equal(a.$('sh-d-tasks').hidden,false);
+ await until(()=>ids()[0]===first,'the panel read the list');assert.equal(a.$('preview').disabled,false,'the page was not held');
+ server=await listed();assert.deepEqual(ids().slice(0,server.length),server.map(j=>j.job_id),'the server\'s order first; what fell out of its window stays after it');
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-tasks').hidden,true);
+ // 刷新状态 reads the list, then polls each known job as before: a second job made elsewhere appears with its state.
+ const second=await elsewhere('s07c-'+randomBytes(4).toString('hex'));await untilRealJob(second,'succeeded');
+ a.click('refresh-tasks');await until(()=>a.$('notice').textContent.includes('已刷新')&&!a.$('preview').disabled,'refreshed');
+ assert.equal(ids()[0],second);assert.equal(a.$('tasks-body').rows[0].cells[2].textContent,'已完成');assert.equal(a.trace.filter(v=>v.path.endsWith('/jobs/'+second)).length,1,'the known job was polled after the list');
+ // A listed job restored by its id is the same row; the row of a snapshot keeps 查看结果 (the result is authorized when it is read, not by the list).
+ const count=ids().length;a.input('restore-id',second);a.click('restore-job');await until(()=>a.$('notice').textContent.includes('已恢复'),'restored');
+ assert.equal(ids().length,count);assert.equal(ids().filter(id=>id===second).length,1);
+ assert.ok([...a.$('tasks-body').rows[0].querySelectorAll('button')].some(b=>b.textContent==='查看结果'));
+ // A list that cannot be believed is refused whole, and the rows stay as they were.
+ const kept=ids();a.w.fetch=(orig=>async(path,options)=>/\/jobs\?limit=50$/.test(String(path))?json([{job_id:'x'.repeat(32),kind:'snapshot',state:'succeeded'}]):orig(path,options))(a.w.fetch);
+ a.click('refresh-tasks');await until(()=>a.$('notice').textContent.includes('无法验证的响应'),'refused list');assert.deepEqual(ids(),kept);
+ // Signing out clears the list, as it clears everything of the session.
+ a.click('logout');assert.equal(a.$('tasks-body').rows.length,0);assert.equal(a.$('task-count').textContent,'0');
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});
