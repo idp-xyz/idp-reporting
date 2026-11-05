@@ -414,12 +414,12 @@
 #page-documents .studio-start h1{font-size:20px;letter-spacing:0;line-height:1.4}
 #page-documents .studio-start p{font-size:12px;color:var(--muted);margin-top:6px}
 #page-documents .studio-start .query-panel{max-width:720px;margin:0 auto}
-/* The studio fills the viewport and the console's own chrome gives way to it (the other pages keep theirs until S06-C). */
-body.studio-on .console-header,body.studio-on .console-footer,body.studio-on .skip{display:none}
+/* The studio fills the viewport below the console header (S07-F, ADR 0010); the console's footer gives way to it. */
+body.studio-on .console-footer,body.studio-on .skip{display:none}
 body.studio-on .console-layout{display:block;min-height:0}
 body.studio-on .shell{display:block}
 body.studio-on .console-main{max-width:none;margin:0;padding:0}
-#page-documents .studio{position:fixed;inset:var(--app-rail-top) 0 0 var(--app-rail);z-index:40;width:auto;height:auto;min-height:0;font-size:13px}
+#page-documents .studio{position:fixed;inset:calc(var(--app-rail-top) + var(--shell-head)) 0 0 var(--app-rail);z-index:40;width:auto;height:auto;min-height:0;font-size:13px}
 #page-documents .studio.cv-panel{padding:0;margin:0;background:var(--bg);color:var(--ink);border:0}
 .embed #page-documents .studio{position:relative;inset:auto;height:100vh;min-height:720px}
 #page-documents{font-family:var(--font);color:var(--ink);line-height:1.55}

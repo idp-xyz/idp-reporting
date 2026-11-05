@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
   const pages = {overview:'工作区概览',catalog:'数据中心',workspace:'报表工作台',dashboard:'看板工作室',library:'模板中心',documents:'文档工作室',tasks:'任务工作区',system:'能力与环境'};
   // The shell's wordmark names the page (S06-C); the studios and the centre carry their own wordmarks.
-  const labels = {overview:'REPORTING WORKSPACE',catalog:'DATA CENTER',workspace:'REPORT WORKBENCH',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
+  const labels = {overview:'REPORTING WORKSPACE',catalog:'DATA CENTER',workspace:'REPORT WORKBENCH',dashboard:'DASHBOARD STUDIO',library:'TEMPLATE WORKSPACE',documents:'DOCUMENT STUDIO',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
   let board=null;
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),jobsFilter:{kind:'',state:''},jobsMore:'',controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,changed:()=>{if(board)board.sync();},exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});

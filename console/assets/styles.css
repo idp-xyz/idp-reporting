@@ -55,6 +55,10 @@ svg{vertical-align:middle;flex-shrink:0}
 .noscript{position:fixed;bottom:15px;left:15px;right:15px;z-index:100;background:var(--tag-bg);color:var(--tag);border:1px solid var(--tag-line);padding:15px;text-align:center;font-size:12px;border-radius:6px}
 
 /* ---- the shell (S07-A, ADR 0009): the application rail at the left edge of every shell, then the header and the main column ---- */
+/* S07-F (ADR 0010): one shell. The console header stays on every page, the studios and the centre included; their full-screen boxes start
+   below it (--shell-head) as they start right of the rail (--app-rail). The embed page has no console header: 0 there. */
+:root{--shell-head:0px}
+body:not(.embed){--shell-head:68px}
 .shell{min-height:100vh;display:flex;flex-direction:column;padding-left:var(--app-rail);padding-top:var(--app-rail-top)}
 .app-rail{position:fixed;top:0;left:0;bottom:0;width:var(--app-rail);z-index:50;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 8px;background:var(--panel);border-right:1px solid var(--line)}
 .rail-brand{display:grid;place-items:center;margin-bottom:8px;text-decoration:none}
@@ -254,12 +258,14 @@ tbody tr:last-child td{border-bottom:0}
 .restore-panel input{min-width:230px;flex:1;font-size:12px}
 .restore-panel .help{max-width:260px}
 .tasks-table td:last-child{overflow:visible;white-space:normal}
-.tasks-filter{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.tasks-filter{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;padding:0 20px 12px}
 .tasks-filter label{font-size:12px;color:var(--muted)}
 .tasks-filter select{font-size:12px;padding:5px 8px;min-width:120px}
 .tasks-more{display:flex;gap:12px;align-items:center;justify-content:center;padding:12px 0 2px}
 .tasks-more[hidden]{display:none}
 .tasks-table td:last-child button{margin:2px 5px 2px 0}
+/* The row's actions are quiet buttons: a visible gap and the link colour tell them apart (they read as one word before). */
+.tasks-table td:last-child button.quiet{color:var(--sel-ink);padding:3px 6px;margin-right:6px}
 .task-id{font:10px/1.7 var(--mono)}
 .system-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .details{padding:0 20px 16px;margin:0}
@@ -285,11 +291,11 @@ tbody tr:last-child td{border-bottom:0}
 .connect-error{font-size:11px;color:var(--err);margin-top:12px}
 
 /* ---- the dashboard studio (#page-dashboard): the document studio's regions (studio.css) with the dashboard's functions ---- */
-body.board-on .console-header,body.board-on .console-footer,body.board-on .skip{display:none}
+body.board-on .console-footer,body.board-on .skip{display:none}
 body.board-on .console-layout{display:block;min-height:0}
 body.board-on .console-main{max-width:none;margin:0;padding:0}
 body.board-on #notice{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);z-index:60;margin:0;max-width:min(680px,92vw);box-shadow:0 8px 30px #23396026}
-#page-dashboard .bstudio{position:fixed;inset:var(--app-rail-top) 0 0 var(--app-rail);z-index:40;display:grid;grid-template-columns:54px 244px minmax(360px,1fr) 286px;grid-template-rows:64px minmax(0,1fr) 31px;background:var(--bg);color:var(--ink);font-size:12px;line-height:1.55;overflow:hidden}
+#page-dashboard .bstudio{position:fixed;inset:calc(var(--app-rail-top) + var(--shell-head)) 0 0 var(--app-rail);z-index:40;display:grid;grid-template-columns:54px 244px minmax(360px,1fr) 286px;grid-template-rows:64px minmax(0,1fr) 31px;background:var(--bg);color:var(--ink);font-size:12px;line-height:1.55;overflow:hidden}
 #page-dashboard .topbar{grid-column:1/-1;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 20px;z-index:25}
 #page-dashboard .wordmark{width:204px}
 #page-dashboard .top-divider{height:22px;width:1px;background:var(--line2);margin:0 10px}
@@ -416,6 +422,7 @@ body.board-on #notice{position:fixed;left:50%;bottom:52px;transform:translateX(-
 @media (max-width:1320px){#page-dashboard .bstudio{grid-template-columns:49px 216px minmax(320px,1fr) 256px}#page-dashboard .topbar{padding:0 12px;gap:7px}#page-dashboard .wordmark{width:169px;font-size:15px}#page-dashboard .wordmark b{font-size:10px}#page-dashboard .crumb{display:none}#page-dashboard .top-divider{margin:0 5px}#page-dashboard .topbar .btn{padding:7px 9px;font-size:11px}}
 @media (max-width:1100px){.console-header{padding:0 20px;gap:10px}.data-chip{max-width:300px}.console-main{padding:23px 20px 0}.catalog-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-grid{grid-template-columns:1fr}.query-fields,.dc-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.actor{display:none}.system-grid{grid-template-columns:1fr}}
 @media (max-width:950px){#page-dashboard .bstudio{grid-template-columns:48px 205px minmax(300px,1fr)}#page-dashboard .inspector{position:absolute;right:0;top:64px;bottom:31px;width:270px;z-index:45;transform:translateX(100%);box-shadow:-6px 0 25px #213b5f13;transition:transform .2s}#page-dashboard .inspector.open{transform:translateX(0)}#page-dashboard .mobile-button{display:inline-flex!important}#page-dashboard .topbar .wordmark{width:150px}#page-dashboard .topbar .state-badge{display:none}#page-dashboard .topbar .btn[data-act=versions]{font-size:0;gap:0;padding:8px}#page-dashboard .topbar .btn[data-act=versions] .ic{font-size:initial}#page-dashboard .board-grid{grid-template-columns:1fr}}
+@media (max-width:700px){body:not(.embed){--shell-head:56px}}
 @media (max-width:700px){:root{--app-rail:0px;--app-rail-top:48px}.app-rail{top:0;left:0;right:0;bottom:auto;width:auto;height:48px;flex-direction:row;gap:2px;padding:0 6px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}.rail-brand{margin:0 6px 0 0}.rail-brand .brand-icon{width:26px;height:28px}.app-rail .nav-item{width:auto;height:40px;flex-direction:row;gap:6px;padding:0 9px;flex-shrink:0}.app-rail .nav-item b{position:static;margin-left:2px}.rail-status{display:none}.app-rail .rail-help{margin-top:0;margin-left:auto;flex-direction:row;width:auto;height:40px;padding:0 9px;gap:6px;flex-shrink:0}.console-layout{min-height:0}.console-header{height:56px;padding:0 10px;gap:8px}.console-header .wordmark>span:not(.brand-icon){display:none}.data-chip{flex:1 1 auto;max-width:none;padding:6px 8px}.data-chip .pill{display:none}#logout{font-size:0;gap:0;padding:8px}#logout .ic{font-size:initial}.wordmark{font-size:15px}.environment{display:none}.console-main{padding:18px 14px 0}.page-heading{flex-wrap:wrap;gap:12px;margin-bottom:18px}.page-heading>.btn,.page-heading>.button,.page-heading>.badge{margin-top:0}h1{font-size:20px}.catalog-stats{gap:10px;margin-bottom:16px}.catalog-stats .metric-card{padding:14px}.metric-card strong{font-size:22px}.dc-source-cards,.catalog-grid{grid-template-columns:1fr}.query-fields,.dc-form-grid{grid-template-columns:1fr;padding:16px 16px 8px}.query-meta{padding:0 16px 14px}.query-actions{padding:12px 16px;display:block}.query-actions .help{display:block;max-width:none;margin-bottom:12px}.panel-heading,.dc-section-head{padding:14px 16px 12px}.dataset-list{padding:0 16px 6px}.details{padding:0 16px 14px}.details>div{grid-template-columns:80px 1fr}th,td{padding:10px 14px}.restore-panel input{min-width:0;width:100%}.connection-card{padding:26px 22px 20px}.console-footer{display:block;margin-top:24px}.console-footer span{display:block;margin-bottom:6px}}
 @media (max-width:660px){#page-dashboard .bstudio{grid-template-columns:42px minmax(0,1fr);grid-template-rows:58px minmax(0,1fr) 29px}#page-dashboard .sidebar{position:absolute;left:42px;top:58px;bottom:29px;width:min(300px,calc(100vw - 42px));z-index:44;transform:translateX(-110%);box-shadow:6px 0 25px #213b5f13;transition:transform .2s}#page-dashboard .sidebar.open{transform:translateX(0)}#page-dashboard .inspector{top:auto;bottom:29px;left:42px;right:0;width:auto;height:min(70dvh,520px);transform:translateY(110%);border-left:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0}#page-dashboard .inspector.open{transform:translateY(0)}#page-dashboard .topbar{padding:0 10px}#page-dashboard .topbar .wordmark{width:auto}#page-dashboard .topbar .wordmark>span:not(.brand-icon){display:none}#page-dashboard .topbar .btn{font-size:0;gap:0;padding:8px}#page-dashboard .topbar .btn .ic{font-size:initial}#page-dashboard .board-desk{padding:14px 12px 70px}#page-dashboard .contextbar{padding:0 10px}#page-dashboard .context-link{display:none}#page-dashboard .studio-start{padding:18px 14px}#page-dashboard .overlay{padding:10px}#page-dashboard .dialog{max-height:calc(100dvh - 20px)}#page-dashboard .dialog-head{padding:15px 17px}#page-dashboard .dialog-body{padding:16px}#page-dashboard .help-grid{grid-template-columns:1fr}#page-dashboard .board-value{font-size:clamp(16px,6vw,24px)}}
 @media (prefers-reduced-motion:reduce){#page-dashboard .inspector,#page-dashboard .sidebar,.btn,.button,.form-panel>summary::before{transition:none}}
@@ -456,3 +463,10 @@ body.board-on #notice{position:fixed;left:50%;bottom:52px;transform:translateX(-
 .cv-quiet{fill:none;stroke:var(--cv-muted);stroke-width:1;stroke-dasharray:2 2;pointer-events:none}.cv-finder{fill:none;stroke:var(--cv-ink);stroke-width:2;pointer-events:none}.cv-bars{fill:none;stroke:var(--cv-ink);opacity:.5;pointer-events:none}
 .cv-codelabel{font-size:9px;fill:var(--cv-ink);paint-order:stroke;stroke:var(--cv-paper);stroke-width:3px;pointer-events:none}.cv-quiet-note{fill:var(--cv-muted)}.cv-picture{pointer-events:none}
 @media (forced-colors:active){.cv-quiet,.cv-finder,.cv-bars{stroke:CanvasText}.cv-codelabel,.cv-quiet-note{fill:CanvasText}}
+
+/* S07-F (ADR 0010): inside the one shell the console header is the brand and the data context; the studios' and the centre's own wordmarks
+   (the prototype's way out of a full-screen screen) and the centre's second data chip would repeat it. Their crumbs, titles and actions stay,
+   as the screen's toolbar. The embed page keeps its own rules (its studio wordmark is hidden there already). */
+body:not(.embed) #page-documents .topbar>.wordmark,body:not(.embed) #page-documents .topbar>.top-divider,
+body:not(.embed) #page-dashboard .topbar>.wordmark,body:not(.embed) #page-dashboard .topbar>.top-divider,
+body:not(.embed) #page-library .library-header>.wordmark,body:not(.embed) #lib-data{display:none}

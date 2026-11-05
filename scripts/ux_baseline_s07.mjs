@@ -38,7 +38,8 @@ const btnIn = (scope, text) => `[...document.querySelectorAll(${JSON.stringify(s
 
 // ---- the meter: what the page shows changing, and what the person does ------------------------------------------------------------------
 const METER = `(()=>{if(window.__ux)return;const u=window.__ux={pages:0,shells:0,dialogs:0,deadEnds:0,log:[]};
-const shellOf=()=>['studio-on','library-on','board-on'].find(c=>document.body.classList.contains(c))||'console';
+// A shell is the chrome around the page: the console header while it is on screen (on every page since S07-F), else the full-screen box that replaced it.
+const shellOf=()=>{const h=document.querySelector('.console-header');if(h&&getComputedStyle(h).display!=='none')return 'console';return ['studio-on','library-on','board-on'].find(c=>document.body.classList.contains(c))||'console';};
 const pageOf=()=>[...document.querySelectorAll('section.page')].find(s=>!s.hidden)?.id||'';
 let page=pageOf(),shell=shellOf();
 const dialogsNow=()=>[...document.querySelectorAll('[role=dialog]')].filter(d=>{const r=d.getBoundingClientRect();return r.width>0&&r.height>0&&!d.closest('[hidden]')&&!d.closest('.overlay:not(.open):not(#page-dashboard .overlay)')&&!d.closest('#connection-overlay');}).length;
