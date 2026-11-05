@@ -204,6 +204,17 @@ async function main() {
   await clickBtn('#page-workspace', '创建快照'); await waitFor(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`, 'snapshot', 60000); await sleep(400);
   await shot('console-04-workbench-snapshot'); await contrast('workbench snapshot 1440 light');
   check('the snapshot: 冻结快照, the pager, the task count rises', await evalJs(`document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('result-pager').hidden&&document.getElementById('task-count').textContent==='${tasksBefore + 1}'`));
+  // S07-G (ADR 0011): the layout designer's bar; 发布 with nothing saved opens 发布前确认 offering 保存并发布, in the centred frame of the shell.
+  await click('#report-designer > summary'); await sleep(200);
+  check('the layout designer\'s bar: 版本, 保存版本, 发布 and the 草稿 badge', await evalJs(`[...document.querySelectorAll('#report-designer .designer-bar button')].map(b=>b.textContent.trim()).join(',')==='版本,保存版本,发布'&&document.getElementById('layout-state').textContent==='草稿'`));
+  await clickBtn('#report-designer .designer-bar', '发布'); await waitFor(`!document.getElementById('ly-d-publish').hidden`, 'the layout publish confirmation', 20000); await sleep(250);
+  check('发布 with nothing saved offers 保存并发布 and holds the focus', await evalJs(`document.getElementById('ly-publish-confirm').textContent==='保存并发布'&&!!document.activeElement.closest('#ly-d-publish')&&document.querySelector('.shell').inert`));
+  await shot('console-04a-layout-publish'); await contrast('layout publish confirmation 1440 light');
+  await clickBtn('#ly-d-publish', '保存并发布'); await waitFor(`document.getElementById('layout-state').textContent==='已发布 v1'`, 'the layout published', 30000); await idle(); await sleep(200);
+  await clickBtn('#report-designer .designer-bar', '版本'); await waitFor(`document.getElementById('ly-version-list').children.length===1`, 'the layout version dialog', 20000); await idle(); await sleep(250);
+  check('the layout\'s version dialog lists v1 as published', await evalJs(`document.querySelector('#ly-version-list .pill').textContent==='已发布'&&document.getElementById('ly-version-note').textContent==='保存版本不可变；当前发布指针：v1'`));
+  await shot('console-04b-layout-versions'); await contrast('layout version dialog 1440 light');
+  await key('Escape'); await sleep(150); await click('#report-designer > summary'); await sleep(150);
 
   // ---- the session: the dashboard studio ----------------------------------------------------------------------------------------------
   await nav('dashboard');
@@ -224,10 +235,11 @@ async function main() {
   await click('#bd-rail-components');
   await clickBtn('#bd-studio .topbar', '保存版本'); await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'saved', 30000); await idle();
   check('保存版本 in the topbar saves on the server: the badge says 已保存 v1, the inspector names the dashboard', await evalJs(`/看板 [a-f0-9]{8} · 版本 1/.test(document.getElementById('bd-insp-meta').textContent)`), await evalJs(`document.getElementById('bd-insp-meta').textContent`));
-  await clickBtn('#bd-studio .topbar', '版本'); await sleep(250);
-  check('版本 opens the inspector\'s 版本 tab and focuses it', await evalJs(`!document.getElementById('bd-ipanel-versions').hidden&&document.activeElement.id==='bd-itab-versions'`));
-  await clickBtn('#bd-ipanel-versions', '刷新我的看板'); await waitFor(`document.getElementById('board-server-listing').options.length===1`, 'listing', 20000); await idle(); await sleep(200);
-  await shot('console-08-dashboard-versions');
+  await clickBtn('#bd-studio .topbar', '版本'); await waitFor(`document.getElementById('bd-version-list').children.length===1`, 'the version dialog', 20000); await idle(); await sleep(250);
+  check('版本 opens the version dialog (S07-G): v1 listed and picked, the focus inside, the studio inert', await evalJs(`!document.getElementById('bd-d-versions').hidden&&document.getElementById('bd-version-list').children[0].getAttribute('aria-current')==='true'&&!!document.activeElement.closest('#bd-d-versions')&&document.getElementById('bd-studio').inert`));
+  await shot('console-08-dashboard-versions'); await contrast('dashboard version dialog 1440 light');
+  await key('Escape'); await sleep(150);
+  check('Esc closes the version dialog and returns the focus to 版本', await evalJs(`document.getElementById('bd-d-versions').hidden&&document.activeElement.id==='bd-versions'`));
   await clickBtn('#bd-sidebar', '添加指标卡'); await sleep(150);
   check('a change after the save: · 有未保存修改, and 发布 refuses with the reason', await evalJs(`document.getElementById('bd-state').textContent==='已保存 v1 · 有未保存修改'`));
   await clickBtn('#bd-studio .topbar', '发布'); await sleep(300);

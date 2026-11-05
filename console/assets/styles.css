@@ -98,14 +98,14 @@ body:not(.embed){--shell-head:68px}
 .sh-overlay{position:fixed;inset:0;z-index:120;background:var(--overlay);display:flex;justify-content:flex-end;align-items:stretch}
 .sh-overlay[hidden]{display:none}
 .sh-drawer{width:min(600px,100vw);height:100%;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;box-shadow:-10px 0 40px var(--shadow)}
-.sh-drawer .dialog-head{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:14px}
-.sh-drawer .dialog-head h2{font-size:15px}
-.sh-drawer .dialog-head p{font-size:11px;color:var(--muted);margin-top:4px}
-.sh-drawer .head-title{display:flex;align-items:center;gap:11px}
-.sh-drawer .head-icon{width:31px;height:31px;background:var(--icon-bg);color:var(--icon-ink);display:grid;place-items:center;border-radius:7px;flex-shrink:0}
-.sh-drawer .dialog-body{padding:18px 22px;overflow:auto;min-height:0;flex:1}
-.sh-drawer .dialog-footer{padding:13px 22px;display:flex;align-items:center;justify-content:flex-end;gap:8px;background:var(--soft);border-top:1px solid var(--line)}
-.sh-drawer .footer-note{font-size:11px;color:var(--muted);margin-right:auto}
+.sh-drawer .dialog-head,.sh-dialog .dialog-head{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:14px}
+.sh-drawer .dialog-head h2,.sh-dialog .dialog-head h2{font-size:15px}
+.sh-drawer .dialog-head p,.sh-dialog .dialog-head p{font-size:11px;color:var(--muted);margin-top:4px}
+.sh-drawer .head-title,.sh-dialog .head-title{display:flex;align-items:center;gap:11px}
+.sh-drawer .head-icon,.sh-dialog .head-icon{width:31px;height:31px;background:var(--icon-bg);color:var(--icon-ink);display:grid;place-items:center;border-radius:7px;flex-shrink:0}
+.sh-drawer .dialog-body,.sh-dialog .dialog-body{padding:18px 22px;overflow:auto;min-height:0;flex:1}
+.sh-drawer .dialog-footer,.sh-dialog .dialog-footer{padding:13px 22px;display:flex;align-items:center;justify-content:flex-end;gap:8px;background:var(--soft);border-top:1px solid var(--line)}
+.sh-drawer .footer-note,.sh-dialog .footer-note{font-size:11px;color:var(--muted);margin-right:auto}
 .sh-drawer .query-panel{margin:0}
 .sh-drawer .query-fields{grid-template-columns:1fr 1fr}
 .sh-drawer .restore-panel{margin-bottom:14px}
@@ -113,6 +113,32 @@ body:not(.embed){--shell-head:68px}
 .sh-drawer .task-id{white-space:normal;overflow-wrap:anywhere;font-size:10px}
 .sh-drawer th,.sh-drawer td{padding:9px 12px;white-space:normal}
 .sh-drawer .tasks-table td:last-child button{margin:2px 4px 2px 0}
+/* S07-G (ADR 0011): a centred dialog of the shell (the layout designer's 版本 and 发布前确认), and the version dialog of the layout designer and the dashboard studio */
+.sh-overlay.center{justify-content:center;align-items:center;padding:24px}
+.sh-dialog{width:620px;max-width:96vw;max-height:calc(100dvh - 48px);display:flex;flex-direction:column;border:1px solid var(--line);background:var(--panel);border-radius:10px;box-shadow:0 30px 85px var(--shadow);overflow:hidden}
+.sh-dialog.wide{width:min(900px,96vw)}
+.sh-dialog .dialog-body{font-size:12px}
+.sh-dialog .dialog-body dl{display:grid;grid-template-columns:110px 1fr;gap:9px 14px;font-size:12px}
+.sh-dialog .dialog-body dt{color:var(--muted)}
+.sh-dialog .dialog-body dd{color:var(--ink);overflow-wrap:anywhere}
+.sh-dialog .dialog-body .help{margin-top:14px}
+.ver-dialog .version-layout{display:grid;grid-template-columns:200px 1fr;min-height:260px}
+.ver-dialog .version-list{border-right:1px solid var(--line);padding-right:16px;display:flex;flex-direction:column;gap:5px}
+.ver-dialog .version-card{width:100%;text-align:left;padding:10px 12px;border-radius:6px;border:1px solid transparent;background:none;font-size:11px;color:var(--text);cursor:pointer}
+.ver-dialog .version-card:hover{background:var(--hover)}
+.ver-dialog .version-card[aria-current="true"]{background:var(--sel-bg);border-color:var(--light)}
+.ver-dialog .version-card p{font-size:10px;color:var(--muted);margin-top:5px}
+.ver-dialog .version-detail{padding:2px 0 0 22px;min-width:0}
+.ver-dialog .version-detail h3{font-size:14px;color:var(--ink);margin-bottom:8px;overflow-wrap:anywhere}
+.ver-dialog .hint-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.ver-dialog .release-box{margin-top:18px;border-top:1px solid var(--line);padding-top:12px;font-size:11px}
+.ver-dialog .release-box p{margin-top:8px;color:var(--text);overflow-wrap:anywhere}
+.ver-dialog .release-box ol{margin:6px 0;padding-left:18px;font-size:10px;color:var(--muted)}
+.ver-dialog .chooser-raw{margin-top:14px;font-size:11px}
+.ver-dialog .chooser-raw summary{cursor:pointer;color:var(--muted)}
+.ver-dialog .chooser-raw .designer-row{border:0;padding:8px 0}
+.ver-dialog .ver-note{margin-top:16px;font-size:11px;color:var(--muted);line-height:1.8}
+@media (max-width:700px){.ver-dialog .version-layout{grid-template-columns:1fr}.ver-dialog .version-list{border-right:0;border-bottom:1px solid var(--line);padding:0 0 12px;margin-bottom:12px}.ver-dialog .version-detail{padding:0}.sh-overlay.center{padding:10px}.sh-dialog{max-height:calc(100dvh - 20px)}}
 .app-rail .nav-item[aria-expanded="true"]{background:var(--sel-bg);border-color:var(--light);color:var(--sel-ink)}
 .console-main{min-width:0;padding:28px 34px 0;max-width:1600px;width:100%;margin:0 auto;display:flex;flex-direction:column}
 .console-main>.page{flex:1}
@@ -245,6 +271,7 @@ tbody tr:last-child td{border-bottom:0}
 .form-panel>.button,.form-panel>.btn{margin:6px 0 6px 20px}
 .form-panel>#layout-json,.form-panel>#board-json{width:calc(100% - 40px);margin:0 20px}
 .form-panel>ol{margin:0 0 0 20px;padding-right:20px;font-size:11px;color:var(--text)}
+.designer-bar{display:flex;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .designer-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 20px;border-bottom:1px solid var(--line)}
 .designer-row label{flex:1;font-size:11px;color:var(--text)}
 .designer-row input[type=number]{width:70px}
