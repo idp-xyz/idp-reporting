@@ -15,8 +15,7 @@
   <a href="#quick">十分钟上手</a>
   <a href="#tour">界面导览</a>
   <div class="cap">页面手册</div>
-  <a href="#p-overview">工作区概览</a>
-  <a href="#p-datacenter">数据中心</a>
+  <a href="#p-datacenter">数据与字段</a>
   <a href="#p-workbench">报表工作台</a>
   <a href="#p-dashboard">看板工作室</a>
   <a href="#p-library">模板中心</a>
@@ -43,13 +42,13 @@
 <h2 id="intro">关于本手册</h2>
 <p>IDP Reporting 是一个独立的报表与单据平台：它从来源产品（现在是模拟器）取得<strong>已授权</strong>的数据，让设计者在控制台里查询、冻结快照、导出、设计看板与单据模板、发布版本、正式出具带编号的文件；来源产品也可以把其中的视图嵌进自己的页面（嵌入页）。平台不自己编号、不绕过来源授权、不在浏览器里存任何数据或令牌。</p>
 <p>本手册随服务一起提供：控制台应用栏底部与登录卡上的"帮助"图标（<code>/console/manual/</code>）在新窗口打开它，不需要另外的文件共享。</p>
-<p>本手册分三部分：<a href="#quick">十分钟上手</a>与<a href="#tour">界面导览</a>让你先把主要路径走一遍；<a href="#p-overview">页面手册</a>逐页说明每个控件；<a href="#data">测试数据</a>与<a href="#cases">测试案例集</a>给出可重复的数据、步骤与预期，并附带数据文件。</p>
+<p>本手册分三部分：<a href="#quick">十分钟上手</a>与<a href="#tour">界面导览</a>让你先把主要路径走一遍；<a href="#p-datacenter">页面手册</a>逐页说明每个控件；<a href="#data">测试数据</a>与<a href="#cases">测试案例集</a>给出可重复的数据、步骤与预期，并附带数据文件。</p>
 <div class="note">本手册里的"当前数据"指一次查询的上下文：产品连接、数据集、公司范围、数据时点，以及它是"查询预览"（可能被截断的实时结果）还是"冻结快照"（服务端固定的一份结果，分页稳定、可导出、可正式出具）。看板、模板、出具都绑定在它上面。</div>
 
 <h2 id="quick">十分钟上手</h2>
 <ol class="steps">
 <li><strong>登录。</strong>打开控制台，粘贴访问令牌（演示环境在 <code>idp-reporting-run/token</code>），点"连接工作区"。令牌只在内存里，退出即清除。</li>
-<li><strong>选择数据。</strong>页眉右侧的"未选择数据"芯片，或任何页面上的"选择数据…"，都会拉开数据抽屉：选产品连接与数据集，公司范围填 <code>company_demo</code>，点"查询预览"或"创建快照"。结果一到，抽屉自动关闭，芯片写出数据集、公司、时点与状态。</li>
+<li><strong>选择数据。</strong>登录后就在报表工作台，可以直接在查询面板里选。页眉右侧的"未选择数据"芯片，或任何页面上的"选择数据…"，都会拉开数据抽屉：选产品连接与数据集（下方列出它的字段、类型与币种），公司范围填 <code>company_demo</code>，点"查询预览"或"创建快照"。结果一到，抽屉自动关闭，芯片写出数据集、公司、时点与状态。</li>
 <li><strong>看结果、导出。</strong>报表工作台显示表格与服务端合计；有了冻结快照就能导出 Excel / PDF，下载前会校验文件摘要。</li>
 <li><strong>组一个看板。</strong>看板工作室：添加指标卡、明细表、柱状图，点"发布"——有未保存修改时它会先保存为新版本再发布。</li>
 <li><strong>从样例做一张单据。</strong>模板中心的 37 个示例模板任选一个"复制到我的模板"，把示例字段对应到你的数据集字段，进入文档工作室调整后发布。</li>
@@ -62,28 +61,26 @@
 </div>
 
 <h2 id="tour">界面导览</h2>
-<p>控制台有一条<strong>常驻的应用栏</strong>（左侧 56 px）：概览、数据、报表、看板、模板、文档、任务、能力。它在所有页面上都在，顶部的控制台页眉（品牌与页面标签、数据芯片、身份、退出工作区）也一样。页面本身分两类：</p>
+<p>控制台有一条<strong>常驻的应用栏</strong>（左侧 56 px）：报表、看板、模板、文档、任务、能力。它在所有页面上都在，顶部的控制台页眉（品牌与页面标签、数据芯片、身份、退出工作区）也一样。登录后进入报表工作台；数据集、字段与查询都在数据芯片打开的数据面板里，任何页面上都能打开。页面本身分两类：</p>
 <ul>
-<li><strong>带页眉的页面</strong>（概览、数据中心、报表工作台、能力与环境）：页眉里有页面标签、"当前数据"芯片、环境标记、身份与"退出工作区"。</li>
+<li><strong>带页眉的页面</strong>（报表工作台、能力与环境）：页眉里有页面标签、"当前数据"芯片、环境标记、身份与"退出工作区"。</li>
 <li><strong>工作室</strong>（文档工作室、模板中心、看板工作室）：在页眉下方、应用栏右侧占满其余空间，各有自己的工具栏（面包屑、标题与状态、版本、保存、发布等）、侧栏、检查器与状态栏，按设计原型的样式。</li>
 </ul>
-<figure><img src="img/02-overview.png" alt="工作区概览"><figcaption><b>概览</b>左侧应用栏（数据与任务带角标）、页眉（数据芯片、环境标记、身份、退出）、四个计数卡、可用数据集与三步工作流程。</figcaption></figure>
+<figure><img src="img/02-home.png" alt="登录后的报表工作台"><figcaption><b>登录后</b>左侧应用栏（任务带角标）、页眉（数据芯片、环境标记、身份、退出）、报表工作台：还没有结果时，空状态里是三步工作流程。</figcaption></figure>
 <figure><img src="img/24-studio.png" alt="文档工作室"><figcaption><b>文档工作室</b>顶栏（模板名、状态徽标、版本、保存版本、预览与导出、发布）、五个功能区页签、组件库、A4 画布、页面属性检查器、状态栏。应用栏仍在最左侧。</figcaption></figure>
 <div class="pair">
-<figure><img src="img/34-dark-overview.png" alt="暗色主题"><figcaption><b>暗色</b>跟随系统偏好；嵌入页由产品页面指定。</figcaption></figure>
+<figure><img src="img/34-dark-workbench.png" alt="暗色主题"><figcaption><b>暗色</b>跟随系统偏好；嵌入页由产品页面指定。</figcaption></figure>
 <figure><img src="img/35-dark-dashboard.png" alt="暗色看板工作室"><figcaption><b>暗色看板工作室</b>同一套令牌推导。</figcaption></figure>
 </div>
 <div class="pair">
-<figure class="phone"><img src="img/36-phone-overview.png" alt="手机宽度"><figcaption><b>390 px</b>应用栏变为顶部横条，页眉只留芯片与退出。</figcaption></figure>
+<figure class="phone"><img src="img/36-phone-workbench.png" alt="手机宽度"><figcaption><b>390 px</b>应用栏变为顶部横条，页眉只留芯片与退出。</figcaption></figure>
 <figure class="phone"><img src="img/38-phone-studio.png" alt="手机宽度的工作室"><figcaption><b>390 px 的工作室</b>侧栏与检查器变成抽屉。</figcaption></figure>
 </div>
 
-<h2 id="p-overview">工作区概览</h2>
-<p>登录后的首页。四个计数卡：当前产品连接数、所选产品的数据集数、我的任务数（控制台已读取的当前身份任务数）、可用导出格式（来自服务端能力）。"可用数据集"列出当前产品连接的数据集，"打开"把它带到工作台；"数据中心"按钮进入数据中心。右侧是三步工作流程的提示。</p>
-
-<h2 id="p-datacenter">数据中心</h2>
-<figure><img src="img/03-datacenter.png" alt="数据中心"><figcaption><b>数据中心</b>产品连接选择、数据集卡（名称、编号 · 版本、字段表：字段 / 类型 · 币种或单位、维度与指标数、打开工作台）。</figcaption></figure>
-<p>目录来自来源产品，只读：这里看不到也改不了数据集定义。切换产品连接会清空当前结果（旧结果不能冒充新查询）。"刷新目录"重新读取当前授权的数据集。</p>
+<h2 id="p-datacenter">数据与字段</h2>
+<figure><img src="img/03-data-fields.png" alt="数据面板与数据集字段"><figcaption><b>数据面板</b>页眉的“当前数据”芯片打开：产品连接、数据集、公司范围、时点，查询预览或创建快照；下方“数据集字段”列出所选数据集的字段表（字段 / 类型 · 币种或单位）、编号 · 版本与维度、指标数，以及“刷新目录”。</figcaption></figure>
+<p>以前的“工作区概览”与“数据中心”两页并进了这里（ADR 0011）：登录后直接是报表工作台；数据集的字段与币种在数据面板里看，选好就能在同一处查询，不离开当前页面。模板中心页眉上的“数据中心”按钮、旧地址 <code>#catalog</code> 都打开这个面板；<code>#overview</code> 打开工作台。产品连接数、导出格式与身份在“能力与环境”，任务数在应用栏的角标上。</p>
+<p>目录来自来源产品，只读：这里看不到也改不了数据集定义。切换产品连接会清空当前结果（旧结果不能冒充新查询）。“刷新目录”重新读取当前授权的数据集。</p>
 
 <h2 id="p-workbench">报表工作台</h2>
 <figure><img src="img/07-workbench-preview.png" alt="查询预览"><figcaption><b>查询预览</b>四个字段、元信息行（时区、币种政策、批准组合）、"查询预览 / 创建快照"，合计卡与结果表。金额按原始精度显示：<code>9007199254740893.00</code> 一位不差。</figcaption></figure>

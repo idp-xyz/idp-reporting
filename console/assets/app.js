@@ -7,9 +7,9 @@
   const embedded = location.pathname.startsWith('/embed/');
   let embed = null, embedRequest = null;
   const $ = (id) => document.getElementById(id);
-  const pages = {overview:'工作区概览',catalog:'数据中心',workspace:'报表工作台',dashboard:'看板工作室',library:'模板中心',documents:'文档工作室',tasks:'任务工作区',system:'能力与环境'};
+  const pages = {workspace:'报表工作台',dashboard:'看板工作室',library:'模板中心',documents:'文档工作室',tasks:'任务工作区',system:'能力与环境'};
   // The shell's wordmark names the page (S06-C); the studios and the centre carry their own wordmarks.
-  const labels = {overview:'REPORTING WORKSPACE',catalog:'DATA CENTER',workspace:'REPORT WORKBENCH',dashboard:'DASHBOARD STUDIO',library:'TEMPLATE WORKSPACE',documents:'DOCUMENT STUDIO',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
+  const labels = {workspace:'REPORT WORKBENCH',dashboard:'DASHBOARD STUDIO',library:'TEMPLATE WORKSPACE',documents:'DOCUMENT STUDIO',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
   let board=null;
   const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),jobsFilter:{kind:'',state:''},jobsMore:'',controllers:new Set(),releaseView:null,savedLayout:null,layoutLatest:0,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,changed:()=>{if(board)board.sync();},exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
@@ -116,22 +116,24 @@
     $('export').disabled=blocked||!state.snapshot;$('export-pdf').disabled=blocked||!state.snapshot;
     $('next-page').disabled=blocked||!state.cursor;$('first-page').disabled=blocked||state.page<=1;$('page-size').disabled=blocked||!state.snapshot;
     for(const id of ['query-dataset','query-companies','query-date','refresh-catalog'])$(id).disabled=!state.session||state.catalogLoading;
+    // The centre tells what can be opened from whether the console is idle: a result that arrives while it is on screen (from the data drawer, S07-H) is shown once the work is done.
+    if(change<0&&!state.busy&&library&&library.data&&!$('page-library').hidden)library.data();
   }
   function clearResult() {
     dashboard.clear();documents.clear();
     $('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;renderLayoutState();
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
-    $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(iconBox('table','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
+    $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('start-steps').hidden=false;$('result-empty').replaceChildren(iconBox('table','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
     $('result-kind').textContent='尚未查询';$('result-kind').className='badge neutral';$('result-title').textContent='查询结果';updateChip();
     $('result-subtitle').textContent='选择数据集并填写公司范围后开始查询。';$('refresh-result').disabled=true;$('export').disabled=true;$('export-pdf').disabled=true;
   }
   function disconnect(message) {
     for(const d of drawers)d.close();dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
     state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;state.layoutLatest=0;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.jobsMore='';state.jobsFilter={kind:'',state:''};for(const id of ['tasks-kind','tasks-state'])if($(id))$(id).value='';state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
-    clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
-    $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';if($('nav-datasets'))$('nav-datasets').textContent='0';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
-    for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
+    clearResult();renderJobs();renderFields();
+    $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('export-pdf').hidden=true;
+    for(const id of ['query-product','query-dataset'])$(id).replaceChildren();
     $('query-companies').value='';$('query-date').value='';$('query-timezone').textContent='—';$('query-currency').textContent='—';$('query-shape').textContent='选择数据集后显示批准组合';
     $('restore-id').value='';if(!embedded)$('access-token').value='';$('actor-label').textContent='未连接';$('tenant-label').textContent='访问令牌仅保留在本次会话';$('connection-label').textContent='尚未连接';$('connection-dot').className='status-dot';if(!embedded)$('logout').disabled=true;
     $('connection-overlay').hidden=false;document.querySelector('.shell').inert=true;if(!embedded)$('connect-button').disabled=false;
@@ -285,10 +287,11 @@
     const release=/^\/document-templates\/([a-f0-9]{32})\/release$/.exec(path);
     if(release&&options.body&&options.body.action==='publish')embed.event('published',{template_id:release[1],version:value.published_version});
   }
+  let drawerAsked=false;
   function openPage(page) {
     if(embedded)return;
     for(const d of drawers)d.close();
-    if(!pages[page])page='overview';
+    const asked=page;if(!pages[page])page='workspace';
     for(const name of Object.keys(pages))$('page-'+name).hidden=name!==page;
     document.querySelectorAll('.nav-item').forEach(b=>{const active=b.dataset.page===page;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     $('shell-label').textContent=labels[page]||'REPORTING WORKSPACE';document.title='IDP Reporting · '+pages[page];history.replaceState(null,'','#'+page);
@@ -297,29 +300,26 @@
     document.body.classList.toggle('board-on',page==='dashboard');
     if(page==='library'&&library&&state.session)library.show();
     if(page==='dashboard'&&board)board.show();
+    if(asked==='catalog'&&!embedded){if(state.session)setTimeout(()=>drawer.open($('sh-data-chip')),0);else drawerAsked=true;}
   }
   function selected() { return state.datasets.find(d=>d.dataset.id+'@'+d.dataset.version===$('query-dataset').value); }
   function datasetTitle(d) { const labels=d.columns.filter(c=>['decimal','integer'].includes(c.type)).map(c=>c.label);return labels.length?labels.join(' / '):d.dataset.id; }
   function validDataset(d) { return d && typeof d.dataset?.id==='string'&&typeof d.dataset.version==='string'&&Array.isArray(d.columns)&&d.columns.length<=100&&d.columns.every(c=>typeof c.id==='string'&&typeof c.label==='string'&&typeof c.type==='string')&&Array.isArray(d.metrics)&&Array.isArray(d.dimensions)&&typeof d.timezone==='string'; }
   function dateInZone(zone) { try {const parts=new Intl.DateTimeFormat('en',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>parts.find(p=>p.type===t).value;return get('year')+'-'+get('month')+'-'+get('day');}catch(_){return '';} }
-  function queryChanged() {if(state.catalogLoading)return;state.view++;clearResult();const d=selected();$('query-timezone').textContent=d?.timezone||'—';$('query-currency').textContent=d?.currency_policy?d.currency_policy.id+' @ '+d.currency_policy.version:'无换算政策';$('query-shape').textContent=d?d.dimensions.length+' 个维度 / '+d.metrics.length+' 个指标':'选择数据集后显示批准组合';}
-  function renderCatalog() {
-    $('overview-datasets').textContent=state.catalogLoading?'—':String(state.datasets.length);if($('nav-datasets'))$('nav-datasets').textContent=state.catalogLoading?'0':String(state.datasets.length);
-    const overview=$('overview-catalog');overview.replaceChildren();const catalog=$('catalog-grid');catalog.replaceChildren();
-    if(!state.datasets.length){const message=state.catalogLoading?'正在读取当前授权目录…':'当前身份尚无可用数据集。';overview.append(node('div',message,'empty compact'));catalog.append(node('div',message,'empty compact'));return;}
-    for(const d of state.datasets) {
-      const row=node('div',undefined,'dataset-row');const info=node('div',undefined,'dataset-info');info.append(iconBox('table','dataset-icon'));
-      const label=node('div');label.append(node('h3',datasetTitle(d)),node('p',d.dataset.id+' · v'+d.dataset.version));info.append(label);
-      row.append(info,button('打开',()=>chooseDataset(d),'quiet small'));overview.append(row);
-      const card=node('article',undefined,'panel catalog-card');const top=node('div',undefined,'card-top');top.append(iconBox('table','dataset-icon'),node('span','已发布组合','badge'));card.append(top,node('h2',datasetTitle(d)),node('p',d.dataset.id+' · v'+d.dataset.version,'description'));
-      const columns=node('div',undefined,'column-list');const head=node('div',undefined,'column-line');head.append(node('b','字段'),node('code','类型 · 币种或单位'));columns.append(head);
-      for(const c of d.columns) { const line=node('div',undefined,'column-line');line.append(node('b',c.label),node('code',c.type+(c.currency?' · '+c.currency:'')+(c.unit?' · '+c.unit:'')));columns.append(line); }
-      card.append(columns);const bottom=node('div',undefined,'card-bottom');bottom.append(node('small',d.dimensions.length+' 个维度 · '+d.metrics.length+' 个指标'),button('打开工作台',()=>chooseDataset(d),'secondary small'));card.append(bottom);catalog.append(card);
-    }
+  function queryChanged() {if(state.catalogLoading)return;state.view++;clearResult();renderFields();const d=selected();$('query-timezone').textContent=d?.timezone||'—';$('query-currency').textContent=d?.currency_policy?d.currency_policy.id+' @ '+d.currency_policy.version:'无换算政策';$('query-shape').textContent=d?d.dimensions.length+' 个维度 / '+d.metrics.length+' 个指标':'选择数据集后显示批准组合';}
+  // S07-H (ADR 0011 decision 6): the data centre's column table is the data drawer's, for the dataset chosen in the query panel.
+  function renderCatalog() {renderFields();}
+  function renderFields() {
+    const list=$('sh-fields-list'),meta=$('sh-fields-meta');if(!list||!meta)return;list.replaceChildren();
+    const d=selected();
+    if(!d){list.hidden=true;meta.textContent=state.catalogLoading?'正在读取当前授权目录…':state.session?(state.datasets.length?'选择数据集后显示字段、类型与币种。':'当前身份尚无可用数据集。'):'连接工作区后加载当前授权目录。';return;}
+    meta.textContent=datasetTitle(d)+' · '+d.dataset.id+' · v'+d.dataset.version+' · '+d.dimensions.length+' 个维度 · '+d.metrics.length+' 个指标 · 已发布组合';
+    const head=node('div',undefined,'column-line');head.append(node('b','字段'),node('code','类型 · 币种或单位'));list.append(head);
+    for(const c of d.columns){const line=node('div',undefined,'column-line');line.append(node('b',c.label),node('code',c.type+(c.currency?' · '+c.currency:'')+(c.unit?' · '+c.unit:'')));list.append(line);}
+    list.hidden=false;
   }
-  function chooseDataset(d) {$('query-dataset').value=d.dataset.id+'@'+d.dataset.version;queryChanged();$('query-date').value=dateInZone(d.timezone);openPage('workspace');}
   async function loadProduct(id,refresh) {
-    const epoch=state.epoch,operation=++state.catalogOperation;state.product=id;state.view++;state.catalogLoading=true;clearResult();busy(0);$('catalog-product').value=id;$('query-product').value=id;state.datasets=[];renderCatalog();$('query-dataset').replaceChildren();
+    const epoch=state.epoch,operation=++state.catalogOperation;state.product=id;state.view++;state.catalogLoading=true;clearResult();busy(0);$('query-product').value=id;state.datasets=[];renderCatalog();$('query-dataset').replaceChildren();
     const active=()=>epoch===state.epoch&&operation===state.catalogOperation&&id===state.product;
     try {
       let datasets=state.catalogs.get(id);
@@ -348,13 +348,12 @@
       const offered=embedded?session.integrations.filter(i=>i===embedRequest.integration):session.integrations;
       if(!offered.length)throw new Failure(403,'AUTH_SCOPE_DENIED');
       state.session=session;state.capabilities=caps;$('export-pdf').hidden=!caps.formats.includes('pdf');
-      for(const id of ['catalog-product','query-product'])for(const integration of offered){const option=node('option',integration);option.value=integration;$(id).append(option);}
-      $('overview-products').textContent=String(session.integrations.length);$('overview-formats').textContent=caps.formats.map(f=>String(f).toUpperCase()).join(' / ');
+      for(const integration of offered){const option=node('option',integration);option.value=integration;$('query-product').append(option);}
       $('actor-label').textContent=session.identity.subject;$('tenant-label').textContent=session.identity.tenant;$('connection-label').textContent='API 已连接';$('connection-dot').className='status-dot connected';if(!embedded)$('logout').disabled=false;
       addDetails('identity-details',[['平台租户',session.identity.tenant],['当前主体',session.identity.subject],['发行方',session.identity.issuer],['产品连接',session.integrations.join('、')]]);
       addDetails('capability-details',[['来源配置',caps.profile],['数据类别','合同模拟器 / 合成数据'],['查询组合',caps.query_shapes],['导出格式',caps.formats.join('、')],['提交限额','进行中任务 '+caps.quotas.jobs_in_flight+' · 保留结果 '+caps.quotas.stored_results+' · 每小时提交 '+caps.quotas.admissions_per_hour],['生产准入',caps.production_approved===true?'已准入':'尚未准入']]);
       $('connection-overlay').hidden=true;document.querySelector('.shell').inert=false;busy(0);if(library&&!$('page-library').hidden)library.show();
-      if(embedded){document.querySelector('.shell').hidden=false;showEmbedView();embed.expect(state.token);}else{openPage(location.hash.slice(1));$('main').focus();}
+      if(embedded){document.querySelector('.shell').hidden=false;showEmbedView();embed.expect(state.token);}else{openPage(location.hash.slice(1));$('main').focus({preventScroll:true});if(drawerAsked){drawerAsked=false;setTimeout(()=>drawer.open($('sh-data-chip')),0);}}
       state.starting=false;
       try{
         await loadProduct(offered[0]);
@@ -535,7 +534,7 @@
     renderDesigner();renderTable(result);dashboard.refresh(result,query,!!meta);documents.refresh(result,query);
     const summary=$('result-summary');summary.replaceChildren();
     for(const [id,value] of Object.entries(result.totals).slice(0,20)){const column=result.columns.find(c=>c.id===id);const card=node('div',undefined,'summary-card');card.append(node('small',(column?.label||id)+' · 原范围合计'+(column?.currency?' / '+column.currency:column?.unit?' / '+column.unit:'')),node('strong',value));summary.append(card);}
-    summary.hidden=!summary.children.length;$('result-table-wrap').hidden=!result.rows.length;$('result-empty').hidden=!!result.rows.length;
+    summary.hidden=!summary.children.length;$('start-steps').hidden=true;$('result-table-wrap').hidden=!result.rows.length;$('result-empty').hidden=!!result.rows.length;
     if(!result.rows.length){$('result-empty').replaceChildren(node('b','当前授权范围没有结果'),node('p','请检查数据时点与公司选择。'));}
     $('result-title').textContent=datasetTitle({columns:result.columns,dataset:query.dataset});
     $('result-kind').textContent=meta?'冻结快照':'查询预览';$('result-kind').className='badge'+(meta?'':' neutral');
@@ -549,10 +548,10 @@
     if(embedded)setTimeout(openResource,0);
   }
   function renderJobs() {
-    // S07-E: the rail's badge and the overview count every job the console knows; the list and its note show the ones the filter keeps.
+    // S07-E: the rail's badge counts every job the console knows; the list and its note show the ones the filter keeps.
     const all=Array.from(state.jobs.values()).reverse(),f=state.jobsFilter,filtered=!!(f.kind||f.state);
     const values=all.filter(j=>(!f.kind||j.kind===f.kind)&&(!f.state||j.state===f.state));
-    $('task-count').textContent=String(all.length);$('overview-jobs').textContent=String(all.length);$('tasks-note').textContent=values.length+' 项';
+    $('task-count').textContent=String(all.length);$('tasks-note').textContent=values.length+' 项';
     $('tasks-empty').hidden=!!values.length;$('tasks-table-wrap').hidden=!values.length;const body=$('tasks-body');body.replaceChildren();
     const emptyTitle=$('tasks-empty').querySelector('b');if(emptyTitle)emptyTitle.textContent=filtered?'没有符合筛选的任务':'尚无任务';
     if($('tasks-more')){const full=state.jobs.size>=maxKnownJobs;$('tasks-more').hidden=!state.jobsMore&&!full;$('tasks-more-button').hidden=!state.jobsMore||full;$('tasks-more-note').textContent=full?'已显示 '+maxKnownJobs+' 项；更早的任务请用任务 ID 打开。':'';}
@@ -669,7 +668,7 @@
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
   document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.open)));
   if(!embedded){$('connect-form').addEventListener('submit',connect);$('logout').addEventListener('click',()=>disconnect());$('sh-data-chip').addEventListener('click',()=>drawer.open($('sh-data-chip')));document.querySelectorAll('[data-panel="tasks"]').forEach(b=>b.addEventListener('click',()=>tasksPanel.isOpen()?tasksPanel.close():tasksPanel.open(b)));}
-  for(const id of ['catalog-product','query-product'])$(id).addEventListener('change',()=>loadProduct($(id).value).catch(error=>fail(error)));
+  $('query-product').addEventListener('change',()=>loadProduct($('query-product').value).catch(error=>fail(error)));
   $('query-dataset').addEventListener('change',()=>{queryChanged();$('query-date').value=selected()?dateInZone(selected().timezone):'';});
   for(const id of ['query-companies','query-date'])$(id).addEventListener('input',queryChanged);
   $('refresh-catalog').addEventListener('click',()=>{if(state.product)loadProduct(state.product,true).then(()=>notify('数据目录已刷新。','success')).catch(error=>fail(error));});

@@ -2,7 +2,7 @@
 // real mouse and keyboard input over the Chrome DevTools Protocol. The console's pages are shown at 1440 px beside the prototype's two non-studio
 // screens (IDP_Reporting_Designer_UIUX_V3.0.html: the 模板中心 view, whose header and left column are the shell's specification, and the 数据中心 view),
 // alone at 1280, 768 and 390 px in the light and the dark scheme (no horizontal overflow, the contrast of every visible text measured), and a session
-// follows: sign in, the overview, the data centre, the workbench (preview, snapshot), the dashboard studio (three widgets, the structure panel, save,
+// follows: sign in (the workbench is the home since S07-H), the data drawer with the dataset's fields, the workbench (preview, snapshot), the dashboard studio (three widgets, the structure panel, save,
 // the versions tab, the publish confirmation, the help), the tasks page, the system page, sign out.
 // Visual sameness is judged by a person from the screenshots (docs/STUDIO.md says so); this script measures what it can and records the rest.
 // Not part of `npm test`; CI runs it through scripts/ci_browser_evidence.sh (job "browser"). By hand it needs a running reporting-demo started with a dashboard directory, and a Chrome started with
@@ -122,7 +122,7 @@ async function pair(name, left, right) {
   writeFileSync(join(outDir, name + '.png'), Buffer.from(png, 'base64')); console.log('shot', name);
 }
 
-const PAGES = ['overview', 'catalog', 'workspace', 'dashboard', 'tasks', 'system'];
+const PAGES = ['workspace', 'dashboard', 'tasks', 'system'];
 let protoServer;
 async function main() {
   if (proto) {
@@ -165,22 +165,24 @@ async function main() {
   await waitFor(`document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`, 'signed in', 30000); await sleep(400);
 
   // ---- the shell at 1440, beside the prototype's library and data centre ----------------------------------------------------------------
-  const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.console-header'),rail:r('.app-rail'),heading:r('#page-overview .page-heading'),wordmark:r('.console-header .wordmark'),logout:r('#logout'),chip:r('#sh-data-chip')};})()`);
+  const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.console-header'),rail:r('.app-rail'),heading:r('#page-workspace .page-heading'),wordmark:r('.console-header .wordmark'),logout:r('#logout'),chip:r('#sh-data-chip')};})()`);
   evidence.geometry = geo;
   check('geometry at 1440: header 68 px, the application rail 56 px, content from x = 90 (the prototype\'s library header and padding beside the rail; S07-A)', geo.header.h === 68 && geo.rail.w === 56 && geo.rail.x === 0 && Math.abs(geo.heading.x - 90) <= 1 && geo.chip.h < 40, {geo, protoGeo});
-  check('the navigation: the rail\'s eight named buttons, the active one marked, the counts of the data centre and the tasks', await evalJs(`(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['工作区概览','数据中心','报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='overview'&&document.getElementById('nav-datasets').textContent==='1'&&/^[0-9]+$/.test(document.getElementById('task-count').textContent);})()`));
+  check('the navigation: the rail\'s six named buttons (S07-H), the workbench active after the sign-in, the task count', await evalJs(`(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['报表工作台','看板工作室','模板中心','文档工作室','任务工作区','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='workspace'&&!document.getElementById('page-workspace').hidden&&/^[0-9]+$/.test(document.getElementById('task-count').textContent);})()`));
   // S07-C: the task count is the server's listing of the identity's jobs (at most 50), not this session's; it rises by one with the snapshot below.
   const tasksBefore = Number(await evalJs(`document.getElementById('task-count').textContent`));
-  check('the header: wordmark label REPORTING WORKSPACE, the environment tag, the identity, 退出工作区', await evalJs(`document.getElementById('shell-label').textContent==='REPORTING WORKSPACE'&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`));
-  await shot('console-01-overview');
-  await pair('pair-shell', 'proto-library', 'console-01-overview');
+  check('the header: wordmark label REPORT WORKBENCH, the environment tag, the identity, 退出工作区; the steps of a first sign-in in the empty workbench', await evalJs(`document.getElementById('shell-label').textContent==='REPORT WORKBENCH'&&!document.getElementById('start-steps').hidden&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`));
+  await shot('console-01-home');
+  await pair('pair-shell', 'proto-library', 'console-01-home');
   check('no horizontal overflow at 1440 (light)', !(await overflow()).over, await overflow());
-  await contrast('overview 1440 light');
-  await nav('catalog');
-  check('the data centre: the label DATA CENTER, the product chips, the dataset card with its column table', await evalJs(`(()=>{const c=document.querySelector('#catalog-grid .catalog-card');return document.getElementById('shell-label').textContent==='DATA CENTER'&&document.title==='IDP Reporting · 数据中心'&&!!document.querySelector('#page-catalog .dc-chips select')&&!!c&&c.querySelectorAll('.column-line').length===4;})()`));
-  await shot('console-02-datacenter');
-  await pair('pair-datacenter', 'proto-datacenter', 'console-02-datacenter');
-  await contrast('data centre 1440 light');
+  await contrast('home 1440 light');
+  // S07-H: the data centre is the data drawer's field list, for the dataset chosen in it.
+  await click('#sh-data-chip'); await waitFor(`!document.getElementById('sh-d-data').hidden&&!document.getElementById('sh-fields-list').hidden`, 'the data drawer with the fields'); await sleep(250);
+  check('the data drawer lists the chosen dataset\'s columns, types and currencies, and 刷新目录', await evalJs(`(()=>{const l=document.getElementById('sh-fields-list');return l.querySelectorAll('.column-line').length===4&&/decimal · CNY/.test(l.textContent)&&/receivables\\.aging · v1\\.0\\.0/.test(document.getElementById('sh-fields-meta').textContent)&&document.getElementById('refresh-catalog').closest('#sh-d-data')!==null;})()`));
+  await shot('console-02-data-fields');
+  await pair('pair-datacenter', 'proto-datacenter', 'console-02-data-fields');
+  await contrast('data drawer fields 1440 light');
+  await key('Escape'); await sleep(200);
   await nav('dashboard');
   check('the dashboard studio before a result: the start card with 选择数据…, 未查询, the console header above it (S07-F, one shell), the rail still there and the studio beside it and below the header', await evalJs(`(()=>{const r=document.querySelector('.app-rail').getBoundingClientRect(),s=document.getElementById('bd-studio').getBoundingClientRect();return document.body.classList.contains('board-on')&&!document.getElementById('bd-start').hidden&&document.getElementById('bd-start-open').textContent.trim()==='选择数据…'&&document.getElementById('bd-state').textContent==='未查询'&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='DASHBOARD STUDIO'&&getComputedStyle(document.getElementById('bd-wordmark')).display==='none'&&r.width===56&&Math.abs(s.left-56)<=1&&Math.abs(s.top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1;})()`));
   await shot('console-05-dashboard-start');
@@ -196,8 +198,8 @@ async function main() {
   await contrast('workbench 1440 light');
 
   // ---- the session: the workbench ----------------------------------------------------------------------------------------------------
-  await nav('catalog'); await clickBtn('#catalog-grid .catalog-card', '打开工作台'); await waitFor(`!document.getElementById('page-workspace').hidden`, 'the workbench from the card');
-  check('打开工作台 on the data centre card selects the dataset in the workbench', await evalJs(`document.getElementById('query-dataset').value==='receivables.aging@1.0.0'&&document.querySelector('.app-rail [aria-current="page"]').dataset.page==='workspace'`));
+  await nav('workspace');
+  check('the workbench has the dataset selected', await evalJs(`document.getElementById('query-dataset').value==='receivables.aging@1.0.0'&&document.querySelector('.app-rail [aria-current="page"]').dataset.page==='workspace'`));
   await typeInto('#query-companies', 'company_demo');
   await clickBtn('#page-workspace', '查询预览'); await waitFor(`!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`, 'preview', 30000);
   check('the preview: 查询预览 badge, rows in the table, the total card', await evalJs(`document.getElementById('result-kind').textContent==='查询预览'&&document.querySelectorAll('#result-table tbody tr').length===3&&document.querySelector('#result-summary strong').textContent==='9007199254740993.01'`));
@@ -283,7 +285,7 @@ async function main() {
 
   // ---- dark at 1440 ----------------------------------------------------------------------------------------------------------------------
   await viewport(1440, 900, 'dark');
-  for (const p of PAGES) { await nav(p); await contrast(`${p} 1440 dark`); check(`no horizontal overflow at 1440 dark (${p})`, !(await overflow()).over, await overflow()); if (['overview', 'catalog', 'workspace', 'dashboard'].includes(p)) await shot(`console-1440-dark-${p}`); }
+  for (const p of PAGES) { await nav(p); await contrast(`${p} 1440 dark`); check(`no horizontal overflow at 1440 dark (${p})`, !(await overflow()).over, await overflow()); if (['workspace', 'dashboard'].includes(p)) await shot(`console-1440-dark-${p}`); }
   await viewport(1440, 900, 'light');
 
   // ---- alone at 1280, 768, 390, light and dark ---------------------------------------------------------------------------------------------
@@ -294,7 +296,7 @@ async function main() {
         await nav(p);
         const o = await overflow(); check(`no horizontal overflow at ${w} ${scheme} (${p})`, !o.over, o);
         await contrast(`${p} ${w} ${scheme}`);
-        if (['overview', 'workspace', 'dashboard'].includes(p)) await shot(`console-${w}-${scheme}-${p}`);
+        if (['workspace', 'dashboard'].includes(p)) await shot(`console-${w}-${scheme}-${p}`);
       }
     }
     await viewport(w, h, 'light', mobile);
@@ -317,9 +319,9 @@ async function main() {
   await viewport(1440, 900, 'light');
 
   // ---- sign out --------------------------------------------------------------------------------------------------------------------------
-  await nav('overview');
+  await nav('workspace');
   await clickBtn('.console-header', '退出工作区'); await sleep(300);
-  check('退出工作区: the card is back, the shell inert, the identity and the counts cleared, nothing in the browser\'s storage', await evalJs(`!document.getElementById('connection-overlay').hidden&&document.querySelector('.shell').inert===true&&document.getElementById('actor-label').textContent==='未连接'&&document.getElementById('nav-datasets').textContent==='0'&&document.getElementById('access-token').value===''&&localStorage.length===0&&sessionStorage.length===0`));
+  check('退出工作区: the card is back, the shell inert, the identity and the counts cleared, nothing in the browser\'s storage', await evalJs(`!document.getElementById('connection-overlay').hidden&&document.querySelector('.shell').inert===true&&document.getElementById('actor-label').textContent==='未连接'&&document.getElementById('sh-fields-list').hidden&&document.getElementById('access-token').value===''&&localStorage.length===0&&sessionStorage.length===0`));
   await shot('session-signout');
   check('no page error', await evalJs(`!window.__errors`), await evalJs(`JSON.stringify(window.__errors||[])`));
 }

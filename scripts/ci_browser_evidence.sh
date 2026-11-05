@@ -59,7 +59,7 @@ run baseline scripts/ux_baseline_s07.mjs --out "$out/baseline.json" --label ci
 # The baseline is held to docs/UX_BASELINE_S07.md: a slice may lower these numbers, never raise them without saying so there.
 node -e '
 const t=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).totals;
-const max={clicks:34,pages:12,shells:0,deadEnds:0};
+const max={clicks:31,pages:9,shells:0,deadEnds:0};
 const over=Object.keys(max).filter(k=>t[k]>max[k]);
 console.log("== baseline totals",JSON.stringify(t),"held to",JSON.stringify(max));
 if(over.length){console.error("== baseline: over the documented numbers: "+over.join(", "));process.exit(1);}

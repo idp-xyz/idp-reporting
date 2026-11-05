@@ -74,6 +74,8 @@ async function task(name, fn) {
 const signedOut = () => evalJs(`!document.getElementById('connection-overlay').hidden`);
 async function signIn() { await typeInto('#access-token', token); await clickBtn('.connection-card', '连接工作区'); await waitFor(`document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`, 'signed in'); await sleep(300); }
 async function openPage(name) {
+  // A person does not click their way to the page they are on (S07-H, ADR 0011 decision 7).
+  if (await evalJs(`(()=>{const p=document.getElementById('page-${name}');return !!p&&!p.hidden;})()`)) return;
   // The way a person gets to a page from wherever they are: the navigation if it is on screen (the rail of S07-A, or the console's column), else the way out the current shell offers.
   const onScreen = await evalJs(`(()=>{const b=document.querySelector('[data-page="${name}"]');if(!b)return false;const r=b.getBoundingClientRect();if(r.width===0)return false;const at=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!at&&(at===b||b.contains(at));})()`);
   if (onScreen) { await click(`[data-page="${name}"]`); await waitFor(`!document.getElementById('page-${name}').hidden`, 'page ' + name); await sleep(250); return; }
@@ -194,8 +196,17 @@ async function main() {
   });
 
   // T7 · 查看一个数据集的字段与币种，再用它查询预览 (ADR 0011 decision 7, before S07-H folds the data centre into the data drawer). The person reads
-  // the columns, their types and currencies where the console shows them, then queries that dataset: on main through the data centre's card and its 打开工作台.
+  // the columns, their types and currencies where the console shows them, then queries that dataset: before S07-H through the data centre's card and its
+  // 打开工作台; after it, the data drawer shows the chosen dataset's columns beside the query and the preview runs from there.
   await task('T7 查看数据集的字段与币种 → 用它查询预览', async () => {
+    if (!await evalJs(`!!document.getElementById('page-catalog')`)) {
+      await click('#sh-data-chip'); await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer');
+      if (await evalJs(`document.getElementById('query-dataset').value!=='receivables.aging@1.0.0'`)) { await click('#query-dataset'); await evalJs(`(()=>{const s=document.getElementById('query-dataset');s.value='receivables.aging@1.0.0';s.dispatchEvent(new Event('change',{bubbles:true}));})()`); }
+      await waitFor(`[...document.querySelectorAll('#sh-fields .column-line code')].some(c=>c.textContent.includes('CNY'))`, 'the columns with their currency in the drawer');
+      if (!await evalJs(`document.getElementById('query-companies').value`)) await typeInto('#query-companies', 'company_demo');
+      await clickBtn('#sh-d-data', '查询预览'); await waitFor(`document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled&&document.getElementById('sh-d-data').hidden`, 'preview', 60000); await idle();
+      return;
+    }
     await openPage('catalog');
     await waitFor(`[...document.querySelectorAll('#catalog-grid .catalog-card .column-line code')].some(c=>c.textContent.includes('CNY'))`, 'the columns with their currency');
     await clickExpr(`[...document.querySelectorAll('#catalog-grid .catalog-card')].find(c=>c.querySelector('.description')?.textContent.startsWith('receivables.aging'))?.querySelector('.card-bottom button')`, '打开工作台');
