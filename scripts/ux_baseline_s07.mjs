@@ -1,4 +1,4 @@
-// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): five tasks a person does in the console, driven with real
+// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): six tasks a person does in the console, driven with real
 // mouse and keyboard input over the Chrome DevTools Protocol, counting what the person pays for each: clicks, texts typed, page switches (a
 // section shown in place of another), shell changes (the chrome around the page replaced: console shell ↔ document studio ↔ template centre ↔
 // dashboard studio), dialogs opened and dead ends (the page telling the person to go somewhere else first). The same script runs before and after a
@@ -165,6 +165,32 @@ async function main() {
     await openPage('dashboard'); await sleep(300);
     await openPage('library'); await waitFor(`document.querySelectorAll('#page-library .sample-card').length>=37`, 'centre', 30000); await sleep(300);
     await clickBtn('#page-library .library-header', '返回设计器'); await waitFor(`!document.getElementById('page-documents').hidden`, 'studio'); await sleep(300);
+  });
+
+  // T6 · 报表工作台里调整一列、保存并发布布局 (ADR 0011), on the result T4 left on the workbench. Publishing as in T2: a person presses 发布 first.
+  // Before S07-G the layout designer refuses twice (nothing saved yet, then the release state not read): each refusal is a dead end, and the person
+  // does the step it asks for and presses 发布 again. After S07-G 发布 opens a confirmation offering 保存并发布 (or 确认发布), and the script presses it.
+  await task('T6 报表工作台：调整一列 → 保存 → 发布布局', async () => {
+    await openPage('workspace');
+    if (await evalJs(`document.getElementById('result-table-wrap').hidden`)) throw new Error('no result on the workbench for the layout designer');
+    if (!await evalJs(`document.getElementById('report-designer').open`)) await click('#report-designer > summary');
+    await waitFor(`document.querySelectorAll('#designer-columns .designer-row').length>=2`, 'the designer columns');
+    await clickExpr(`[...document.querySelectorAll('#designer-columns .designer-row')][1]?.querySelector('button')`, '上移');
+    await waitFor(`document.getElementById('layout-status').textContent.startsWith('布局已应用')`, 'the column moved');
+    const published = `document.getElementById('layout-release-info').textContent.startsWith('已发布版本')`;
+    const confirm = `(${btnIn('[role=dialog]', '保存并发布')}||${btnIn('[role=dialog]', '确认发布')})`;
+    for (let refusals = 0; ; refusals++) {
+      await clickBtn('#report-designer', '发布'); await sleep(400); await idle();
+      if (await evalJs(`!!${confirm}`)) { await clickExpr(confirm, '保存并发布 / 确认发布'); await waitFor(published, 'published', 30000); await idle(); break; }
+      if (await evalJs(published)) break;
+      await evalJs(`window.__ux.deadEnd()`);
+      if (refusals >= 2) throw new Error('发布 refused three times: ' + await evalJs(`document.getElementById('layout-status').textContent`));
+      if (!await evalJs(`document.getElementById('layout-server-status').textContent.startsWith('已保存 ')`)) {
+        await clickBtn('#report-designer', '保存服务器版本'); await waitFor(`document.getElementById('layout-server-status').textContent.startsWith('已保存 ')`, 'saved', 30000); await idle();
+      } else {
+        await clickBtn('#report-designer', '读取发布状态'); await waitFor(`document.getElementById('layout-release-info').textContent.includes('发布修订')`, 'the release state', 30000); await idle();
+      }
+    }
   });
 
   const meterState = await read();
