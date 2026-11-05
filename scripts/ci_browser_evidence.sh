@@ -9,7 +9,8 @@
 # Usage: scripts/ci_browser_evidence.sh OUT_DIR
 # Environment: REPORTING_TYPST, REPORTING_TYPST_SHA256, REPORTING_PDF_FONTS (scripts/fetch_pdf_tools.py), GO (default go),
 #   CHROME (default google-chrome), CDP_PORT (default 9347). With CHROME_RUNNING=1 a Chrome already listening on CDP_PORT is used
-#   (a local run against Windows Chrome from WSL) and none is started or stopped. BASELINE_MAX_* override the held numbers.
+#   (a local run against Windows Chrome from WSL) and none is started or stopped. The held numbers have no override: changing
+#   them means changing this file and docs/UX_BASELINE_S07.md in the same pull request.
 set -euo pipefail
 out=${1:?usage: scripts/ci_browser_evidence.sh OUT_DIR}
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -58,7 +59,7 @@ run baseline scripts/ux_baseline_s07.mjs --out "$out/baseline.json" --label ci
 # The baseline is held to docs/UX_BASELINE_S07.md: a slice may lower these numbers, never raise them without saying so there.
 node -e '
 const t=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).totals;
-const max={clicks:+process.env.BASELINE_MAX_CLICKS||26,pages:+process.env.BASELINE_MAX_PAGES||9,shells:+process.env.BASELINE_MAX_SHELLS||0,deadEnds:+process.env.BASELINE_MAX_DEAD_ENDS||0};
+const max={clicks:26,pages:9,shells:0,deadEnds:0};
 const over=Object.keys(max).filter(k=>t[k]>max[k]);
 console.log("== baseline totals",JSON.stringify(t),"held to",JSON.stringify(max));
 if(over.length){console.error("== baseline: over the documented numbers: "+over.join(", "));process.exit(1);}
