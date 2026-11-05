@@ -1,4 +1,4 @@
-// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): six tasks a person does in the console, driven with real
+// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): seven tasks a person does in the console, driven with real
 // mouse and keyboard input over the Chrome DevTools Protocol, counting what the person pays for each: clicks, texts typed, page switches (a
 // section shown in place of another), shell changes (the chrome around the page replaced: console shell ↔ document studio ↔ template centre ↔
 // dashboard studio), dialogs opened and dead ends (the page telling the person to go somewhere else first). The same script runs before and after a
@@ -191,6 +191,17 @@ async function main() {
         await clickBtn('#report-designer', '读取发布状态'); await waitFor(`document.getElementById('layout-release-info').textContent.includes('发布修订')`, 'the release state', 30000); await idle();
       }
     }
+  });
+
+  // T7 · 查看一个数据集的字段与币种，再用它查询预览 (ADR 0011 decision 7, before S07-H folds the data centre into the data drawer). The person reads
+  // the columns, their types and currencies where the console shows them, then queries that dataset: on main through the data centre's card and its 打开工作台.
+  await task('T7 查看数据集的字段与币种 → 用它查询预览', async () => {
+    await openPage('catalog');
+    await waitFor(`[...document.querySelectorAll('#catalog-grid .catalog-card .column-line code')].some(c=>c.textContent.includes('CNY'))`, 'the columns with their currency');
+    await clickExpr(`[...document.querySelectorAll('#catalog-grid .catalog-card')].find(c=>c.querySelector('.description')?.textContent.startsWith('receivables.aging'))?.querySelector('.card-bottom button')`, '打开工作台');
+    await waitFor(`!document.getElementById('page-workspace').hidden&&document.getElementById('query-dataset').value==='receivables.aging@1.0.0'`, 'the workbench with the dataset');
+    if (!await evalJs(`document.getElementById('query-companies').value`)) await typeInto('#query-companies', 'company_demo');
+    await clickBtn('#page-workspace', '查询预览'); await waitFor(`document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`, 'preview', 60000); await idle();
   });
 
   const meterState = await read();
