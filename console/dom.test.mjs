@@ -3920,7 +3920,7 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  assert.deepEqual(['bd-help','bd-versions','board-server-save','bd-publish'].map(id=>a.$(id).getAttribute('aria-label')||a.$(id).textContent.trim()),['看板说明与操作帮助','版本','保存版本','发布']);
  assert.equal(a.$('bd-state').textContent,'未查询');assert.equal(a.$('bd-start').hidden,false);assert.equal(a.$('bd-desk').hidden,true);assert.equal(a.$('bd-start-open').dataset.act,'data');
  // Every old control is in the page once, in its region.
- const where={'board-metric':'#bd-sidebar','board-add-metric':'#bd-sidebar','board-columns':'#bd-sidebar','board-add-table':'#bd-sidebar','board-category':'#bd-sidebar','board-value':'#bd-sidebar','board-add-bar':'#bd-sidebar','board-reset':'#bd-sidebar','board-count':'#bd-sidebar','board-source':'#bd-sidebar','board-widgets':'#bd-workarea','board-status':'#bd-workarea','board-server-save':'#bd-studio>.topbar','board-server-new':'#bd-ipanel-versions','board-server-list':'#bd-ipanel-versions','board-server-listing':'#bd-ipanel-versions','board-server-version':'#bd-ipanel-versions','board-server-open':'#bd-ipanel-versions','board-server-status':'#bd-ipanel-properties','board-release-read':'#bd-ipanel-versions','board-release-publish':'#bd-ipanel-versions','board-release-withdraw':'#bd-ipanel-versions','board-published-open':'#bd-ipanel-versions','board-release-status':'#bd-ipanel-versions','board-release-history':'#bd-ipanel-versions','board-save':'#bd-ipanel-file','board-json':'#bd-ipanel-file','board-open':'#bd-ipanel-file'};
+ const where={'board-metric':'#bd-sidebar','board-add-metric':'#bd-sidebar','board-columns':'#bd-sidebar','board-add-table':'#bd-sidebar','board-category':'#bd-sidebar','board-value':'#bd-sidebar','board-add-bar':'#bd-sidebar','board-reset':'#bd-sidebar','board-count':'#bd-sidebar','board-source':'#bd-sidebar','board-widgets':'#bd-workarea','board-status':'#bd-workarea','board-server-save':'#bd-studio>.topbar','board-server-new':'#bd-d-versions','board-server-list':'#bd-d-versions','board-server-listing':'#bd-d-versions','board-server-version':'#bd-d-versions','board-server-open':'#bd-d-versions','board-server-status':'#bd-ipanel-properties','board-release-read':'#bd-d-versions','board-release-publish':'#bd-d-versions','board-release-withdraw':'#bd-d-versions','board-published-open':'#bd-d-versions','board-release-status':'#bd-d-versions','board-release-history':'#bd-d-versions','board-save':'#bd-ipanel-file','board-json':'#bd-ipanel-file','board-open':'#bd-ipanel-file'};
  for(const [id,region] of Object.entries(where)){assert.equal(d.querySelectorAll('#'+id).length,1,id);assert.ok(a.$(id).closest(region),id+' is in '+region);}
  for(const b of s.querySelectorAll('button'))assert.ok((b.getAttribute('aria-label')||b.textContent).trim().length>0,'a button of the studio has a name');
  // The rail switches the side views and the inspector's tabs the panels, by click and by arrow keys.
@@ -3928,11 +3928,11 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
  rail[1].click();assert.deepEqual([...s.querySelectorAll('.side-view')].map(v=>v.hidden),[true,false,true]);assert.equal(a.$('bd-sidebar').getAttribute('aria-labelledby'),'bd-rail-structure');
  rail[1].dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));assert.equal(rail[2].getAttribute('aria-selected'),'true');assert.equal(d.activeElement,rail[2]);assert.deepEqual(rail.map(b=>b.tabIndex),[-1,-1,0]);
  rail[0].click();
- const tabs=[...s.querySelectorAll('.inspector-tabs [role=tab]')];assert.deepEqual(tabs.map(t=>t.textContent),['属性','版本','文件']);
- tabs[2].click();assert.deepEqual(['bd-ipanel-properties','bd-ipanel-versions','bd-ipanel-file'].map(id=>a.$(id).hidden),[true,true,false]);
- tabs[2].dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));assert.equal(tabs[1].getAttribute('aria-selected'),'true');assert.equal(a.$('bd-ipanel-versions').hidden,false);assert.equal(d.activeElement,tabs[1]);
- // 版本 opens the inspector's tab; 发布 before a result, before a save and with unsaved changes says why and opens nothing.
- tabs[0].click();a.$('bd-versions').click();assert.equal(a.$('bd-ipanel-versions').hidden,false);assert.equal(d.activeElement,a.$('bd-itab-versions'));
+ const tabs=[...s.querySelectorAll('.inspector-tabs [role=tab]')];assert.deepEqual(tabs.map(t=>t.textContent),['属性','文件'],'S07-G: the 版本 tab is the version dialog');assert.equal(a.$('bd-ipanel-versions'),null);
+ tabs[1].click();assert.deepEqual(['bd-ipanel-properties','bd-ipanel-file'].map(id=>a.$(id).hidden),[true,false]);
+ tabs[1].dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));assert.equal(tabs[0].getAttribute('aria-selected'),'true');assert.equal(a.$('bd-ipanel-properties').hidden,false);assert.equal(d.activeElement,tabs[0]);
+ // 版本 and 发布 before a result say why and open nothing.
+ a.$('bd-versions').click();await flush();assert.equal(a.$('bd-d-versions').hidden,true);assert.equal(a.$('board-status').textContent,'请先选择数据：预览或冻结快照。');
  a.$('bd-publish').click();await flush();assert.equal(a.$('board-status').textContent,'请先选择数据：预览或冻结快照。');assert.equal(a.$('bd-d-publish').hidden,true);
  // A result: the desk, 草稿, the context bar, the status bar and the panels name the binding.
  a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');d.querySelector('[data-page="dashboard"]').click();
@@ -4163,5 +4163,88 @@ test('S07-F: the console header is the header of every page: the studios and the
  const css=(await Promise.all(['styles.css','studio.css','library.css'].map(f=>readFile(join(root,'console/assets',f),'utf8')))).join('\n');
  for(const on of ['studio-on','library-on','board-on'])assert.equal(css.includes('body.'+on+' .console-header'),false,on+' no longer hides the console header');
  assert.match(css,/body:not\(\.embed\) #page-documents \.topbar>\.wordmark/);assert.match(css,/body:not\(\.embed\) #lib-data/);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
+
+// S07-G (ADR 0011): the layout designer has the document studio's three controls and its two dialogs; the dashboard studio's 版本 is the same dialog.
+test('S07-G G1: the layout designer: 版本 · 保存版本 · 发布 in its bar, the badge, 发布前确认 with 保存并发布, the version dialog with restore and a rollback, refusals that say what is missing',async()=>{const a=app();try{
+ const d=a.w.document,dl=()=>Object.fromEntries([...a.$('ly-publish-summary').querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+ const releasePosts=()=>a.trace.filter(t=>/\/layouts\/[a-f0-9]{32}\/release$/.test(t.path)&&t.method==='POST').length;
+ await a.login();
+ // The bar: the three controls in the document studio's order, and the badge; before a query 发布 says what is missing and opens nothing.
+ assert.deepEqual([...a.$('report-designer').querySelectorAll('.designer-bar button')].map(b=>b.textContent.trim()),['版本','保存版本','发布']);
+ assert.equal(a.$('layout-state').textContent,'未查询');
+ a.$('layout-publish').click();await flush();assert.equal(a.$('ly-d-publish').hidden,true);assert.equal(a.$('layout-status').textContent,'请先查询当前授权数据，再设计布局。');
+ a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');
+ assert.equal(a.$('layout-state').textContent,'草稿');
+ // 版本 before a save: the dialog says to save first and lists nothing.
+ a.$('layout-versions').click();await flush();assert.equal(a.$('ly-d-versions').hidden,false);assert.equal(a.$('ly-version-empty').hidden,false);assert.equal(a.$('ly-version-list').children.length,0);assert.equal(a.$('ly-version-note').textContent,'尚未保存任何版本');
+ assert.equal(d.querySelector('.shell').inert,true,'the page behind is inert');d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('ly-d-versions').hidden,true);assert.equal(d.activeElement,a.$('layout-versions'));
+ // 发布 with nothing saved: 保存并发布 saves version 1, reads its release and publishes it, in that order.
+ const before=a.trace.length;a.$('layout-publish').click();await flush();assert.equal(a.$('ly-d-publish').hidden,false,'nothing saved yet is saved first');
+ assert.equal(a.$('ly-publish-confirm').textContent,'保存并发布');assert.equal(dl()['布局'],'新布局');assert.equal(dl()['将发布的版本'],'先保存为版本 1，再发布它');assert.equal(dl()['列'],'3 列');assert.match(a.$('ly-publish-note').textContent,/先保存为版本 1/);
+ assert.equal(a.$('ly-d-publish').querySelector('[role=dialog]').getAttribute('aria-modal'),'true');assert.equal(d.activeElement,a.$('ly-publish-confirm'));
+ a.$('ly-publish-confirm').click();await until(()=>a.$('layout-state').textContent==='已发布 v1'&&!a.$('preview').disabled,'saved and published');
+ assert.deepEqual(a.trace.slice(before).filter(t=>t.path.includes('/layouts')).map(t=>t.method+' '+t.path.replace(/[a-f0-9]{32}/,'ID').replace(/^.*\/v1/,'')),['POST /layouts','GET /layouts/ID/release','POST /layouts/ID/release']);
+ assert.equal(a.$('layout-release-info').textContent,'已发布版本 1 · 发布修订 1');assert.equal(a.$('layout-state').className,'pill green');
+ const id=a.$('layout-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+ // A change: the badge says so; 发布 offers 保存并发布 again and publishes version 2.
+ a.$('designer-columns').querySelectorAll('.designer-row')[1].querySelector('button').click();assert.equal(a.$('layout-state').textContent,'已发布 v1 · 有未保存修改');assert.equal(a.$('layout-state').className,'pill amber');
+ // The old buttons, now in the version dialog, refuse with the reason instead of the query form's message.
+ a.click('layout-release-publish');assert.equal(a.$('layout-status').textContent,'列或对齐有未保存的修改：请先保存版本，或用“发布”的保存并发布。');
+ a.$('layout-publish').click();await flush();assert.equal(a.$('ly-publish-confirm').textContent,'保存并发布');assert.equal(dl()['将发布的版本'],'先保存为版本 2，再发布它');assert.equal(dl()['当前发布'],'版本 1');
+ a.$('ly-publish-confirm').click();await until(()=>a.$('layout-state').textContent==='已发布 v2'&&!a.$('preview').disabled,'v2 published');
+ // A clean saved version: 发布 reads the release state and keeps 确认发布; Esc publishes nothing.
+ const posts=releasePosts();a.$('layout-publish').click();await until(()=>!a.$('ly-d-publish').hidden,'confirmation');assert.equal(a.$('ly-publish-confirm').textContent,'确认发布');assert.equal(dl()['将发布的版本'],'保存版本 2');assert.match(a.$('ly-publish-note').textContent,/已经是当前发布版本/);
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('ly-d-publish').hidden,true);assert.equal(releasePosts(),posts);assert.equal(d.activeElement,a.$('layout-publish'));
+ // The version dialog: reads the list and the release, lists v2 and v1, marks the published one; v1 restored is an unsaved change, the pointer stays.
+ a.$('layout-versions').click();await until(()=>a.$('ly-version-list').children.length===2&&!a.$('preview').disabled,'the versions');
+ assert.deepEqual([...a.$('ly-version-list').children].map(b=>b.querySelector('strong').textContent+' '+b.querySelector('.pill').textContent),['v2 已发布','v1 已保存']);
+ assert.equal(a.$('ly-version-list').children[0].getAttribute('aria-current'),'true');assert.equal(a.$('ly-ver-restore').disabled,true,'the editor already shows v2');assert.equal(a.$('ly-version-note').textContent,'保存版本不可变；当前发布指针：v2');
+ a.$('ly-version-list').children[1].click();assert.equal(a.$('ly-vd-title').textContent,'布局 · v1');assert.equal(a.$('ly-ver-restore').disabled,false);assert.equal(d.activeElement,a.$('ly-version-list').children[1],'the focus stays on the picked version');
+ a.$('ly-ver-restore').click();await until(()=>a.$('layout-status').textContent.startsWith('已把保存版本 v1')&&!a.$('preview').disabled,'restored');
+ assert.equal(a.$('ly-d-versions').hidden,true);assert.equal(a.$('layout-state').textContent,'已发布 v2 · 有未保存修改');assert.equal(a.$('result-table').tHead.rows[0].cells[0].textContent,a.$('designer-columns').querySelectorAll('.designer-row')[0].textContent.replace(/上移.*/,'').trim());
+ // A rollback: v1 published as it is from the dialog, through the same confirmation; nothing is saved and the editor keeps its change.
+ const saves=a.trace.filter(t=>t.path.endsWith('/layouts')&&t.method==='POST').length;
+ a.$('layout-versions').click();await until(()=>a.$('ly-version-list').children.length===2&&!a.$('preview').disabled,'the versions again');a.$('ly-version-list').children[1].click();a.$('ly-ver-publish').click();await until(()=>!a.$('ly-d-publish').hidden,'rollback confirmation');
+ assert.equal(dl()['将发布的版本'],'保存版本 1（历史版本）');assert.equal(dl()['列'],undefined);assert.equal(a.$('ly-publish-confirm').textContent,'确认发布');assert.match(a.$('ly-publish-note').textContent,/明确的回退/);
+ a.$('ly-publish-confirm').click();await until(()=>a.$('layout-release-info').textContent==='已发布版本 1 · 发布修订 3'&&!a.$('preview').disabled,'rolled back');
+ assert.equal(a.trace.filter(t=>t.path.endsWith('/layouts')&&t.method==='POST').length,saves,'a rollback saves nothing');assert.equal(a.$('layout-state').textContent,'已保存 v2 · 有未保存修改');
+ const release=await(await fetch(url+'/api/reporting/v1/layouts/'+id+'/release',{headers:{Authorization:'Bearer '+token}})).json();assert.equal(release.published_version,1);assert.deepEqual(release.history.map(e=>e.action+' '+e.version),['publish 1','publish 2','publish 1']);
+ // 撤回发布 in the dialog; with nothing published it refuses with the reason.
+ a.$('layout-versions').click();await until(()=>a.$('ly-version-list').children.length===2&&!a.$('preview').disabled,'the versions, third time');a.click('layout-release-withdraw');await until(()=>a.$('layout-release-info').textContent==='未发布 · 发布修订 4'&&!a.$('preview').disabled,'withdrawn');
+ assert.equal(a.$('layout-release-withdraw').disabled,true);a.$('layout-release-withdraw').disabled=false;a.click('layout-release-withdraw');assert.equal(a.$('layout-status').textContent,'当前没有已发布版本。');
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ // Logout forgets the saved layout and the badge.
+ a.click('logout');assert.equal(a.$('layout-state').textContent,'未查询');assert.equal(a.$('ly-d-versions').hidden,true);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
+
+test('S07-G G2: the dashboard studio\'s 版本 is the version dialog: the list and the release read on opening, restore as an unsaved change, a rollback through 发布前确认, and the old controls in the dialog',async()=>{const a=app();try{
+ const d=a.w.document,dl=()=>Object.fromEntries([...a.$('bd-publish-summary').querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+ await a.login();a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');d.querySelector('[data-page="dashboard"]').click();
+ // 版本 before a save: the dialog, nothing listed.
+ a.$('bd-versions').click();await flush();assert.equal(a.$('bd-d-versions').hidden,false);assert.equal(a.$('bd-version-empty').hidden,false);assert.equal(a.$('bd-studio').inert,true);
+ assert.ok(d.activeElement.closest('#bd-d-versions'),'the focus is in the dialog');d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('bd-d-versions').hidden,true);assert.equal(d.activeElement,a.$('bd-versions'));
+ // v1 with one metric, v2 with two, v2 published.
+ a.click('board-add-metric');a.click('board-server-save');await until(()=>a.$('bd-state').textContent==='已保存 v1'&&!a.$('preview').disabled,'v1');
+ a.click('board-add-metric');a.$('bd-publish').click();await flush();a.$('bd-publish-confirm').click();await until(()=>a.$('bd-state').textContent==='已发布 v2'&&!a.$('preview').disabled,'v2 published');
+ const reads=a.trace.length;a.$('bd-versions').click();await until(()=>a.$('bd-version-list').children.length===2&&!a.$('preview').disabled,'the versions');
+ assert.deepEqual(a.trace.slice(reads).map(t=>t.method+' '+t.path.replace(/[a-f0-9]{32}/,'ID').replace(/^.*\/v1/,'')),['GET /dashboards','GET /dashboards/ID/release'],'opening reads the list and the release');
+ assert.deepEqual([...a.$('bd-version-list').children].map(b=>b.querySelector('strong').textContent+' '+b.querySelector('.pill').textContent),['v2 已发布','v1 已保存']);assert.equal(a.$('bd-version-note').textContent,'保存版本不可变；当前发布指针：v2');
+ // Restore v1: one metric in the editor, an unsaved change, the pointer unchanged.
+ a.$('bd-version-list').children[1].click();assert.equal(a.$('bd-vd-title').textContent,'看板 · v1');a.$('bd-ver-restore').click();await until(()=>a.$('board-status').textContent.startsWith('已把保存版本 v1')&&!a.$('preview').disabled,'restored');
+ assert.equal(a.$('bd-d-versions').hidden,true);assert.equal(a.$('board-widgets').children.length,1);assert.equal(a.$('bd-state').textContent,'已发布 v2 · 有未保存修改');
+ // A rollback to v1 from the dialog: 发布前确认 names it, nothing is saved, the editor keeps its content.
+ const saves=a.trace.filter(t=>t.path.endsWith('/dashboards')&&t.method==='POST').length;
+ a.$('bd-versions').click();await until(()=>a.$('bd-version-list').children.length===2&&!a.$('preview').disabled,'the versions again');a.$('bd-version-list').children[1].click();a.$('bd-ver-publish').click();await until(()=>!a.$('bd-d-publish').hidden,'rollback confirmation');
+ assert.equal(dl()['将发布的版本'],'保存版本 1（历史版本）');assert.equal(dl()['组件'],undefined);assert.equal(a.$('bd-publish-confirm').textContent,'确认发布');assert.match(a.$('bd-publish-note').textContent,/明确的回退/);
+ a.$('bd-publish-confirm').click();await until(()=>a.$('board-release-status').textContent==='发布修订 2 · 已发布版本 1'&&!a.$('preview').disabled,'rolled back');
+ assert.equal(a.trace.filter(t=>t.path.endsWith('/dashboards')&&t.method==='POST').length,saves,'a rollback saves nothing');assert.equal(a.$('board-widgets').children.length,1);assert.equal(a.$('bd-state').textContent,'已保存 v2 · 有未保存修改');
+ // The old controls live in the dialog: 打开已发布看板 opens v1, and the raw opener still opens a version by number.
+ a.$('bd-versions').click();await until(()=>a.$('bd-version-list').children.length===2&&!a.$('preview').disabled,'the versions, third time');
+ a.click('board-published-open');await until(()=>a.$('board-server-status').textContent.includes('已打开发布看板')&&!a.$('preview').disabled,'published open');assert.equal(a.$('board-widgets').children.length,1);assert.equal(a.$('bd-version-list').children[1].getAttribute('aria-current'),'true','the dialog follows the editor\'s version');
+ const boardID=a.$('board-server-status').textContent.match(/[a-f0-9]{32}/)[0];a.click('board-server-list');await until(()=>[...a.$('board-server-listing').options].some(o=>o.value===boardID)&&!a.$('preview').disabled,'listing');a.$('board-server-listing').value=boardID;a.$('board-server-version').value='2';a.click('board-server-open');await until(()=>a.$('board-server-status').textContent.includes('版本 2')&&!a.$('preview').disabled,'v2 opened');assert.equal(a.$('board-widgets').children.length,2);
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('bd-d-versions').hidden,true);
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});

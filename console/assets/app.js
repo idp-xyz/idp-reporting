@@ -11,7 +11,7 @@
   // The shell's wordmark names the page (S06-C); the studios and the centre carry their own wordmarks.
   const labels = {overview:'REPORTING WORKSPACE',catalog:'DATA CENTER',workspace:'REPORT WORKBENCH',dashboard:'DASHBOARD STUDIO',library:'TEMPLATE WORKSPACE',documents:'DOCUMENT STUDIO',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
   let board=null;
-  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),jobsFilter:{kind:'',state:''},jobsMore:'',controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
+  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),jobsFilter:{kind:'',state:''},jobsMore:'',controllers:new Set(),releaseView:null,savedLayout:null,layoutLatest:0,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,changed:()=>{if(board)board.sync();},exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
   const documents=window.createReportingDocuments({
    // The studio's crumb, wordmark and rail go to the template centre (S06-B part 3); the embed page has no centre and keeps the template chooser.
@@ -92,6 +92,7 @@
   const tasksPanel=makeDrawer('sh-d-tasks',[['#page-tasks .restore-panel','sh-tasks-slot'],['#page-tasks article.panel','sh-tasks-slot'],['#refresh-tasks','sh-tasks-foot']],()=>$('tasks-body').querySelector('button')||$('restore-id'),on=>{const b=document.querySelector('[data-panel="tasks"]');if(b)b.setAttribute('aria-expanded',String(on));
     // Opening the panel reads the server's list again (S07-C), quietly: it does not hold the page, and what is on screen stays until the answer.
     if(on&&state.session&&!state.starting){const m=mark();loadJobs().catch(error=>{if(!(error instanceof Stale))fail(error,m,{label:'任务列表'});});}});
+  const lyDialogs={versions:makeDrawer('ly-d-versions',[],()=>$('ly-version-list').querySelector('[aria-current="true"]')),publish:makeDrawer('ly-d-publish',[],()=>$('ly-publish-confirm'))};
   function dataSummary() {if(!state.lastResult||!state.query)return null;const q=state.query;const text=q.dataset.id+'@'+q.dataset.version+' · '+q.company_ids.join('、')+' · '+q.as_of;return {dataset:q.dataset.id+'@'+q.dataset.version,scope:q.company_ids.join('、'),date:q.as_of,kind:state.snapshot?'冻结快照':'查询预览',text};}
   function updateChip() {
     const chip=$('sh-data-chip');if(!chip)return;const s=dataSummary();
@@ -118,7 +119,7 @@
   }
   function clearResult() {
     dashboard.clear();documents.clear();
-    $('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;
+    $('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.snapshot=null;state.query=null;state.page=0;state.cursor='';state.lastResult=null;renderLayoutState();
     $('result-table').tHead.replaceChildren();$('result-table').tBodies[0].replaceChildren();
     $('result-summary').replaceChildren();$('result-summary').hidden=true;
     $('result-table-wrap').hidden=true;$('result-empty').hidden=false;$('result-empty').replaceChildren(iconBox('table','empty-icon'),node('b','从一个已发布的数据集开始'),node('p','金额与大整数按原始精度显示。'));$('result-pager').hidden=true;$('result-evidence').replaceChildren();$('result-evidence').hidden=true;
@@ -127,7 +128,7 @@
   }
   function disconnect(message) {
     for(const d of drawers)d.close();dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
-    state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.jobsMore='';state.jobsFilter={kind:'',state:''};for(const id of ['tasks-kind','tasks-state'])if($(id))$(id).value='';state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
+    state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;state.layoutLatest=0;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.jobsMore='';state.jobsFilter={kind:'',state:''};for(const id of ['tasks-kind','tasks-state'])if($(id))$(id).value='';state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';if($('nav-datasets'))$('nav-datasets').textContent='0';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
@@ -437,8 +438,12 @@
       const index=entries.findIndex(k=>k.id===c.id);const up=button('上移',()=>update(cols=>{[cols[index-1],cols[index]]=[cols[index],cols[index-1]];}));up.disabled=index<=0;row.append(up);
       const align=node('select');align.setAttribute('aria-label',c.label+' 对齐');for(const [value,text] of [['left','左对齐'],['right','右对齐']]){const option=node('option',text);option.value=value;align.append(option);}align.value=entries[index]?.align||'left';align.disabled=index<0;align.addEventListener('change',()=>update(cols=>{cols[index].align=align.value;}));row.append(align);target.append(row);
     }
+    renderLayoutState();
   }
-  function layoutAction(fn) {try{if(!state.lastResult||!state.session||typeof state.query?.integration_id!=='string'||state.catalogLoading||state.busy)throw new Failure(400,'INVALID_REQUEST');fn();}catch(error){$('layout-status').textContent=errorMessage(error);}}
+  // A refusal of the layout designer names what is missing (S07-G, ADR 0011 §4); the server's answers keep the console's messages.
+  class LayoutRefusal extends Error {}
+  const refuse=reason=>{throw new LayoutRefusal(reason);};
+  function layoutAction(fn) {try{if(!state.session||state.catalogLoading)refuse('请先连接工作区。');if(!state.lastResult||typeof state.query?.integration_id!=='string')refuse('请先查询当前授权数据，再设计布局。');if(state.busy)refuse('请等待当前操作结束后再试。');fn();}catch(error){$('layout-status').textContent=error instanceof LayoutRefusal?error.message:errorMessage(error);}finally{renderLayoutState();}}
   $('layout-reset').addEventListener('click',()=>layoutAction(()=>{state.layout=null;renderDesigner();renderTable(state.lastResult);$('layout-status').textContent='已恢复全部列。';}));
   $('layout-save').addEventListener('click',()=>layoutAction(()=>{const text=JSON.stringify(state.layout,null,2);if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');$('layout-json').value=text;const url=URL.createObjectURL(new Blob([$('layout-json').value],{type:'application/json'}));const link=node('a');link.href=url;link.download='report-layout.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);$('layout-status').textContent='布局文件已生成，不含业务行或访问令牌。';}));
   $('layout-open').addEventListener('click',()=>layoutAction(()=>{const text=$('layout-json').value;if(new TextEncoder().encode(text).length>65536)throw new Failure(400,'INVALID_REQUEST');let layout;try{layout=JSON.parse(text);}catch(_){throw new Failure(400,'INVALID_REQUEST');}applyLayout(layout);}));
@@ -450,15 +455,79 @@
   $('layout-server-listing').addEventListener('change',()=>{$('layout-server-version').value=$('layout-server-listing').selectedOptions[0]?.dataset.version||'1';});
   $('layout-server-open').addEventListener('click',()=>layoutAction(()=>{const id=$('layout-server-listing').value,version=Number($('layout-server-version').value);if(!isID(id)||!Number.isSafeInteger(version)||version<1||version>20)throw new Failure(400,'INVALID_REQUEST');perform(async m=>{const entry=await request('/layouts/'+id+'?version='+version);if(!current(m))throw new Stale();if(entry.id!==id||entry.version!==version)throw new Failure(0,'INVALID_RESPONSE');
     applyLayout(entry.layout,true);setSavedLayout(entry);$('layout-server-status').textContent='正在编辑 '+id+' · 版本 '+version+'；旧版本保存若已过期会返回冲突。';},{label:'布局打开'});}));
-  function setSavedLayout(entry) {if(state.savedLayout?.id!==entry.id){state.releaseView=null;$('layout-release-info').textContent='尚未读取此布局的发布状态。';$('layout-release-history').replaceChildren();}state.savedLayout=entry;}
-  function releaseTarget() {const saved=state.savedLayout;if(!saved||!savedBindingMatches(saved))throw new Failure(400,'INVALID_REQUEST');return saved;}
+  function setSavedLayout(entry) {if(state.savedLayout?.id!==entry.id){state.releaseView=null;state.layoutLatest=0;$('layout-release-info').textContent='尚未读取此布局的发布状态。';$('layout-release-history').replaceChildren();}state.savedLayout=entry;state.layoutLatest=Math.max(state.layoutLatest||0,entry.version);renderLayoutState();}
+  function releaseTarget() {const saved=state.savedLayout;if(!saved||!savedBindingMatches(saved))refuse('请先保存或打开当前数据集的服务器布局。');return saved;}
+  const sameColumns=(a,b)=>a.columns.length===b.columns.length&&a.columns.every((c,i)=>c.id===b.columns[i].id&&c.align===b.columns[i].align);
+  const layoutDirty=()=>!!state.layout&&!!state.savedLayout&&savedBindingMatches(state.savedLayout)&&!sameColumns(state.layout,state.savedLayout.layout);
   function showRelease(id,value) {
     if(!value||!Number.isSafeInteger(value.revision)||value.revision<0||value.revision>64||!Number.isSafeInteger(value.published_version)||value.published_version<0||value.published_version>20||!Array.isArray(value.history)||value.history.length!==value.revision||!value.history.every((e,i)=>e.revision===i+1&&['publish','withdraw'].includes(e.action)&&typeof e.at==='string'&&Number.isSafeInteger(e.version)))throw new Failure(0,'INVALID_RESPONSE');
-    state.releaseView={id:id,revision:value.revision};$('layout-release-info').textContent=value.published_version?'已发布版本 '+value.published_version+' · 发布修订 '+value.revision:'未发布 · 发布修订 '+value.revision;$('layout-release-history').replaceChildren();for(const event of value.history)$('layout-release-history').append(node('li',event.at+' · '+(event.action==='publish'?'发布版本 '+event.version:'撤回发布')+' · 修订 '+event.revision));
+    state.releaseView={id:id,revision:value.revision,published:value.published_version};renderLayoutState();$('layout-release-info').textContent=value.published_version?'已发布版本 '+value.published_version+' · 发布修订 '+value.revision:'未发布 · 发布修订 '+value.revision;$('layout-release-history').replaceChildren();for(const event of value.history)$('layout-release-history').append(node('li',event.at+' · '+(event.action==='publish'?'发布版本 '+event.version:'撤回发布')+' · 修订 '+event.revision));
   }
   $('layout-release-status').addEventListener('click',()=>layoutAction(()=>{const saved=releaseTarget();perform(async m=>{const value=await request('/layouts/'+saved.id+'/release');if(!current(m))throw new Stale();showRelease(saved.id,value);},{label:'发布状态'});}));
-  function changeRelease(action) {layoutAction(()=>{const saved=releaseTarget(),release=state.releaseView;if(!release||release.id!==saved.id)throw new Failure(400,'INVALID_REQUEST');if(action==='publish'&&(state.layout.columns.length!==saved.layout.columns.length||!state.layout.columns.every((c,i)=>c.id===saved.layout.columns[i].id&&c.align===saved.layout.columns[i].align)))throw new Failure(400,'INVALID_REQUEST');perform(async m=>{const value=await request('/layouts/'+saved.id+'/release',{method:'POST',body:{action:action,version:action==='publish'?saved.version:0,expected_revision:release.revision}});if(!current(m))throw new Stale();showRelease(saved.id,value);},{label:action==='publish'?'布局发布':'撤回发布',uncertain:'操作结果尚未确认，请重新读取发布状态核对。'});});}
+  // pick: a historical version from the version dialog, published as it is (a rollback); without it the editor's saved version, which must match the editor.
+  function changeRelease(action,pick) {layoutAction(()=>{const saved=releaseTarget(),release=state.releaseView,other=action==='publish'&&pick&&pick!==saved.version;if(other&&(!Number.isSafeInteger(pick)||pick<1||pick>state.layoutLatest))refuse('请选择有效的保存版本。');if(!release||release.id!==saved.id)refuse('请先刷新发布状态；冲突或结果未确认时必须重新读取。');if(action==='publish'&&!other&&!sameColumns(state.layout,saved.layout))refuse('列或对齐有未保存的修改：请先保存版本，或用“发布”的保存并发布。');if(action==='withdraw'&&!release.published)refuse('当前没有已发布版本。');perform(async m=>{const value=await request('/layouts/'+saved.id+'/release',{method:'POST',body:{action:action,version:action==='publish'?(other?pick:saved.version):0,expected_revision:release.revision}});if(!current(m))throw new Stale();showRelease(saved.id,value);},{label:action==='publish'?'布局发布':'撤回发布',uncertain:'操作结果尚未确认，请重新读取发布状态核对。'});});}
   $('layout-release-publish').addEventListener('click',()=>changeRelease('publish'));$('layout-release-withdraw').addEventListener('click',()=>changeRelease('withdraw'));
+  // ---- S07-G (ADR 0011): the layout designer's bar, its version dialog and 发布前确认, as the document studio has them ----
+  function renderLayoutState() {
+    const el=$('layout-state');if(!el)return;const saved=state.savedLayout&&savedBindingMatches(state.savedLayout)?state.savedLayout:null,release=state.releaseView&&saved&&state.releaseView.id===saved.id?state.releaseView:null;
+    let text='未查询',tone='neutral';
+    if(state.lastResult){if(!saved){text='草稿';}else{const published=!!release&&release.published===saved.version;text=(published?'已发布 v':'已保存 v')+saved.version;tone=published?'green':'blue';if(layoutDirty()){text+=' · 有未保存修改';tone='amber';}}}
+    el.textContent=text;el.className='pill '+tone;
+    if(lyDialogs.versions.isOpen())renderLayoutVersions();
+  }
+  let layoutPick=0,layoutPickFor='',layoutSaveFirst=false,layoutHistorical=0;
+  function renderLayoutVersions() {
+    const saved=state.savedLayout&&savedBindingMatches(state.savedLayout)?state.savedLayout:null,latest=saved?Math.max(state.layoutLatest||0,saved.version):0,release=state.releaseView&&saved&&state.releaseView.id===saved.id?state.releaseView:null,pub=release?release.published:0;
+    const editor=saved?saved.id+':'+saved.version:'';if(editor!==layoutPickFor||!layoutPick||layoutPick>latest){layoutPick=saved?saved.version:0;layoutPickFor=editor;}
+    const list=$('ly-version-list'),focused=list.contains(document.activeElement);list.replaceChildren();
+    for(let v=latest;v>=1;v--){const b=node('button',undefined,'version-card');b.type='button';b.setAttribute('aria-current',String(v===layoutPick));const top=node('div',undefined,'between');top.append(node('strong','v'+v),node('span',v===pub?'已发布':'已保存','pill '+(v===pub?'green':'blue')));b.append(top,node('p',v===saved.version?'编辑器打开的版本'+(layoutDirty()?'（有未保存修改）':''):'保存版本'));b.addEventListener('click',()=>{layoutPick=v;renderLayoutVersions();});list.append(b);}
+    if(focused){const c=list.querySelector('[aria-current="true"]');if(c)c.focus();}
+    const has=!!saved&&layoutPick>=1;$('ly-version-empty').hidden=has;$('ly-version-card').hidden=!has;
+    if(has){$('ly-vd-title').textContent='布局 · v'+layoutPick;$('ly-vd-note').textContent=layoutPick===saved.version?(layoutDirty()?'编辑器打开的版本，有未保存的修改；发布它会先保存为下一个版本。':'编辑器打开的版本。'):'恢复该版本只改变当前草稿；发布指针仍指向 '+(pub?'v'+pub:'未发布')+'。';$('ly-ver-restore').disabled=layoutPick===saved.version&&!layoutDirty();$('layout-release-withdraw').disabled=!pub;}
+    $('ly-version-note').textContent=saved?'保存版本不可变；当前发布指针：'+(release?(pub?'v'+pub:'无'):'（发布状态未读取）'):'尚未保存任何版本';
+  }
+  // The latest version of this layout, from the listing (the dialog lists every saved version up to it).
+  function readLayoutList(m) {return request('/layouts').then(list=>{if(!current(m))throw new Stale();if(!Array.isArray(list)||list.length>16||!list.every(v=>isID(v.id)&&Number.isSafeInteger(v.version)&&v.version>=1&&v.version<=20))throw new Failure(0,'INVALID_RESPONSE');const mine=state.savedLayout&&list.find(v=>v.id===state.savedLayout.id);if(mine)state.layoutLatest=Math.max(mine.version,state.savedLayout.version);return list;});}
+  function readLayoutRelease(m,saved) {return request('/layouts/'+saved.id+'/release').then(value=>{if(!current(m))throw new Stale();showRelease(saved.id,value);});}
+  function openLayoutVersions() {layoutAction(()=>{const saved=state.savedLayout&&savedBindingMatches(state.savedLayout)?state.savedLayout:null;layoutPick=0;renderLayoutVersions();lyDialogs.versions.open($('layout-versions'));
+    // Opening reads the list and the release state; 刷新发布状态 stays as the retry after a conflict.
+    if(saved)perform(async m=>{await readLayoutList(m);await readLayoutRelease(m,saved);renderLayoutState();},{label:'布局版本'});});}
+  function restoreLayoutVersion(version) {layoutAction(()=>{const saved=releaseTarget();if(!Number.isSafeInteger(version)||version<1||version>state.layoutLatest)refuse('请选择有效的保存版本。');perform(async m=>{const entry=await request('/layouts/'+saved.id+'?version='+version);if(!current(m))throw new Stale();if(entry.id!==saved.id||entry.version!==version)throw new Failure(0,'INVALID_RESPONSE');applyLayout(entry.layout,true);$('layout-status').textContent='已把保存版本 v'+version+' 载入编辑器，是未保存的修改；发布指针不变。';renderLayoutState();},{label:'布局版本'});});}
+  // 发布 (S07-G): reads the release state and asks; unsaved changes, or no saved version yet, become the next version first (保存并发布, as the studios since S07-B).
+  function openLayoutPublish(version) {layoutAction(()=>{
+    const saved=state.savedLayout&&savedBindingMatches(state.savedLayout)?state.savedLayout:null;
+    layoutHistorical=saved&&version&&version!==saved.version?version:0;layoutSaveFirst=!layoutHistorical&&(!saved||layoutDirty());
+    const show=()=>{
+      const s=state.savedLayout&&savedBindingMatches(state.savedLayout)?state.savedLayout:null,release=state.releaseView&&s&&state.releaseView.id===s.id?state.releaseView:null,next=s?s.version+1:1,target=layoutHistorical||(s?s.version:0);
+      const dl=$('ly-publish-summary');dl.replaceChildren();
+      const rows=[['布局',s?s.id:'新布局'],['将发布的版本',layoutSaveFirst?'先保存为版本 '+next+'，再发布它':'保存版本 '+target+(layoutHistorical?'（历史版本）':'')],['数据集',state.query.dataset.id+'@'+state.query.dataset.version]];
+      if(!layoutHistorical)rows.push(['列',state.layout.columns.length+' 列']);
+      rows.push(['当前发布',release?(release.published?'版本 '+release.published:'未发布'):'保存后读取'],['发布修订',release?String(release.revision):'保存后读取']);
+      for(const [k,v] of rows)dl.append(node('dt',k),node('dd',v));
+      $('ly-publish-note').textContent=layoutSaveFirst?(s?'列或对齐有未保存的修改：先保存为新的不可变版本，再把发布指针移到它。':'这个布局还没有保存版本：先保存为版本 1，再发布它。'):layoutHistorical?'发布历史版本是一次明确的回退：打开已发布版本得到 v'+layoutHistorical+'；编辑器里的列不变。':(release&&release.published===s.version?'这个保存版本已经是当前发布版本；再次发布会记一次新的发布修订。':'发布后，打开已发布版本得到的就是这个版本；之后的保存不改变发布指针。');
+      $('ly-publish-confirm').textContent=layoutSaveFirst?'保存并发布':'确认发布';
+      lyDialogs.publish.open($('layout-publish'));
+    };
+    if(layoutSaveFirst){show();return;}
+    perform(async m=>{await readLayoutRelease(m,saved);show();},{label:'发布状态'});
+  });}
+  $('layout-versions').addEventListener('click',()=>openLayoutVersions());
+  $('layout-publish').addEventListener('click',()=>openLayoutPublish());
+  $('ly-ver-restore').addEventListener('click',()=>{const v=layoutPick;lyDialogs.versions.close();restoreLayoutVersion(v);});
+  $('ly-ver-publish').addEventListener('click',()=>{const v=layoutPick;lyDialogs.versions.close();openLayoutPublish(v);});
+  $('ly-publish-confirm').addEventListener('click',()=>{lyDialogs.publish.close();layoutAction(()=>{
+    const fresh=!state.savedLayout||!savedBindingMatches(state.savedLayout),historical=layoutHistorical;
+    if(!layoutSaveFirst){changeRelease('publish',historical||undefined);return;}
+    // Save, read the new version's release state, publish it: the same three requests a person would make, in order, as one step.
+    const layout=copy(state.layout),prior=fresh?null:state.savedLayout;
+    perform(async m=>{
+      const entry=await request('/layouts',{method:'POST',body:{id:prior?.id||'',expected_version:prior?.version||0,layout}});if(!current(m))throw new Stale();
+      if(!isID(entry.id)||!Number.isSafeInteger(entry.version)||entry.version<1)throw new Failure(0,'INVALID_RESPONSE');setSavedLayout(entry);$('layout-server-status').textContent='已保存 '+entry.id+' · 版本 '+entry.version+'；再次保存会创建新版本。';
+      const state0=await request('/layouts/'+entry.id+'/release');if(!current(m))throw new Stale();showRelease(entry.id,state0);
+      const value=await request('/layouts/'+entry.id+'/release',{method:'POST',body:{action:'publish',version:entry.version,expected_revision:state0.revision}});if(!current(m))throw new Stale();showRelease(entry.id,value);
+      renderLayoutState();
+    },{label:'布局保存并发布',uncertain:'保存或发布的结果尚未确认：请打开“版本”核对保存版本与发布状态，再决定是否重试。'});
+  });});
   $('layout-release-open').addEventListener('click',()=>layoutAction(()=>{const saved=releaseTarget();perform(async m=>{const entry=await request('/layouts/'+saved.id+'/published');if(!current(m))throw new Stale();if(entry.id!==saved.id||!Number.isSafeInteger(entry.version)||entry.version<1||entry.version>20)throw new Failure(0,'INVALID_RESPONSE');applyLayout(entry.layout,true);setSavedLayout(entry);$('layout-server-status').textContent='已打开发布版本 '+entry.version+'；当前数据仍来自授权查询。';},{label:'打开发布版本'});}));
   function renderResult(result,query,meta) {
     checkResult(result);state.lastResult=result;state.query=copy(query);
