@@ -3,7 +3,7 @@
 // section shown in place of another), shell changes (the chrome around the page replaced: console shell ↔ document studio ↔ template centre ↔
 // dashboard studio), dialogs opened and dead ends (the page telling the person to go somewhere else first). The same script runs before and after a
 // change; the numbers go side by side into docs/UX_BASELINE_S07.md. It judges nothing else: not looks, not speed.
-// Not part of `npm test` and not CI: it needs a running reporting-demo (dashboard and template directories, the PDF flags are not needed) and a
+// Not part of `npm test`; CI runs it through scripts/ci_browser_evidence.sh (job "browser") and holds its totals. By hand it needs a running reporting-demo (dashboard and template directories, the PDF flags are not needed) and a
 // Chrome started with --headless=new --remote-debugging-port=<cdp> --user-data-dir=<empty temp dir> --no-proxy-server.
 // Safety: --base must be loopback because the bearer token is typed into the page. The script writes one JSON file (--out) and nothing else.
 // Usage: node scripts/ux_baseline_s07.mjs --out FILE.json --token-file FILE --label before|after [--base http://127.0.0.1:PORT] [--cdp PORT]

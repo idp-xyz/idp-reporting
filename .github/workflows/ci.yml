@@ -174,6 +174,7 @@ jobs:
           node --check scripts/browser_console_s06c.mjs
           node --check scripts/ux_baseline_s07.mjs
           node --check scripts/seed_demo_data.mjs
+          bash -n scripts/ci_browser_evidence.sh
       - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:
@@ -246,4 +247,45 @@ jobs:
         with:
           name: pdf-evidence
           path: ${{ runner.temp }}/pdf-evidence
+          retention-days: 14
+
+  browser:
+    name: Console in a real browser (Chrome) and the task baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.0
+      - name: Fetch the pinned Typst binary and fonts
+        run: python3 -I scripts/fetch_pdf_tools.py "$RUNNER_TEMP/pdf-tools" --github-env
+      - name: Allow the user namespaces of the Typst sandbox
+        run: |
+          if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          unshare --user --net true
+      # The console is Chinese: without a CJK font the browser draws boxes and the geometry and contrast checks measure them.
+      - name: Chrome and a CJK font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+          google-chrome --version
+      # scripts/browser_console_s06c.mjs, scripts/browser_library_s06b.mjs and scripts/ux_baseline_s07.mjs against a fresh demo each;
+      # the baseline is held to docs/UX_BASELINE_S07.md. These scripts went stale twice when only people ran them (S07-A, S07-C).
+      - name: Real-browser evidence and the task baseline
+        run: scripts/ci_browser_evidence.sh "$RUNNER_TEMP/browser-evidence"
+      - name: Keep the screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-evidence
+          path: ${{ runner.temp }}/browser-evidence
           retention-days: 14

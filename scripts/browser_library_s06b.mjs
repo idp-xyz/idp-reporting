@@ -3,28 +3,28 @@
 // the light and the dark scheme (no horizontal overflow, the contrast of every visible text measured), and a session follows: search, a filter, a favourite, a
 // classification into a collection, a sample's preview, the copy of a sample with a mapping opened in the studio, the archive, and the new-template wizard end to end.
 // Visual sameness is judged by a person from the screenshots (docs/STUDIO.md says so); this script measures what it can and records the rest.
-// Not part of `npm test` and not CI: it needs a running reporting-demo started with the PDF flags and a template directory, and a Chrome started with
+// Not part of `npm test`; CI runs it through scripts/ci_browser_evidence.sh (job "browser"). By hand it needs a running reporting-demo started with the PDF flags and a template directory, and a Chrome started with
 //   --headless=new --remote-debugging-port=<cdp> --user-data-dir=<empty temp dir> --no-proxy-server
 // It exits 1 when any check fails or the run aborts, and 2 on bad arguments; report.json is written either way.
 // Safety: --base must be loopback because the bearer token is typed into the page. The prototype is served from a loopback port of its own (--proto-port) for the
 // duration of the run. The script reads and writes only the page it drives and its own files in --out (PNGs and report.json); it removes nothing else.
-// Usage: node scripts/browser_library_s06b.mjs --out DIR --token-file FILE --proto FILE [--base http://127.0.0.1:PORT] [--cdp PORT] [--proto-port PORT]
+// Usage: node scripts/browser_library_s06b.mjs --out DIR --token-file FILE [--proto FILE] [--base http://127.0.0.1:PORT] [--cdp PORT] [--proto-port PORT]
 import {readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {parseArgs} from 'node:util';
 import {join} from 'node:path';
 
-const usage = why => { console.error(why + '\nusage: --out DIR --token-file FILE --proto FILE [--base http://127.0.0.1:PORT] [--cdp PORT] [--proto-port PORT]'); process.exit(2); };
+const usage = why => { console.error(why + '\nusage: --out DIR --token-file FILE [--proto FILE] [--base http://127.0.0.1:PORT] [--cdp PORT] [--proto-port PORT]'); process.exit(2); };
 let args;
 try {
   ({values: args} = parseArgs({options: {out: {type: 'string'}, 'token-file': {type: 'string'}, proto: {type: 'string'}, base: {type: 'string'}, cdp: {type: 'string'}, 'proto-port': {type: 'string'}}, strict: true}));
 } catch (e) { usage(e.message); }
-if (!args.out || !args['token-file'] || !args.proto) usage('--out, --token-file and --proto are required');
+if (!args.out || !args['token-file']) usage('--out and --token-file are required');
 const base = args.base || 'http://127.0.0.1:7850', cdp = args.cdp || '9347', protoPort = Number(args['proto-port'] || 7851), outDir = args.out;
 let baseUrl;
 try { baseUrl = new URL(base); } catch { usage('--base is not a valid URL'); }
 if (baseUrl.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(baseUrl.hostname)) usage('--base must be an http loopback address');
-const token = readFileSync(args['token-file'], 'utf8').trim(), proto = readFileSync(args.proto);
+const token = readFileSync(args['token-file'], 'utf8').trim(), proto = args.proto ? readFileSync(args.proto) : null; // without --proto (CI: the prototype is not in the repository) the prototype's screens and the side-by-side pairs are skipped
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 mkdirSync(outDir, {recursive: true});
 
@@ -110,14 +110,17 @@ const contrast = async name => { const r = await evalJs(AUDIT); evidence['contra
 
 // A composite of two screenshots side by side (the prototype left, the centre right), drawn on the page's own canvas.
 async function pair(name, left, right) {
+  if (!proto) return;
   const png = await evalJs(`(async()=>{const load=d=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src='data:image/png;base64,'+d;});const a=await load(${JSON.stringify(shots.get(left))}),b=await load(${JSON.stringify(shots.get(right))});const c=document.createElement('canvas');c.width=a.width+b.width+20;c.height=Math.max(a.height,b.height);const x=c.getContext('2d');x.fillStyle='#888';x.fillRect(0,0,c.width,c.height);x.drawImage(a,0,0);x.drawImage(b,a.width+20,0);return c.toDataURL('image/png').split(',')[1];})()`);
   writeFileSync(join(outDir, name + '.png'), Buffer.from(png, 'base64')); console.log('shot', name);
 }
 
 let protoServer;
 async function main() {
-  protoServer = createServer((req, res) => { res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}); res.end(proto); });
-  await new Promise((res, rej) => { protoServer.once('error', rej); protoServer.listen(protoPort, '127.0.0.1', res); });
+  if (proto) {
+    protoServer = createServer((req, res) => { res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}); res.end(proto); });
+    await new Promise((res, rej) => { protoServer.once('error', rej); protoServer.listen(protoPort, '127.0.0.1', res); });
+  }
   const list = await (await fetch(`http://127.0.0.1:${cdp}/json/list`)).json();
   const target = list.find(t => t.type === 'page');
   if (!target) throw new Error('no page target on the debugging port');
@@ -128,10 +131,12 @@ async function main() {
   await viewport(1440, 900);
 
   // ---- the prototype's library -------------------------------------------------------------------------------------------------
-  await send('Page.navigate', {url: `http://127.0.0.1:${protoPort}/`});
-  await waitFor(`document.readyState==='complete'&&!!document.querySelector('.ribbon-tabs')`, 'the prototype'); await sleep(900);
-  await evalJs(`document.querySelector('.toolrail [data-act="library"]').click()`); await sleep(900);
-  await shot('proto-library');
+  if (proto) {
+    await send('Page.navigate', {url: `http://127.0.0.1:${protoPort}/`});
+    await waitFor(`document.readyState==='complete'&&!!document.querySelector('.ribbon-tabs')`, 'the prototype'); await sleep(900);
+    await evalJs(`document.querySelector('.toolrail [data-act="library"]').click()`); await sleep(900);
+    await shot('proto-library');
+  } else evidence.prototype = 'skipped: no --proto';
 
   // ---- the console: sign in, freeze a snapshot, seed the identity's templates ------------------------------------------------------
   await send('Page.navigate', {url: base + '/console/'});
