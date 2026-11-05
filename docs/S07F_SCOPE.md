@@ -17,7 +17,9 @@ F3 · Measurement. `scripts/ux_baseline_s07.mjs` counts a shell by the header on
 F4 · Found on the way. The template centre's cards in the card view inherited the data centre's `.catalog-card` column layout
 (styles.css, S06-C), which wrapped their actions into a second column outside the card and made the centre scroll sideways at
 every width; the centre's rule now sets its own direction. `scripts/browser_console_s06c.mjs` checked a task count with a Node
-variable inside page code (S07-C), and a digit class that a template string turned into a letter; both fixed.
+variable inside page code (S07-C), and a digit class that a template string turned into a letter; both fixed. The task panel's filter row (S07-E) had no side padding and the longer heading text pushed the count badge onto a
+second line; the row actions (刷新, 查看结果, 下载) read as one word: the filters are padded, the heading is shorter, the actions take the
+theme's selection ink (4.5:1 in both themes) and a visible gap.
 
 Tests and evidence. DOM test S07-F (the label and title of each box, the header's controls on each, the stylesheets no longer hide
 the header and hide the duplicates); the real-browser scripts of S06-C (136 checks) and S06-B (41 checks) with the boxes below the

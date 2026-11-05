@@ -258,12 +258,14 @@ tbody tr:last-child td{border-bottom:0}
 .restore-panel input{min-width:230px;flex:1;font-size:12px}
 .restore-panel .help{max-width:260px}
 .tasks-table td:last-child{overflow:visible;white-space:normal}
-.tasks-filter{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.tasks-filter{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;padding:0 20px 12px}
 .tasks-filter label{font-size:12px;color:var(--muted)}
 .tasks-filter select{font-size:12px;padding:5px 8px;min-width:120px}
 .tasks-more{display:flex;gap:12px;align-items:center;justify-content:center;padding:12px 0 2px}
 .tasks-more[hidden]{display:none}
 .tasks-table td:last-child button{margin:2px 5px 2px 0}
+/* The row's actions are quiet buttons: a visible gap and the link colour tell them apart (they read as one word before). */
+.tasks-table td:last-child button.quiet{color:var(--sel-ink);padding:3px 6px;margin-right:6px}
 .task-id{font:10px/1.7 var(--mono)}
 .system-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .details{padding:0 20px 16px;margin:0}
