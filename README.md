@@ -1,4 +1,6 @@
-# IDP Reporting Platform · S07-C
+# IDP Reporting Platform · S07-E
+
+2026-11-05。任务列表的筛选与分页（docs/S07E_SCOPE.md）：`GET /jobs` 新增 `kind`、`state` 与游标 `before`（上一页最后一个任务 ID）；任务面板有类型、状态两个筛选和“加载更多”（最多保留 500 项）。
 
 2026-11-04。按身份列任务（docs/S07C_SCOPE.md）：
 

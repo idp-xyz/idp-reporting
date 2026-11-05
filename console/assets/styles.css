@@ -254,6 +254,11 @@ tbody tr:last-child td{border-bottom:0}
 .restore-panel input{min-width:230px;flex:1;font-size:12px}
 .restore-panel .help{max-width:260px}
 .tasks-table td:last-child{overflow:visible;white-space:normal}
+.tasks-filter{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.tasks-filter label{font-size:12px;color:var(--muted)}
+.tasks-filter select{font-size:12px;padding:5px 8px;min-width:120px}
+.tasks-more{display:flex;gap:12px;align-items:center;justify-content:center;padding:12px 0 2px}
+.tasks-more[hidden]{display:none}
 .tasks-table td:last-child button{margin:2px 5px 2px 0}
 .task-id{font:10px/1.7 var(--mono)}
 .system-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}

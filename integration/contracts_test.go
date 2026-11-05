@@ -553,16 +553,16 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 			return out
 		}
 		both := []string{contractsim.FinanceIntegration, contractsim.ShipmentIntegration}
-		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, both, 10); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID, second.ID, first.ID}) {
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 10}); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID, second.ID, first.ID}) {
 			t.Fatal(ids(jobs), e)
 		}
-		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, []string{contractsim.FinanceIntegration}, 10); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID, first.ID}) {
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: []string{contractsim.FinanceIntegration}, Limit: 10}); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID, first.ID}) {
 			t.Fatal(ids(jobs), e)
 		}
-		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, both, 2); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID}) {
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 2}); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, third.ID}) {
 			t.Fatal(ids(jobs), e)
 		}
-		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, both, r.MaxJobListing); e != nil || len(jobs) != 4 || jobs[0].State != "queued" || jobs[1].Kind != "export" || jobs[1].ArtifactID != third.ArtifactID || jobs[3].SnapshotID != first.SnapshotID {
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: r.MaxJobListing}); e != nil || len(jobs) != 4 || jobs[0].State != "queued" || jobs[1].Kind != "export" || jobs[1].ArtifactID != third.ArtifactID || jobs[3].SnapshotID != first.SnapshotID {
 			t.Fatal(jobs, e)
 		}
 		for _, c := range []struct {
@@ -570,33 +570,79 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 			integrations []string
 			limit        int
 		}{{v.p.Identity, both, 0}, {v.p.Identity, both, r.MaxJobListing + 1}, {v.p.Identity, nil, 10}, {r.Identity{}, both, 10}} {
-			_, e := v.repo.Jobs(ctx, c.i, c.integrations, c.limit)
+			_, e := v.repo.Jobs(ctx, c.i, r.JobListing{Integrations: c.integrations, Limit: c.limit})
 			mustError(t, e, r.ErrInvalid)
 		}
 		stranger := v.p.Identity
 		stranger.Subject = "someone_else"
-		if jobs, e := v.repo.Jobs(ctx, stranger, both, 10); e != nil || len(jobs) != 0 {
+		if jobs, e := v.repo.Jobs(ctx, stranger, r.JobListing{Integrations: both, Limit: 10}); e != nil || len(jobs) != 0 {
 			t.Fatal(jobs, e)
 		}
 		// Through the service: the views, in the same order, each what its poll shows; a principal without integrations gets an empty page.
-		views, e := v.s.Jobs(ctx, v.p, 10)
+		views, e := v.s.Jobs(ctx, v.p, r.JobListing{Limit: 10})
 		if e != nil || len(views) != 4 || views[0].ID != fourth.ID || views[0].State != "queued" || views[1].ID != third.ID || views[1].ArtifactID != third.ArtifactID || views[2].ID != second.ID || views[2].SnapshotID != second.SnapshotID || views[3].ID != first.ID || views[3].Expired {
 			t.Fatalf("%+v %v", views, e)
 		}
-		if _, e = v.s.Jobs(ctx, v.p, 0); !errors.Is(e, r.ErrInvalid) {
+		if _, e = v.s.Jobs(ctx, v.p, r.JobListing{Limit: 0}); !errors.Is(e, r.ErrInvalid) {
 			t.Fatal("limit 0 accepted")
 		}
-		if _, e = v.s.Jobs(ctx, v.p, r.MaxJobListing+1); !errors.Is(e, r.ErrInvalid) {
+		if _, e = v.s.Jobs(ctx, v.p, r.JobListing{Limit: r.MaxJobListing + 1}); !errors.Is(e, r.ErrInvalid) {
 			t.Fatal("limit above the maximum accepted")
+		}
+		// S07-E: kind, state and the cursor, on the repository and through the service.
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 10, Kind: "snapshot"}); e != nil || !slices.Equal(ids(jobs), []string{fourth.ID, second.ID, first.ID}) {
+			t.Fatal("kind", ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 10, State: "succeeded"}); e != nil || !slices.Equal(ids(jobs), []string{third.ID, second.ID, first.ID}) {
+			t.Fatal("state", ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 10, Kind: "export", State: "queued"}); e != nil || len(jobs) != 0 {
+			t.Fatal("kind and state", ids(jobs), e)
+		}
+		// Pages of two: the second starts after the first's last job, the third is empty; together they are the whole list.
+		page1, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 2})
+		if e != nil {
+			t.Fatal(e)
+		}
+		page2, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 2, Before: page1[1].ID})
+		if e != nil || !slices.Equal(ids(page2), []string{second.ID, first.ID}) {
+			t.Fatal("second page", ids(page2), e)
+		}
+		if page3, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 2, Before: page2[1].ID}); e != nil || len(page3) != 0 {
+			t.Fatal("third page", ids(page3), e)
+		}
+		// The cursor with a filter: snapshots older than the export (third) are second and first.
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 10, Kind: "snapshot", Before: third.ID}); e != nil || !slices.Equal(ids(jobs), []string{second.ID, first.ID}) {
+			t.Fatal("cursor and kind", ids(jobs), e)
+		}
+		// A cursor that is not the identity's job, or not under these integrations, or no job at all, gives an empty page.
+		if jobs, e := v.repo.Jobs(ctx, stranger, r.JobListing{Integrations: both, Limit: 10, Before: third.ID}); e != nil || len(jobs) != 0 {
+			t.Fatal("another identity's cursor", ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: []string{contractsim.FinanceIntegration}, Limit: 10, Before: second.ID}); e != nil || len(jobs) != 0 {
+			t.Fatal("a cursor under another integration", ids(jobs), e)
+		}
+		if jobs, e := v.repo.Jobs(ctx, v.p.Identity, r.JobListing{Integrations: both, Limit: 10, Before: strings.Repeat("0", 32)}); e != nil || len(jobs) != 0 {
+			t.Fatal("an unknown cursor", ids(jobs), e)
+		}
+		for _, l := range []r.JobListing{{Integrations: both, Limit: 10, Kind: "other"}, {Integrations: both, Limit: 10, State: "done"}, {Integrations: both, Limit: 10, Before: "not an id"}} {
+			_, e := v.repo.Jobs(ctx, v.p.Identity, l)
+			mustError(t, e, r.ErrInvalid)
+		}
+		if views, e := v.s.Jobs(ctx, v.p, r.JobListing{Limit: 10, Kind: "export", Before: fourth.ID}); e != nil || len(views) != 1 || views[0].ID != third.ID {
+			t.Fatalf("service filter: %+v %v", views, e)
+		}
+		if _, e := v.s.Jobs(ctx, v.p, r.JobListing{Limit: 10, Integrations: both}); !errors.Is(e, r.ErrInvalid) {
+			t.Fatal("the caller chose the integrations")
 		}
 		none := v.p
 		none.Integrations = nil
-		if views, e := v.s.Jobs(ctx, none, 10); e != nil || len(views) != 0 {
+		if views, e := v.s.Jobs(ctx, none, r.JobListing{Limit: 10}); e != nil || len(views) != 0 {
 			t.Fatal(views, e)
 		}
 		other := v.p
 		other.Subject = "someone_else"
-		if views, e := v.s.Jobs(ctx, other, 10); e != nil || len(views) != 0 {
+		if views, e := v.s.Jobs(ctx, other, r.JobListing{Limit: 10}); e != nil || len(views) != 0 {
 			t.Fatal(views, e)
 		}
 	})

@@ -340,15 +340,19 @@ func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, er
 	return clone(v)
 }
 func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
-	return s.listing(ctx, i, integrations, limit, r.MaxIssueListing, "issue")
+	return s.listing(ctx, i, integrations, limit, r.MaxIssueListing, "issue", "", "")
 }
-func (s *Store) Jobs(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
-	return s.listing(ctx, i, integrations, limit, r.MaxJobListing, "")
+func (s *Store) Jobs(ctx context.Context, i r.Identity, l r.JobListing) ([]r.Job, error) {
+	if !l.Valid() {
+		return nil, r.ErrInvalid
+	}
+	return s.listing(ctx, i, l.Integrations, l.Limit, r.MaxJobListing, l.Kind, l.State, l.Before)
 }
 
 // listing is an identity's jobs under the given integrations, newest first (the order of admission, reversed), at most limit of them;
-// kind "" means every kind.
-func (s *Store) listing(ctx context.Context, i r.Identity, integrations []string, limit, most int, kind string) ([]r.Job, error) {
+// kind and state "" mean any; before "" means from the newest, else from the job admitted before that one (which must be the identity's,
+// under these integrations, or the page is empty).
+func (s *Store) listing(ctx context.Context, i r.Identity, integrations []string, limit, most int, kind, state, before string) ([]r.Job, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -358,9 +362,17 @@ func (s *Store) listing(ctx context.Context, i r.Identity, integrations []string
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := []r.Job{}
-	for n := len(s.order) - 1; n >= 0 && len(out) < limit; n-- {
+	from := len(s.order) - 1
+	if before != "" {
+		at := slices.Index(s.order, before)
+		if b, ok := s.jobs[before]; at < 0 || !ok || b.Owner.Identity != i || !slices.Contains(integrations, b.Owner.Integration) {
+			return out, nil
+		}
+		from = at - 1
+	}
+	for n := from; n >= 0 && len(out) < limit; n-- {
 		j := s.jobs[s.order[n]]
-		if (kind == "" || j.Kind == kind) && j.Owner.Identity == i && slices.Contains(integrations, j.Owner.Integration) {
+		if (kind == "" || j.Kind == kind) && (state == "" || j.State == state) && j.Owner.Identity == i && slices.Contains(integrations, j.Owner.Integration) {
 			c, e := clone(j)
 			if e != nil {
 				return nil, e
