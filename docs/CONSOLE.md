@@ -7,6 +7,8 @@
 
 > S07-D：用户手册随服务提供：`/console/manual/`（`docs/manual` 通过 `docs` 包嵌入二进制，只按名字提供页面、样式、截图与测试数据，不列目录；与控制台相同的 CSP 等响应头，手册样式因此在 `manual.css` 里）。应用栏底部与登录卡上的“帮助”图标在新窗口打开它。
 
+> 真实浏览器检查进 CI（2026-11-05）：CI 新增作业“Console in a real browser (Chrome) and the task baseline”，由 `scripts/ci_browser_evidence.sh` 依次跑 `browser_console_s06c.mjs`、`browser_library_s06b.mjs` 与 `ux_baseline_s07.mjs`，每个脚本各用一个全新的演示服务与 Chrome 配置；原型文件不在仓库里，所以原型截图与并排对比在 CI 中跳过（`--proto` 变为可选）。任务基线的合计被钉在 docs/UX_BASELINE_S07.md 的数（点击 ≤ 26、页面切换 ≤ 9、壳子切换 0、死胡同 0），变多即失败。截图与报告作为构件保留 14 天。本机可对 Windows Chrome 跑同一脚本：`CHROME_RUNNING=1 GO=$REPORTING_GO scripts/ci_browser_evidence.sh OUT`。
+
 > S07-F（ADR 0010）：一个壳子。控制台页眉（品牌与页面标签、数据芯片、环境、身份、退出工作区）留在每个页面上，文档工作室、模板中心与看板工作室在它下面、应用栏右侧；三者自己的顶栏成为工具栏（面包屑、标题与状态、版本、保存、发布等不变），重复页眉的字标与模板中心的第二个数据芯片在控制台里隐藏（嵌入页不变）。页眉标签分别为 DOCUMENT STUDIO、TEMPLATE WORKSPACE、DASHBOARD STUDIO。任务基线的壳子切换 8 → 0。见 docs/S07F_SCOPE.md。
 
 > S07-E：任务列表可按类型（报表快照 / 导出 / 正式出具）与状态筛选：筛选立即作用于已知任务，并向服务器读取该筛选下的第一页；一页满 50 项时显示“加载更多”，读取上一页最后一项之后的一页，放在已显示的任务之后；控制台最多保留 500 项，更早的用“恢复查看”按 ID 打开。应用栏徽标与概览计数统计全部已知任务，列表旁的“N 项”统计筛选后的行。同一时刻只有最后一次读取第一页的回答生效。退出清空列表与筛选。见 docs/S07E_SCOPE.md。
