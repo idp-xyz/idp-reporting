@@ -4215,6 +4215,9 @@ test('S07-G G1: the layout designer: 版本 · 保存版本 · 发布 in its bar
  a.$('layout-versions').click();await until(()=>a.$('ly-version-list').children.length===2&&!a.$('preview').disabled,'the versions, third time');a.click('layout-release-withdraw');await until(()=>a.$('layout-release-info').textContent==='未发布 · 发布修订 4'&&!a.$('preview').disabled,'withdrawn');
  assert.equal(a.$('layout-release-withdraw').disabled,true);a.$('layout-release-withdraw').disabled=false;a.click('layout-release-withdraw');assert.equal(a.$('layout-status').textContent,'当前没有已发布版本。');
  d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ // S07-G fix: with a layout saved, a new query (here: another company) clears the result without an error, and the badge follows.
+ a.input('query-companies','company_other');assert.equal(a.$('layout-state').textContent,'未查询');assert.equal(a.errors.length,0,a.errors.join('|'));
+ a.input('query-companies','company_demo');a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query again');assert.match(a.$('layout-state').textContent,/^已保存 v2/);
  // Logout forgets the saved layout and the badge.
  a.click('logout');assert.equal(a.$('layout-state').textContent,'未查询');assert.equal(a.$('ly-d-versions').hidden,true);
  assert.equal(a.errors.length,0,a.errors.join('|'));
