@@ -324,11 +324,11 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		return nil
 	})
 	bind("GET "+base+"/jobs", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		limit, e := listingLimit(req, 50, r.MaxJobListing)
+		f, e := jobListing(req)
 		if e != nil {
 			return e
 		}
-		v, e := service.Jobs(req.Context(), p, limit)
+		v, e := service.Jobs(req.Context(), p, f)
 		if e != nil {
 			return e
 		}
@@ -373,6 +373,35 @@ func listingLimit(req *http.Request, fallback, most int) (int, error) {
 		return n, nil
 	}
 	return fallback, nil
+}
+
+// jobListing reads GET /jobs's query (S07-C, S07-E): limit (1..MaxJobListing, default 50), kind, state and before, each at most once
+// and not empty; any other key is ErrInvalid, and so is a value the service would refuse.
+func jobListing(req *http.Request) (r.JobListing, error) {
+	values := req.URL.Query()
+	f := r.JobListing{Limit: 50}
+	for key, v := range values {
+		if len(v) != 1 || v[0] == "" {
+			return r.JobListing{}, r.ErrInvalid
+		}
+		switch key {
+		case "limit":
+			n, e := strconv.Atoi(v[0])
+			if e != nil {
+				return r.JobListing{}, r.ErrInvalid
+			}
+			f.Limit = n
+		case "kind":
+			f.Kind = v[0]
+		case "state":
+			f.State = v[0]
+		case "before":
+			f.Before = v[0]
+		default:
+			return r.JobListing{}, r.ErrInvalid
+		}
+	}
+	return f, nil
 }
 
 // capabilities is the one capability document. embedding is whether embed pages are configured for the caller's integrations

@@ -521,19 +521,26 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 // number), with expired set as the poll sets it; the source is not asked and no result is authorized here: a result is authorized
 // when it is read (GET /jobs/{id}, the snapshot's rows, the artifact's content). An issue record that cannot be read as published is
 // an error for the whole page, as in Issues.
-func (s *Service) Jobs(ctx context.Context, p Principal, limit int) ([]JobView, error) {
+//
+// S07-E: the page is narrowed by f's Kind and State and starts after f's Before (the last job of the previous page); f's Integrations
+// are the service's to fill (the held ones) and must be empty.
+func (s *Service) Jobs(ctx context.Context, p Principal, f JobListing) ([]JobView, error) {
 	if !p.Identity.Valid() {
 		return nil, ErrNotFound
 	}
-	if limit < 1 || limit > MaxJobListing {
+	if f.Integrations != nil {
 		return nil, ErrInvalid
 	}
-	integrations := s.held(p)
+	f.Integrations = []string{"-"}
+	if !f.Valid() {
+		return nil, ErrInvalid
+	}
+	f.Integrations = s.held(p)
 	out := []JobView{}
-	if len(integrations) == 0 {
+	if len(f.Integrations) == 0 {
 		return out, nil
 	}
-	jobs, e := s.repo.Jobs(ctx, p.Identity, integrations, limit)
+	jobs, e := s.repo.Jobs(ctx, p.Identity, f)
 	if e != nil {
 		return nil, e
 	}

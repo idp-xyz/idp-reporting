@@ -149,7 +149,12 @@ const (
 	// issueListingSQL is the listing of an identity's issue jobs, newest first (Store.Issues); jobs_identity_created serves it.
 	issueListingSQL = "SELECT " + jobFields + " FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5"
 	// jobListingSQL is the listing of an identity's jobs of every kind, newest first (Store.Jobs, S07-C); jobs_identity_created serves it.
-	jobListingSQL = "SELECT " + jobFields + " FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5"
+	// S07-E: of one kind ($6) and one state ($7) when they are not empty, and strictly older than the identity's job $8 when it is not empty
+	// (a job that is not the identity's, or not under $4, makes the comparison null and the page empty).
+	jobListingSQL = "SELECT " + jobFields + " FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4)" +
+		" AND ($6='' OR kind=$6) AND ($7='' OR state=$7)" +
+		" AND ($8='' OR (created_at,id) < (SELECT b.created_at,b.id FROM reporting_s01.jobs b WHERE b.id=$8 AND b.tenant=$1 AND b.issuer=$2 AND b.subject=$3 AND b.integration=ANY($4)))" +
+		" ORDER BY created_at DESC, id DESC LIMIT $5"
 )
 
 // CapacityStatement is one of the statements whose plan the capacity qualification holds to the indexes of migration 009 (S04-G): the three
@@ -172,7 +177,7 @@ func CapacityStatementsForTests() []CapacityStatement {
 			return []any{i.Tenant, i.Issuer, i.Subject, integrations, 25}
 		}},
 		{"job listing", jobListingSQL, func(i r.Identity, integrations []string) []any {
-			return []any{i.Tenant, i.Issuer, i.Subject, integrations, 50}
+			return []any{i.Tenant, i.Issuer, i.Subject, integrations, 50, "", "", ""}
 		}},
 	}
 }
@@ -510,18 +515,22 @@ func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, er
 func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
 	return s.listing(ctx, i, integrations, limit, r.MaxIssueListing, issueListingSQL)
 }
-func (s *Store) Jobs(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
-	return s.listing(ctx, i, integrations, limit, r.MaxJobListing, jobListingSQL)
+func (s *Store) Jobs(ctx context.Context, i r.Identity, l r.JobListing) ([]r.Job, error) {
+	if !l.Valid() {
+		return nil, r.ErrInvalid
+	}
+	return s.listing(ctx, i, l.Integrations, l.Limit, r.MaxJobListing, jobListingSQL, l.Kind, l.State, l.Before)
 }
 
-// listing runs one of the two listing statements as the identity, newest first, at most limit (1..most) jobs.
-func (s *Store) listing(ctx context.Context, i r.Identity, integrations []string, limit, most int, sql string) ([]r.Job, error) {
+// listing runs one of the two listing statements as the identity, newest first, at most limit (1..most) jobs; extra are the job
+// listing's kind, state and cursor.
+func (s *Store) listing(ctx context.Context, i r.Identity, integrations []string, limit, most int, sql string, extra ...any) ([]r.Job, error) {
 	if limit < 1 || limit > most || !i.Valid() || len(integrations) == 0 {
 		return nil, r.ErrInvalid
 	}
 	out := []r.Job{}
 	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, sql, i.Tenant, i.Issuer, i.Subject, integrations, limit)
+		rows, e := tx.Query(ctx, sql, append([]any{i.Tenant, i.Issuer, i.Subject, integrations, limit}, extra...)...)
 		if e != nil {
 			return e
 		}

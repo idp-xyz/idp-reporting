@@ -414,7 +414,7 @@ type IssueResult struct {
 // cancels a queued job, and a running job of any kind but issue; a running issue job is
 // returned unchanged, because the product may already hold a reservation for it. Issues lists
 // an identity's issue jobs under the given integrations, newest first, at most limit of them;
-// Jobs lists its jobs of every kind the same way (S07-C).
+// Jobs lists its jobs the same way (S07-C), narrowed and paged by a JobListing (S07-E).
 //
 // Fail and ResolveFailure are fenced by the claim. Fail fails a job that is running, at the
 // claim's generation, with a lease that has not run out by the store's clock; anything else is
@@ -451,7 +451,7 @@ type Repository interface {
 	Artifact(context.Context, Identity, string) (Artifact, error)
 	Issue(context.Context, Identity, string) (Issue, error)
 	Issues(context.Context, Identity, []string, int) ([]Job, error)
-	Jobs(context.Context, Identity, []string, int) ([]Job, error)
+	Jobs(context.Context, Identity, JobListing) ([]Job, error)
 	Sweep(context.Context, SweepOptions) (SweepResult, error)
 }
 
@@ -491,6 +491,25 @@ const MaxArtifactBytes = 8 << 20
 const MaxIssuePages = 100
 const MaxIssueListing = 100
 const MaxJobListing = 100
+
+// JobListing is one page of an identity's jobs (S07-E): under Integrations, newest first, at most Limit (1..MaxJobListing) of them;
+// of one Kind and one State when they are set; strictly older than the identity's job Before when it is set (the last job of the
+// previous page). A Before that is not the identity's job, under these integrations, gives an empty page, not an error.
+type JobListing struct {
+	Integrations []string
+	Limit        int
+	Kind, State  string
+	Before       string
+}
+
+// Valid says whether the listing can be run: a limit in range, integrations, a known kind and state or none, an id or none.
+func (l JobListing) Valid() bool {
+	return l.Limit >= 1 && l.Limit <= MaxJobListing && len(l.Integrations) > 0 &&
+		(l.Kind == "" || l.Kind == "snapshot" || l.Kind == "export" || l.Kind == "issue") &&
+		(l.State == "" || l.State == "queued" || l.State == "running" || l.State == "succeeded" || l.State == "failed" || l.State == "cancelled") &&
+		(l.Before == "" || validID(l.Before))
+}
+
 const MaxTemplateBytes = 65536
 const SourcePageSize = 50
 const LeaseDuration = 30 * time.Second

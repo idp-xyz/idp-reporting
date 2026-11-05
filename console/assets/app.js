@@ -11,7 +11,7 @@
   // The shell's wordmark names the page (S06-C); the studios and the centre carry their own wordmarks.
   const labels = {overview:'REPORTING WORKSPACE',catalog:'DATA CENTER',workspace:'REPORT WORKBENCH',tasks:'BACKGROUND TASKS',system:'PLATFORM CAPABILITIES'};
   let board=null;
-  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
+  const state = {token:'',epoch:0,view:0,catalogOperation:0,catalogLoading:false,pageLimit:'25',session:null,capabilities:null,product:'',datasets:[],catalogs:new Map(),jobs:new Map(),jobsFilter:{kind:'',state:''},jobsMore:'',controllers:new Set(),releaseView:null,savedLayout:null,layout:null,snapshot:null,query:null,page:0,cursor:'',lastResult:null,pending:null,busy:0,starting:false,resource:null,opened:false};
   const dashboard=window.createReportingDashboard({active:()=>!!state.session&&!!state.lastResult&&!state.catalogLoading&&!state.busy,changed:()=>{if(board)board.sync();},exchange:(path,options,apply,label)=>perform(async m=>{const value=await request(path,options);if(!current(m))throw new Stale();apply(value);},{label:label,uncertain:'操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'})});
   const documents=window.createReportingDocuments({
    // The studio's crumb, wordmark and rail go to the template centre (S06-B part 3); the embed page has no centre and keeps the template chooser.
@@ -54,6 +54,8 @@
   }):null;
   // The dashboard studio (board.js, S06-C): the studio's regions around the dashboard's controls, in the console and in the embed page alike.
   board=window.createReportingBoardStudio?window.createReportingBoardStudio({dashboard,open:page=>openPage(page),...(embedded?{}:{data:from=>drawer.open(from)})}):null;
+  // S07-E: the most jobs the console keeps (the list, the pages read with 加载更多) and the size of a page of the server's listing.
+  const maxKnownJobs=500,jobsPage=50;
   const statuses = {queued:'排队中',running:'执行中',succeeded:'已完成',failed:'失败',cancelled:'已取消',restricted:'访问受限'};
   // detail is a layout or binding refusal's reason and place (S03-J), when the server named them and the shape is the known one.
   class Failure extends Error { constructor(status,code,detail) { super(code); this.status=status; this.code=code; if(detail!==undefined)this.detail=detail; } }
@@ -125,7 +127,7 @@
   }
   function disconnect(message) {
     for(const d of drawers)d.close();dashboard.clear(true);documents.clear(true);if(library)library.clear();if(board)board.clear();state.epoch++;state.view++;state.catalogOperation++;state.catalogLoading=false;state.pageLimit='25';$('page-size').value='25';for(const c of state.controllers)c.abort();state.controllers.clear();
-    state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
+    state.releaseView=null;$('layout-release-info').textContent='尚未读取发布状态。';$('layout-release-history').replaceChildren();state.savedLayout=null;$('layout-server-listing').replaceChildren();$('layout-server-status').textContent='尚未关联服务器布局。';state.layout=null;$('layout-json').value='';$('designer-columns').replaceChildren();$('layout-status').textContent='查询数据后可设计布局。';state.token='';state.session=null;state.capabilities=null;state.product='';state.datasets=[];state.catalogs.clear();state.jobs.clear();state.jobsMore='';state.jobsFilter={kind:'',state:''};for(const id of ['tasks-kind','tasks-state'])if($(id))$(id).value='';state.pending=null;state.busy=0;state.starting=false;state.resource=null;state.opened=false;
     clearResult();renderJobs();$('catalog-grid').replaceChildren();$('overview-catalog').replaceChildren(node('div','连接工作区后加载当前授权目录。','empty compact'));
     $('identity-details').replaceChildren();$('capability-details').replaceChildren();$('overview-products').textContent='—';$('overview-datasets').textContent='—';if($('nav-datasets'))$('nav-datasets').textContent='0';$('overview-formats').textContent='—';$('export-pdf').hidden=true;
     for(const id of ['catalog-product','query-product','query-dataset'])$(id).replaceChildren();
@@ -477,8 +479,13 @@
     if(embedded)setTimeout(openResource,0);
   }
   function renderJobs() {
-    const values=Array.from(state.jobs.values()).reverse();$('task-count').textContent=String(values.length);$('overview-jobs').textContent=String(values.length);$('tasks-note').textContent=values.length+' 项';
+    // S07-E: the rail's badge and the overview count every job the console knows; the list and its note show the ones the filter keeps.
+    const all=Array.from(state.jobs.values()).reverse(),f=state.jobsFilter,filtered=!!(f.kind||f.state);
+    const values=all.filter(j=>(!f.kind||j.kind===f.kind)&&(!f.state||j.state===f.state));
+    $('task-count').textContent=String(all.length);$('overview-jobs').textContent=String(all.length);$('tasks-note').textContent=values.length+' 项';
     $('tasks-empty').hidden=!!values.length;$('tasks-table-wrap').hidden=!values.length;const body=$('tasks-body');body.replaceChildren();
+    const emptyTitle=$('tasks-empty').querySelector('b');if(emptyTitle)emptyTitle.textContent=filtered?'没有符合筛选的任务':'尚无任务';
+    if($('tasks-more')){const full=state.jobs.size>=maxKnownJobs;$('tasks-more').hidden=!state.jobsMore&&!full;$('tasks-more-button').hidden=!state.jobsMore||full;$('tasks-more-note').textContent=full?'已显示 '+maxKnownJobs+' 项；更早的任务请用任务 ID 打开。':'';}
     for(const j of values){const row=node('tr');const title=node('td');title.append(node('b',j.kind==='export'?exportFormats[j.format||'xlsx'].label+' 导出':j.kind==='snapshot'?'报表快照':j.kind==='issue'?issueTitle(j):'私有任务'));const id=node('td',j.job_id,'task-id');id.title=j.job_id;const status=node('td');status.append(node('span',(statuses[j.state]||'待刷新')+(j.state==='failed'&&j.error_code?' · '+j.error_code:''),'badge'+(j.state==='failed'||j.state==='restricted'?' danger':j.state==='succeeded'?'':' neutral')));const actions=node('td');
       actions.append(button('刷新',()=>refreshTask(j.job_id)));
       // A job whose read has expired no longer has a result to view or a file to download (S04-B): what the server says is kept for good is the job, its ids and, for an issue, its record.
@@ -506,11 +513,20 @@
   // session knew of it (the query behind a snapshot); what the session knows and the server did not list (a restored job outside the window)
   // stays, older than the listed. The list is read after sign-in, when the panel opens and by 刷新状态; what it says of a result is not an
   // authorization: 查看结果 and 下载 ask the server, which asks the source, as they always did.
-  async function loadJobs() {const epoch=state.epoch;const list=await request('/jobs?limit=50');if(epoch!==state.epoch)throw new Stale();checkJobs(list);
+  // S07-E: the page is the filter's (kind, state) and the next one starts after its last job (加载更多), until the console knows maxKnownJobs.
+  function jobsPath(before) {const f=state.jobsFilter;return '/jobs?limit='+jobsPage+(f.kind?'&kind='+f.kind:'')+(f.state?'&state='+f.state:'')+(before?'&before='+encodeURIComponent(before):'');}
+  // Only the latest read of the first page counts: one started by a filter, the panel or 刷新状态 may still be on its way when the next starts.
+  let jobsReads=0;
+  async function loadJobs() {const epoch=state.epoch,read=++jobsReads;const list=await request(jobsPath(''));if(epoch!==state.epoch||read!==jobsReads)throw new Stale();checkJobs(list);
     const next=new Map();for(const [id,j] of state.jobs)if(!list.some(v=>v.job_id===id))next.set(id,j);
     for(const j of list.slice().reverse())next.set(j.job_id,Object.assign({},state.jobs.get(j.job_id)||{},j));
-    state.jobs=next;renderJobs();return list.length;}
-  function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>100)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
+    state.jobs=next;state.jobsMore=list.length===jobsPage?list.at(-1).job_id:'';renderJobs();return list.length;}
+  // The older page goes before everything the console knows; a job it already knows keeps its place and what it knew.
+  async function loadMoreJobs() {const epoch=state.epoch,before=state.jobsMore,read=jobsReads;if(!before)return 0;const list=await request(jobsPath(before));if(epoch!==state.epoch||state.jobsMore!==before||read!==jobsReads)throw new Stale();checkJobs(list);
+    const next=new Map();for(const j of list.slice().reverse())if(!state.jobs.has(j.job_id))next.set(j.job_id,j);
+    for(const [id,j] of state.jobs)next.set(id,j);while(next.size>maxKnownJobs)next.delete(next.keys().next().value);
+    state.jobs=next;state.jobsMore=list.length===jobsPage?list.at(-1).job_id:'';renderJobs();return list.length;}
+  function rememberJob(j,context) {checkJob(j);const previous=state.jobs.get(j.job_id)||{};state.jobs.set(j.job_id,Object.assign({},previous,context||{},j));if(state.jobs.size>maxKnownJobs)state.jobs.delete(state.jobs.keys().next().value);renderJobs();return state.jobs.get(j.job_id);}
   async function refreshJob(id) {const epoch=state.epoch;try{const j=await request('/jobs/'+encodeURIComponent(id));if(epoch!==state.epoch)throw new Stale();return rememberJob(j);}catch(error){if(epoch!==state.epoch)throw new Stale();const j=state.jobs.get(id);if(j&&[403,404,503].includes(error.status)&&error.code!=='OVERLOADED'){j.state='restricted';delete j.snapshot_id;delete j.artifact_id;renderJobs();}throw error;}}
   function taskContext(id,label) {return {snapshot:state.jobs.get(id)?.snapshot_id,label:label};}
   async function refreshTask(id,m=mark()) {const context=taskContext(id,'任务刷新');try{await refreshJob(id);return true;}catch(error){fail(error,m,context);return false;}}
@@ -592,6 +608,9 @@
   $('first-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,true)));$('next-page').addEventListener('click',()=>perform(m=>loadSnapshot(state.snapshot,state.query,m,false)));
   $('page-size').addEventListener('change',()=>{if(state.busy||state.catalogLoading){$('page-size').value=state.pageLimit;return;}if(state.snapshot){state.view++;perform(m=>loadSnapshot(state.snapshot,state.query,m,true));}});
   $('restore-job').addEventListener('click',()=>{const id=$('restore-id').value.trim();perform(async m=>{if(!isID(id))throw new Failure(400,'INVALID_REQUEST');await refreshJob(id);if(current(m))notify('已恢复当前身份可访问的任务。','success');},taskContext(id,'任务恢复'));});
+  // S07-E: a filter is applied at once to what is known and the server's first page under it is read; 加载更多 reads the next page.
+  for(const id of ['tasks-kind','tasks-state'])if($(id))$(id).addEventListener('change',()=>{state.jobsFilter={kind:$('tasks-kind').value,state:$('tasks-state').value};state.jobsMore='';renderJobs();if(!state.session)return;const m=mark();loadJobs().catch(error=>{if(!(error instanceof Stale))fail(error,m,{label:'任务列表'});});});
+  if($('tasks-more-button'))$('tasks-more-button').addEventListener('click',()=>perform(async m=>{const n=await loadMoreJobs();if(current(m))notify(n?'已加载更早的 '+n+' 项任务。':'没有更早的任务了。','success');},{label:'任务列表'}));
   $('refresh-tasks').addEventListener('click',()=>perform(async m=>{await loadJobs();if(!current(m))throw new Stale();let complete=true;for(const id of Array.from(state.jobs.keys())){if(!current(m))throw new Stale();if(!await refreshTask(id,m))complete=false;}if(complete&&current(m))notify('已知任务状态已刷新。','success');},{label:'任务刷新'}));
   if(!embedded)$('connection-overlay').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const first=$('access-token'),last=$('connect-button');if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
   if(!embedded)window.addEventListener('hashchange',()=>openPage(location.hash.slice(1)));

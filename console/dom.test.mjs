@@ -55,7 +55,7 @@ function app(intercept,options){
   w.URL.createObjectURL=blob=>{const id='blob:fixture-'+blobs.size;blobs.set(id,blob);return id;};
   w.URL.revokeObjectURL=id=>blobs.delete(id);
   w.HTMLAnchorElement.prototype.click=function(){if(this.download){const blob=blobs.get(this.href);downloads.push({name:this.download,blob});}};
-  w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}if(!listing&&/\/jobs\?limit=\d+$/.test(String(path)))return json([]);return fetch(url+path,options);};
+  w.fetch=async(path,options)=>{trace.push({method:options?.method||'GET',path:String(path),key:options?.headers?.['Idempotency-Key']});if(intercept){const response=await intercept(String(path),options);if(response)return response;}if(!listing&&/\/jobs\?limit=\d+(&|$)/.test(String(path)))return json([]);return fetch(url+path,options);};
   const listing=!!options?.listing;
   w.eval(dashboardScript);w.eval(canvasScript);w.eval(studioScript);w.eval(libraryScript);w.eval(boardScript);w.eval(documentsScript);w.eval(script);
   const $=id=>w.document.getElementById(id);
@@ -4109,3 +4109,43 @@ test('S07-D: the help icon on the rail and on the sign-in card opens the user ma
  for(const ref of new Set(refs)){const r=await fetch(url+'/console/manual/'+ref);assert.equal(r.status,200,ref);}
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});
+
+// ---- S07-E: the task list's filters and pages (docs/S07E_SCOPE.md) ----
+test('S07-E: the kind and state filters ask the server for that page and show only what they keep; 加载更多 reads the page after the last job; sign-out clears the filters',async()=>{
+ let fake=false;const asked=[];
+ const id=n=>n.toString(16).padStart(32,'0');
+ const page=(from,count)=>Array.from({length:count},(_,k)=>({job_id:id(from-k),kind:'snapshot',state:'failed',error_code:'SOURCE_UNAVAILABLE'}));
+ const a=app(async path=>{if(!/\/jobs\?/.test(path))return;asked.push(path.slice(path.indexOf('?')+1));if(!fake)return;const before=new URL('http://x'+path).searchParams.get('before');return json(before?page(1000-50,3):page(1000,50));},{listing:true});
+ try{
+  const d=a.w.document;const rows=()=>[...a.$('tasks-body').rows];const change=(sel,v)=>{a.$(sel).value=v;a.$(sel).dispatchEvent(new a.w.Event('change',{bubbles:true}));};
+  await a.login();await until(()=>asked.includes('limit=50'),'the first page');
+  // A snapshot of its own, so that the test does not depend on the tests before it.
+  a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot');
+  // The two filters are in the panel's list, with every kind and state the server knows.
+  assert.deepEqual([...a.$('tasks-kind').options].map(o=>o.value),['','snapshot','export','issue']);assert.deepEqual([...a.$('tasks-state').options].map(o=>o.value),['','queued','running','succeeded','failed','cancelled']);
+  // A kind: the server is asked for that kind; the rows are of that kind only; the rail still counts every known job.
+  change('tasks-kind','snapshot');await until(()=>asked.includes('limit=50&kind=snapshot')&&!a.$('preview').disabled,'the snapshots');
+  await until(()=>rows().length>0,'the snapshots');
+  assert.ok(rows().every(r=>r.cells[0].textContent==='报表快照'));assert.equal(a.$('tasks-note').textContent,rows().length+' 项');assert.ok(Number(a.$('task-count').textContent)>=rows().length);
+  // A kind and a state together.
+  change('tasks-state','succeeded');await until(()=>asked.includes('limit=50&kind=snapshot&state=succeeded'),'the succeeded snapshots');
+  assert.ok(rows().every(r=>r.cells[0].textContent==='报表快照'&&r.cells[2].textContent==='已完成'));
+  // A filter nothing passes says so.
+  change('tasks-kind','export');change('tasks-state','cancelled');
+  if(!rows().length)assert.equal(a.$('tasks-empty').querySelector('b').textContent,'没有符合筛选的任务');
+  change('tasks-kind','');change('tasks-state','');await until(()=>asked.at(-1)==='limit=50','no filter');
+  // A full page means there may be more: 加载更多 reads the page after its last job and puts it after it.
+  fake=true;const tasks=d.querySelector('nav.app-rail [data-panel="tasks"]');tasks.click();
+  await until(()=>rows().some(r=>r.cells[1].textContent===id(951)),'the full fake page');
+  assert.equal(a.$('tasks-more').hidden,false);assert.equal(a.$('tasks-more-button').hidden,false);assert.equal(a.$('sh-tasks-slot').contains(a.$('tasks-more-button')),true,'the button is in the panel');
+  a.$('tasks-more-button').click();await until(()=>rows().some(r=>r.cells[1].textContent===id(948))&&!a.$('preview').disabled,'the next page');
+  assert.ok(asked.includes('limit=50&before='+id(951)));
+  // The older page comes after everything shown (the fake pages leave out the real jobs the console knew, which stay where they were).
+  const order=rows().map(r=>r.cells[1].textContent);assert.deepEqual(order.slice(-3),[id(950),id(949),id(948)],'the older page is last');assert.ok(order.indexOf(id(951))<order.indexOf(id(950)));
+  assert.equal(a.$('notice').textContent,'已加载更早的 3 项任务。');assert.equal(a.$('tasks-more').hidden,true,'a short page is the last');
+  d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  // Sign-out clears the list and the filters.
+  change('tasks-kind','issue');a.click('logout');assert.equal(a.$('tasks-kind').value,'');assert.equal(a.$('tasks-state').value,'');assert.equal(a.$('tasks-body').rows.length,0);assert.equal(a.$('tasks-more').hidden,true);
+  assert.equal(a.errors.length,0,a.errors.join('|'));
+ }finally{a.close();}
+});

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -113,7 +114,34 @@ func TestHTTPJobsListingPerIdentity(t *testing.T) {
 	if page := list("/jobs?limit=100", 200); len(page) != 4 {
 		t.Fatal(page)
 	}
-	for _, path := range []string{"/jobs?limit=0", "/jobs?limit=101", "/jobs?limit=x", "/jobs?limit=", "/jobs?other=1", "/jobs?limit=1&limit=2", "/jobs?limit=1&other=1"} {
+	// S07-E: kind, state and the cursor narrow and page the listing.
+	idsOf := func(page []map[string]any) []string {
+		out := []string{}
+		for _, j := range page {
+			out = append(out, j["job_id"].(string))
+		}
+		return out
+	}
+	if page := list("/jobs?kind=snapshot", 200); !slices.Equal(idsOf(page), []string{fourth.ID, second.ID, first.ID}) {
+		t.Fatal("kind", idsOf(page))
+	}
+	if page := list("/jobs?kind=export&state=succeeded", 200); !slices.Equal(idsOf(page), []string{third.ID}) {
+		t.Fatal("kind and state", idsOf(page))
+	}
+	if page := list("/jobs?state=queued", 200); !slices.Equal(idsOf(page), []string{fourth.ID}) {
+		t.Fatal("state", idsOf(page))
+	}
+	if page := list("/jobs?limit=2&before="+third.ID, 200); !slices.Equal(idsOf(page), []string{second.ID, first.ID}) {
+		t.Fatal("the page after the export", idsOf(page))
+	}
+	if page := list("/jobs?before="+first.ID, 200); len(page) != 0 {
+		t.Fatal("after the oldest", idsOf(page))
+	}
+	if page := list("/jobs?kind=snapshot&state=succeeded&limit=1&before="+second.ID, 200); !slices.Equal(idsOf(page), []string{first.ID}) {
+		t.Fatal("all four", idsOf(page))
+	}
+	for _, path := range []string{"/jobs?limit=0", "/jobs?limit=101", "/jobs?limit=x", "/jobs?limit=", "/jobs?other=1", "/jobs?limit=1&limit=2", "/jobs?limit=1&other=1",
+		"/jobs?kind=", "/jobs?kind=report", "/jobs?state=done", "/jobs?state=", "/jobs?before=", "/jobs?before=x", "/jobs?kind=export&kind=issue"} {
 		if w := request(h, "GET", base+path, nil, true); w.Code != 400 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
@@ -125,9 +153,12 @@ func TestHTTPJobsListingPerIdentity(t *testing.T) {
 	if w := request(h, "GET", base+"/jobs", nil, false); w.Code != 401 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	// Another subject of the same tenant and issuer sees an empty page, not an error and not these jobs.
+	// Another subject of the same tenant and issuer sees an empty page, not an error and not these jobs; this identity's cursor gives it nothing.
 	other = true
 	if page := list("/jobs", 200); len(page) != 0 {
+		t.Fatal(page)
+	}
+	if page := list("/jobs?before="+third.ID, 200); len(page) != 0 {
 		t.Fatal(page)
 	}
 	other = false
