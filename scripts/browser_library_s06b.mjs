@@ -170,13 +170,15 @@ async function main() {
   // ---- the centre at 1440, beside the prototype ---------------------------------------------------------------------------------
   const open = async () => { await evalJs(`document.querySelector('[data-page="library"]').click()`); await waitFor(`!document.getElementById('page-library').hidden&&document.querySelectorAll('#page-library .sample-card').length>=37&&document.querySelectorAll('#page-library ul[aria-label="我的模板"] .catalog-card').length>=${seeds.length}`, 'the centre is listed', 30000); await sleep(300); };
   await open();
-  check('the centre replaces the console shell', await evalJs(`document.body.classList.contains('library-on')&&getComputedStyle(document.querySelector('.sidebar')).display==='none'&&document.getElementById('page-library').getBoundingClientRect().width===innerWidth`));
+  // S07-A put the rail beside every page and S07-F (ADR 0010) the console header above it: the centre fills what is left, its own header is its toolbar.
+  check('the centre fills the one shell: beside the rail, below the console header, its own wordmark and data chip hidden', await evalJs(`(()=>{const p=document.getElementById('page-library').getBoundingClientRect(),h=document.querySelector('.console-header');return document.body.classList.contains('library-on')&&getComputedStyle(h).display!=='none'&&Math.abs(p.left-document.querySelector('.app-rail').getBoundingClientRect().right)<=1&&Math.abs(p.top-h.getBoundingClientRect().bottom)<=1&&Math.abs(p.right-innerWidth)<=1&&getComputedStyle(document.querySelector('#page-library .library-header>.wordmark')).display==='none'&&getComputedStyle(document.getElementById('lib-data')).display==='none';})()`));
   await shot('library-01-1440');
   await pair('pair-library', 'proto-library', 'library-01-1440');
   // The measured geometry the prototype's screenshot gives (docs/STUDIO.md): the sidebar's width, the header's height, the card's left edge.
   const geo = await evalJs(`(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.library-header'),side:r('.catalog-sidebar'),search:r('.catalog-search'),card:r('ul[aria-label="我的模板"] .catalog-card'),h1:r('h1')};})()`);
   evidence.geometry = geo;
-  check('geometry at 1440: header 68 px, sidebar 222 px, content from x = 256 (the prototype\'s numbers)', geo.header.h === 68 && geo.side.w === 222 && Math.abs(geo.search.x - 256) <= 1 && Math.abs(geo.card.x - 256) <= 1, geo);
+  // The prototype's numbers moved by the rail (56 px) and the console header (68 px); the centre's header became a 56 px toolbar (S07-F).
+  check('geometry at 1440: toolbar 56 px below the 68 px console header, sidebar 222 px, content from x = 256 + 56 (the prototype\'s numbers beside the rail)', geo.header.h === 56 && Math.abs(geo.header.y - 68) <= 1 && geo.side.w === 222 && Math.abs(geo.search.x - 312) <= 1 && Math.abs(geo.card.x - 312) <= 1, geo);
   check('no horizontal overflow at 1440 (light)', !(await overflow()).over, await overflow());
   await contrast('1440 light');
   await viewport(1440, 900, 'dark'); await shot('library-02-1440-dark'); await contrast('1440 dark'); check('no horizontal overflow at 1440 (dark)', !(await overflow()).over, await overflow()); await viewport(1440, 900, 'light');
@@ -244,7 +246,7 @@ async function main() {
   // 返回设计器 and 数据中心.
   await clickBtn('#page-library .library-header', '返回设计器'); await waitFor(`!document.getElementById('page-documents').hidden`, 'back in the studio');
   check('返回设计器 returns to the studio with the template', await evalJs(`document.getElementById('st-name').textContent==='浏览器复制件'`));
-  await click('#st-wordmark'); await waitFor(`!document.getElementById('page-library').hidden`, 'the wordmark opens the centre');
+  await click('#st-crumb'); await waitFor(`!document.getElementById('page-library').hidden`, 'the crumb opens the centre (the studio wordmark is hidden in the one shell, S07-F)');
   await clickBtn('#page-library .library-header', '数据中心'); await waitFor(`!document.getElementById('page-catalog').hidden`, 'the data catalogue page');
   check('数据中心 is the console\'s data catalogue page', await evalJs(`!document.body.classList.contains('library-on')`));
   await open();

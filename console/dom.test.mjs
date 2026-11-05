@@ -3649,7 +3649,7 @@ test('S06-B C4: 编辑 opens the latest version in the studio, and without a sna
  cardButton(ownCard(a,'编辑-'+tag),'编辑').click();await until(()=>!a.$('page-documents').hidden&&a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'opened in the studio');
  assert.equal(a.w.document.body.classList.contains('studio-on'),true);assert.equal(a.$('st-name').textContent,'编辑-'+tag);assert.equal(a.$('page-library').hidden,true);
  // The crumb, the rail and the wordmark of the studio open the centre; 返回设计器 returns with the same template.
- for(const sel of ['#st-crumb','#st-wordmark','#st-rail-library']){q(a,sel).click();assert.equal(a.$('page-library').hidden,false,sel);assert.equal(a.$('page-documents').hidden,true);libqa(a,'.library-header .btn:not(#lib-data)')[0].click();assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('st-name').textContent,'编辑-'+tag);}
+ for(const sel of ['#st-crumb','.app-rail [data-page="library"]','#st-rail-library']){q(a,sel).click();assert.equal(a.$('page-library').hidden,false,sel);assert.equal(a.$('page-documents').hidden,true);libqa(a,'.library-header .btn:not(#lib-data)')[0].click();assert.equal(a.$('page-documents').hidden,false);assert.equal(a.$('st-name').textContent,'编辑-'+tag);}
  // The name button of the card opens the same way; and the opened version is recorded as the last opened.
  q(a,'#st-crumb').click();navButton(a,'最近使用').click();await until(()=>ownCard(a,'编辑-'+tag),'the opened template is in 最近使用');
  // Another data set: the card's reason differs.
@@ -4149,3 +4149,19 @@ test('S07-E: the kind and state filters ask the server for that page and show on
   assert.equal(a.errors.length,0,a.errors.join('|'));
  }finally{a.close();}
 });
+
+// ---- S07-F: one shell (docs/ADR_0010_ONE_SHELL.md, docs/S07F_SCOPE.md) ----
+test('S07-F: the console header is the header of every page: the studios and the centre name themselves in it, and the page title follows',async()=>{const a=app();try{
+ const d=a.w.document;await a.login();
+ for(const [page,label,title] of [['dashboard','DASHBOARD STUDIO','看板工作室'],['library','TEMPLATE WORKSPACE','模板中心'],['documents','DOCUMENT STUDIO','文档工作室'],['workspace','REPORT WORKBENCH','报表工作台']]){
+  d.querySelector('.app-rail [data-page="'+page+'"]').click();assert.equal(a.$('page-'+page).hidden,false,page);
+  assert.equal(a.$('shell-label').textContent,label,page);assert.equal(d.title,'IDP Reporting · '+title,page);
+  // The header's controls are the same on every page: the data chip, the environment, the identity, sign-out.
+  for(const id of ['sh-data-chip','actor-label','logout'])assert.ok(d.querySelector('.console-header #'+id),page+' '+id);
+ }
+ // The stylesheets show the header on every shell and hide only the studios' own wordmarks and the centre's second chip (checked in a real browser by scripts/browser_console_s06c.mjs).
+ const css=(await Promise.all(['styles.css','studio.css','library.css'].map(f=>readFile(join(root,'console/assets',f),'utf8')))).join('\n');
+ for(const on of ['studio-on','library-on','board-on'])assert.equal(css.includes('body.'+on+' .console-header'),false,on+' no longer hides the console header');
+ assert.match(css,/body:not\(\.embed\) #page-documents \.topbar>\.wordmark/);assert.match(css,/body:not\(\.embed\) #lib-data/);
+ assert.equal(a.errors.length,0,a.errors.join('|'));
+}finally{a.close();}});
