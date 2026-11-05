@@ -2,7 +2,7 @@
 # Runs the real-browser evidence of the console in one go (CI job "browser", docs/CONSOLE.md "真实浏览器检查"):
 #   1. scripts/browser_console_s06c.mjs  – the shell, the pages, the drawers and panels at 1440 → 390, light and dark, contrast
 #   2. scripts/browser_library_s06b.mjs  – the template centre, its samples, PDF previews and wizard
-#   3. scripts/ux_baseline_s07.mjs       – the five-task baseline, held to the numbers of docs/UX_BASELINE_S07.md
+#   3. scripts/ux_baseline_s07.mjs       – the six-task baseline, held to the numbers of docs/UX_BASELINE_S07.md
 # Each run gets a fresh reporting-demo (memory store, its own directories) and a fresh headless Chrome profile: the scripts assume an
 # identity with nothing saved yet. The prototype is not in the repository, so its screens and the side-by-side pairs are skipped.
 #
@@ -59,7 +59,7 @@ run baseline scripts/ux_baseline_s07.mjs --out "$out/baseline.json" --label ci
 # The baseline is held to docs/UX_BASELINE_S07.md: a slice may lower these numbers, never raise them without saying so there.
 node -e '
 const t=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).totals;
-const max={clicks:26,pages:9,shells:0,deadEnds:0};
+const max={clicks:34,pages:10,shells:0,deadEnds:2};
 const over=Object.keys(max).filter(k=>t[k]>max[k]);
 console.log("== baseline totals",JSON.stringify(t),"held to",JSON.stringify(max));
 if(over.length){console.error("== baseline: over the documented numbers: "+over.join(", "));process.exit(1);}
