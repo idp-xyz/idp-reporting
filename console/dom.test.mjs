@@ -451,7 +451,7 @@ async function snapshotReady(a){await a.login();a.configure();a.click('snapshot'
 
 test('PDF export is offered only when the server lists the format',async()=>{
   const a=app(pdfConfigured?async path=>{if(path.endsWith('/capabilities')){const caps=await (await fetch(url+path,{headers:{Authorization:'Bearer '+token}})).json();caps.formats=caps.formats.filter(f=>f!=='pdf');return json(caps);}}:undefined);
-  try{await snapshotReady(a);assert.equal(a.$('export-pdf').hidden,true);assert.equal(a.$('overview-formats').textContent,'XLSX');assert.equal(a.$('doc-pdf').hidden,true);assert.equal(a.$('doc-saved-pdf').hidden,true);}finally{a.close();}
+  try{await snapshotReady(a);assert.equal(a.$('export-pdf').hidden,true);assert.match(a.$('capability-details').textContent,/导出格式xlsx(?!、pdf)/);assert.equal(a.$('doc-pdf').hidden,true);assert.equal(a.$('doc-saved-pdf').hidden,true);}finally{a.close();}
   const b=app(offeringPDF(Buffer.from('%PDF-1.7 fixture')));
   try{await b.login();assert.equal(b.$('export-pdf').hidden,false);assert.equal(b.$('export-pdf').disabled,true);b.click('logout');assert.equal(b.$('export-pdf').hidden,true);}finally{b.close();}
 });
@@ -3501,7 +3501,7 @@ test('S06-B C1: the template centre is a console page with the prototype\'s regi
  const d=a.w.document;assert.equal(d.body.classList.contains('library-on'),true);assert.equal(d.body.classList.contains('studio-on'),false);
  const text=s=>libq(a,s).textContent.replace(/\s+/g,' ').trim();
  assert.match(text('.wordmark'),/^IDP REPORTING\s*TEMPLATE WORKSPACE$/);
- assert.deepEqual(libqa(a,'.library-header .btn:not(#lib-data)').map(b=>b.textContent.trim()),['返回设计器','数据中心','新建模板']);assert.equal(libqa(a,'.library-header .btn')[0].id,'lib-data','the data chip leads the header (S07-A)');
+ assert.deepEqual(libqa(a,'.library-header .btn:not(#lib-data)').map(b=>b.textContent.trim()),['返回设计器','数据中心','新建模板']);assert.equal(a.$('lib-datacenter').title,'打开数据面板：数据集、字段与币种，以及查询');assert.equal(libqa(a,'.library-header .btn')[0].id,'lib-data','the data chip leads the header (S07-A)');
  assert.equal(text('.library-eyebrow'),'DOCUMENT OPERATIONS');assert.equal(text('h1'),'模板中心');assert.equal(text('.catalog-top p'),'从业务流程找到模板，再选择版式、数据和版本。');
  assert.deepEqual(libqa(a,'.catalog-caption').map(c=>c.textContent.trim()),['快速访问','业务域全部','自定义集合']);
  assert.deepEqual(libqa(a,'.catalog-sidebar .catalog-nav').slice(0,4).map(b=>b.querySelector('span').textContent),['全部模板','我的收藏','最近使用','归档']);
@@ -3643,9 +3643,10 @@ test('S06-B C4: 编辑 opens the latest version in the studio, and without a sna
  edit.click();assert.match(a.$('notice').textContent,/冻结快照/);assert.equal(a.$('page-documents').hidden,true);assert.equal(a.$('page-library').hidden,false);
  // 新建模板 can be opened (the samples can be read) but step 3 needs the data set.
  // With a result: 编辑 opens the latest version in the studio.
- libqa(a,'.library-header .btn').find(b=>b.textContent.trim()==='数据中心').click();assert.equal(a.$('page-catalog').hidden,false);assert.equal(a.$('page-library').hidden,true);assert.equal(a.w.document.body.classList.contains('library-on'),false);
- a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');
- q(a,'[data-page="library"]').click();await until(()=>ownCard(a,'编辑-'+tag)&&!libq(a,'.catalog-notice-line').textContent,'with a result');
+ libqa(a,'.library-header .btn').find(b=>b.textContent.trim()==='数据中心').click();assert.equal(a.$('sh-d-data').hidden,false,'S07-H: 数据中心 is the data drawer');assert.equal(a.$('page-library').hidden,false);
+ a.input('query-companies','company_demo');a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');
+ await until(()=>!a.$('preview').disabled&&a.$('sh-d-data').hidden,'the preview from the drawer closes it');
+ await until(()=>ownCard(a,'编辑-'+tag)&&!libq(a,'.catalog-notice-line').textContent,'with a result, still in the centre');
  cardButton(ownCard(a,'编辑-'+tag),'编辑').click();await until(()=>!a.$('page-documents').hidden&&a.$('doc-server-status').textContent.includes('正在编辑模板 '+id),'opened in the studio');
  assert.equal(a.w.document.body.classList.contains('studio-on'),true);assert.equal(a.$('st-name').textContent,'编辑-'+tag);assert.equal(a.$('page-library').hidden,true);
  // The crumb, the rail and the wordmark of the studio open the centre; 返回设计器 returns with the same template.
@@ -3859,7 +3860,7 @@ test('S06-B C10: logging out clears the centre, and a stale answer cannot fill i
 });
 
 // ---- S06-C: the console shell, the sign-in card and the dashboard studio (docs/S06C_SCOPE.md, docs/STUDIO.md "控制台外壳" and "看板工作室") ----
-test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation column on every page that is not a studio; the sign-in card; the label, the title and the active row follow the page; the data centre and the overview',async()=>{const a=app();try{
+test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation column on every page that is not a studio; the sign-in card; the label, the title and the active row follow the page; S07-H: the workbench is the home, the data centre is the drawer\'s field list',async()=>{const a=app();try{
  const d=a.w.document;
  // Before sign-in: the card has the wordmark, the title, the token field and the button; the shell behind is inert.
  assert.equal(a.$('connection-overlay').hidden,false);assert.equal(d.querySelector('.shell').inert,true);
@@ -3869,15 +3870,16 @@ test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation 
  assert.equal(d.querySelector('.shell').inert,false);
  // The header: the wordmark with the page's label, the environment tag, the identity, 退出工作区.
  const header=d.querySelector('.console-header');assert.ok(header);
- assert.equal(header.querySelector('.wordmark b').textContent,'REPORTING');assert.equal(a.$('shell-label').textContent,'REPORTING WORKSPACE');
+ assert.equal(header.querySelector('.wordmark b').textContent,'REPORTING');assert.equal(a.$('shell-label').textContent,'REPORT WORKBENCH','S07-H: a sign-in lands on the workbench');assert.equal(a.$('page-workspace').hidden,false);assert.equal(d.title,'IDP Reporting · 报表工作台');
+ assert.equal(header.querySelector('.wordmark').getAttribute('href'),'#workspace');assert.equal(d.querySelector('.rail-brand').getAttribute('href'),'#workspace');
  assert.equal(header.querySelector('.environment').textContent,'合同模拟器');assert.equal(a.$('actor-label').textContent,'user_a');assert.equal(a.$('logout').disabled,false);assert.equal(a.$('logout').textContent.trim(),'退出工作区');
- // The navigation (S07-A: the application rail): eight named buttons in a nav, one aria-current, the counts.
+ // The navigation (S07-A: the application rail; S07-H: six destinations): named buttons in a nav, one aria-current, the task count.
  const nav=d.querySelector('nav.app-rail[aria-label="主导航"]');assert.ok(nav);
- assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page||'panel:'+b.dataset.panel,b.getAttribute('aria-label')]),[['BUTTON','overview','工作区概览'],['BUTTON','catalog','数据中心'],['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','panel:tasks','任务工作区'],['BUTTON','system','能力与环境']]);
- assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(a.$('task-count').textContent,'0');
+ assert.deepEqual([...nav.querySelectorAll('.nav-item')].map(b=>[b.tagName,b.dataset.page||'panel:'+b.dataset.panel,b.getAttribute('aria-label')]),[['BUTTON','workspace','报表工作台'],['BUTTON','dashboard','看板工作室'],['BUTTON','library','模板中心'],['BUTTON','documents','文档工作室'],['BUTTON','panel:tasks','任务工作区'],['BUTTON','system','能力与环境']]);
+ assert.equal(a.$('nav-datasets'),null);assert.equal(a.$('task-count').textContent,'0');
  assert.equal(d.querySelector('.rail-status #connection-label').textContent,'API 已连接');assert.equal(a.$('tenant-label').textContent,'platform_demo');
  // Every page that is not a studio: the title block (eyebrow, title, lead), the wordmark's label, document.title, the active row; no studio shell is on.
- for(const [page,eyebrow,h1,title] of [['catalog','DATA CENTER','数据中心','数据中心'],['workspace','REPORT WORKBENCH','报表工作台','报表工作台'],['system','PLATFORM CAPABILITIES','能力与环境','能力与环境'],['overview','REPORTING WORKSPACE','让每一份数据，有据可查。','工作区概览']]){
+ for(const [page,eyebrow,h1,title] of [['system','PLATFORM CAPABILITIES','能力与环境','能力与环境'],['workspace','REPORT WORKBENCH','报表工作台','报表工作台']]){
   d.querySelector('[data-page="'+page+'"]').click();
   const section=a.$('page-'+page);assert.equal(section.hidden,false,page);
   assert.equal(section.querySelector('.page-heading .eyebrow').textContent,eyebrow);assert.equal(section.querySelector('.page-heading h1').textContent,h1);assert.ok(section.querySelector('.page-heading p').textContent.length>0);
@@ -3889,25 +3891,24 @@ test('S06-C C1/C2/C3/C4/C9: the shell is the prototype\'s header and navigation 
  d.querySelector('[data-page="dashboard"]').click();assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[false,false,true]);assert.equal(d.title,'IDP Reporting · 看板工作室');
  d.querySelector('[data-page="documents"]').click();assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[true,false,false]);assert.equal(d.title,'IDP Reporting · 文档工作室');
  d.querySelector('[data-page="library"]').click();assert.deepEqual(['studio-on','library-on','board-on'].map(c=>d.body.classList.contains(c)),[false,true,false]);
- // The data centre: the product chip row, the dataset card with its column table, 打开工作台 selects the dataset in the workbench.
- d.querySelector('[data-page="catalog"]').click();
- assert.equal(a.$('page-catalog').querySelector('.dc-chips select').id,'catalog-product');assert.equal(a.$('refresh-catalog').textContent.trim(),'刷新目录');
- const cardEl=a.$('catalog-grid').querySelector('.catalog-card');assert.ok(cardEl);assert.equal(cardEl.querySelector('h2').textContent,'应收余额');assert.equal(cardEl.querySelector('.description').textContent,'receivables.aging · v1.0.0');assert.equal(cardEl.querySelector('.badge').textContent,'已发布组合');
- assert.deepEqual([...cardEl.querySelectorAll('.column-line b')].map(e=>e.textContent),['字段','客户','账龄区间','应收余额']);assert.deepEqual([...cardEl.querySelectorAll('.column-line code')].map(e=>e.textContent).slice(1),['string','string','decimal · CNY']);
- assert.equal(cardEl.querySelector('.card-bottom small').textContent,'2 个维度 · 1 个指标');
- cardEl.querySelector('.card-bottom button').click();assert.equal(a.$('page-workspace').hidden,false);assert.equal(a.$('query-dataset').value,'receivables.aging@1.0.0');assert.equal(nav.querySelector('.nav-item.active').dataset.page,'workspace');
- // The overview: the four counters, the dataset rows with 打开, the steps.
- d.querySelector('[data-page="overview"]').click();
- assert.deepEqual([...a.$('page-overview').querySelectorAll('.catalog-stats .metric-card strong')].map(e=>e.id),['overview-products','overview-datasets','overview-jobs','overview-formats']);
- assert.equal(a.$('overview-datasets').textContent,'1');assert.equal(a.$('overview-products').textContent,'2');assert.equal(a.$('overview-formats').textContent.includes('XLSX'),true);
- const rowEl=a.$('overview-catalog').querySelector('.dataset-row');assert.equal(rowEl.querySelector('h3').textContent,'应收余额');assert.equal(rowEl.querySelector('p').textContent,'receivables.aging · v1.0.0');assert.equal(rowEl.querySelector('button').textContent,'打开');
- rowEl.querySelector('button').click();assert.equal(a.$('page-workspace').hidden,false);
- assert.deepEqual([...a.$('page-overview').querySelectorAll('.steps b')].map(e=>e.textContent),['选择已发布数据集','预览并创建快照','生成 Excel 并下载']);
+ // S07-H: no overview, no data centre; their addresses open the workbench, #catalog with the data drawer over it.
+ assert.equal(a.$('page-overview'),null);assert.equal(a.$('page-catalog'),null);
+ for(const old of ['overview','nowhere']){a.w.location.hash=old;a.w.dispatchEvent(new a.w.HashChangeEvent('hashchange'));assert.equal(a.$('page-workspace').hidden,false,old);assert.equal(a.w.location.hash,'#workspace',old);}
+ a.w.location.hash='catalog';a.w.dispatchEvent(new a.w.HashChangeEvent('hashchange'));await flush();assert.equal(a.$('page-workspace').hidden,false);assert.equal(a.$('sh-d-data').hidden,false,'#catalog opens the data drawer');
+ // The data centre's column table is the drawer's, for the dataset chosen above it; 刷新目录 is there too.
+ assert.equal(a.$('sh-fields').closest('#sh-d-data')!==null,true);assert.equal(a.$('refresh-catalog').closest('#sh-fields')!==null,true);assert.equal(a.$('refresh-catalog').textContent.trim(),'刷新目录');
+ assert.equal(a.$('sh-fields-meta').textContent,'应收余额 · receivables.aging · v1.0.0 · 2 个维度 · 1 个指标 · 已发布组合');
+ assert.deepEqual([...a.$('sh-fields-list').querySelectorAll('.column-line b')].map(e=>e.textContent),['字段','客户','账龄区间','应收余额']);assert.deepEqual([...a.$('sh-fields-list').querySelectorAll('.column-line code')].map(e=>e.textContent).slice(1),['string','string','decimal · CNY']);
+ d.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(a.$('sh-d-data').hidden,true);
+ // The workbench's empty state: the overview's three steps, gone with the first result and back when it is cleared.
+ assert.deepEqual([...a.$('start-steps').querySelectorAll('b')].map(e=>e.textContent),['选择已发布数据集','预览并创建快照','生成 Excel 并下载']);assert.equal(a.$('start-steps').hidden,false);
+ a.configure();a.click('preview');await until(()=>!a.$('preview').disabled&&!a.$('result-table-wrap').hidden,'query');assert.equal(a.$('start-steps').hidden,true);
+ a.input('query-companies','company_other');assert.equal(a.$('start-steps').hidden,false);
  // The page has no inline style or handler; every <use> of the page points at a symbol the page holds.
  assert.equal(/\sstyle\s*=/i.test(html),false);assert.equal(/\son[a-z]+\s*=/i.test(html),false);assert.equal(/<style[\s>]/i.test(html),false);
  for(const u of d.querySelectorAll('use'))assert.ok(d.getElementById(u.getAttribute('href').slice(1)),u.getAttribute('href')+' is a symbol of the page');
  // Sign out: the card is back, the shell inert, the counts and the identity reset.
- a.click('logout');assert.equal(a.$('connection-overlay').hidden,false);assert.equal(d.querySelector('.shell').inert,true);assert.equal(a.$('nav-datasets').textContent,'0');assert.equal(a.$('actor-label').textContent,'未连接');assert.equal(a.$('connection-label').textContent,'尚未连接');
+ a.click('logout');assert.equal(a.$('connection-overlay').hidden,false);assert.equal(d.querySelector('.shell').inert,true);assert.equal(a.$('sh-fields-meta').textContent,'连接工作区后加载当前授权目录。');assert.equal(a.$('sh-fields-list').hidden,true);assert.equal(a.$('actor-label').textContent,'未连接');assert.equal(a.$('connection-label').textContent,'尚未连接');
  assert.equal(a.errors.length,0,a.errors.join('|'));
 }finally{a.close();}});
 
@@ -3979,8 +3980,8 @@ test('S06-C C6: the dashboard studio: the regions, every old control under its o
 test('S07-A A1–A3: the rail stays on every shell; the chip names the data context; the drawer takes the query panel from the workbench and gives it back; a result from the drawer removes the dashboard\'s dead end without a page switch; the centre offers the drawer',async()=>{const a=app();try{
  const d=a.w.document;await a.login();
  const rail=d.querySelector('nav.app-rail[aria-label="主导航"]');assert.ok(rail);assert.equal(rail.closest('.shell'),null,'the rail is outside the shell the studios take over');
- assert.deepEqual([...rail.querySelectorAll('.nav-item')].map(b=>[b.dataset.page||'panel:'+b.dataset.panel,b.getAttribute('aria-label'),b.querySelector('small').textContent]),[['overview','工作区概览','概览'],['catalog','数据中心','数据'],['workspace','报表工作台','报表'],['dashboard','看板工作室','看板'],['library','模板中心','模板'],['documents','文档工作室','文档'],['panel:tasks','任务工作区','任务'],['system','能力与环境','能力']]);
- assert.equal(a.$('nav-datasets').textContent,'1');assert.equal(rail.querySelector('.rail-status #connection-label').textContent,'API 已连接');
+ assert.deepEqual([...rail.querySelectorAll('.nav-item')].map(b=>[b.dataset.page||'panel:'+b.dataset.panel,b.getAttribute('aria-label'),b.querySelector('small').textContent]),[['workspace','报表工作台','报表'],['dashboard','看板工作室','看板'],['library','模板中心','模板'],['documents','文档工作室','文档'],['panel:tasks','任务工作区','任务'],['system','能力与环境','能力']]);
+ assert.equal(a.$('nav-datasets'),null);assert.equal(rail.querySelector('.rail-status #connection-label').textContent,'API 已连接');
  for(const page of ['documents','library','dashboard','system']){d.querySelector('[data-page="'+page+'"]').click();assert.equal(rail.querySelector('[aria-current="page"]').dataset.page,page);assert.equal(rail.querySelectorAll('[aria-current]').length,1);}
  const chip=a.$('sh-data-chip');assert.equal(chip.classList.contains('is-empty'),true);assert.equal(a.$('sh-data-text').textContent,'未选择数据');assert.equal(a.$('sh-data-kind').hidden,true);assert.equal(chip.getAttribute('aria-haspopup'),'dialog');
  // Before any data the centre refuses with the drawer offered, never with the workbench; its chip is empty too.
@@ -4062,7 +4063,7 @@ test('S07-C: the task list is the identity\'s jobs on the server, newest first; 
  let server=await listed();assert.ok(server.length<=50);
  // The list is read after the sign-in's own requests (the session, the capabilities, the product); with many jobs on the shared server it takes a moment.
  await until(()=>a.trace.some(v=>v.path.endsWith('/jobs?limit=50'))&&ids().length===server.length,'the list after sign-in: '+ids().length+' of '+server.length,10000);
- assert.deepEqual(ids(),server.map(j=>j.job_id));assert.equal(a.$('task-count').textContent,String(server.length));assert.equal(a.$('overview-jobs').textContent,String(server.length));assert.equal(a.$('tasks-note').textContent,server.length+' 项');
+ assert.deepEqual(ids(),server.map(j=>j.job_id));assert.equal(a.$('task-count').textContent,String(server.length));assert.equal(a.$('tasks-note').textContent,server.length+' 项');
  assert.equal(a.trace.filter(v=>v.path.endsWith('/jobs?limit=50')).length,1);
  // A snapshot from the console goes first, and the count rises by one: the session's jobs join the listed ones (the server's window is 50; what this session knows beyond it stays, up to 100).
  const before=server.length;a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&!a.$('export').disabled,'snapshot');

@@ -252,8 +252,9 @@ async function main() {
   await clickBtn('#page-library .library-header', '返回设计器'); await waitFor(`!document.getElementById('page-documents').hidden`, 'back in the studio');
   check('返回设计器 returns to the studio with the template', await evalJs(`document.getElementById('st-name').textContent==='浏览器复制件'`));
   await click('#st-crumb'); await waitFor(`!document.getElementById('page-library').hidden`, 'the crumb opens the centre (the studio wordmark is hidden in the one shell, S07-F)');
-  await clickBtn('#page-library .library-header', '数据中心'); await waitFor(`!document.getElementById('page-catalog').hidden`, 'the data catalogue page');
-  check('数据中心 is the console\'s data catalogue page', await evalJs(`!document.body.classList.contains('library-on')`));
+  await clickBtn('#page-library .library-header', '数据中心'); await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer');
+  check('数据中心 opens the data drawer over the centre (S07-H): the dataset\'s fields, the centre still behind it', await evalJs(`!document.getElementById('sh-fields-list').hidden&&document.body.classList.contains('library-on')`));
+  await key('Escape'); await sleep(200);
   await open();
   // The wizard end to end, by keyboard where it matters.
   await clickBtn('#page-library .library-header', '新建模板'); await waitFor(q(DIALOG), 'wizard'); await sleep(250);

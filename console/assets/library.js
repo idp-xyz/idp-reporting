@@ -515,7 +515,7 @@ window.createReportingLibrary=function(ports){
    h('div',{class:'wordmark'},h('span',{class:'brand-icon','aria-hidden':'true'},icon('layers')),h('span',null,'IDP ',h('b',{text:'REPORTING'}),h('small',{text:'TEMPLATE WORKSPACE'}))),
    h('span',{class:'flex'}),
    ...(ports.data?[(ui.dataChip=btn('未选择数据',()=>ports.data(ui.dataChip),'data-chip is-empty','database',{id:'lib-data',title:'当前数据：选择产品连接、数据集、公司范围与时点'}))]:[]),
-   btn('返回设计器',()=>ports.open('documents'),null,'left'),btn('数据中心',()=>ports.open('catalog'),null,'database'),btn('新建模板',newTemplate,'primary','plus',{id:'lib-new'}));
+   btn('返回设计器',()=>ports.open('documents'),null,'left'),btn('数据中心',e=>ports.data?ports.data(e.currentTarget):ports.open('workspace'),null,'database',{id:'lib-datacenter',title:'打开数据面板：数据集、字段与币种，以及查询'}),btn('新建模板',newTemplate,'primary','plus',{id:'lib-new'}));
   const main=h('main',{class:'catalog-main','aria-labelledby':'lib-title'},
    h('div',{class:'catalog-top'},h('div',null,h('div',{class:'library-eyebrow',text:'DOCUMENT OPERATIONS'}),ui.title,h('p',{text:'从业务流程找到模板，再选择版式、数据和版本。'})),h('div',{class:'catalog-stats'},available,h('span',{text:'可用模板'}),domains,h('span',{text:'业务域'}))),
    h('div',{class:'catalog-search'},h('label',null,icon('search'),search),btn('导入模板',importDialog,null,'upload',{id:'lib-import'})),
