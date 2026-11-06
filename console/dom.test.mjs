@@ -10280,7 +10280,7 @@ test("S06-A A1: the studio is the documents page: its regions, labels and tabs a
     assert.equal(d.body.classList.contains('studio-on'), false, 'the console keeps its shell on its other pages');
     d.querySelector('[data-page="documents"]').click();
     assert.equal(d.body.classList.contains('studio-on'), true);
-    assert.match(text('#page-documents .wordmark'), /^IDP REPORTING\s*DOCUMENT STUDIO$/);
+    assert.match(text('#page-documents .wordmark'), /^IDP REPORTING\s*文档工作室$/);
     assert.equal(text('#st-crumb'), '模板中心');
     assert.deepEqual(
       ['#titleButton', '#st-help', '#st-versions', '#doc-server-save', '#previewButton', '#st-publish'].map(
@@ -12178,14 +12178,14 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       assert.equal(d.body.classList.contains('library-on'), true);
       assert.equal(d.body.classList.contains('studio-on'), false);
       const text = s => libq(a, s).textContent.replace(/\s+/g, ' ').trim();
-      assert.match(text('.wordmark'), /^IDP REPORTING\s*TEMPLATE WORKSPACE$/);
+      assert.match(text('.wordmark'), /^IDP REPORTING\s*模板中心$/);
       assert.deepEqual(
         libqa(a, '.library-header .btn:not(#lib-data)').map(b => b.textContent.trim()),
         ['返回设计器', '数据中心', '新建模板']
       );
       assert.equal(a.$('lib-datacenter').title, '打开数据面板：数据集、字段与币种，以及查询');
       assert.equal(libqa(a, '.library-header .btn')[0].id, 'lib-data', 'the data chip leads the header (S07-A)');
-      assert.equal(text('.library-eyebrow'), 'DOCUMENT OPERATIONS');
+      assert.equal(libq(a, '.library-eyebrow'), null, 'S09-C: no English eyebrow over the title');
       assert.equal(text('h1'), '模板中心');
       assert.equal(text('.catalog-top p'), '从业务流程找到模板，再选择版式、数据和版本。');
       assert.deepEqual(
@@ -13314,7 +13314,11 @@ test("S06-C C1/C2/C3/C4/C9: the shell is the prototype's header and navigation c
     const header = d.querySelector('.console-header');
     assert.ok(header);
     assert.equal(header.querySelector('.wordmark b').textContent, 'REPORTING');
-    assert.equal(a.$('shell-label').textContent, 'REPORT WORKBENCH', 'S07-H: a sign-in lands on the workbench');
+    assert.equal(
+      a.$('shell-label').textContent,
+      '报表工作台',
+      'S07-H: a sign-in lands on the workbench; S09-C: the label is the page name'
+    );
     assert.equal(a.$('page-workspace').hidden, false);
     assert.equal(d.title, 'IDP Reporting · 报表工作台');
     assert.equal(header.querySelector('.wordmark').getAttribute('href'), '#workspace');
@@ -13346,17 +13350,18 @@ test("S06-C C1/C2/C3/C4/C9: the shell is the prototype's header and navigation c
     assert.equal(d.querySelector('.rail-status #connection-label').textContent, 'API 已连接');
     assert.equal(a.$('tenant-label').textContent, 'platform_demo');
     // Every page that is not a studio: the title block (eyebrow, title, lead), the wordmark's label, document.title, the active row; no studio shell is on.
-    for (const [page, eyebrow, h1, title] of [
-      ['system', 'PLATFORM CAPABILITIES', '能力与环境', '能力与环境'],
-      ['workspace', 'REPORT WORKBENCH', '报表工作台', '报表工作台'],
+    // S09-C (ADR 0014 decision 7): the title block is the title and its lead, the header's label is the page's name; no English eyebrow.
+    for (const [page, h1, title] of [
+      ['system', '能力与环境', '能力与环境'],
+      ['workspace', '报表工作台', '报表工作台'],
     ]) {
       d.querySelector('[data-page="' + page + '"]').click();
       const section = a.$('page-' + page);
       assert.equal(section.hidden, false, page);
-      assert.equal(section.querySelector('.page-heading .eyebrow').textContent, eyebrow);
+      assert.equal(section.querySelector('.page-heading .eyebrow'), null, page + ': no eyebrow');
       assert.equal(section.querySelector('.page-heading h1').textContent, h1);
       assert.ok(section.querySelector('.page-heading p').textContent.length > 0);
-      assert.equal(a.$('shell-label').textContent, eyebrow);
+      assert.equal(a.$('shell-label').textContent, h1);
       assert.equal(d.title, 'IDP Reporting · ' + title);
       const active = nav.querySelector('.nav-item.active');
       assert.equal(active.dataset.page, page);
@@ -13414,7 +13419,7 @@ test("S06-C C1/C2/C3/C4/C9: the shell is the prototype's header and navigation c
     );
     assert.deepEqual(
       [...a.$('sh-fields-list').querySelectorAll('.column-line code')].map(e => e.textContent).slice(1),
-      ['string', 'string', 'decimal · CNY']
+      ['文本', '文本', '小数 · CNY']
     );
     d.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
     assert.equal(a.$('sh-d-data').hidden, true);
@@ -13464,7 +13469,7 @@ test("S06-C C6: the dashboard studio: the regions, every old control under its o
     );
     assert.match(
       s.querySelector('.topbar .wordmark').textContent.replace(/\s+/g, ' ').trim(),
-      /^IDP REPORTING\s*DASHBOARD STUDIO$/
+      /^IDP REPORTING\s*看板工作室$/
     );
     assert.equal(a.$('bd-crumb').textContent.trim(), '报表工作台');
     assert.equal(a.$('bd-title').textContent, '看板');
@@ -13808,7 +13813,9 @@ test("S07-A A1–A3: the rail stays on every shell; the chip names the data cont
     assert.equal(a.$('bd-start').hidden, true);
     assert.equal(a.$('bd-state').textContent, '草稿');
     assert.equal(chip.classList.contains('is-empty'), false);
-    assert.match(a.$('sh-data-text').textContent, /^receivables\.aging@1\.0\.0 · company_demo · \d{4}-\d{2}-\d{2}$/);
+    // S09-C: the chip names the dataset in the user's words; the technical id and version are in its title.
+    assert.match(a.$('sh-data-text').textContent, /^应收余额 · company_demo · \d{4}-\d{2}-\d{2}$/);
+    assert.match(a.$('sh-data-chip').title, /数据集 receivables\.aging@1\.0\.0/);
     assert.equal(a.$('sh-data-kind').textContent, '查询预览');
     // The snapshot from the header's chip: the company is known, so the focus goes to the action; the chip then says 冻结快照 and the centre's chip agrees.
     chip.click();
@@ -14252,10 +14259,10 @@ test('S07-F: the console header is the header of every page: the studios and the
     const d = a.w.document;
     await a.login();
     for (const [page, label, title] of [
-      ['dashboard', 'DASHBOARD STUDIO', '看板工作室'],
-      ['library', 'TEMPLATE WORKSPACE', '模板中心'],
-      ['documents', 'DOCUMENT STUDIO', '文档工作室'],
-      ['workspace', 'REPORT WORKBENCH', '报表工作台'],
+      ['dashboard', '看板工作室', '看板工作室'],
+      ['library', '模板中心', '模板中心'],
+      ['documents', '文档工作室', '文档工作室'],
+      ['workspace', '报表工作台', '报表工作台'],
     ]) {
       d.querySelector('.app-rail [data-page="' + page + '"]').click();
       assert.equal(a.$('page-' + page).hidden, false, page);

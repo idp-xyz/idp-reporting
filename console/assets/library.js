@@ -1781,7 +1781,7 @@ window.createReportingLibrary = function (ports) {
         'div',
         {class: 'wordmark'},
         h('span', {class: 'brand-icon', 'aria-hidden': 'true'}, icon('layers')),
-        h('span', null, 'IDP ', h('b', {text: 'REPORTING'}), h('small', {text: 'TEMPLATE WORKSPACE'}))
+        h('span', null, 'IDP ', h('b', {text: 'REPORTING'}), h('small', {text: '模板中心'}))
       ),
       h('span', {class: 'flex'}),
       ...(ports.data
@@ -1805,13 +1805,8 @@ window.createReportingLibrary = function (ports) {
       h(
         'div',
         {class: 'catalog-top'},
-        h(
-          'div',
-          null,
-          h('div', {class: 'library-eyebrow', text: 'DOCUMENT OPERATIONS'}),
-          ui.title,
-          h('p', {text: '从业务流程找到模板，再选择版式、数据和版本。'})
-        ),
+        // S09-C (ADR 0014 decision 7): the title block is the title and its lead; the prototype's English eyebrow is gone.
+        h('div', null, ui.title, h('p', {text: '从业务流程找到模板，再选择版式、数据和版本。'})),
         h(
           'div',
           {class: 'catalog-stats'},
