@@ -900,7 +900,7 @@ func (w *rlsWorld) policiesAreChecked(t *testing.T) {
 func migration007(t *testing.T, admin *pgxpool.Pool) {
 	ctx := context.Background()
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 9 || known[6].Name != "row_level_security" {
+	if e != nil || len(known) != 10 || known[6].Name != "row_level_security" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	dropSchema(t, admin)
@@ -920,18 +920,18 @@ func migration007(t *testing.T, admin *pgxpool.Pool) {
 		t.Fatal(e)
 	}
 	st := must(postgres.Status(ctx, admin))
-	if st.Current() != 6 || len(st.Pending) != 3 || st.Pending[0] != 7 || st.Pending[1] != 8 || st.Pending[2] != 9 {
+	if st.Current() != 6 || len(st.Pending) != 4 || st.Pending[0] != 7 || st.Pending[1] != 8 || st.Pending[2] != 9 || st.Pending[3] != 10 {
 		t.Fatalf("%+v", st)
 	}
 	if plan, e := postgres.Plan(st, 7, postgres.Upward); e != nil || len(plan) != 1 || plan[0] != "up   007 row_level_security" {
 		t.Fatal(plan, e)
 	}
-	// The step alone: 008 and 009 are applied on top elsewhere.
+	// The step alone: 008, 009 and 010 are applied on top elsewhere.
 	if e := postgres.Up(ctx, admin, 7, "test"); e != nil {
 		t.Fatal(e)
 	}
 	st = must(postgres.Status(ctx, admin))
-	if st.Current() != 7 || len(st.Pending) != 2 || len(st.Problems) != 0 || st.Applied[6].Checksum != known[6].Checksum {
+	if st.Current() != 7 || len(st.Pending) != 3 || len(st.Problems) != 0 || st.Applied[6].Checksum != known[6].Checksum {
 		t.Fatalf("%+v", st)
 	}
 	if count(t, admin, "SELECT count(*) FROM reporting_s01.jobs") != 1 || count(t, admin, "SELECT count(*) FROM reporting_s01.assets") != 1 {
