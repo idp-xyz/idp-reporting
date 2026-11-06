@@ -54,7 +54,9 @@ const (
 
 // Config is the parsed, validated configuration. It holds no secret: secrets are files named here and environment variables.
 type Config struct {
-	Listen             string `json:"listen"`
+	Listen string `json:"listen"`
+	// MetricsListen, when set, serves GET /metrics (Prometheus text) on its own listener; a loopback IP address only (docs/DEPLOYMENT.md "Metrics").
+	MetricsListen      string `json:"metrics_listen"`
 	TLSCertFile        string `json:"tls_cert_file"`
 	TLSKeyFile         string `json:"tls_key_file"`
 	AllowPlainLoopback bool   `json:"allow_plain_loopback"`
@@ -404,6 +406,22 @@ func (c *Config) Validate() error {
 		return configProblem("tls_cert_file and tls_key_file are required (plain HTTP is only for a loopback listen address with allow_plain_loopback)")
 	case !tls && !loopback:
 		return configProblem("plain HTTP is refused on a listen address that is not a loopback IP address")
+	}
+	if c.MetricsListen != "" {
+		mhost, mport, err := net.SplitHostPort(c.MetricsListen)
+		if err != nil || mport == "" {
+			return configProblem("metrics_listen must be host:port")
+		}
+		if n, err := net.LookupPort("tcp", mport); err != nil || n < 0 || n > 65535 {
+			return configProblem("metrics_listen has an invalid port")
+		}
+		if ip := net.ParseIP(mhost); ip == nil || !ip.IsLoopback() {
+			return configProblem("metrics_listen must be a loopback IP address (the metrics carry no authentication; a scraper on another host reaches them through a local proxy or agent)")
+		}
+		// Port 0 lets the system choose, so two zeros never collide; a fixed port given to both would refuse the second bind.
+		if apiHost, apiPort, err := net.SplitHostPort(c.Listen); err == nil && mport != "0" && mport == apiPort && (mhost == apiHost || apiHost == "" || net.ParseIP(apiHost).IsUnspecified()) {
+			return configProblem("metrics_listen must not be the port of listen")
+		}
 	}
 	for name, v := range map[string]int{"read_header_timeout": c.ReadHeaderTimeout, "read_timeout": c.ReadTimeout, "write_timeout": c.WriteTimeout, "idle_timeout": c.IdleTimeout} {
 		if v < 0 || v > MaxTimeout {

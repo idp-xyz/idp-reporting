@@ -101,6 +101,10 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 		"a certificate without its key":      with(func(d map[string]any) { delete(d, "tls_key_file") }),
 		"plain and TLS together":             with(func(d map[string]any) { d["allow_plain_loopback"] = true }),
 		"neither TLS nor plain":              with(func(d map[string]any) { delete(d, "tls_cert_file"); delete(d, "tls_key_file") }),
+		"metrics on a public address":        with(func(d map[string]any) { d["metrics_listen"] = "0.0.0.0:9090" }),
+		"metrics on a host name":             with(func(d map[string]any) { d["metrics_listen"] = "localhost:9090" }),
+		"metrics without a port":             with(func(d map[string]any) { d["metrics_listen"] = "127.0.0.1" }),
+		"metrics on the API's address":       with(func(d map[string]any) { d["metrics_listen"] = d["listen"] }),
 		"plain HTTP on a public address": with(func(d map[string]any) {
 			delete(d, "tls_cert_file")
 			delete(d, "tls_key_file")
