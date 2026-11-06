@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"idp.local/reporting/storage/postgres"
 	"net/http"
 	"os"
 	"strings"
@@ -161,7 +162,7 @@ func TestCheckConfigPrintsCountsAndNoValue(t *testing.T) {
 
 func TestCommandUsageAndVersion(t *testing.T) {
 	var out, errs bytes.Buffer
-	if c := Execute(context.Background(), []string{"reporting-server", "version"}, nil, nil, &out, &errs, nil); c != 0 || !strings.HasPrefix(out.String(), "reporting-server ") || !strings.Contains(out.String(), " schema 10") {
+	if c := Execute(context.Background(), []string{"reporting-server", "version"}, nil, nil, &out, &errs, nil); c != 0 || !strings.HasPrefix(out.String(), "reporting-server ") || !strings.Contains(out.String(), fmt.Sprintf(" schema %d", postgres.LatestVersion())) {
 		t.Fatalf("%d %q %q", c, out.String(), errs.String())
 	}
 	for name, args := range map[string][]string{

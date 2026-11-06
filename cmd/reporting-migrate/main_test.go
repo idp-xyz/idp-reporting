@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/internal/pgauthproxy"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/objects"
+	"idp.local/reporting/storage/postgres"
 	"net/url"
 	"os"
 	"strings"
@@ -82,6 +84,39 @@ func TestMigrateCommandArguments(t *testing.T) {
 }
 
 // TestMigrateCommand drives every subcommand against the guarded fixture database.
+// The embedded steps, as the command prints them: a new migration appears in every list of these tests without an edit to them.
+var latest = fmt.Sprintf("at version %03d", postgres.LatestVersion())
+
+// lines formats the embedded steps from..to with format (version, name), in order.
+func lines(format string, from, to int) []string {
+	known, err := postgres.Migrations()
+	if err != nil {
+		panic(err)
+	}
+	var out []string
+	for _, m := range known {
+		if m.Version >= from && m.Version <= to {
+			out = append(out, fmt.Sprintf(format, m.Version, m.Name))
+		}
+	}
+	return out
+}
+
+// downTo is what plan prints for a down to version to: the steps above it, newest first.
+func downTo(to int) []string {
+	known, err := postgres.Migrations()
+	if err != nil {
+		panic(err)
+	}
+	var out []string
+	for i := len(known) - 1; i >= 0; i-- {
+		if known[i].Version > to {
+			out = append(out, fmt.Sprintf("down %03d %s", known[i].Version, known[i].Name))
+		}
+	}
+	return out
+}
+
 func TestMigrateCommand(t *testing.T) {
 	dsn := os.Getenv("REPORTING_S01_TEST_DSN")
 	if dsn == "" {
@@ -100,6 +135,7 @@ func TestMigrateCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("REPORTING_STORE_DSN", dsn)
+	all := postgres.LatestVersion()
 	expect := func(args []string, wantErr bool, contains ...string) string {
 		t.Helper()
 		out, err := capture(t, args...)
@@ -113,11 +149,11 @@ func TestMigrateCommand(t *testing.T) {
 		}
 		return out
 	}
-	out := expect([]string{"status"}, false, "pending:  001 base", "pending:  003 issues", "pending:  004 source_confirmed_issue", "pending:  005 retention", "pending:  006 sweeps", "pending:  007 row_level_security", "pending:  008 object_storage", "pending:  009 capacity_indexes", "pending:  010 jobs_identity_kind_stats")
+	out := expect([]string{"status"}, false, lines("pending:  %03d %s", 1, all)...)
 	if strings.Contains(out, "applied:") {
 		t.Fatal(out)
 	}
-	expect([]string{"plan"}, false, "up   001 base", "up   003 issues", "up   004 source_confirmed_issue", "up   005 retention", "up   006 sweeps", "up   007 row_level_security", "up   008 object_storage", "up   009 capacity_indexes", "up   010 jobs_identity_kind_stats")
+	expect([]string{"plan"}, false, lines("up   %03d %s", 1, all)...)
 	expect([]string{"up", "--to", "2"}, false, "at version 002")
 	expect([]string{"init-profile", "contract-simulator-only"}, false, "profile contract-simulator-only")
 	expect([]string{"init-profile", "production"}, true, "already")
@@ -131,8 +167,8 @@ func TestMigrateCommand(t *testing.T) {
 		})
 	}
 	expect([]string{"roles", "--migrator-role", "reporting_cli_mig_t", "--app-role", "reporting_cli_app_t"}, false, "owned by reporting_cli_mig_t")
-	expect([]string{"up"}, false, "at version 010")
-	out = expect([]string{"status"}, false, "applied:  001 base", "applied:  003 issues", "applied:  004 source_confirmed_issue", "applied:  005 retention", "applied:  006 sweeps", "applied:  007 row_level_security", "applied:  008 object_storage", "applied:  009 capacity_indexes", "applied:  010 jobs_identity_kind_stats", "the connected role is not the application role", "the connected role is not the sweep role")
+	expect([]string{"up"}, false, latest)
+	out = expect([]string{"status"}, false, append(lines("applied:  %03d %s", 1, all), "the connected role is not the application role", "the connected role is not the sweep role")...)
 	if strings.Contains(out, "pending:") {
 		t.Fatal(out)
 	}
@@ -153,12 +189,12 @@ func TestMigrateCommand(t *testing.T) {
 			t.Fatal("a restored store still reports row-level problems:", out)
 		}
 	}
-	expect([]string{"plan", "--to", "1"}, false, "down 010 jobs_identity_kind_stats", "down 009 capacity_indexes", "down 008 object_storage", "down 007 row_level_security", "down 006 sweeps", "down 005 retention", "down 004 source_confirmed_issue", "down 003 issues", "down 002 payload_digests")
+	expect([]string{"plan", "--to", "1"}, false, downTo(1)...)
 	expect([]string{"down"}, true, "explicit --to")
-	expect([]string{"down", "--to", "11"}, true, "outside")
+	expect([]string{"down", "--to", fmt.Sprint(all + 1)}, true, "outside")
 	expect([]string{"up", "--to", "1"}, true, "wrong side")
 	expect([]string{"down", "--to", "2"}, false, "at version 002")
-	expect([]string{"plan"}, false, "up   003 issues", "up   004 source_confirmed_issue", "up   005 retention", "up   006 sweeps", "up   007 row_level_security", "up   008 object_storage", "up   009 capacity_indexes", "up   010 jobs_identity_kind_stats")
+	expect([]string{"plan"}, false, lines("up   %03d %s", 3, all)...)
 	// 004 up is refused while S03-G's platform-numbered documents exist, with the remedy; the
 	// operator removes them with the down that accepts the loss and goes up.
 	expect([]string{"up", "--to", "3"}, false, "at version 003")
@@ -169,7 +205,7 @@ func TestMigrateCommand(t *testing.T) {
 	expect([]string{"status"}, false, "applied:  003 issues", "pending:  004 source_confirmed_issue")
 	expect([]string{"down", "--to", "2"}, true, "--accept-data-loss")
 	expect([]string{"down", "--to", "2", "--accept-data-loss"}, false, "at version 002")
-	expect([]string{"up"}, false, "at version 010")
+	expect([]string{"up"}, false, latest)
 	if _, err := admin.Exec(ctx, "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=1"); err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +216,7 @@ func TestMigrateCommand(t *testing.T) {
 	if _, err := admin.Exec(ctx, "DROP SCHEMA reporting_s01 CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	expect([]string{"up"}, false, "at version 010")
+	expect([]string{"up"}, false, latest)
 	expect([]string{"init-profile", "contract-simulator-only"}, false)
 	retention(t, admin, dsn, expect)
 	migratorCredentials(t, admin, dsn, expect)
@@ -194,7 +230,7 @@ func migratorCredentials(t *testing.T, admin *pgxpool.Pool, dsn string, expect f
 	t.Helper()
 	ctx := context.Background()
 	const role, oldPassword, newPassword = "reporting_cli_mig_t", "migrator-OLD-password-6c2e91d0a4", "migrator-NEW-password-d7013fb85e"
-	expect([]string{"up"}, false, "at version 010")
+	expect([]string{"up"}, false, latest)
 	expect([]string{"roles", "--migrator-role", role, "--app-role", "reporting_cli_app_t"}, false, "owned by "+role)
 	set := func(password string) {
 		t.Helper()
@@ -228,7 +264,7 @@ func migratorCredentials(t *testing.T, admin *pgxpool.Pool, dsn string, expect f
 	as(oldPassword)
 	out, err := capture(t, "status")
 	check("status with the password", out, err)
-	if err != nil || !strings.Contains(out, "applied:  010 jobs_identity_kind_stats") {
+	if err != nil || !strings.Contains(out, lines("applied:  %03d %s", postgres.LatestVersion(), postgres.LatestVersion())[0]) {
 		t.Fatalf("the migrator cannot run the command with its password: %v %s", err, out)
 	}
 	set(newPassword)
@@ -248,10 +284,10 @@ func migratorCredentials(t *testing.T, admin *pgxpool.Pool, dsn string, expect f
 	as(newPassword)
 	out, err = capture(t, "status")
 	check("status with the new password", out, err)
-	if err != nil || !strings.Contains(out, "applied:  010 jobs_identity_kind_stats") {
+	if err != nil || !strings.Contains(out, lines("applied:  %03d %s", postgres.LatestVersion(), postgres.LatestVersion())[0]) {
 		t.Fatalf("the migrator cannot run the command with its new password: %v %s", err, out)
 	}
-	expect([]string{"up"}, false, "at version 010")
+	expect([]string{"up"}, false, latest)
 }
 
 // retention drives the operator's sweep (S04-B) on rows seeded by SQL: a dry run that counts and changes nothing, the sweep in batches of
@@ -269,7 +305,7 @@ func retention(t *testing.T, admin *pgxpool.Pool, dsn string, expect func([]stri
 	// A store behind the binary is refused before anything is touched.
 	expect([]string{"down", "--to", "5"}, false, "at version 005")
 	expect([]string{"sweep"}, true, "reporting-migrate up")
-	expect([]string{"up"}, false, "at version 010")
+	expect([]string{"up"}, false, latest)
 	for _, role := range []string{"reporting_cli_sweep_t"} {
 		exec("DROP ROLE IF EXISTS " + role + "; CREATE ROLE " + role + " LOGIN")
 		t.Cleanup(func() {

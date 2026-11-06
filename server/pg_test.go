@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -232,7 +233,7 @@ func pgRefusals(t *testing.T) {
 	if err := postgres.Down(ctx, p.admin, 8, "test", false); err != nil {
 		t.Fatal(err)
 	}
-	try("a schema behind", StepStore, "the binary needs 10", p.dsn)
+	try("a schema behind", StepStore, fmt.Sprintf("the binary needs %d", postgres.LatestVersion()), p.dsn)
 	if err := postgres.Up(ctx, p.admin, 0, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +335,7 @@ func pgSession(t *testing.T, withObjects bool) {
 			t.Errorf("the log carries %q", secret)
 		}
 	}
-	if ledger := s.log.events(t, "start")[0]["ledger"]; ledger != float64(10) {
+	if ledger := s.log.events(t, "start")[0]["ledger"]; ledger != float64(postgres.LatestVersion()) {
 		t.Errorf("ledger %v", ledger)
 	}
 	noNewGoroutines(t, snap)
