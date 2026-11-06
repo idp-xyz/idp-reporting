@@ -6,13 +6,16 @@
     "dev": "python3 scripts/console_preview.py",
     "check:console": "node --check console/assets/app.js",
     "test:console": "node --test console/dom.test.mjs console/embed.dom.test.mjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "format": "prettier --write \"console/**/*.{js,mjs,css}\" \"scripts/*.mjs\" eslint.config.mjs",
+    "format:check": "prettier --check \"console/**/*.{js,mjs,css}\" \"scripts/*.mjs\" eslint.config.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "eslint": "10.14.0",
     "globals": "17.14.0",
-    "jsdom": "30.1.3"
+    "jsdom": "30.1.3",
+    "prettier": "3.9.10"
   },
   "overrides": {
     "minimatch": "11.0.5"

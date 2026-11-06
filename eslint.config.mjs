@@ -1,6 +1,6 @@
 // ESLint for the console's browser scripts and the Node scripts and tests that drive it. The rules are the ones that find bugs (an
-// undefined name, a variable that is never read, an unreachable branch, a duplicated key), not style: reformatting the dense code is a
-// separate decision. `npm run lint` runs it; CI's console job runs it on every change.
+// undefined name, a variable that is never read, an unreachable branch, a duplicated key), not style: style is Prettier's
+// (.prettierrc.json, `npm run format`; ADR 0014 decision 9), and CI's console job checks both on every change.
 // package.json overrides minimatch to 11.0.5 because eslint 10.14 still requires minimatch 10, which advisory GHSA-g3hv-75wg-m249
 // covers. ESLint never sets the optimizationLevel that reaches the flaw, but `npm audit` cannot tell; drop the override once eslint's
 // own range admits 11.0.1 or later.

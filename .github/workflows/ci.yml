@@ -185,6 +185,9 @@ jobs:
       # The rules that find bugs (an undefined name, an unused variable, markup written from a string); eslint.config.mjs says which and why.
       - name: JavaScript lint
         run: npm run lint
+      # The formatter's verdict on the files package.json's "format" names (ADR 0014 decision 9): a change that is not formatted fails here.
+      - name: Formatting
+        run: npm run format:check
       - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:

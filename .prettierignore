@@ -1,0 +1,16 @@
+# Prettier formats what package.json's "format" names: the console's scripts and styles, the Node scripts that drive them, and the ESLint
+# configuration. The pages (index.html, embed.html, embed-host/index.html) are not formatted: their text nodes must stay byte for byte
+# (the DOM tests compare textContent, and the embed page must be the console's own markup), and a formatter wraps text at spaces.
+# Everything else is left as it is: documents, evidence, the sample pack, generated files and Go.
+*.html
+node_modules/
+evidence/
+docs/
+spikes/
+doctemplates/
+dashboards/
+layouts/
+templates/
+backgrounds/
+*.min.js
+package-lock.json
