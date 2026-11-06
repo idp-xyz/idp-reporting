@@ -578,6 +578,7 @@ reporting_source_test_s01 / reporting_source_test_s01_race。生产库名及非�
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
+npm run lint
 python3 scripts/run_s03a_checks.py --go /path/to/go1.26.10/bin/go
 python3 scripts/verify_s03a_workbooks.py
 ```

@@ -28,7 +28,7 @@ async function api(method, path, body, key) {
   if (key) headers['Idempotency-Key'] = key;
   const r = await fetch(base + '/api/reporting/v1' + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
   const text = await r.text();
-  let json = null; try { json = text ? JSON.parse(text) : null; } catch { json = {raw: text.slice(0, 200)}; }
+  let json; try { json = text ? JSON.parse(text) : null; } catch { json = {raw: text.slice(0, 200)}; }
   if (!r.ok) { const e = new Error(`${method} ${path} → ${r.status} ${json && json.error ? json.error : ''}`); e.status = r.status; e.body = json; throw e; }
   return json;
 }
@@ -95,7 +95,6 @@ async function main() {
 
   // ---- copies of four samples, one per domain, bound to the finance dataset by a mapping -------------------------------------------
   const columns = fin.columns;
-  const pick = type => (columns.find(c => (type === 'decimal' ? ['decimal', 'integer'].includes(c.type) : type === 'integer' ? c.type === 'integer' : type === 'date' ? ['date', 'datetime'].includes(c.type) : c.type === 'string')) || {}).id;
   for (const kind of (wants('samples') ? ['statement', 'wms_pick', 'booking', 'commercial'] : [])) {
     if (room <= 0) { skip('样例副本 ' + kind, '已到模板上限'); continue; }
     const sample = await api('GET', '/document-templates/samples/' + kind);

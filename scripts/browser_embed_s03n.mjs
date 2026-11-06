@@ -14,7 +14,7 @@
 // Safety: all three origins must be loopback because the bearer token is typed into a page. The script writes only its own files in --out and in
 // --download-dir, and leaves the browser and the servers running (the caller stops them).
 // Usage: node scripts/browser_embed_s03n.mjs --out DIR --token-file FILE --platform URL --host URL --stranger URL --download-dir WINDOWS_PATH --download-dir-wsl PATH [--cdp PORT]
-import {readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, existsSync, statSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, existsSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 import {join} from 'node:path';
 

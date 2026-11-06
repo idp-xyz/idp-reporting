@@ -8,7 +8,7 @@ window.createReportingBoardStudio = function (ports) {
   const $=id=>document.getElementById(id);
   const root=$('page-dashboard');if(!root||!$('bd-studio'))return null;
   const studio=$('bd-studio');
-  const q=sel=>root.querySelector(sel),qa=sel=>Array.from(root.querySelectorAll(sel));
+  const qa=sel=>Array.from(root.querySelectorAll(sel));
   const SVG='http://www.w3.org/2000/svg';
   function h(tag,attrs,...children){const n=document.createElement(tag);if(attrs)for(const [k,v] of Object.entries(attrs)){if(v===undefined||v===null||v===false)continue;if(k==='text')n.textContent=v;else if(k==='onclick')n.addEventListener('click',v);else n.setAttribute(k,v===true?'':String(v));}for(const c of children.flat())if(c!==undefined&&c!==null)n.append(c);return n;}
   function icon(name){const s=document.createElementNS(SVG,'svg');s.setAttribute('class','ic');s.setAttribute('aria-hidden','true');s.setAttribute('focusable','false');const u=document.createElementNS(SVG,'use');u.setAttribute('href','#s-'+name);s.append(u);return s;}

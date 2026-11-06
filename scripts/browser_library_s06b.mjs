@@ -232,7 +232,6 @@ async function main() {
   check('the sample\'s preview is a PDF (no dataset needed)', pdfHead === '%PDF-', pdfHead);
   await key('Escape'); await waitFor(`!document.querySelector('#page-library .overlay.open')&&!document.querySelector('.library-shell').inert`, 'the preview dialog closes on Esc'); await sleep(150);
   // Copy a sample with a mapping, and open it in the studio.
-  const sampleName = await evalJs(`document.querySelector('#page-library .sample-card .catalog-name').textContent`);
   await clickBtn('#page-library .sample-card', '复制示例'); await waitFor(`${q(DIALOG + ' tbody tr')}`, 'mapping dialog'); await sleep(250);
   const mapped = await evalJs(`[...document.querySelectorAll('${DIALOG} tbody select')].map(s=>s.value)`);
   check('the mapping is pre-filled where a column fits', mapped.some(v => v), mapped);
