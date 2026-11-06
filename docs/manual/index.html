@@ -36,8 +36,8 @@
 </nav>
 <main>
 <h1>IDP Reporting 控制台用户手册</h1>
-<p class="lead">面向报表与单据的设计者、以及负责验收的测试人员。手册以 2026-11-04 的 main 分支为准（S07-B 之后），截图来自本机演示服务上的真实操作，测试数据来自合同模拟器与随附的造数据脚本。</p>
-<div class="meta"><span>版本 main · 2026-11-04</span><span>演示地址 http://127.0.0.1:7811/console/</span><span>数据来源 合同模拟器（合成数据）</span><span>浏览器 Chrome 156，1440 × 900</span></div>
+<p class="lead">面向报表与单据的设计者、以及负责验收的测试人员。手册以 2026-11-06 的 main 分支为准（ADR 0014 的 S09-A/B/C 之后），截图由 <code>scripts/manual_screens.sh</code> 在一个全新的演示服务上按手册的路径自动截取，测试数据来自合同模拟器与随附的造数据脚本。</p>
+<div class="meta"><span>版本 main · 2026-11-06</span><span>演示地址 http://127.0.0.1:7811/console/</span><span>数据来源 合同模拟器（合成数据）</span><span>浏览器 Chromium 130（scripts/manual_screens.sh 无头截取），1440 × 900</span></div>
 
 <h2 id="intro">关于本手册</h2>
 <p>IDP Reporting 是一个独立的报表与单据平台：它从来源产品（现在是模拟器）取得<strong>已授权</strong>的数据，让设计者在控制台里查询、冻结快照、导出、设计看板与单据模板、发布版本、正式出具带编号的文件；来源产品也可以把其中的视图嵌进自己的页面（嵌入页）。平台不自己编号、不绕过来源授权、不在浏览器里存任何数据或令牌。</p>
