@@ -87,6 +87,7 @@ node --test console/dom.test.mjs console/embed.dom.test.mjs   # 会构建并启�
 | 存储、迁移、角色、行级安全、配额、对象存储、备份与恢复 | docs/OPERATIONS.md |
 | 容量 | docs/CAPACITY.md |
 | 访问令牌 | docs/ACCESS_JWT.md |
+| 安全审查：每条信任边界的代码、测试与已知缺口 | docs/SECURITY_REVIEW.md |
 | 接入真实来源产品 | docs/REAL_SOURCE_ONBOARDING.md |
 | 本机测试场景与造数 | docs/TEST_SCENARIOS.md |
 | 任务基线 | docs/UX_BASELINE_S07.md |
