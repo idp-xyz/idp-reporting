@@ -70,6 +70,7 @@ go vet ./... && go test ./...
 npm ci --ignore-scripts --no-audit --no-fund
 npm run lint
 node --test console/dom.test.mjs console/embed.dom.test.mjs   # 会构建并启动真实的 Go 演示服务
+npm run format:check                                           # Prettier（ADR 0014）；npm run format 写回
 ```
 
 缺少数据库、对象存储或 Typst 时，相应测试明确 SKIP，不能算作通过；`REPORTING_S01_REQUIRE_PG=1`、`REPORTING_OBJECT_STORE_REQUIRE=1` 与 `REPORTING_PDF_REQUIRE=1` 让缺少的环境直接失败。CI 用 `scripts/go_test_strict.py` 跑 Go 测试，跳过的测试必须恰好是预期的那些。真实浏览器脚本也可以对本机 Chrome 运行：`CHROME_RUNNING=1 GO=$REPORTING_GO scripts/ci_browser_evidence.sh OUT`（docs/CONSOLE.md）。
@@ -79,7 +80,7 @@ node --test console/dom.test.mjs console/embed.dom.test.mjs   # 会构建并启�
 | 想知道 | 看 |
 |---|---|
 | 架构基线与接口合同 | docs/s00/ARCHITECTURE.md、docs/s00/INTERFACES.md |
-| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0011_VERSIONS_AND_HOME.md |
+| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0014_CONSOLE_LEGIBILITY.md（0012、0013 为提案） |
 | API | docs/API.md |
 | 控制台与设计器 | docs/CONSOLE.md、docs/STUDIO.md，用户手册 docs/manual/ |
 | 嵌入 | docs/EMBEDDING.md |
