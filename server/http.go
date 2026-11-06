@@ -111,7 +111,9 @@ func (s *Server) access(next http.Handler) http.Handler {
 			if route == "" {
 				route = "unmatched"
 			}
-			s.log.info("access", map[string]any{"method": method, "route": route, "status": status, "duration_ms": s.now().Sub(start).Milliseconds(), "request_id": id})
+			elapsed := s.now().Sub(start)
+			s.log.info("access", map[string]any{"method": method, "route": route, "status": status, "duration_ms": elapsed.Milliseconds(), "request_id": id})
+			s.metrics.request(route, status, elapsed)
 		}()
 		next.ServeHTTP(rec, req)
 		finished = true

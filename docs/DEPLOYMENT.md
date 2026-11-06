@@ -81,6 +81,7 @@ the rule and never repeats a value of the file.
 | Field | Default | Bounds and rules |
 |---|---|---|
 | `listen` | required | `host:port`. A host that is not a loopback IP (an empty host, `0.0.0.0`, a name) needs TLS. |
+| `metrics_listen` | none (off) | `host:port` of the Prometheus listener (see "Metrics" below). A loopback IP only, never the port of `listen`. |
 | `tls_cert_file`, `tls_key_file` | none | Both or neither. TLS 1.3 only (a TLS 1.2 client is refused at the handshake). The certificate must be valid when the server starts; the key is a secret file. |
 | `allow_plain_loopback` | `false` | Plain HTTP, accepted only with no certificate and a loopback IP `listen` (a host behind a trusted local proxy). Contradictory with a certificate. |
 | `allow_simulator` | `false` | Lets `Run` accept adapters that are contract simulators. Not for production. |
@@ -141,6 +142,27 @@ and whether TLS, an object store, PDF, issuance and embedding are on.
 Both answers carry the API's security headers and `Cache-Control: no-store`, and are mounted ahead of the console, so the console's static handler never serves them. **Point the balancer's
 health check at `/readyz`** (take a server out of rotation when it is 503) and use `/healthz` only for "restart the process if it does not answer". `draining` is for the balancer to see during a
 rolling stop: the first act of a drain is to turn readiness to 503; the listener closes right after, and the server waits for requests in flight and jobs in hand.
+
+## Metrics
+
+With `metrics_listen` set (for example `"127.0.0.1:9464"`), the server serves `GET /metrics` in the Prometheus text format on a second, plain-HTTP
+listener; nothing else is on it, and nothing of it is on the API's listener. The address must be a loopback IP: the metrics carry no
+authentication, so a scraper on another host reaches them through an agent or a local proxy on the same machine. Unset, there is no listener.
+
+| Series | Kind | Labels |
+|---|---|---|
+| `reporting_http_requests_total` | counter | `route` (the mux pattern, as in the access log; `unmatched` for a 404), `status` (`2xx`..`5xx`) |
+| `reporting_http_request_duration_seconds` | histogram | `route` |
+| `reporting_jobs_run_total` | counter | none: jobs this process's workers claimed and ran to their end |
+| `reporting_worker_failures_total` | counter | `code` (the platform's error code, as in `worker_failed`) |
+| `reporting_sweeps_total`, `reporting_reloads_total` | counter | `outcome`: `ok` or the code of the failure or refusal |
+| `reporting_http_in_flight`, `reporting_workers_busy`, `reporting_draining` | gauge | none |
+| `reporting_ready` | gauge | `reason`: `none`, or the word `/readyz` would answer |
+| `reporting_build_info` | gauge | `version` |
+
+As in the log, no tenant, subject, client, integration, job id, path or query is ever a label: the series say how the server is doing, not
+who uses it. Counters start at zero with the process. Alert on `reporting_ready == 0` (with its reason), a rising rate of
+`reporting_worker_failures_total` or `5xx`, and `reporting_sweeps_total{outcome!="ok"}`.
 
 ## Logging
 
@@ -252,7 +274,7 @@ alone to do.
 | 12 | Database and object store credentials rotated by a rolling restart with the stated window | Done (the failure side proved) / Operator (the schedule) | S04-H |
 | 13 | TLS certificate for the server, renewed before it expires (a restart) | Operator (no automatic renewal) | S05-A |
 | 14 | The unit, the user, the file modes, `TimeoutStopSec` above `shutdown_grace`, the balancer pointed at `/readyz` | Operator (the example above is untested) | S05-A |
-| 15 | Logs shipped and watched (`worker_failed`, `reload` refusals, `drain_end` with `clean:false`, `http_server_error`); alerts on `/readyz` reasons | Operator (no metrics or tracing endpoint exists) | S05-A |
+| 15 | Logs shipped and watched (`worker_failed`, `reload` refusals, `drain_end` with `clean:false`, `http_server_error`); metrics scraped from `metrics_listen` and alerts on `reporting_ready` and the failure counters | Done (the log events, the metrics listener) / Operator (shipping, scraping, the alerts) / Open (no tracing) | S05-A, "Metrics" |
 | 16 | **The real issuer**: its JWKS, the real bindings (subject, client, tenant, integrations), its lifetime policy, discovery and emergency revocation | **Open** (waits for the real IdP contract; docs/ACCESS_JWT.md) | S02-A |
 | 17 | **A real adapter** for each source product and its contract (catalog, prepared reads, current authorization, issue authority), registered in the host's `main` | **Open** (the integration slice) | docs/REAL_SOURCE_ONBOARDING.md |
 | 18 | **Data reconciliation** with the product: totals, the issue records against the product's numbers after a restore, the grants | **Open** (needs the real adapter) | S03-H, S04-F |

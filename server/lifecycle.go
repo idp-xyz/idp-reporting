@@ -44,6 +44,10 @@ func (s *Server) worker() {
 		s.busy.Add(-1)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			s.log.warn("worker_failed", map[string]any{"code": codeOf(err)})
+			s.metrics.workerFailed(codeOf(err))
+		}
+		if ran && err == nil {
+			s.metrics.jobRan()
 		}
 		if ran && err == nil {
 			continue
@@ -95,9 +99,11 @@ func (s *Server) sweepOnce(opts r.SweepOptions) {
 	if err != nil {
 		fields["code"] = codeOf(err)
 		s.log.warn("sweep_failed", fields)
+		s.metrics.swept(codeOf(err))
 		return
 	}
 	s.log.info("sweep", fields)
+	s.metrics.swept("ok")
 }
 
 // serve runs the listener until ctx ends, then the drain.

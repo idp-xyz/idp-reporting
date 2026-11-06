@@ -117,7 +117,9 @@ type Server struct {
 	objects  *objects.S3
 	srv      *http.Server
 	listener net.Listener
-	tls      bool
+	// metricsListener is the loopback listener of GET /metrics, when metrics_listen is set.
+	metricsListener net.Listener
+	tls             bool
 
 	draining      atomic.Bool
 	requests      tracker
@@ -126,6 +128,7 @@ type Server struct {
 	busy          atomic.Int64 // workers and sweeps inside a call
 	stored        verdict
 	objectVerdict verdict
+	metrics       *metrics
 
 	// The workers' loops stop with loopCtx (the drain's first act); the jobs they hold run on workCtx, which nothing but the end of the
 	// process cancels, so that a claimed job finishes within the grace instead of being cut off and failed.
@@ -187,7 +190,7 @@ func Start(ctx context.Context, cfg Config, reg Registry, getenv func(string) st
 	if getenv == nil {
 		getenv = func(string) string { return "" }
 	}
-	s := &Server{cfg: cfg, now: o.now, opts: o, version: Version(), done: make(chan struct{})}
+	s := &Server{cfg: cfg, now: o.now, opts: o, version: Version(), done: make(chan struct{}), metrics: newMetrics()}
 	s.log = newLogger(logOut, o.now)
 	if err := s.start(ctx, reg, getenv); err != nil {
 		s.unwind()
@@ -443,6 +446,16 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		return refuse(StepListen, "the listen address cannot be bound")
 	}
 	s.listener = &notifyListener{Listener: listener, onClose: s.listenerClosed}
+	// 10. The metrics listener (optional, loopback only): bound after the API's, closed by the drain's cleanups.
+	if cfg.MetricsListen != "" {
+		ml, err := net.Listen("tcp", cfg.MetricsListen)
+		if err != nil {
+			_ = s.listener.Close()
+			return refuse(StepListen, "the metrics_listen address cannot be bound")
+		}
+		s.metricsListener = ml
+		s.serveMetrics(ml)
+	}
 	s.logStart(ledger, len(keys), len(connections), len(embed.Integrations()) > 0)
 	go s.serve(ctx)
 	if h := s.opts.hooks; h != nil && h.Started != nil {
@@ -496,6 +509,7 @@ func (s *Server) logStart(ledger, ring, connections int, embed bool) {
 		"sweep_seconds": c.Retention.SweepInterval,
 		"simulators":    c.AllowSimulator,
 		"listen_port":   s.listener.Addr().(*net.TCPAddr).Port,
+		"metrics":       s.metricsListener != nil,
 	})
 }
 
@@ -528,13 +542,16 @@ func (s *Server) Reload() error {
 	files, code, err := readIssuerFiles(s.cfg.Issuer)
 	if err != nil {
 		s.log.warn("reload", map[string]any{"outcome": "refused", "code": code})
+		s.metrics.reloaded(code)
 		return &ReloadError{Code: code}
 	}
 	if err := s.verifier.Replace(issuerConfig(s.cfg.Issuer, files)); err != nil {
 		s.log.warn("reload", map[string]any{"outcome": "refused", "code": CodeIssuerConfigRefused})
+		s.metrics.reloaded(CodeIssuerConfigRefused)
 		return &ReloadError{Code: CodeIssuerConfigRefused}
 	}
 	s.log.info("reload", map[string]any{"outcome": "ok", "trusted_kids": s.verifier.KeyIDs(), "bindings": len(files.bindings)})
+	s.metrics.reloaded("ok")
 	return nil
 }
 
