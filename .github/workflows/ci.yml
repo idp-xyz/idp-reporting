@@ -107,7 +107,14 @@ jobs:
           S3_IMAGE: versity/versitygw:v1.9.0@sha256:eb7f786fcd91e72194e48fcf1ac16302d686bf8e3a71434bdbc067a6efd3fdc7
         run: |
           mkdir -p "$RUNNER_TEMP/s3data"
-          docker run -d --name reporting-s3 -p 127.0.0.1:59000:7070 -v "$RUNNER_TEMP/s3data:/data" \
+          # The registry answers 5xx now and then (a 502 failed main's run of 2026-11-06 before any test ran): pull by the pinned digest with
+          # retries first, so that `docker run` below never pulls. Still the same image: a digest cannot resolve to anything else.
+          for attempt in 1 2 3 4 5; do
+            if docker pull -q "$S3_IMAGE"; then break; fi
+            if [ "$attempt" = 5 ]; then echo "could not pull $S3_IMAGE after 5 attempts"; exit 1; fi
+            echo "pull attempt $attempt failed; retrying in $((attempt * 10)) s"; sleep $((attempt * 10))
+          done
+          docker run -d --pull never --name reporting-s3 -p 127.0.0.1:59000:7070 -v "$RUNNER_TEMP/s3data:/data" \
             -e ROOT_ACCESS_KEY="$REPORTING_OBJECT_STORE_TEST_ACCESS_KEY" -e ROOT_SECRET_KEY="$REPORTING_OBJECT_STORE_TEST_SECRET_KEY" \
             "$S3_IMAGE" posix /data
           for _ in $(seq 1 60); do
