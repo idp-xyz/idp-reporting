@@ -228,6 +228,9 @@ select,
 textarea {
   font: inherit;
 }
+small {
+  font-size: 12px;
+}
 button {
   cursor: pointer;
   color: inherit;
@@ -398,7 +401,7 @@ svg {
   --shell-head: 0px;
 }
 body:not(.embed) {
-  --shell-head: 68px;
+  --shell-head: 56px;
 }
 .shell {
   min-height: 100vh;
@@ -505,9 +508,12 @@ body:not(.embed) {
   border-radius: 6px;
   color: var(--faint);
   text-decoration: none;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
   letter-spacing: 0.02em;
+}
+.app-rail .rail-help small {
+  font-size: 11px;
 }
 .app-rail .rail-help .ic {
   width: 16px;
@@ -528,7 +534,7 @@ body:not(.embed) {
   margin: 0;
 }
 .console-header {
-  height: 68px;
+  height: 56px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -603,7 +609,7 @@ body:not(.embed) {
 }
 .console-layout {
   flex: 1;
-  min-height: calc(100dvh - 68px - var(--app-rail-top));
+  min-height: calc(100dvh - 56px - var(--app-rail-top));
 }
 .status-dot {
   width: 7px;
@@ -1820,7 +1826,7 @@ body.board-on .console-main {
   z-index: 40;
   display: grid;
   grid-template-columns: 54px 244px minmax(360px, 1fr) 286px;
-  grid-template-rows: 64px minmax(0, 1fr) 31px;
+  grid-template-rows: 52px minmax(0, 1fr) 31px;
   background: var(--bg);
   color: var(--ink);
   font-size: 13px;
@@ -2098,7 +2104,7 @@ body.board-on .console-main {
   min-height: 0;
 }
 #page-dashboard .contextbar {
-  height: 38px;
+  height: 34px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2634,7 +2640,7 @@ body.board-on .console-main {
   #page-dashboard .inspector {
     position: absolute;
     right: 0;
-    top: 64px;
+    top: 52px;
     bottom: 31px;
     width: 270px;
     z-index: 45;

@@ -7,6 +7,8 @@
 
 > S07-D：用户手册随服务提供：`/console/manual/`（`docs/manual` 通过 `docs` 包嵌入二进制，只按名字提供页面、样式、截图与测试数据，不列目录；与控制台相同的 CSP 等响应头，手册样式因此在 `manual.css` 里）。应用栏底部与登录卡上的“帮助”图标在新窗口打开它。
 
+> S09-B（ADR 0014 决定 2、10，2026-11-06）：外壳高度。控制台页眉 68 → 56 px（`--shell-head` 同步），文档工作室与看板工作室的顶栏 64 → 52 px（嵌入页同），功能区 83 → 74 px（页签 30、工具 44），两个上下文条 38 → 34 px：文档工作室的画布区从 y = 274 提前到 216 px（1440 × 900 的 24%），看板桌面 170 → 142，工作台查询面板 196 → 187。`scripts/browser_console_s06c.mjs` 的几何检查改为 56 px，并新增 `legibility()`：最小字号（界面文字 ≥ 11 px，眉题、徽标、栏标签与键盘提示 ≥ 10 px）与三个壳的内容起点（≤ 225 px）从此和任务基线一样被守住（docs/UX_BASELINE_S07.md“可读性的两个数”）。见 docs/S09B_SCOPE.md。
+
 > S09-A（ADR 0014 决定 1、3、4、5、6，2026-11-06）：可读性。字号基线上移一档（正文 13px、辅助 12px、说明 11px、应用栏与工具栏标签 11px；只有大写字母眉题与徽标保留 10px；画布上的标尺与标签不变），四个样式表里 13px 以下的字号全部上移，`styles.css` 之外不新增字号。通知只有一个栈：在文档工作室与看板工作室里，控制台的 `#notice` 进入工作室自己的 toast 栈（`#st-toasts`、`.toast-stack`），同一列排布、不再互相压住；其他页仍是主栏顶部的横幅（`app.js` `placeNotice`）。没有实现的东西不再显示：组件库的水印卡、插入页签的“水印”、页面页签的“插入水印”与数据页签的“数据中心”组（S06-C 之前的占位）已移除；因模板版本暂不可用的卡仍禁用并写明原因。报表布局设计器的布局 JSON 与“生成布局文件 / 打开布局”收进面板末尾的“高级 · JSON 导入与导出”折叠区（id 不变；文档工作室的模板 JSON 本就在对话框里，看板的在属性面板的“文件”页签里）。导出按钮在有预览而没有快照时写明原因（按钮 title 与旁边一句“导出需要冻结快照：先创建快照”）。任务基线的各数不变。见 docs/S09A_SCOPE.md 与 docs/ADR_0014_CONSOLE_LEGIBILITY.md。
 
 > 真实浏览器检查进 CI（2026-11-05）：CI 新增作业“Console in a real browser (Chrome) and the task baseline”，由 `scripts/ci_browser_evidence.sh` 依次跑 `browser_console_s06c.mjs`、`browser_library_s06b.mjs` 与 `ux_baseline_s07.mjs`，每个脚本各用一个全新的演示服务与 Chrome 配置；原型文件不在仓库里，所以原型截图与并排对比在 CI 中跳过（`--proto` 变为可选）。任务基线的合计被钉在 docs/UX_BASELINE_S07.md 的数（点击 ≤ 26、页面切换 ≤ 9、壳子切换 0、死胡同 0），变多即失败。截图与报告作为构件保留 14 天。本机可对 Windows Chrome 跑同一脚本：`CHROME_RUNNING=1 GO=$REPORTING_GO scripts/ci_browser_evidence.sh OUT`。

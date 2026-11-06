@@ -984,7 +984,7 @@
   min-height: 640px;
   display: grid;
   grid-template-columns: 54px 244px minmax(360px, 1fr) 286px;
-  grid-template-rows: 64px 83px minmax(0, 1fr) 31px;
+  grid-template-rows: 52px 74px minmax(0, 1fr) 31px;
   overflow: hidden;
 }
 #page-documents .topbar {
@@ -1077,7 +1077,7 @@
   z-index: 20;
 }
 #page-documents .ribbon-tabs {
-  height: 31px;
+  height: 30px;
   display: flex;
   align-items: stretch;
   padding: 0 22px;
@@ -1116,7 +1116,7 @@
   gap: 7px;
 }
 #page-documents .ribbon-tools {
-  height: 51px;
+  height: 44px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1447,7 +1447,7 @@
   background: var(--c-edf0f5);
 }
 #page-documents .contextbar {
-  height: 38px;
+  height: 34px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1500,7 +1500,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 38px;
+  top: 34px;
   height: 21px;
   border-bottom: 1px solid var(--c-e0e6ee);
   background: var(--c-f2f4f8);
@@ -1525,7 +1525,7 @@
 }
 #page-documents .canvas-scroll {
   position: absolute;
-  inset: 59px 0 0;
+  inset: 55px 0 0;
   overflow: auto;
   padding: 20px 45px 76px;
   scrollbar-width: thin;
@@ -2569,7 +2569,7 @@
   #page-documents .inspector {
     position: absolute;
     right: 0;
-    top: 147px;
+    top: 126px;
     bottom: 31px;
     width: 270px;
     z-index: 45;
@@ -2904,7 +2904,7 @@
 }
 #page-documents .studio-start {
   position: absolute;
-  inset: 59px 0 0;
+  inset: 55px 0 0;
   z-index: 4;
   background: var(--c-edf0f5);
   padding: 34px 40px;
@@ -3276,7 +3276,7 @@ body.studio-on .console-main {
   background: var(--c-edf0f5);
 }
 #page-documents .canvas-scroll {
-  inset: 59px 0 0;
+  inset: 55px 0 0;
   padding: 14px 45px 76px 45px;
 }
 #page-documents .canvas-scroll:focus-visible {
@@ -3600,7 +3600,7 @@ body.studio-on .console-main {
   #page-documents .sidebar {
     position: absolute;
     left: 48px;
-    top: 147px;
+    top: 126px;
     bottom: 31px;
     width: 240px;
     z-index: 45;
