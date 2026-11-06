@@ -2691,7 +2691,7 @@ test('S03-M M5: a 2.1 template is saved, opened, published and read back like an
 test('S03-M M5: a 2.1 template previews and is issued through the real server and pinned Typst renderer: the placeholder in the preview, the product\'s number in the issue',{skip:!pdfConfigured&&'needs the pinned Typst renderer'},async()=>{const a=app();try{
  await a.login();a.configure();a.click('snapshot');await until(()=>a.$('result-kind').textContent==='冻结快照'&&ready(a),'frozen');
  a.w.document.querySelector('[data-page="documents"]').click();cv.load(a,banded());
- const image=await uploadedImage(a);const id=await codedPublishedOpen(a,image);
+ const image=await uploadedImage(a);await codedPublishedOpen(a,image);
  // The sample check proves the layout for every number the product may assign, without rendering.
  a.click('doc-check');await until(()=>a.$('doc-check-body').rows.length>=1&&ready(a),'check');assert.match(a.$('doc-check-body').rows[0].cells[1].textContent,/^通过$/);
  // The preview of the saved version, for the group of row 2.
@@ -2997,7 +2997,7 @@ test('S06-A A2: a card or a tool inserts into the current band at the nearest fr
  const t0=to2(a);
  // The current band is the selected element's band.
  cv.click2(a,'e1');const home=all2(t0).find(v=>v.e.id==='e1').band;
- const added=async(kind,expect)=>{const before=ids2(cv.tpl(a)),n=a.$('doc-undo').disabled;card(a,kind).click();const after=cv.tpl(a),fresh=ids2(after).filter(id=>!before.includes(id));assert.equal(fresh.length,expect,kind+' adds '+expect);return {fresh,after};};
+ const added=async(kind,expect)=>{const before=ids2(cv.tpl(a));card(a,kind).click();const after=cv.tpl(a),fresh=ids2(after).filter(id=>!before.includes(id));assert.equal(fresh.length,expect,kind+' adds '+expect);return {fresh,after};};
  for(const [kind,type,source] of [['text','text','literal'],['field','text','field'],['aggregate','text','group_sum'],['summary','text','group_sum'],['line','line'],['rect','rect'],['barcode','barcode'],['qr','qrcode'],['pageNumber','text','page']]){
   cv.click2(a,'e1');const r=await added(kind,1),hit=all2(r.after).find(v=>v.e.id===r.fresh[0]);
   assert.equal(hit.band,home,kind+' goes to the band of the selected element');assert.equal(hit.e.type,type,kind);if(source)assert.equal(hit.e.source,source,kind);
@@ -3013,7 +3013,7 @@ test('S06-A A2: a card or a tool inserts into the current band at the nearest fr
  assert.deepEqual(fresh.map(v=>v.e.type).sort(),['rect','text']);assert.equal(fresh.find(v=>v.e.type==='text').e.text,'签章');assert.equal(new Set(fresh.map(v=>v.band)).size,1);assert.equal(cv.selected(a).length,2);
  a.click('doc-undo');assert.equal(ids2(cv.tpl(a)).length,before.length,'one undo step for both');
  // Drop: the card is dragged with pointer events; what is under the pointer decides the band, and a drop outside the page inserts nothing.
- const svg=cv.svg(a);const hostRect={left:0,top:0};
+ const svg=cv.svg(a);
  const pointer=(target,type,x,y)=>target.dispatchEvent(new a.w.PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,button:0,clientX:x,clientY:y}));
  const drop=(kind,mmx,mmy)=>{const c=card(a,kind);pointer(c,'pointerdown',5,5);pointer(a.w.document,'pointermove',40,40);pointer(a.w.document,'pointermove',cv.px(a,mmx),cv.px(a,mmy));pointer(a.w.document,'pointerup',cv.px(a,mmx),cv.px(a,mmy));};
  const geo=(()=>{const b=cv.tpl(a).bands;return {ph:b.page_header?.height||0,dh:b.document_header?.height||0};})();
@@ -3492,9 +3492,9 @@ after(async()=>{url=mainUrl;if(second&&second.exitCode===null){second.kill('SIGT
 
 test('S06-B C1: the template centre is a console page with the prototype\'s regions and labels, counts that agree with the server, and nothing in the browser\'s storage',async()=>{const a=await designer();try{
  const binding=cv.tpl(a).binding,tag=tagOf();
- const w1=await seedTemplate(binding,'WMS出库-'+tag,{domain:'仓储 WMS',flow:'出库',favourite:true,collections:['客户A-'+tag]});
+ await seedTemplate(binding,'WMS出库-'+tag,{domain:'仓储 WMS',flow:'出库',favourite:true,collections:['客户A-'+tag]});
  const w2=await seedTemplate(binding,'',{domain:'国际贸易',flow:'贸易单证'});
- const w3=await seedTemplate(binding,'归档的-'+tag,{domain:'通用业务',flow:'财务',archived:true});
+ await seedTemplate(binding,'归档的-'+tag,{domain:'通用业务',flow:'财务',archived:true});
  // The navigation entry and the page.
  assert.equal(q(a,'[data-page="library"]').getAttribute('aria-label'),'模板中心');
  await centre(a);
@@ -3825,7 +3825,7 @@ test('S06-B C8: 导入模板 reads a template JSON into the studio as an unsaved
 
 test('S06-B C9: the page writes no markup, keeps nothing in the browser, shows hostile names as text and names every control',async()=>{const a=await designer();try{
  const hostile='<img src=x onerror=alert(1)>',tag=tagOf(),binding=cv.tpl(a).binding;
- const id=await seedTemplate(binding,hostile+tag,{domain:'通用业务',flow:'销售',collections:['<b>集合</b>'+tag]});
+ await seedTemplate(binding,hostile+tag,{domain:'通用业务',flow:'销售',collections:['<b>集合</b>'+tag]});
  await centre(a);
  const card=ownCard(a,hostile+tag);assert.ok(card);assert.equal(card.querySelector('.catalog-name').textContent,hostile+tag);assert.equal(libq(a,'.catalog-items img'),null);assert.equal(card.querySelector('.catalog-tags').textContent,'集合：<b>集合</b>'+tag);assert.equal(libq(a,'.catalog-sidebar b b'),null);
  // No inline style or handler anywhere on the page, dialogs included (the wizard is opened for the check).
@@ -4097,7 +4097,6 @@ test('S07-C: the task list is the identity\'s jobs on the server, newest first; 
 
 // ---- S07-D: the help icon and the manual the server serves ----
 test('S07-D: the help icon on the rail and on the sign-in card opens the user manual, which the server serves at /console/manual/ with the console\'s headers',async()=>{const a=app();try{
- const d=a.w.document;
  for(const [id,where] of [['connect-help','the sign-in card'],['rail-help','the rail']]){const link=a.$(id);assert.ok(link,where);assert.equal(link.tagName,'A',where);assert.equal(link.href,url+'/console/manual/',where);assert.equal(link.target,'_blank',where);assert.equal(link.rel,'noopener',where);assert.equal(link.getAttribute('aria-label'),'用户手册（新窗口）',where);assert.ok(link.querySelector('use[href="#s-help"]'),where);}
  assert.equal(a.$('connect-help').closest('.connection-card')!==null,true);assert.equal(a.$('rail-help').closest('nav.app-rail')!==null,true);assert.equal(a.$('rail-help').classList.contains('nav-item'),false,'not one of the eight destinations');
  await a.login();assert.equal(a.$('rail-help').href,url+'/console/manual/');

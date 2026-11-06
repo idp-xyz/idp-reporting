@@ -182,6 +182,9 @@ jobs:
           node --check scripts/ux_baseline_s07.mjs
           node --check scripts/seed_demo_data.mjs
           bash -n scripts/ci_browser_evidence.sh
+      # The rules that find bugs (an undefined name, an unused variable, markup written from a string); eslint.config.mjs says which and why.
+      - name: JavaScript lint
+        run: npm run lint
       - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
 
   pdf:

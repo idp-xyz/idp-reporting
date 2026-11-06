@@ -60,8 +60,6 @@ const click = sel => clickExpr(q(sel), sel);
 const clickBtn = (scope, text) => clickExpr(btnIn(scope, text), scope + ' ' + text);
 const typeInto = async (sel, text) => { await click(sel); clicks--; texts++; await evalJs(`${q(sel)}.select()`); await send('Input.insertText', {text}); await sleep(120); };
 const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'idle', 60000);
-// A dead end: the page told the person to go somewhere else first (a start card or a status saying so).
-const deadEndIf = async expr => { if (await evalJs(`Boolean(${expr})`)) await evalJs(`window.__ux.deadEnd()`); };
 
 const tasks = [];
 async function task(name, fn) {
@@ -71,7 +69,6 @@ async function task(name, fn) {
   const row = {name, clicks: clicks - c0, texts: texts - t0, pages: after.pages - before.pages, shells: after.shells - before.shells, dialogs: after.dialogs - before.dialogs, deadEnds: after.deadEnds - before.deadEnds, seconds: Math.round((Date.now() - started) / 100) / 10, log: after.log.slice(before.log.length)};
   tasks.push(row); console.log('TASK', name, JSON.stringify({...row, log: undefined}));
 }
-const signedOut = () => evalJs(`!document.getElementById('connection-overlay').hidden`);
 async function signIn() { await typeInto('#access-token', token); await clickBtn('.connection-card', '连接工作区'); await waitFor(`document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`, 'signed in'); await sleep(300); }
 async function openPage(name) {
   // A person does not click their way to the page they are on (S07-H, ADR 0011 decision 7).

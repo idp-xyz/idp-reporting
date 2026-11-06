@@ -131,7 +131,7 @@ test('a token is taken from the parent window and origin only, in the closed for
       ['a token with a space',{...good,token:'abc def'},{}],['a token with a newline',{...good,token:'abc\ndef'},{}],['a token with a semicolon',{...good,token:'abc;def'},{}],['a token with a Bearer prefix',{...good,token:'Bearer '+token},{}],
       ['a token with non-ASCII text',{...good,token:'abcé'},{}],['a token over 32 KiB',{...good,token:'a'.repeat(32769)},{}],['a token with equals in the middle',{...good,token:'abc=def'},{}],
     ];
-    for(const [name,data,where] of attempts){a.post(data,where);}
+    for(const [,data,where] of attempts){a.post(data,where);}
     await sleep(80);
     assert.equal(a.trace.length,0,'a request was made after a message that must be ignored');
     assert.equal(a.$('connection-overlay').hidden,false);

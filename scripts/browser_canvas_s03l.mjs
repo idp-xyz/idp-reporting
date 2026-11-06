@@ -92,24 +92,13 @@ const key = async (name, list = []) => {
 const typeText = text => send('Input.insertText', {text});
 // The canvas page in client pixels: real layout, so the scale and the origin are read, not assumed.
 const geometry = () => evalJs(`(()=>{const p=document.querySelector('#doc-canvas-host .cv-paper').getBoundingClientRect();return {left:p.left,top:p.top,ppm:p.width/210};})()`);
-const mmToClient = async (x, y) => { const g = await geometry(); return [g.left + x * g.ppm, g.top + y * g.ppm]; };
 const scrollTo = selector => evalJs(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:'center',inline:'center'});return true;})()`);
 const centre = selector => evalJs(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return [b.left+b.width/2,b.top+b.height/2];})()`);
 const clickSelector = async (selector, modifiers = []) => { await scrollTo(selector); await sleep(60); const [x, y] = await centre(selector); await mouse('mouseMoved', x, y); await mouse('mousePressed', x, y, mods(modifiers)); await mouse('mouseReleased', x, y, mods(modifiers)); await sleep(40); };
 const item = id => `#doc-canvas-host [data-key="${id}"]`;
-// Press at the centre of an element, move in steps by (dx, dy) millimetres, optionally hold, release.
-async function dragFrom(selector, dxMm, dyMm, {modifiers = [], steps = 8, hold = false} = {}) {
-  await scrollTo(selector); await sleep(60);
-  const [x0, y0] = await centre(selector), g = await geometry(), x1 = x0 + dxMm * g.ppm, y1 = y0 + dyMm * g.ppm, m = mods(modifiers);
-  await mouse('mouseMoved', x0, y0, m); await mouse('mousePressed', x0, y0, m);
-  for (let i = 1; i <= steps; i++) await mouse('mouseMoved', x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps, m, {down: true});
-  if (hold) return {release: async () => { await mouse('mouseReleased', x1, y1, m); await sleep(60); }};
-  await mouse('mouseReleased', x1, y1, m); await sleep(80);
-}
 const tpl = async () => { await evalJs(`document.getElementById('doc-json-save').click()`); return JSON.parse(await evalJs(`document.getElementById('doc-json').value`)); };
 const status = () => evalJs(`document.getElementById('doc-canvas-status').textContent`);
 const selected = () => evalJs(`[...document.querySelectorAll('#doc-canvas-host [data-key][aria-pressed="true"]')].map(e=>e.getAttribute('data-key'))`);
-const undoDisabled = () => evalJs(`document.getElementById('doc-undo').disabled`);
 const READY = '模板已更新；配置不含业务数据。';
 async function load(template) {
   await evalJs(`(()=>{const j=document.getElementById('doc-json');j.value=${JSON.stringify(JSON.stringify(template))};document.getElementById('doc-json-open').click();})()`);
@@ -154,12 +143,10 @@ async function dragPage(x0, y0, x1, y1, {modifiers = [], steps = 8, hold = false
 async function dragElement(id, dx, dy, o) { const t = await tpl(), [x, y, w, h] = pageRect(t, id); await scrollTo(item(id)); return dragPage(x + w / 2, y + h / 2, x + w / 2 + dx, y + h / 2 + dy, o); }
 const clickElement = async (id, modifiers = []) => { await scrollTo(item(id)); await sleep(50); const t = await tpl(), [x, y, w, h] = pageRect(t, id), [cx, cy] = await pageToClient(x + w / 2, y + h / 2); await mouse('mouseMoved', cx, cy); await mouse('mousePressed', cx, cy, mods(modifiers)); await mouse('mouseReleased', cx, cy, mods(modifiers)); await sleep(50); };
 const bandEdge = name => `#doc-canvas-host .cv-bh[data-band="${name}"]`, bandKey = name => `#doc-canvas-host .cv-bk[data-band="${name}"]`;
-const handle = dir => `#doc-canvas-host .cv-h-${dir}`;
 const val = id => evalJs(`document.getElementById(${JSON.stringify(id)}).value`);
 const setSelect = (id, value) => evalJs(`(()=>{const s=document.getElementById(${JSON.stringify(id)});s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));return s.value;})()`);
 // Type into an input with the real keyboard: click it, select its text, type, Tab (the change event).
 async function typeInto(id, text) { await clickSelector('#' + id); await key('a', ['ctrl']); await typeText(text); await key('Tab'); await sleep(80); }
-const docStatus = () => evalJs(`document.getElementById('doc-status').textContent`);
 const notice = () => evalJs(`document.getElementById('notice').textContent`);
 const outlined = () => evalJs(`({elements:[...document.querySelectorAll('#doc-canvas-host .cv-refused')].map(e=>e.getAttribute('data-key')),bands:[...document.querySelectorAll('#doc-canvas-host .cv-refused-band')].map(e=>e.getAttribute('data-band-box')),columns:[...document.querySelectorAll('#doc-canvas-host .cv-refused-col')].map(e=>e.getAttribute('data-refused'))})`);
 const hookBlobs = () => evalJs(`(()=>{if(window.__pdfs)return;window.__pdfs=[];const o=URL.createObjectURL.bind(URL);URL.createObjectURL=b=>{window.__pdfs.push(b);return o(b);};})()`);
