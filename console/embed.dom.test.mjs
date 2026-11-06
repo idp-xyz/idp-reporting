@@ -1227,7 +1227,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   }
   // The token has one place to go in app.js: the Authorization header of attempt().
   const uses = [...appScript.matchAll(/state\.token/g)].length,
-    headerUses = [...appScript.matchAll(/'Bearer '\+/g)].length;
+    headerUses = [...appScript.matchAll(/'Bearer '\s*\+/g)].length;
   assert.equal(headerUses, 1);
   assert.ok(uses > 0);
   assert.equal(/location\.(search|hash)[^;]*token/i.test(appScript + embedScript), false);
