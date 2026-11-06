@@ -1,33 +1,109 @@
 /* The embed pages (S03-N, ADR 0006; S06-C): the console's own stylesheet (styles.css) and studio stylesheet apply; this adds what a page in a
    product's frame needs. No script writes a style attribute and nothing here loads anything: the policy of the page allows styles from its own origin only. */
-.embed .shell{min-height:0;display:block;padding:0}
-.embed .app-rail{display:none}
+.embed .shell {
+  min-height: 0;
+  display: block;
+  padding: 0;
+}
+.embed .app-rail {
+  display: none;
+}
 /* The data buttons of the dashboard studio open the console's data drawer; the embed page has the query form in the view itself. */
-.embed #page-dashboard [data-act="data"]{display:none}
-.embed .console-main{max-width:none;padding:12px 14px 14px;margin:0;display:block}
+.embed #page-dashboard [data-act="data"] {
+  display: none;
+}
+.embed .console-main {
+  max-width: none;
+  padding: 12px 14px 14px;
+  margin: 0;
+  display: block;
+}
 /* There is one view and nowhere to go: the buttons that open another console page are not shown. */
-.embed [data-open]{display:none}
+.embed [data-open] {
+  display: none;
+}
 /* The steps of a first sign-in (S07-H) name the console's data chip; the embed page's view is chosen by the product page. */
-.embed .start-steps{display:none}
-.embed .page-heading{margin-bottom:14px}
-.embed .page-heading h1{font-size:20px;line-height:1.4}
+.embed .start-steps {
+  display: none;
+}
+.embed .page-heading {
+  margin-bottom: 14px;
+}
+.embed .page-heading h1 {
+  font-size: 20px;
+  line-height: 1.4;
+}
 /* The frame is as tall as its content (the product page sets it from reporting:resize), so nothing may be as tall as the frame. */
-.embed .cv-scroll{max-height:none}
+.embed .cv-scroll {
+  max-height: none;
+}
 /* Waiting for the product page, or signed out: a card in the flow, so that the frame has a height to report. */
-.embed .connection-overlay{position:static;background:none;backdrop-filter:none;padding:16px;display:grid;place-items:center}
-.embed .connection-card{box-shadow:none;padding:24px}
-.embed .connection-card h1{font-size:18px}
-.embed .connection-card>p{margin:8px 0 14px}
-.embed .connection-card .btn.full,.embed .connection-card .button.full{margin-top:14px}
+.embed .connection-overlay {
+  position: static;
+  background: none;
+  backdrop-filter: none;
+  padding: 16px;
+  display: grid;
+  place-items: center;
+}
+.embed .connection-card {
+  box-shadow: none;
+  padding: 24px;
+}
+.embed .connection-card h1 {
+  font-size: 18px;
+}
+.embed .connection-card > p {
+  margin: 8px 0 14px;
+}
+.embed .connection-card .btn.full,
+.embed .connection-card .button.full {
+  margin-top: 14px;
+}
 /* The dashboard studio in a frame: in the flow and as tall as its content, the panels beside the desk, the drawers never needed. */
-.embed.board-on .console-main{padding:0}
-.embed #page-dashboard .bstudio{position:static;height:auto;min-height:0;grid-template-rows:64px auto 31px;overflow:visible}
-.embed #page-dashboard .sidebar,.embed #page-dashboard .inspector,.embed #page-dashboard .workarea{overflow:visible;min-height:0}
-.embed #page-dashboard .board-desk{overflow:visible;padding-bottom:70px}
-.embed #page-dashboard .studio-start{overflow:visible}
-.embed #page-dashboard .topbar .wordmark+.top-divider{display:none}
+.embed.board-on .console-main {
+  padding: 0;
+}
+.embed #page-dashboard .bstudio {
+  position: static;
+  height: auto;
+  min-height: 0;
+  grid-template-rows: 64px auto 31px;
+  overflow: visible;
+}
+.embed #page-dashboard .sidebar,
+.embed #page-dashboard .inspector,
+.embed #page-dashboard .workarea {
+  overflow: visible;
+  min-height: 0;
+}
+.embed #page-dashboard .board-desk {
+  overflow: visible;
+  padding-bottom: 70px;
+}
+.embed #page-dashboard .studio-start {
+  overflow: visible;
+}
+.embed #page-dashboard .topbar .wordmark + .top-divider {
+  display: none;
+}
 /* The product page may ask for a light or a dark theme (reporting:theme): the tokens of styles.css answer to data-theme; the canvas desk follows. */
-html[data-theme="dark"] .cv-panel{--cv-desk:#14202e;--cv-ruler:#1d2c3f;--cv-ruler-ink:#c2d0df;--cv-ruler-line:#7d93ab}
-html[data-theme="light"] .cv-panel{--cv-desk:#e6ecf4;--cv-ruler:#f3f6fa;--cv-ruler-ink:#4d6075;--cv-ruler-line:#9aa9ba}
-html[data-theme="dark"] .cv-palette{background:var(--panel);border-color:var(--line)}
-html[data-theme="dark"] .cv-commands li[aria-selected]{background:var(--sel-bg)}
+html[data-theme="dark"] .cv-panel {
+  --cv-desk: #14202e;
+  --cv-ruler: #1d2c3f;
+  --cv-ruler-ink: #c2d0df;
+  --cv-ruler-line: #7d93ab;
+}
+html[data-theme="light"] .cv-panel {
+  --cv-desk: #e6ecf4;
+  --cv-ruler: #f3f6fa;
+  --cv-ruler-ink: #4d6075;
+  --cv-ruler-line: #9aa9ba;
+}
+html[data-theme="dark"] .cv-palette {
+  background: var(--panel);
+  border-color: var(--line);
+}
+html[data-theme="dark"] .cv-commands li[aria-selected] {
+  background: var(--sel-bg);
+}

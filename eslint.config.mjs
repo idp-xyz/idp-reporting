@@ -10,28 +10,35 @@ import globals from 'globals';
 // The console's scripts are classic scripts loaded in order by index.html and embed.html: each defines a window.create* factory that
 // app.js (and embed.js) call. They share no module scope, so these names are the contract between them.
 const factories = {
-  createReportingDashboard: 'readonly', createReportingCanvas: 'readonly', createReportingStudio: 'readonly',
-  createReportingLibrary: 'readonly', createReportingDocuments: 'readonly', createReportingBoardStudio: 'readonly',
+  createReportingDashboard: 'readonly',
+  createReportingCanvas: 'readonly',
+  createReportingStudio: 'readonly',
+  createReportingLibrary: 'readonly',
+  createReportingDocuments: 'readonly',
+  createReportingBoardStudio: 'readonly',
   createReportingEmbed: 'readonly',
 };
 
 export default [
-  { ignores: ['node_modules/**', 'evidence/**', 'docs/**', 'spikes/**', '**/*.min.js'] },
+  {ignores: ['node_modules/**', 'evidence/**', 'docs/**', 'spikes/**', '**/*.min.js']},
   js.configs.recommended,
   {
     files: ['console/assets/*.js', 'console/embed-host/*.js'],
-    languageOptions: { ecmaVersion: 2024, sourceType: 'script', globals: { ...globals.browser, ...factories } },
+    languageOptions: {ecmaVersion: 2024, sourceType: 'script', globals: {...globals.browser, ...factories}},
     rules: {
       // The scripts are wrapped in a function or attach to window; a top-level declaration is the factory itself.
-      'no-unused-vars': ['error', { vars: 'local', args: 'none', caughtErrors: 'none' }],
-      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unused-vars': ['error', {vars: 'local', args: 'none', caughtErrors: 'none'}],
+      'no-empty': ['error', {allowEmptyCatch: true}],
       // ADR 0008: the console builds nodes with the DOM API and never writes markup from strings; these would bypass it.
-      'no-restricted-properties': ['error',
-        { property: 'innerHTML', message: 'Build nodes with the DOM API; the console never writes markup from strings.' },
-        { property: 'outerHTML', message: 'Build nodes with the DOM API.' },
-        { property: 'insertAdjacentHTML', message: 'Build nodes with the DOM API.' },
+      'no-restricted-properties': [
+        'error',
+        {property: 'innerHTML', message: 'Build nodes with the DOM API; the console never writes markup from strings.'},
+        {property: 'outerHTML', message: 'Build nodes with the DOM API.'},
+        {property: 'insertAdjacentHTML', message: 'Build nodes with the DOM API.'},
       ],
-      'no-eval': 'error', 'no-implied-eval': 'error', 'no-new-func': 'error',
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-new-func': 'error',
       // Input checks reject control characters on purpose (names, labels, field ids): /[\x00-\x1f\x7f]/ is the rule, not a typo.
       'no-control-regex': 'off',
       // A parse or validation failure becomes the user-facing message on purpose; the original error is not shown to the person.
@@ -40,10 +47,10 @@ export default [
   },
   {
     files: ['console/*.mjs', 'scripts/*.mjs', 'eslint.config.mjs'],
-    languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: { ...globals.node } },
+    languageOptions: {ecmaVersion: 2024, sourceType: 'module', globals: {...globals.node}},
     rules: {
-      'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
-      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unused-vars': ['error', {args: 'none', caughtErrors: 'none'}],
+      'no-empty': ['error', {allowEmptyCatch: true}],
       // A test may fail with its own message for a caught error.
       'preserve-caught-error': 'off',
     },
