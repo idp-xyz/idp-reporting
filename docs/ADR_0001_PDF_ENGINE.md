@@ -27,7 +27,7 @@ under these conditions, all of which are part of the decision:
 Each option was measured with the same engine-independent checker and byte-identical input data
 (synthetic statements of 150 to 30000 rows with hostile strings, punctuation-dense Chinese and a row taller
 than a page), and both comparison documents were reviewed independently. The spike code and raw results are on
-the local branch spike/typst-pdf (spikes/pdfgo/COMPARISON.md, spikes/typst/REPORT.md, spikes/pdfme).
+the branch spike/typst-pdf of the repository (spikes/pdfgo/COMPARISON.md, spikes/typst/REPORT.md, spikes/pdfme).
 
 | | Typst, breakable rows | fpdf, self-built layout | pdfme 6.2.8 |
 |---|---|---|---|
