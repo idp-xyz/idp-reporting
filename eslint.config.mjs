@@ -12,6 +12,7 @@ import globals from 'globals';
 const factories = {
   createReportingDashboard: 'readonly',
   createReportingCanvas: 'readonly',
+  createReportingVersions: 'readonly',
   createReportingStudio: 'readonly',
   createReportingLibrary: 'readonly',
   createReportingDocuments: 'readonly',

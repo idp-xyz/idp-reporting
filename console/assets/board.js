@@ -221,7 +221,7 @@ window.createReportingBoardStudio = function (ports) {
     $('bd-insp-meta').textContent =
       count + (s.saved ? ' · 看板 ' + s.saved.id.slice(0, 8) + ' · 版本 ' + s.saved.version : ' · 尚未保存到服务器');
     structure();
-    if (openDialog && openDialog.overlay === $('bd-d-versions')) renderVersions();
+    versions.sync();
   }
   function structure() {
     const cards = Array.from($('board-widgets').children),
@@ -274,173 +274,75 @@ window.createReportingBoardStudio = function (ports) {
     });
   }
   // ---- the topbar: 版本 opens the version dialog (S07-G, ADR 0011: the document studio's 版本历史与发布指针); 发布 reads the release state and asks ----
-  let pick = 0,
-    pickFor = '';
-  function renderVersions() {
-    const s = ports.dashboard.state(),
-      pub = s.release ? s.release.published_version : 0,
-      list = $('bd-version-list'),
-      focused = list.contains(document.activeElement);
-    list.replaceChildren();
-    // When the editor's version changes (saved, opened, another dashboard), the pick follows it; otherwise it stays where the person put it.
-    const editor = s.saved ? s.saved.id + ':' + s.saved.version : '';
-    if (editor !== pickFor || !pick || pick > s.latest) {
-      pick = s.saved ? s.saved.version : 0;
-      pickFor = editor;
-    }
-    for (let v = s.latest; v >= 1; v--) {
-      const current = !!s.saved && v === s.saved.version;
-      const b = h(
-        'button',
-        {
-          type: 'button',
-          class: 'version-card',
-          'aria-current': String(v === pick),
-          onclick: () => {
-            pick = v;
-            renderVersions();
-          },
-        },
-        h(
-          'div',
-          {class: 'between'},
-          h('strong', {text: 'v' + v}),
-          h('span', {class: 'pill ' + (v === pub ? 'green' : 'blue'), text: v === pub ? '已发布' : '已保存'})
-        ),
-        h('p', {text: current ? '编辑器打开的版本' + (s.dirty ? '（有未保存修改）' : '') : '保存版本'})
-      );
-      list.append(b);
-    }
-    if (focused) {
-      const c = list.querySelector('[aria-current="true"]');
-      if (c) c.focus();
-    }
-    const has = !!s.saved && pick >= 1;
-    $('bd-version-empty').hidden = has;
-    $('bd-version-card').hidden = !has;
-    if (has) {
-      $('bd-vd-title').textContent = '看板 · v' + pick;
-      $('bd-vd-note').textContent =
-        pick === s.saved.version
-          ? s.dirty
-            ? '编辑器打开的版本，有未保存的修改；发布它会先保存为下一个版本。'
-            : '编辑器打开的版本。'
-          : '恢复该版本只改变当前草稿；发布指针仍指向 ' + (pub ? 'v' + pub : '未发布') + '。';
-      $('bd-ver-restore').disabled = pick === s.saved.version && !s.dirty;
-      $('board-release-withdraw').disabled = !pub;
-    }
-    $('bd-version-note').textContent = s.saved
-      ? '保存版本不可变；当前发布指针：' + (s.release ? (pub ? 'v' + pub : '无') : '（发布状态未读取）')
-      : '尚未保存任何版本';
-  }
-  async function openVersions() {
-    const s = ports.dashboard.state();
-    if (!s.result) {
-      say('请先选择数据：预览或冻结快照。');
-      return;
-    }
-    pick = 0;
-    renderVersions();
-    open('bd-d-versions', $('bd-versions'));
-    // Opening reads the list (the latest version) and the release state; 刷新发布状态与历史 stays as the retry after a conflict.
-    if (s.saved) {
+  // Both are the shared component (versions.js, S09-E); these ports are the dashboard's state, requests and words. Opening the version
+  // dialog reads the list (the latest version) and the release state; 刷新发布状态与历史 stays as the retry after a conflict.
+  const dialog = id => ({
+    open: opener => open(id, opener),
+    close,
+    isOpen: () => !!openDialog && openDialog.overlay === $(id),
+  });
+  const versions = window.createReportingVersions({
+    prefix: 'bd',
+    ids: {withdraw: 'board-release-withdraw', versionsButton: 'bd-versions', publishButton: 'bd-publish'},
+    dialogs: {versions: dialog('bd-d-versions'), publish: dialog('bd-d-publish')},
+    texts: {
+      thing: '看板',
+      opened: '打开已发布看板',
+      content: '内容',
+      dirty: '画布有未保存的修改',
+      count: ['组件', '个'],
+    },
+    run(fn) {
+      if (!ports.dashboard.state().result) {
+        say('请先选择数据：预览或冻结快照。');
+        return;
+      }
+      fn();
+    },
+    state() {
+      const s = ports.dashboard.state();
+      return {
+        saved: s.saved,
+        latest: s.latest,
+        dirty: s.dirty,
+        release: s.release,
+        dataset: s.binding ? s.binding.dataset.id + '@' + s.binding.dataset.version : '—',
+        count: s.widgets,
+      };
+    },
+    async readVersions(then) {
       await ports.dashboard.listVersions();
       await ports.dashboard.readRelease();
-      if (openDialog && openDialog.overlay === $('bd-d-versions')) renderVersions();
-    }
-  }
-  $('bd-versions').addEventListener('click', () => {
-    openVersions();
-  });
-  $('bd-ver-restore').addEventListener('click', async () => {
-    if (!pick) return;
-    const v = pick;
-    close();
-    await ports.dashboard.restoreVersion(v);
-    sync();
-  });
-  $('bd-ver-publish').addEventListener('click', () => {
-    if (!pick) return;
-    const s = ports.dashboard.state();
-    publish(s.saved && pick === s.saved.version ? 0 : pick);
-  });
-  async function publish(version) {
-    const before = ports.dashboard.state();
-    if (!before.result) {
-      say('请先选择数据：预览或冻结快照。');
-      return;
-    }
-    // 保存并发布 (S07-B): unsaved changes, or no saved version yet, are saved as the next version first; the confirmation says so and does both.
-    // A historical version from the version dialog is published as it is (a rollback): nothing is saved and the editor does not change.
-    historical = version || 0;
-    saveFirst = !historical && (!before.saved || before.dirty);
-    if (!saveFirst) await ports.dashboard.readRelease();
-    const s = ports.dashboard.state();
-    if (!saveFirst && (!s.release || !s.saved)) return;
-    const next = s.saved ? s.saved.version + 1 : 1,
-      target = historical || (s.saved ? s.saved.version : 0);
-    const dl = $('bd-publish-summary');
-    dl.replaceChildren();
-    const rows = [
-      ['看板', s.saved ? s.saved.id : '新看板'],
-      [
-        '将发布的版本',
-        saveFirst ? '先保存为版本 ' + next + '，再发布它' : '保存版本 ' + target + (historical ? '（历史版本）' : ''),
-      ],
-      ['数据集', s.binding ? s.binding.dataset.id + '@' + s.binding.dataset.version : '—'],
-    ];
-    if (!historical) rows.push(['组件', s.widgets + ' 个']);
-    rows.push(
-      [
-        '当前发布',
-        saveFirst
-          ? s.release
-            ? s.release.published_version
-              ? '版本 ' + s.release.published_version
-              : '未发布'
-            : '保存后读取'
-          : s.release.published_version
-            ? '版本 ' + s.release.published_version
-            : '未发布',
-      ],
-      ['发布修订', saveFirst ? (s.release ? String(s.release.revision) : '保存后读取') : String(s.release.revision)]
-    );
-    for (const [k, v] of rows) dl.append(h('dt', {text: k}), h('dd', {text: v}));
-    $('bd-publish-note').textContent = saveFirst
-      ? s.saved
-        ? '画布有未保存的修改：先保存为新的不可变版本，再把发布指针移到它。'
-        : '这个看板还没有保存版本：先保存为版本 1，再发布它。'
-      : historical
-        ? '发布历史版本是一次明确的回退：打开已发布看板得到 v' + historical + '；编辑器里的内容不变。'
-        : s.release.published_version === s.saved.version
-          ? '这个保存版本已经是当前发布版本；再次发布会记一次新的发布修订。'
-          : '发布后，打开已发布看板得到的就是这个版本；之后的保存不改变发布指针。';
-    $('bd-publish-confirm').textContent = saveFirst ? '保存并发布' : '确认发布';
-    open('bd-d-publish', $('bd-publish'));
-  }
-  let saveFirst = false,
-    historical = 0;
-  $('bd-publish').addEventListener('click', () => {
-    publish();
-  });
-  $('bd-publish-confirm').addEventListener('click', async () => {
-    close();
-    if (saveFirst) {
-      const was = ports.dashboard.state().saved;
-      await ports.dashboard.save();
-      const now = ports.dashboard.state();
-      if (!now.saved || (was && now.saved.version === was.version)) {
-        sync();
-        return;
-      }
+      then();
+    },
+    async readRelease(then) {
       await ports.dashboard.readRelease();
-      if (!ports.dashboard.state().release) {
-        sync();
-        return;
+      then();
+    },
+    async restore(version) {
+      await ports.dashboard.restoreVersion(version);
+      sync();
+    },
+    // 保存并发布 (S07-B): unsaved changes, or no saved version yet, are saved as the next version first, its release state is read, and it is
+    // published; a step that did not happen ends the sequence. A historical version is published as it is (a rollback).
+    async publish(plan) {
+      if (plan.saveFirst) {
+        const was = ports.dashboard.state().saved;
+        await ports.dashboard.save();
+        const now = ports.dashboard.state();
+        if (!now.saved || (was && now.saved.version === was.version)) {
+          sync();
+          return;
+        }
+        await ports.dashboard.readRelease();
+        if (!ports.dashboard.state().release) {
+          sync();
+          return;
+        }
       }
-    }
-    await ports.dashboard.publish(historical || undefined);
-    sync();
+      await ports.dashboard.publish(plan.historical || undefined);
+      sync();
+    },
   });
   for (const b of qa('[data-act=help]')) b.addEventListener('click', () => open('bd-d-help', b));
   // The data buttons (the start card, the context bar, the data panel) open the console's data drawer (S07-A); without one (the embed page) they go to the query form on the page.
@@ -462,8 +364,7 @@ window.createReportingBoardStudio = function (ports) {
     },
     clear() {
       close();
-      pick = 0;
-      pickFor = '';
+      versions.clear();
       toggleSidebar(false);
       toggleInspector(false);
       showSide('components');

@@ -15,6 +15,7 @@ const html = await readFile(join(root, 'console/assets/index.html'), 'utf8');
 const script = await readFile(join(root, 'console/assets/app.js'), 'utf8');
 const dashboardScript = await readFile(join(root, 'console/assets/dashboard.js'), 'utf8');
 const canvasScript = await readFile(join(root, 'console/assets/canvas.js'), 'utf8');
+const versionsScript = await readFile(join(root, 'console/assets/versions.js'), 'utf8');
 const studioScript = await readFile(join(root, 'console/assets/studio.js'), 'utf8');
 const documentsScript = await readFile(join(root, 'console/assets/documents.js'), 'utf8');
 const libraryScript = await readFile(join(root, 'console/assets/library.js'), 'utf8');
@@ -153,6 +154,7 @@ function app(intercept, options) {
   const listing = !!options?.listing;
   w.eval(dashboardScript);
   w.eval(canvasScript);
+  w.eval(versionsScript);
   w.eval(studioScript);
   w.eval(libraryScript);
   w.eval(boardScript);
@@ -11584,6 +11586,7 @@ test("S06-A: the studio's code writes no markup, no style attribute, loads nothi
   try {
     for (const [name, code] of [
       ['studio.js', studioScript],
+      ['versions.js', versionsScript],
       ['canvas.js', canvasScript],
       ['documents.js', documentsScript],
     ]) {

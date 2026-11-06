@@ -537,9 +537,9 @@ window.createReportingStudio = function (api) {
     library: () => (api.library ? api.library() : openChooser()),
     chooser: () => openChooser(),
     help: () => open('help'),
-    versions: () => openVersions(),
+    versions: () => versions.openVersions(),
     preview: () => openPreview(),
-    publish: () => openPublish(),
+    publish: () => versions.openPublish(),
     binding: openQuery,
     parameters: openQuery,
     'data-preview': openRows,
@@ -698,53 +698,92 @@ window.createReportingStudio = function (api) {
   $('st-name-input').addEventListener('blur', () => endRename(true));
 
   // ---- the dialogs ---------------------------------------------------------------------------------------------------------------------------------
-  let versionPick = 0,
-    publishPick = 0;
-  function openVersions() {
-    open('versions', () => {
-      versionPick = S.saved ? S.saved.version : 0;
-      if (S.saved) api.loadVersions(() => render());
-      render();
-    });
-  }
   const openPreview = () => open('preview', () => render());
-  function openPublish(version) {
-    publishPick = version || 0;
-    open('publish', () => {
-      if (S.saved && !S.release) api.readRelease(() => render());
-      render();
-    });
-  }
   const openChooser = () =>
     open('chooser', () => {
       api.loadChooser(() => render());
       render();
     });
-  $('st-ver-preview').addEventListener('click', () => {
-    if (versionPick) api.previewVersion(versionPick);
-  });
-  $('st-ver-restore').addEventListener('click', () => {
-    if (versionPick) {
-      api.restoreVersion(versionPick);
-      close('versions');
-    }
-  });
-  $('st-ver-publish').addEventListener('click', () => {
-    if (versionPick) openPublish(versionPick);
-  });
-  $('st-pub-confirm').addEventListener('click', () => {
-    if ($('st-pub-confirm').disabled) return;
-    const n = publishPick || (S.saved ? S.saved.version : 0),
-      cur = !!S.saved && n === S.saved.version,
-      stale = !S.saved || (cur && S.dirty);
+  // 版本历史与发布指针 and 发布前确认 are the shared component (versions.js, S09-E); these ports are the studio's dialogs, its state, the
+  // designer's functions and its own additions: the detail card's content and the confirmation's checks.
+  const dialog = id => ({open: () => open(id), close: () => close(id), isOpen: () => openId === id});
+  const versions = window.createReportingVersions({
+    prefix: 'st',
+    ids: {confirm: 'st-pub-confirm', withdraw: 'doc-release-withdraw'},
+    dialogs: {versions: dialog('versions'), publish: dialog('publish')},
+    texts: {thing: '模板', editor: null, unread: ''},
+    readsWhileOpen: true,
+    state: () => S,
+    readVersions: then => api.loadVersions(then),
+    readRelease: then => api.readRelease(then),
+    restore: n => api.restoreVersion(n),
+    card(b, v, picked) {
+      if (picked) b.classList.add('active');
+      b.setAttribute('data-k', 'ver:' + v);
+    },
+    picked: v => api.fetchVersion(v, () => render()),
+    detail(v) {
+      const cached = api.cachedVersion(v),
+        cur =
+          S.saved.version === v && S.config
+            ? {
+                count: S.count,
+                dataset: S.query ? S.query.dataset.id + '@' + S.query.dataset.version : '—',
+                schema: 'schema ' + S.config.schema_version,
+              }
+            : null,
+        info = cached || cur;
+      text('st-vd-elements', info ? info.count + ' 个组件' : '读取版本内容…');
+      text('st-vd-dataset', info ? info.dataset : '—');
+      text('st-vd-schema', info ? info.schema : '—');
+      $('st-ver-preview').disabled = !S.previews;
+      $('st-ver-preview').title = S.previews ? '' : '服务端未启用 PDF 渲染';
+    },
+    renderPublish(plan) {
+      const n = plan.target,
+        cur = !!S.saved && !plan.historical,
+        stale = plan.saveFirst,
+        bad = S.issues.length;
+      text('st-pub-version', n ? 'v' + n : '草稿');
+      text('st-pub-name', S.name);
+      text(
+        'st-pub-pointer',
+        (n && S.pointer && n < S.pointer ? '历史版本回退 · ' : '') +
+          '当前发布 ' +
+          (S.pointer ? 'v' + S.pointer : S.release ? '无' : '（发布状态未读取）') +
+          ' → ' +
+          (n ? 'v' + n : '待保存')
+      );
+      setCheck(
+        'st-pub-saved',
+        stale,
+        stale ? '需要先保存当前修改' : '已明确引用不可变保存版本',
+        stale
+          ? S.saved
+            ? '画布存在未保存的修改，自动草稿不等于保存版本。'
+            : '先保存第一个版本。'
+          : '本次发布固定引用 v' + n + '。'
+      );
+      setCheck(
+        'st-pub-valid',
+        bad > 0,
+        bad ? bad + ' 项检查未通过' : '版式与数据绑定检查通过',
+        bad ? S.issues[0].detail || S.issues[0].title : '设计器的校验与最近一次边界样本检查均无问题；PDF 预览另行确认。'
+      );
+      text('st-pub-dataset', S.query ? S.query.dataset.id + '@' + S.query.dataset.version : '—');
+      text('st-pub-elements', cur ? S.count + ' 个组件' : '该版本的组件数见“版本”对话框');
+      text('st-pub-schema', S.config ? 'schema ' + S.config.schema_version : '—');
+      text('st-pub-footnote', plan.blocked ? '正在读取发布状态…' : plan.saveFirst ? '先保存为新版本，再发布它' : '');
+    },
     // 保存并发布 (S07-B): the unsaved changes become the next version, its release state is read, and that version is published.
-    if (stale && api.save) {
-      api.save(() => api.readRelease(() => api.publish()));
-      close('publish');
-      return;
-    }
-    api.publish(cur ? undefined : n);
-    close('publish');
+    publish(plan) {
+      if (plan.saveFirst) api.save(() => api.readRelease(() => api.publish()));
+      else api.publish(plan.historical || undefined);
+    },
+  });
+  $('st-ver-preview').addEventListener('click', () => {
+    const v = versions.picked();
+    if (v) api.previewVersion(v);
   });
   $('st-chooser-new').addEventListener('click', () => {
     $('doc-reset').click();
@@ -1092,113 +1131,12 @@ window.createReportingStudio = function (api) {
       (S.result ? S.result.rows.length : 0) + ' 条 / ' + (S.result ? S.result.columns.length : 0) + ' 字段'
     );
   }
-  function renderVersions() {
-    const n = S.saved ? Math.max(S.latest, S.saved.version) : 0,
-      pub = S.pointer;
-    once('versions', JSON.stringify([n, pub, versionPick, S.saved && S.saved.version, S.dirty]), () => {
-      const list = $('st-version-list');
-      rebuild(list, () => {
-        for (let v = n; v >= 1; v--) {
-          const b = node('button', undefined, 'version-card' + (v === versionPick ? ' active' : '')),
-            top = node('div', undefined, 'between');
-          b.type = 'button';
-          b.setAttribute('data-k', 'ver:' + v);
-          top.append(
-            node('strong', 'v' + v),
-            node('span', v === pub ? '已发布' : '已保存', 'pill ' + (v === pub ? 'green' : 'blue'))
-          );
-          b.append(
-            top,
-            node(
-              'p',
-              S.saved && v === S.saved.version ? '编辑器打开的版本' + (S.dirty ? '（有未保存修改）' : '') : '保存版本'
-            )
-          );
-          b.setAttribute('aria-current', v === versionPick ? 'true' : 'false');
-          b.addEventListener('click', () => {
-            versionPick = v;
-            render();
-            api.fetchVersion(v, () => render());
-          });
-          list.append(b);
-        }
-      });
-    });
-    const has = !!versionPick && !!S.saved;
-    $('st-version-empty').hidden = has;
-    $('st-version-card').hidden = !has;
-    if (has) {
-      text('st-vd-title', S.name + ' · v' + versionPick);
-      text('st-vd-note', '恢复该版本只改变当前草稿；发布指针仍指向 ' + (pub ? 'v' + pub : '未发布') + '。');
-      const cached = api.cachedVersion(versionPick),
-        cur =
-          S.saved.version === versionPick && S.config
-            ? {
-                count: S.count,
-                dataset: S.query ? S.query.dataset.id + '@' + S.query.dataset.version : '—',
-                schema: 'schema ' + S.config.schema_version,
-              }
-            : null,
-        info = cached || cur;
-      text('st-vd-elements', info ? info.count + ' 个组件' : '读取版本内容…');
-      text('st-vd-dataset', info ? info.dataset : '—');
-      text('st-vd-schema', info ? info.schema : '—');
-      $('st-ver-preview').disabled = !S.previews;
-      $('st-ver-preview').title = S.previews ? '' : '服务端未启用 PDF 渲染';
-      $('doc-release-withdraw').disabled = !pub;
-    }
-    text('st-version-note', S.saved ? '保存版本不可变；当前发布指针：' + (pub ? 'v' + pub : '无') : '尚未保存任何版本');
-  }
   function setCheck(id, bad, title, detail) {
     const el = $(id),
       d = node('div', title);
     d.append(node('p', detail));
     el.classList.toggle('bad', bad);
     el.replaceChildren(icon(bad ? 'warning' : 'check'), d);
-  }
-  function renderPublish() {
-    if (openId !== 'publish') return;
-    const n = publishPick || (S.saved ? S.saved.version : 0),
-      cur = !!S.saved && n === S.saved.version,
-      stale = !S.saved || (cur && S.dirty),
-      bad = S.issues.length;
-    text('st-pub-version', n ? 'v' + n : '草稿');
-    text('st-pub-name', S.name);
-    text(
-      'st-pub-pointer',
-      (n && S.pointer && n < S.pointer ? '历史版本回退 · ' : '') +
-        '当前发布 ' +
-        (S.pointer ? 'v' + S.pointer : S.release ? '无' : '（发布状态未读取）') +
-        ' → ' +
-        (n ? 'v' + n : '待保存')
-    );
-    setCheck(
-      'st-pub-saved',
-      stale,
-      stale ? '需要先保存当前修改' : '已明确引用不可变保存版本',
-      stale
-        ? S.saved
-          ? '画布存在未保存的修改，自动草稿不等于保存版本。'
-          : '先保存第一个版本。'
-        : '本次发布固定引用 v' + n + '。'
-    );
-    setCheck(
-      'st-pub-valid',
-      bad > 0,
-      bad ? bad + ' 项检查未通过' : '版式与数据绑定检查通过',
-      bad ? S.issues[0].detail || S.issues[0].title : '设计器的校验与最近一次边界样本检查均无问题；PDF 预览另行确认。'
-    );
-    text('st-pub-dataset', S.query ? S.query.dataset.id + '@' + S.query.dataset.version : '—');
-    text('st-pub-elements', cur ? S.count + ' 个组件' : '该版本的组件数见“版本”对话框');
-    text('st-pub-schema', S.config ? 'schema ' + S.config.schema_version : '—');
-    const combined = stale && !!api.save && (!S.saved || cur),
-      blocked = combined ? false : stale || !S.release;
-    $('st-pub-confirm').disabled = blocked;
-    $('st-pub-confirm').lastChild.textContent = combined ? '保存并发布' : '确认发布';
-    text(
-      'st-pub-footnote',
-      blocked ? (stale ? '先保存再发布' : '正在读取发布状态…') : combined ? '先保存为新版本，再发布它' : ''
-    );
   }
   function renderChooser() {
     once(
@@ -1285,8 +1223,7 @@ window.createReportingStudio = function (api) {
     renderLayers();
     renderFields();
     renderInspector();
-    renderVersions();
-    renderPublish();
+    versions.sync();
     renderChooser();
     text('st-pv-name', S.name);
     text(
@@ -1340,6 +1277,7 @@ window.createReportingStudio = function (api) {
         $('titleButton').hidden = false;
       }
       for (const k of Object.keys(last)) delete last[k];
+      versions.clear();
       layout.fit = true;
       sets.grid = false;
       sets.snap = true;
