@@ -10329,20 +10329,15 @@ test("S06-A A1: the studio is the documents page: its regions, labels and tabs a
         '条形码',
         '二维码',
         '页码信息',
-        '水印',
       ]
     );
+    // ADR 0014 decision 4: the prototype's 数据中心 group and its 水印 / 插入水印 tools, which had no function, are not in the ribbon.
     assert.deepEqual(names('data'), [
-      ['数据中心'],
       ['数据集与映射', '数据预览', '导入样本'],
       ['参数与筛选', '排序与分组', '计算指标'],
       ['字段校验', '刷新示例'],
     ]);
-    assert.deepEqual(names('page'), [
-      ['纸张与页边距', '区段设置'],
-      ['底稿与套打', '插入页码', '插入水印'],
-      ['阅读模式'],
-    ]);
+    assert.deepEqual(names('page'), [['纸张与页边距', '区段设置'], ['底稿与套打', '插入页码'], ['阅读模式']]);
     assert.deepEqual(names('check'), [
       ['运行版式检查', '边界样本'],
       ['预览与导出', '发布前确认', '版本与回退', '正式出具'],
@@ -10412,8 +10407,6 @@ test('S06-A A1: every ribbon tool, rail control and library card either reaches 
     const reasons = {
       组合: '版式 schema 没有分组对象；多选可一起移动',
       解组: '版式 schema 没有分组对象；多选可一起移动',
-      水印: '正式文件不支持水印',
-      插入水印: '正式文件不支持水印',
       导入样本: '数据来自来源产品的冻结快照；平台不导入 CSV 或 JSON 样本',
       刷新示例: '快照已冻结，不重新查询；要换数据请在“参数与筛选”中重新冻结快照',
     };
@@ -10438,8 +10431,9 @@ test('S06-A A1: every ribbon tool, rail control and library card either reaches 
     assert.match(card(a, 'line').title, /先转换为 2\.0/);
     for (const k of ['text', 'field', 'table', 'aggregate', 'summary'])
       assert.equal(card(a, k).getAttribute('aria-disabled'), null, k + ' in 1.x');
-    assert.equal(card(a, 'watermark').getAttribute('aria-disabled'), 'true');
-    assert.equal(card(a, 'watermark').title, '正式文件不支持水印');
+    // ADR 0014 decision 4: a watermark has no function in the schema, so there is no card for it (it was a greyed one).
+    assert.equal(card(a, 'watermark'), null, 'no watermark card');
+    assert.equal(q(a, '[data-act="insert-watermark"], #st-data-center'), null, 'no watermark or 数据中心 tool');
     assert.equal(card(a, 'aggregate').title, '仅支持“分组合计”：服务端对分组内各行精确求和（group_sum）');
     assert.equal(card(a, 'summary').title, card(a, 'aggregate').title);
     a.click('doc-convert');
@@ -10459,7 +10453,6 @@ test('S06-A A1: every ribbon tool, rail control and library card either reaches 
     ])
       assert.equal(card(a, k).getAttribute('aria-disabled'), null, k + ' in 2.0');
     assert.equal(card(a, 'signature').title, '签章与签名属于后续阶段');
-    assert.equal(card(a, 'watermark').getAttribute('aria-disabled'), 'true');
     // The old buttons are the ribbon's own: undo, redo, align, distribute, delete and the palette are the same elements.
     for (const id of [
       'doc-undo',
@@ -10520,12 +10513,9 @@ test('S06-A A2: a card or a tool inserts into the current band at the nearest fr
       assert.equal(JSON.stringify(ids2(cv.tpl(a))), JSON.stringify(ids2(t0)), kind + ' is one undo step');
     }
     assert.equal(cv.tpl(a).schema_version, '2.0', 'the undo of a code returns the 2.0 template');
-    // The table card selects the table; the watermark card says why not.
+    // The table card selects the table.
     card(a, 'table').click();
     assert.deepEqual(cv.selected(a), [ids2(t0).find(id => all2(t0).find(v => v.e.id === id).e.type === 'table')]);
-    a.$('doc-status').textContent = '';
-    card(a, 'watermark').click();
-    assert.equal(a.$('doc-status').textContent, '正式文件不支持水印');
     // The signature block: a rectangle and the literal text in it, one step.
     cv.click2(a, 'e1');
     const before = ids2(cv.tpl(a));
@@ -10913,7 +10903,7 @@ test('S06-A A2: the panels are built from the real snapshot and template: the da
       [
         ['文本', '绑定字段', '图片 / 标识', '分隔线', '矩形容器', '签章栏'],
         ['动态明细表流式分页', '计算指标', '金额摘要'],
-        ['条形码', '二维码', '页码信息', '水印'],
+        ['条形码', '二维码', '页码信息'],
       ]
     );
     assert.equal(a.$('st-comp-dataset').textContent, 'receivables.aging');

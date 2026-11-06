@@ -786,7 +786,6 @@ window.createReportingStudio = function (api) {
   const one = () => !!S.schema && S.schema.startsWith('1.');
   const unsupported1x = '1.x 模板不支持；先转换为 2.0 分带模板（页面 › 区段设置）';
   const cardRules = {
-    watermark: () => '正式文件不支持水印',
     signature: () => (one() ? unsupported1x : ''),
     line: () => (one() ? unsupported1x : ''),
     rect: () => (one() ? unsupported1x : ''),
