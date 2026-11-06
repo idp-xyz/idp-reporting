@@ -375,11 +375,11 @@ async function main() {
     `(()=>{const r=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height};};return {header:r('.library-header'),side:r('.catalog-sidebar'),search:r('.catalog-search'),card:r('ul[aria-label="我的模板"] .catalog-card'),h1:r('h1')};})()`
   );
   evidence.geometry = geo;
-  // The prototype's numbers moved by the rail (56 px) and the console header (68 px); the centre's header became a 56 px toolbar (S07-F).
+  // The prototype's numbers moved by the rail (56 px) and the console header (56 px since S09-B; 68 before); the centre's header became a 56 px toolbar (S07-F).
   check(
-    "geometry at 1440: toolbar 56 px below the 68 px console header, sidebar 222 px, content from x = 256 + 56 (the prototype's numbers beside the rail)",
+    "geometry at 1440: toolbar 56 px below the 56 px console header (S09-B), sidebar 222 px, content from x = 256 + 56 (the prototype's numbers beside the rail)",
     geo.header.h === 56 &&
-      Math.abs(geo.header.y - 68) <= 1 &&
+      Math.abs(geo.header.y - 56) <= 1 &&
       geo.side.w === 222 &&
       Math.abs(geo.search.x - 312) <= 1 &&
       Math.abs(geo.card.x - 312) <= 1,

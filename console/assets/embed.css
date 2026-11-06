@@ -68,7 +68,7 @@
   position: static;
   height: auto;
   min-height: 0;
-  grid-template-rows: 64px auto 31px;
+  grid-template-rows: 52px auto 31px;
   overflow: visible;
 }
 .embed #page-dashboard .sidebar,

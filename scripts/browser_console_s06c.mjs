@@ -249,6 +249,34 @@ const contrast = async (name, least = 10) => {
   check(`contrast of every visible text ≥ 4.5:1 (${name})`, r.failing === 0 && r.total > least, r);
 };
 
+// ADR 0014 decision 10, held like the task baseline (these may go down, never up): the smallest visible interface text is 11px
+// (captions and help lines), and only letter-spaced uppercase eyebrows, badges, the rail's and tool rails' labels and keyboard hints
+// may be 10px; nothing is smaller. The canvas drawing (the paper and its rulers) is not interface text. And the main content of a shell begins within the top quarter of a 900px
+// viewport: 225px, measured as the top of the workbench's query panel, the document studio's canvas area and the dashboard's desk.
+const SMALL_ALLOWED =
+  '.eyebrow,.library-eyebrow,.wordmark small,.pill,.badge,.state-badge,.nav-count,.nav-item small,.nav-item b,.rail-help,.toolrail small,kbd,.ribbon-tip,.canvas-hint,.environment';
+const LEGIBILITY = `(()=>{const vis=e=>{const b=e.getBoundingClientRect();const cs=getComputedStyle(e);return b.width>0&&b.height>0&&cs.visibility!=='hidden'&&cs.opacity!=='0'&&!e.closest('[hidden]')&&!e.closest('[inert]')&&!e.closest('svg')&&!e.closest('.cv-panel,.cv-scroll,#st-ruler,.ruler');};
+let min=99,minText='',minSmall=99,minSmallText='';const sizes={};
+for(const e of document.querySelectorAll('body *')){if(!vis(e))continue;if(![...e.childNodes].some(n=>n.nodeType===3&&n.nodeValue.trim()))continue;const s=parseFloat(getComputedStyle(e).fontSize);if(!s)continue;sizes[s]=(sizes[s]||0)+1;
+ if(e.closest(${JSON.stringify(SMALL_ALLOWED)})){if(s<minSmall){minSmall=s;minSmallText=e.textContent.trim().slice(0,30);}}else if(s<min){min=s;minText=e.textContent.trim().slice(0,30)+' <'+(e.id||e.className)+'>';}}
+const top=sel=>{const e=document.querySelector(sel);return e?Math.round(e.getBoundingClientRect().top):null;};
+return {min,minText,minSmall,minSmallText,sizes,starts:{workbench:top('#page-workspace:not([hidden]) .query-panel'),studio:top('#page-documents:not([hidden]) .ruler'),dashboard:top('#page-dashboard:not([hidden]) #bd-desk:not([hidden]), #page-dashboard:not([hidden]) #bd-start:not([hidden])')}};})()`;
+const legibility = async (name, shell) => {
+  const r = await evalJs(LEGIBILITY);
+  evidence['legibility ' + name] = r;
+  check(
+    `legibility (${name}): the smallest text ≥ 11px outside eyebrows, badges, rail labels and hints, and ≥ 10px anywhere`,
+    r.min >= 11 && r.minSmall >= 10,
+    r
+  );
+  if (shell)
+    check(
+      `content begins within the top quarter at 1440×900 (${name}): ≤ 225px`,
+      r.starts[shell] !== null && r.starts[shell] <= 225,
+      r.starts
+    );
+};
+
 // A composite of two screenshots side by side (the prototype left, the console right), drawn on the page's own canvas.
 async function pair(name, left, right) {
   if (!proto) return;
@@ -337,8 +365,8 @@ async function main() {
   );
   evidence.geometry = geo;
   check(
-    "geometry at 1440: header 68 px, the application rail 56 px, content from x = 90 (the prototype's library header and padding beside the rail; S07-A)",
-    geo.header.h === 68 &&
+    "geometry at 1440: header 56 px (S09-B, ADR 0014 decision 2; it was the prototype's 68), the application rail 56 px, content from x = 90 (the prototype's library header and padding beside the rail; S07-A)",
+    geo.header.h === 56 &&
       geo.rail.w === 56 &&
       geo.rail.x === 0 &&
       Math.abs(geo.heading.x - 90) <= 1 &&
@@ -360,6 +388,7 @@ async function main() {
     )
   );
   await shot('console-01-home');
+  await legibility('workbench 1440', 'workbench');
   await pair('pair-shell', 'proto-library', 'console-01-home');
   check('no horizontal overflow at 1440 (light)', !(await overflow()).over, await overflow());
   await contrast('home 1440 light');
@@ -390,6 +419,7 @@ async function main() {
   );
   await shot('console-05-dashboard-start');
   await contrast('dashboard start 1440 light');
+  await legibility('dashboard start 1440', 'dashboard');
   // The data drawer from the start card (S07-A): the query panel moves in and back, a preview from inside closes it.
   await click('#bd-start-open');
   await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer');
@@ -692,6 +722,7 @@ async function main() {
     )
   );
   await shot('console-15-studio');
+  await legibility('document studio 1440', 'studio');
 
   // ---- dark at 1440 ----------------------------------------------------------------------------------------------------------------------
   await viewport(1440, 900, 'dark');
