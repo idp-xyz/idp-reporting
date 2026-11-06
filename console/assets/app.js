@@ -502,12 +502,45 @@
     $('notice').className = 'notice' + (type ? ' ' + type : '');
     $('notice').hidden = false;
   }
+  // One notification stack (ADR 0014 decision 3): on a studio page the shell's notice joins the studio's own toast stack (the document
+  // studio's #st-toasts, the dashboard studio's .toast-stack), where the toasts are laid out in one column and never overlap; on every
+  // other page it is the banner at the top of the main column, where it was. The element, its id, its classes and its role do not change.
+  const noticeHome = {parent: null, next: null};
+  function placeNotice(page) {
+    const notice = $('notice');
+    if (!notice) return;
+    if (!noticeHome.parent) {
+      noticeHome.parent = notice.parentNode;
+      noticeHome.next = notice.nextSibling;
+    }
+    const stack =
+      page === 'documents'
+        ? $('st-toasts')
+        : page === 'dashboard'
+          ? document.querySelector('#page-dashboard .toast-stack')
+          : null;
+    if (stack) {
+      if (notice.parentNode !== stack) stack.append(notice);
+    } else if (notice.parentNode !== noticeHome.parent) {
+      if (noticeHome.next && noticeHome.next.parentNode === noticeHome.parent)
+        noticeHome.parent.insertBefore(notice, noticeHome.next);
+      else noticeHome.parent.append(notice);
+    }
+  }
+  // A disabled export says why (ADR 0014 decision 6): while a preview is on screen and no snapshot exists, the buttons carry the reason as
+  // their title and the sentence stands beside them; with a snapshot, or before any result, nothing is said.
+  function exportHint() {
+    const needsSnapshot = !!state.session && !!state.lastResult && !state.snapshot;
+    for (const id of ['export', 'export-pdf']) $(id).title = needsSnapshot ? '导出需要冻结快照：先创建快照' : '';
+    if ($('export-hint')) $('export-hint').hidden = !needsSnapshot;
+  }
   function busy(change) {
     state.busy = Math.max(0, state.busy + change);
     const blocked = !state.session || state.busy > 0 || state.catalogLoading;
     document.querySelectorAll('.action').forEach(b => (b.disabled = blocked));
     $('export').disabled = blocked || !state.snapshot;
     $('export-pdf').disabled = blocked || !state.snapshot;
+    exportHint();
     $('next-page').disabled = blocked || !state.cursor;
     $('first-page').disabled = blocked || state.page <= 1;
     $('page-size').disabled = blocked || !state.snapshot;
@@ -550,6 +583,7 @@
     $('refresh-result').disabled = true;
     $('export').disabled = true;
     $('export-pdf').disabled = true;
+    exportHint();
   }
   function disconnect(message) {
     for (const d of drawers) d.close();
@@ -931,6 +965,7 @@
     document.body.classList.toggle('studio-on', page === 'documents');
     document.body.classList.toggle('library-on', page === 'library');
     document.body.classList.toggle('board-on', page === 'dashboard');
+    placeNotice(page);
     if (page === 'library' && library && state.session) library.show();
     if (page === 'dashboard' && board) board.show();
     if (asked === 'catalog' && !embedded) {
@@ -1200,6 +1235,7 @@
     for (const name of ['workspace', 'dashboard', 'documents']) $('page-' + name).hidden = name !== embedRequest.page;
     document.body.classList.toggle('studio-on', embedRequest.page === 'documents');
     document.body.classList.toggle('board-on', embedRequest.page === 'dashboard');
+    placeNotice(embedRequest.page);
     if (embedRequest.page === 'dashboard' && board) board.show();
     const panel = document.querySelector('.query-panel'),
       target = $('page-' + embedRequest.page);
@@ -2069,6 +2105,7 @@
     }
     $('export').disabled = !state.snapshot || state.busy > 0;
     $('export-pdf').disabled = !state.snapshot || state.busy > 0;
+    exportHint();
     updateChip();
     if (drawer.isOpen()) drawer.close();
     if (embedded) setTimeout(openResource, 0);

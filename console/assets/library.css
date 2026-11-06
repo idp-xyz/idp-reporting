@@ -178,7 +178,7 @@ body.library-on #notice {
   overflow: auto;
   background: var(--bg);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 #page-library[hidden] {
@@ -298,7 +298,7 @@ body.library-on #notice {
   border: 0;
 }
 #page-library .help {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin: 6px 0;
 }
@@ -312,7 +312,7 @@ body.library-on #notice {
   border: 1px solid var(--field);
   border-radius: 5px;
   background: var(--panel);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   font-weight: 500;
   color: var(--ink);
@@ -329,7 +329,7 @@ body.library-on #notice {
   background: var(--blue-dark);
 }
 #page-library .btn.small {
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 8px;
 }
 #page-library .btn.ghost {
@@ -360,7 +360,7 @@ body.library-on #notice {
   white-space: nowrap;
   border-radius: 4px;
   padding: 2px 7px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--pill);
   background: var(--pill-bg);
@@ -402,13 +402,13 @@ body.library-on #notice {
   width: 169px;
 }
 #page-library .wordmark b {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.01em;
 }
 #page-library .wordmark small {
   display: block;
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 0.19em;
   color: var(--faint);
   margin-top: 3px;
@@ -442,14 +442,14 @@ body.library-on #notice {
   justify-content: space-between;
   margin: 20px 10px 9px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.04em;
 }
 #page-library .catalog-caption:first-child {
   margin-top: 0;
 }
 #page-library .catalog-caption button {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sel-ink);
 }
 #page-library .catalog-nav {
@@ -463,7 +463,7 @@ body.library-on #notice {
   border-radius: 6px;
   text-align: left;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
 }
 #page-library .catalog-nav span {
   overflow-wrap: anywhere;
@@ -471,7 +471,7 @@ body.library-on #notice {
 #page-library .catalog-nav b {
   font-weight: 500;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 #page-library .catalog-nav:hover {
   background: var(--hover);
@@ -487,7 +487,7 @@ body.library-on #notice {
 #page-library .catalog-hint,
 #page-library .catalog-footnote {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.9;
   padding: 8px 10px;
 }
@@ -510,7 +510,7 @@ body.library-on #notice {
   margin-bottom: 23px;
 }
 #page-library .library-eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--eyebrow);
   letter-spacing: 0.1em;
   margin-bottom: 8px;
@@ -525,7 +525,7 @@ body.library-on #notice {
   outline: none;
 }
 #page-library .catalog-top p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin-top: 6px;
 }
@@ -542,7 +542,7 @@ body.library-on #notice {
   text-align: right;
 }
 #page-library .catalog-stats span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 #page-library .catalog-search {
@@ -564,7 +564,7 @@ body.library-on #notice {
   border: 0;
   width: 100%;
   padding: 11px 0;
-  font-size: 12px;
+  font-size: 13px;
   background: transparent;
 }
 #page-library .catalog-search input::placeholder {
@@ -586,10 +586,10 @@ body.library-on #notice {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 #page-library .catalog-filters select {
-  font-size: 12px;
+  font-size: 13px;
   min-width: 95px;
 }
 #page-library .catalog-view {
@@ -614,12 +614,12 @@ body.library-on #notice {
   align-items: center;
   gap: 12px;
   min-height: 32px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin-bottom: 9px;
 }
 #page-library .catalog-notice-line {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--warn);
   background: var(--warn-bg);
   border: 1px solid var(--warn-line);
@@ -687,7 +687,7 @@ body.library-on #notice {
   color: var(--muted);
 }
 #page-library .catalog-subtitle {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 5px;
 }
@@ -696,7 +696,7 @@ body.library-on #notice {
   margin: 0 4px;
 }
 #page-library .catalog-desc {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
 }
@@ -712,7 +712,7 @@ body.library-on #notice {
 }
 #page-library .catalog-state small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 6px;
 }
@@ -730,7 +730,7 @@ body.library-on #notice {
   color: var(--star);
 }
 #page-library .catalog-notice {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin: 22px 0;
 }
@@ -778,7 +778,7 @@ body.library-on #notice {
   gap: 12px;
   padding: 18px 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 #page-library .catalog-pagination[hidden] {
   display: none;
@@ -813,7 +813,7 @@ body.library-on #notice {
   margin-top: 16px;
 }
 #page-library .sample-group h3 {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin: 0 0 9px;
   font-weight: 600;
@@ -871,7 +871,7 @@ body.library-on #notice {
   letter-spacing: -0.01em;
 }
 #page-library .dialog-head p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
 }
@@ -879,7 +879,7 @@ body.library-on #notice {
   padding: 20px 24px;
   overflow: auto;
   min-height: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 #page-library .dialog-footer {
   padding: 14px 24px;
@@ -891,7 +891,7 @@ body.library-on #notice {
   border-top: 1px solid var(--line);
 }
 #page-library .dialog-footer .footer-note {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-right: auto;
 }
@@ -902,7 +902,7 @@ body.library-on #notice {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
   margin-bottom: 12px;
 }
@@ -910,7 +910,7 @@ body.library-on #notice {
 #page-library .field-full select,
 #page-library .field-full textarea {
   width: 100%;
-  font-size: 12px;
+  font-size: 13px;
 }
 #page-library .field-full input[type="checkbox"],
 #page-library .field-full input[type="radio"] {
@@ -918,12 +918,12 @@ body.library-on #notice {
 }
 #page-library .field-full textarea {
   font-family: ui-monospace, Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
   min-height: 150px;
   resize: vertical;
 }
 #page-library .field-label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
 }
 #page-library .form-grid {
@@ -932,7 +932,7 @@ body.library-on #notice {
   gap: 10px;
 }
 #page-library .section-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   margin: 16px 0 10px;
@@ -945,7 +945,7 @@ body.library-on #notice {
   border-left: 2px solid var(--call-line);
   border-radius: 0 5px 5px 0;
   padding: 11px 14px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.9;
   color: var(--call);
   margin-top: 14px;
@@ -956,7 +956,7 @@ body.library-on #notice {
   color: var(--warn);
 }
 #page-library .note-error {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--err);
   padding: 10px 13px;
   background: var(--err-bg);
@@ -968,7 +968,7 @@ body.library-on #notice {
   display: none;
 }
 #page-library .dataset-line {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
   margin: 6px 0;
 }
@@ -981,7 +981,7 @@ body.library-on #notice {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
 }
 #page-library .table-wrap {
@@ -993,7 +993,7 @@ body.library-on #notice {
 #page-library .data-table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 11px;
+  font-size: 12px;
 }
 #page-library .data-table th,
 #page-library .data-table td {
@@ -1016,7 +1016,7 @@ body.library-on #notice {
 }
 #page-library .data-table th small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 400;
 }
@@ -1031,12 +1031,12 @@ body.library-on #notice {
 }
 #page-library .map-pair select {
   flex: 1;
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 7px;
 }
 #page-library .map-pair input {
   flex: 1;
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 7px;
 }
 #page-library .map-pair input[hidden] {
@@ -1054,7 +1054,7 @@ body.library-on #notice {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 #page-library .step b {
@@ -1064,7 +1064,7 @@ body.library-on #notice {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--muted);
 }
@@ -1095,7 +1095,7 @@ body.library-on #notice {
   min-width: 0;
 }
 #page-library .flow-group legend {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink);
   padding: 0 6px;
@@ -1117,7 +1117,7 @@ body.library-on #notice {
   border: 1px solid var(--line2);
   padding: 14px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   color: var(--text);
 }
@@ -1126,12 +1126,12 @@ body.library-on #notice {
 }
 #page-library .radio-card strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink);
 }
 #page-library .radio-card small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
   line-height: 1.7;
@@ -1149,7 +1149,7 @@ body.library-on #notice {
   grid-template-columns: auto 1fr;
   gap: 8px 16px;
   margin: 14px 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 #page-library .summary dt {
   color: var(--muted);
@@ -1202,7 +1202,7 @@ body.library-on #notice {
   }
   #page-library .library-header .btn {
     padding: 7px 9px;
-    font-size: 11px;
+    font-size: 12px;
   }
   #page-library .catalog-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -1224,7 +1224,7 @@ body.library-on #notice {
     white-space: nowrap;
     flex-shrink: 0;
     padding: 8px 11px;
-    font-size: 11px;
+    font-size: 12px;
     margin: 0;
   }
   #page-library .catalog-sidebar .catalog-caption,
