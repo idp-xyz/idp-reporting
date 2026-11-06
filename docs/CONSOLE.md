@@ -6,6 +6,8 @@
 > DOM 测试的等待约定（2026-11-04，main 上两次偶发失败之后）：断言“某事已经发生”前，用 `until` 等那件事的结果（行已出现、提示已显示、回答已到达：嵌入页夹具的请求记录带 `answered`），不要等“请求已发出”再加固定 `sleep`；固定 `sleep` 只用于“一段时间内什么都没发生”的反向检查。慢的 CI runner 会让第一种写法误报失败。main 的四个 CI 作业已设为必需检查。
 
 > S07-D：用户手册随服务提供：`/console/manual/`（`docs/manual` 通过 `docs` 包嵌入二进制，只按名字提供页面、样式、截图与测试数据，不列目录；与控制台相同的 CSP 等响应头，手册样式因此在 `manual.css` 里）。应用栏底部与登录卡上的“帮助”图标在新窗口打开它。
+>
+> 手册的 38 张截图（`docs/manual/img/*.png`）由 `scripts/manual_screens.sh` 一次性重新截取（S09-A/B 之后，2026-11-06）：它构建并启动一个内存存储的全新演示、启动无头 Chrome，然后由 `scripts/manual_screens.mjs` 经 CDP 走一遍手册的路径（登录、查询与快照、三个设计器的版本与发布、示例复制与字段映射、边界样本检查、PDF 预览、正式出具、任务面板、暗色与 390 px），按原文件名与尺寸（1440 × 900；36–38 为 390 × 844）写出。需要已构建的演示（`GO`）、Chrome（`CHROME`、`CHROME_FLAGS`）与 Typst 环境变量（`REPORTING_TYPST` 等，否则 PDF 预览、边界样本与出具的图里没有 PDF）；界面改了之后重跑它，再对照手册里的图注。
 
 > S09-C（ADR 0014 决定 7，2026-11-06）：用户的话。页眉标签是页面的中文名（报表工作台 / 看板工作室 / 模板中心 / 文档工作室 / 任务工作区 / 能力与环境），不再是 REPORT WORKBENCH 一类的英文小写字母；标题块上方重复标签的英文眉题（REPORT WORKBENCH、BACKGROUND TASKS、PLATFORM CAPABILITIES、DOCUMENT OPERATIONS、SIGN IN）去掉，登录卡的品牌标语 DOCUMENT PLATFORM 保留。数据芯片写数据集的名字（`应收余额 · company_demo · 2026-11-06`），技术标识 `receivables.aging@1.0.0` 进 title。数据抽屉的字段类型写成 文本 / 小数 / 整数 / 日期 / 时间 / 是/否，原始类型在 title 里。布局设计器、文档工作室检查器与看板检查器里的整段说明各改成一句话。公司范围、任务 ID、产品连接与币种政策的标识、布局设计器的“版本 · 保存版本 · 发布”留到各自的前提（合同、S09-E）之后。见 docs/S09C_SCOPE.md。
 
