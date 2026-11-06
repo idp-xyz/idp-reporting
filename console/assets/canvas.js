@@ -19,71 +19,9 @@
 // belongs to a band and its position is relative to the band's top-left corner (x 10 mm); the model below turns that into
 // page units for drawing, snapping, alignment and distribution, and back again when an element is written.
 // The page presets (S06-B): a copy of doctemplates.Presets, the one table of the platform; a Go test (doctemplates/preset_test.go) fails when this differs.
-window.reportingPresets = /*presets:begin*/ [
-  {
-    id: 'a4',
-    width: 210,
-    height: 297,
-    left: 10,
-    top: 25,
-    bottom: 270,
-    strip: {x: 10, y: 10, width: 190, height: 8, banner_size: 10, stamp_size: 8, stamp_lines: 1},
-  },
-  {
-    id: 'a4_landscape',
-    width: 297,
-    height: 210,
-    left: 10,
-    top: 25,
-    bottom: 183,
-    strip: {x: 10, y: 10, width: 277, height: 8, banner_size: 10, stamp_size: 8, stamp_lines: 1},
-  },
-  {
-    id: 'a5',
-    width: 148,
-    height: 210,
-    left: 10,
-    top: 25,
-    bottom: 183,
-    strip: {x: 10, y: 10, width: 128, height: 8, banner_size: 10, stamp_size: 8, stamp_lines: 2},
-  },
-  {
-    id: 'label_4x6in',
-    width: 101.6,
-    height: 152.4,
-    left: 4,
-    top: 12,
-    bottom: 146.4,
-    strip: {x: 4, y: 3, width: 93.6, height: 6, banner_size: 8, stamp_size: 6, stamp_lines: 2},
-  },
-  {
-    id: 'label_100x150',
-    width: 100,
-    height: 150,
-    left: 4,
-    top: 12,
-    bottom: 144,
-    strip: {x: 4, y: 3, width: 92, height: 6, banner_size: 8, stamp_size: 6, stamp_lines: 2},
-  },
-  {
-    id: 'label_100x100',
-    width: 100,
-    height: 100,
-    left: 4,
-    top: 12,
-    bottom: 94,
-    strip: {x: 4, y: 3, width: 92, height: 6, banner_size: 8, stamp_size: 6, stamp_lines: 2},
-  },
-  {
-    id: 'label_150x100',
-    width: 150,
-    height: 100,
-    left: 4,
-    top: 12,
-    bottom: 94,
-    strip: {x: 4, y: 3, width: 142, height: 6, banner_size: 8, stamp_size: 6, stamp_lines: 2},
-  },
-]; /*presets:end*/
+// The table is JSON and stays on one line: doctemplates/preset_test.go parses it as it stands.
+// prettier-ignore
+window.reportingPresets = /*presets:begin*/[{"id":"a4","width":210,"height":297,"left":10,"top":25,"bottom":270,"strip":{"x":10,"y":10,"width":190,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a4_landscape","width":297,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":277,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":1}},{"id":"a5","width":148,"height":210,"left":10,"top":25,"bottom":183,"strip":{"x":10,"y":10,"width":128,"height":8,"banner_size":10,"stamp_size":8,"stamp_lines":2}},{"id":"label_4x6in","width":101.6,"height":152.4,"left":4,"top":12,"bottom":146.4,"strip":{"x":4,"y":3,"width":93.6,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x150","width":100,"height":150,"left":4,"top":12,"bottom":144,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_100x100","width":100,"height":100,"left":4,"top":12,"bottom":94,"strip":{"x":4,"y":3,"width":92,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}},{"id":"label_150x100","width":150,"height":100,"left":4,"top":12,"bottom":94,"strip":{"x":4,"y":3,"width":142,"height":6,"banner_size":8,"stamp_size":6,"stamp_lines":2}}] /*presets:end*/
 window.createReportingCanvas = function (ports) {
   const NS = 'http://www.w3.org/2000/svg',
     SCALE = 3,
