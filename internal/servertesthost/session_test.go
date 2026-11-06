@@ -17,6 +17,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"idp.local/reporting/storage/postgres"
 	"io"
 	"math/big"
 	"net"
@@ -151,7 +152,7 @@ func TestTheServerAsASeparateProcess(t *testing.T) {
 	}
 	out, errs, code := run(shipped, nil, "version")
 	tr.say("$ reporting-server version\n%sexit %d", out, code)
-	if code != 0 || !strings.Contains(out, "schema 10") {
+	if code != 0 || !strings.Contains(out, fmt.Sprintf("schema %d", postgres.LatestVersion())) {
 		t.Fatalf("version: %d %s %s", code, out, errs)
 	}
 

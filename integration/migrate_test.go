@@ -18,6 +18,10 @@ import (
 // catalog is a textual snapshot of the platform schema: tables, columns, constraints, indexes. A column's position is its rank among the
 // columns the table has, not its attribute number: a column dropped by a down step (005's) leaves a hole in the numbers, which an up step
 // does not fill, and the schema is still the same.
+// latestCatalog is the committed catalog of the latest version: a new migration commits its own catalog_NNN.txt, written with
+// REPORTING_WRITE_CATALOG=1 after review.
+var latestCatalog = fmt.Sprintf("testdata/catalog_%03d.txt", postgres.LatestVersion())
+
 func catalog(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	ctx := context.Background()
@@ -127,7 +131,7 @@ func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	admin := fixtureAdmin(t)
 	known, e := postgres.Migrations()
-	if e != nil || len(known) != 10 || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" || known[6].Name != "row_level_security" || known[7].Name != "object_storage" || known[8].Name != "capacity_indexes" || known[9].Name != "jobs_identity_kind_stats" {
+	if e != nil || len(known) != postgres.LatestVersion() || known[0].Name != "base" || known[2].Name != "issues" || known[3].Name != "source_confirmed_issue" || known[4].Name != "retention" || known[5].Name != "sweeps" || known[6].Name != "row_level_security" || known[7].Name != "object_storage" || known[8].Name != "capacity_indexes" || known[9].Name != "jobs_identity_kind_stats" {
 		t.Fatalf("%+v %v", known, e)
 	}
 	t.Run("round_trip_reproduces_the_catalog_exactly", func(t *testing.T) {
@@ -146,22 +150,22 @@ func TestPostgresMigrations(t *testing.T) {
 		// earlier migration file (which the checksums would also flag) changes a fresh database and
 		// fails here.
 		if os.Getenv("REPORTING_WRITE_CATALOG") == "1" { // after a reviewed migration change only
-			if e := os.WriteFile("testdata/catalog_010.txt", []byte(first), 0o644); e != nil {
+			if e := os.WriteFile(latestCatalog, []byte(first), 0o644); e != nil {
 				t.Fatal(e)
 			}
 		}
-		want, e := os.ReadFile("testdata/catalog_010.txt")
+		want, e := os.ReadFile(latestCatalog)
 		if e != nil {
 			t.Fatal(e)
 		}
 		if string(want) != first {
-			t.Fatalf("the catalog differs from testdata/catalog_010.txt:\n%s", first)
+			t.Fatalf("the catalog differs from %s:\n%s", latestCatalog, first)
 		}
 		if !strings.Contains(first, "column assets.expires_at") || !strings.Contains(first, "index assets assets_expires_at") || !strings.Contains(first, "column sweeps.artifacts") {
 			t.Fatalf("the retention schema (005, 006) is not in the catalog:\n%s", first)
 		}
 		st, e := postgres.Status(ctx, admin)
-		if e != nil || st.Current() != 10 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
+		if e != nil || st.Current() != postgres.LatestVersion() || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Legacy {
 			t.Fatalf("%+v %v", st, e)
 		}
 		for _, a := range st.Applied {
@@ -373,11 +377,11 @@ func TestPostgresMigrations(t *testing.T) {
 		// binary does not know, a gap, a profile at another version.
 		for _, c := range []struct{ name, tamper, restore, reason string }{
 			{"checksum", "UPDATE reporting_s01.schema_migrations SET checksum='0' WHERE version=2", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[1].Checksum + "' WHERE version=2", "version 2 was applied from a different file"},
-			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(11,'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=11", "version 11 was applied by a newer binary"},
+			{"newer binary", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(" + fmt.Sprint(postgres.LatestVersion()+1) + ",'future','0','x')", "DELETE FROM reporting_s01.schema_migrations WHERE version=" + fmt.Sprint(postgres.LatestVersion()+1), "version " + fmt.Sprint(postgres.LatestVersion()+1) + " was applied by a newer binary"},
 			{"gap", "DELETE FROM reporting_s01.schema_migrations WHERE version=2", "INSERT INTO reporting_s01.schema_migrations(version,name,checksum,applied_by) VALUES(2,'payload_digests','" + known[1].Checksum + "','test')", "gap before version 3"},
 			{"other name", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET name='issues' WHERE version=3", "under another name"},
 			{"fake legacy", "UPDATE reporting_s01.schema_migrations SET checksum='legacy' WHERE version=3", "UPDATE reporting_s01.schema_migrations SET checksum='" + known[2].Checksum + "' WHERE version=3", "claims to be a legacy row"},
-			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=10", "profile says version 2"},
+			{"profile stale", "UPDATE reporting_s01.profile SET version=2", "UPDATE reporting_s01.profile SET version=" + fmt.Sprint(postgres.LatestVersion()), "profile says version 2"},
 			{"other name of 004", "UPDATE reporting_s01.schema_migrations SET name='other' WHERE version=4", "UPDATE reporting_s01.schema_migrations SET name='source_confirmed_issue' WHERE version=4", "under another name"},
 		} {
 			before := catalog(t, admin)
@@ -507,9 +511,9 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := admin.QueryRow(ctx, "SELECT (SELECT count(*) FROM reporting_s01.jobs WHERE kind='issue')+(SELECT count(*) FROM reporting_s01.assets WHERE kind='issue')").Scan(&rows); e != nil || rows != 0 {
 			t.Fatal(rows, e)
 		}
-		want8, e := os.ReadFile("testdata/catalog_010.txt")
+		want8, e := os.ReadFile(latestCatalog)
 		if e != nil || string(want8) != catalog(t, admin) {
-			t.Fatalf("the catalog after the remedy differs from testdata/catalog_010.txt (%v)", e)
+			t.Fatalf("the catalog after the remedy differs from %s (%v)", latestCatalog, e)
 		}
 		// Documents numbered by a source product (S03-H) do not block it: they are what the
 		// migration leaves in place; and with them the migrator refuses nothing on the way up again.
@@ -630,8 +634,8 @@ func TestPostgresMigrations(t *testing.T) {
 		if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
 			t.Fatal(e)
 		}
-		if want8, e := os.ReadFile("testdata/catalog_010.txt"); e != nil || string(want8) != catalog(t, admin) {
-			t.Fatalf("the catalog after the round trip differs from testdata/catalog_010.txt (%v)", e)
+		if want8, e := os.ReadFile(latestCatalog); e != nil || string(want8) != catalog(t, admin) {
+			t.Fatalf("the catalog after the round trip differs from %s (%v)", latestCatalog, e)
 		}
 	})
 	t.Run("object_storage_step_adds_the_two_counts_and_refuses_to_lose_what_they_say", func(t *testing.T) { migration008(t, admin) })
@@ -666,7 +670,7 @@ func TestPostgresMigrations(t *testing.T) {
 				}
 			}
 			st := must(postgres.Status(ctx, admin))
-			if st.Current() != 10 || len(st.Applied) != 10 || len(st.Problems) != 0 {
+			if st.Current() != postgres.LatestVersion() || len(st.Applied) != postgres.LatestVersion() || len(st.Problems) != 0 {
 				t.Fatalf("round %d: %+v", round, st)
 			}
 		}
@@ -711,7 +715,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 			t.Fatal(e)
 		}
 		st := must(postgres.Status(ctx, admin))
-		if !st.Legacy || st.Current() != 2 || len(st.Pending) != 8 || len(st.Problems) != 0 {
+		if !st.Legacy || st.Current() != 2 || len(st.Pending) != postgres.LatestVersion()-2 || len(st.Problems) != 0 {
 			t.Fatalf("%+v", st)
 		}
 		if _, e := postgres.Open(ctx, os.Getenv("REPORTING_S01_TEST_DSN"), false); !errors.Is(e, r.ErrDenied) {
@@ -723,7 +727,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 10 || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum || st.Applied[6].Checksum != known[6].Checksum || st.Applied[7].Checksum != known[7].Checksum {
+		if st.Legacy || st.Current() != postgres.LatestVersion() || st.Applied[0].Checksum != "legacy" || st.Applied[1].Checksum != "legacy" || st.Applied[2].Checksum != known[2].Checksum || st.Applied[3].Checksum != known[3].Checksum || st.Applied[5].Checksum != known[5].Checksum || st.Applied[6].Checksum != known[6].Checksum || st.Applied[7].Checksum != known[7].Checksum {
 			t.Fatalf("%+v", st)
 		}
 		// The realistic pre-S04-A database: the old fixture at version 3 (S03-G's, with its counters
@@ -749,11 +753,11 @@ UPDATE reporting_s01.profile SET version=3`); e != nil {
 		}
 		store.Close()
 		st = must(postgres.Status(ctx, admin))
-		if st.Legacy || st.Current() != 10 || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
+		if st.Legacy || st.Current() != postgres.LatestVersion() || st.Applied[2].Checksum != "legacy" || !strings.HasPrefix(st.Applied[2].AppliedBy, "legacy:") || st.Applied[3].Checksum != known[3].Checksum || st.Applied[3].AppliedBy != "fixture" {
 			t.Fatalf("%+v", st)
 		}
-		if want8, e := os.ReadFile("testdata/catalog_010.txt"); e != nil || string(want8) != catalog(t, admin) {
-			t.Fatalf("the bootstrapped database does not have the catalog of version 10 (%v)", e)
+		if want8, e := os.ReadFile(latestCatalog); e != nil || string(want8) != catalog(t, admin) {
+			t.Fatalf("the bootstrapped database does not have the catalog of the latest version (%v)", e)
 		}
 		// A production store is never a bootstrap: those rows are refused there.
 		if _, e := admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile='"+postgres.ProfileProduction+"'"); e != nil {
@@ -1298,7 +1302,7 @@ func migration008(t *testing.T, admin *pgxpool.Pool) {
 		t.Fatal(e)
 	}
 	st := must(postgres.Status(ctx, admin))
-	if st.Current() != 7 || len(st.Pending) != 3 || st.Pending[0] != 8 || st.Pending[1] != 9 || st.Pending[2] != 10 {
+	if st.Current() != 7 || len(st.Pending) != postgres.LatestVersion()-7 || st.Pending[0] != 8 {
 		t.Fatalf("%+v", st)
 	}
 	if plan, e := postgres.Plan(st, 8, postgres.Upward); e != nil || len(plan) != 1 || plan[0] != "up   008 object_storage" {
@@ -1310,7 +1314,7 @@ func migration008(t *testing.T, admin *pgxpool.Pool) {
 	}
 	known, _ := postgres.Migrations()
 	st = must(postgres.Status(ctx, admin))
-	if st.Current() != 8 || len(st.Pending) != 2 || len(st.Problems) != 0 || st.Applied[7].Checksum != known[7].Checksum || st.Applied[7].Name != "object_storage" {
+	if st.Current() != 8 || len(st.Pending) != postgres.LatestVersion()-8 || len(st.Problems) != 0 || st.Applied[7].Checksum != known[7].Checksum || st.Applied[7].Name != "object_storage" {
 		t.Fatalf("%+v", st)
 	}
 	at8 := catalog(t, admin)
@@ -1430,7 +1434,7 @@ func migration009(t *testing.T, admin *pgxpool.Pool) {
 		t.Fatal(e)
 	}
 	st := must(postgres.Status(ctx, admin))
-	if st.Current() != 8 || len(st.Pending) != 2 || st.Pending[0] != 9 || st.Pending[1] != 10 {
+	if st.Current() != 8 || len(st.Pending) != postgres.LatestVersion()-8 || st.Pending[0] != 9 {
 		t.Fatalf("%+v", st)
 	}
 	if plan, e := postgres.Plan(st, 9, postgres.Upward); e != nil || len(plan) != 1 || plan[0] != "up   009 capacity_indexes" {
@@ -1441,7 +1445,7 @@ func migration009(t *testing.T, admin *pgxpool.Pool) {
 	}
 	known, _ := postgres.Migrations()
 	st = must(postgres.Status(ctx, admin))
-	if st.Current() != 9 || len(st.Pending) != 1 || len(st.Problems) != 0 || st.Applied[8].Checksum != known[8].Checksum || st.Applied[8].Name != "capacity_indexes" {
+	if st.Current() != 9 || len(st.Pending) != postgres.LatestVersion()-9 || len(st.Problems) != 0 || st.Applied[8].Checksum != known[8].Checksum || st.Applied[8].Name != "capacity_indexes" {
 		t.Fatalf("%+v", st)
 	}
 	at9 := catalog(t, admin)
@@ -1580,12 +1584,12 @@ func migration010(t *testing.T, admin *pgxpool.Pool) {
 	if plan, e := postgres.Plan(st, 10, postgres.Upward); e != nil || len(plan) != 1 || plan[0] != "up   010 jobs_identity_kind_stats" {
 		t.Fatal(plan, e)
 	}
-	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+	if e := postgres.Up(ctx, admin, 10, "test"); e != nil {
 		t.Fatal(e)
 	}
 	known, _ := postgres.Migrations()
 	st = must(postgres.Status(ctx, admin))
-	if st.Current() != 10 || len(st.Pending) != 0 || len(st.Problems) != 0 || st.Applied[9].Checksum != known[9].Checksum || st.Applied[9].Name != "jobs_identity_kind_stats" {
+	if st.Current() != 10 || len(st.Pending) != postgres.LatestVersion()-10 || len(st.Problems) != 0 || st.Applied[9].Checksum != known[9].Checksum || st.Applied[9].Name != "jobs_identity_kind_stats" {
 		t.Fatalf("%+v", st)
 	}
 	at10 := catalog(t, admin)
@@ -1611,7 +1615,7 @@ func migration010(t *testing.T, admin *pgxpool.Pool) {
 	if stats() != 0 || count(t, admin, "SELECT count(*) FROM reporting_s01.jobs") != 3 {
 		t.Fatal("010 down left the statistics or lost rows")
 	}
-	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+	if e := postgres.Up(ctx, admin, 10, "test"); e != nil {
 		t.Fatal(e)
 	}
 	if catalog(t, admin) != at10 {
@@ -1623,7 +1627,7 @@ func migration010(t *testing.T, admin *pgxpool.Pool) {
 	if _, e := admin.Exec(ctx, "CREATE STATISTICS reporting_s01.jobs_identity_kind_stats (dependencies, ndistinct) ON tenant, issuer, subject, kind FROM reporting_s01.jobs"); e != nil {
 		t.Fatal(e)
 	}
-	if e := postgres.Up(ctx, admin, 0, "test"); e != nil {
+	if e := postgres.Up(ctx, admin, 10, "test"); e != nil {
 		t.Fatal("010 with the statistics made beforehand:", e)
 	}
 	if catalog(t, admin) != at10 {
@@ -1639,7 +1643,7 @@ func migration010(t *testing.T, admin *pgxpool.Pool) {
 		if _, e := admin.Exec(ctx, c); e != nil {
 			t.Fatal(name, e)
 		}
-		e := postgres.Up(ctx, admin, 0, "test")
+		e := postgres.Up(ctx, admin, 10, "test")
 		if e == nil || !strings.Contains(e.Error(), "jobs_identity_kind_stats exist with another definition") {
 			t.Fatalf("%s: %v", name, e)
 		}
