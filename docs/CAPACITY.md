@@ -169,7 +169,7 @@ many jobs have a past expiry measures differently (its cost is the batch).
 - **Issue listing.** For a typical identity nothing changed (the unique key already serves it). For the identity with 20,000 issue jobs it did **not** improve
   (118 ms before, 122 ms after, 1,000,000 rows): the planner keeps the unique key index and sorts 20,000 rows. Its estimate is 91 rows against 20,000 real ones, and so it does not choose
   `jobs_identity_created`, which would find 25 newest issue jobs in a few hundred entries. At 30,000 rows the same statement does use the new index
-  (the plan test logs both). Reported, not forced.
+  (the plan test logs both). Migration 010 fixes it (next section).
 - **Reads by id, Claim**: unchanged within noise, as expected (primary key and `jobs_claim`).
 
 ### Plans
@@ -187,6 +187,35 @@ logs and asserts them. Before 009 the stored-results count is a `Seq Scan` on `a
 
 The sweep's statements (`TestPostgresMigrations/capacity_plans_*/the_sweeps_statements`, as the sweep role in the worker scope, 2,000 expired artifacts and jobs under 30,000 jobs) are held to the same rule and the reduction must read `jobs_reducible`; their plans are logged. No sequential scan of `jobs` or `assets` remains in any of them. The row-level policies add their predicates to the plans and the indexes are used
 with them in force.
+
+## Migration 010: the issue listing of an identity with a long history (2026-11-06)
+
+The planner took `tenant`, `issuer`, `subject` and `kind` for independent columns, so for the identity with 20,000 issue jobs it estimated 91 matching rows,
+kept the unique key and sorted all 20,000 (above). Migration 010 adds extended statistics on the four columns together
+(`CREATE STATISTICS jobs_identity_kind_stats (dependencies, ndistinct)`) and analyzes the table. With them the estimate is right and the planner reads
+`jobs_identity_created` newest first, stopping at 25. Nothing else changes: no index, no statement.
+
+Measured with the same tool at 1,000,000 job rows (the defaults above, `-phases after`), PostgreSQL 16.15 in a throwaway container on loopback
+(`shared_buffers=1GB`, `work_mem=16MB`), twice on main (version 9) and twice with 010, each run seeding the rows anew:
+
+| Case | version 9, two runs: p50 / p95 (ms) | version 10, two runs: p50 / p95 (ms) |
+|---|---|---|
+| issue listing (25), long history | 101.05 / 104.93; 102.49 / 106.19 | **1.15 / 1.51; 1.12 / 1.34** |
+| issue listing (25), typical identity | 1.85 / 2.17; 1.83 / 2.19 | 1.09 / 1.36; 1.20 / 1.53 |
+
+The plans, as the application role under row-level security on one seed (`EXPLAIN ANALYZE`): at version 9 an Index Scan of the unique key estimating
+91 rows and reading 20,000, then a top-N heapsort (25.3 ms in that run); at version 10 an Index Scan of `jobs_identity_created` estimating 2,117 rows
+and reading 26, then an incremental sort (0.07 ms). The job listing (`GET /jobs`) already read `jobs_identity_created` at version 9 and still does.
+
+**What it does not change.** The admission's counts read the same index with the same plan. Timed directly, as the store runs them under row-level
+security on one seed after a `VACUUM ANALYZE`: 12.00 ms (version 9) and 12.16 ms (version 10) at the median for the long-history identity, 0.36 and
+0.39 ms for a typical one. In the tool's runs the long-history admission varied from 13 to 43 ms between runs of either version (the hot identity's
+100,000 rows are fetched from the heap, so the figure follows how much of the table the run before left in memory), so those runs are not evidence
+either way.
+
+**Cost.** The statistics are a catalog entry; the `ANALYZE` of the step reads a sample of `jobs` under a lock that blocks neither reads nor writes.
+The tool times the steps it applies over the seeded history together: 009 alone took 5.42 and 4.67 s on main, 009 and 010 took 5.44 and
+5.38 s, so 010 adds less than the runs differ by.
 
 ## Growth (G4)
 

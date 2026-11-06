@@ -22,6 +22,7 @@ The schema is a sequence of embedded migrations, `storage/postgres/migrations/NN
 | 007 | row_level_security | row-level security and the `identity` and `worker` policies on `jobs` and `assets` (S04-C, "Row-level security") | nothing (policies only) |
 | 008 | object_storage | the `objects` and `orphans` counts of the `sweeps` ledger (S04-E, "Object storage") | the two counts, and it is refused while a ledger row says objects were deleted or an artifact's file is an object, unless the loss is accepted |
 | 009 | capacity_indexes | four indexes: `jobs_identity_created`, `jobs_identity_in_flight`, `assets_identity_kind_expires`, `jobs_reducible` (S04-G, "Capacity") | nothing (an index is derived from the rows) |
+| 010 | jobs_identity_kind_stats | extended statistics `jobs_identity_kind_stats` on `jobs (tenant, issuer, subject, kind)` and an `ANALYZE`, so that the issue listing of an identity with a long issue history reads `jobs_identity_created` ("Capacity", docs/CAPACITY.md "Migration 010") | nothing (statistics are derived from the rows) |
 
 The ledger `reporting_s01.schema_migrations` records every applied step with the SHA-256 of its up file,
 the time and who applied it. The `profile` row names the deployment kind (`production` or
@@ -674,7 +675,7 @@ docs/CAPACITY.md with the machine and what they do not show; this section is wha
 
 | Index | Serves |
 |---|---|
-| `jobs_identity_created` on `jobs (tenant, issuer, subject, created_at DESC)` | the admissions-in-the-last-hour count of S04-D; the issue listing of an identity with a long issue history, when the planner chooses it |
+| `jobs_identity_created` on `jobs (tenant, issuer, subject, created_at DESC)` | the admissions-in-the-last-hour count of S04-D; the issue listing of an identity with a long issue history, which the planner reads newest first once migration 010's statistics tell it how many rows match (before 010 it kept the unique key and sorted them) |
 | `jobs_identity_in_flight` on `jobs (tenant, issuer, subject) WHERE state IN ('queued','running')` | the jobs-in-flight count; partial, so it holds only the live rows and stays tiny whatever the history |
 | `assets_identity_kind_expires` on `assets (tenant, issuer, subject, kind, expires_at)` | the stored-results count (which scanned every asset of every tenant) |
 | `jobs_reducible` on `jobs (source_expires_at) WHERE state IN ('succeeded','failed','cancelled') AND NOT (data ? 'Reduced')` | the retention sweep's job reduction (S04-B): the finished jobs not yet reduced, by the expiry of their own source read; a job leaves it when reduced |

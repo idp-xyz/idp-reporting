@@ -151,7 +151,7 @@ func TestTheServerAsASeparateProcess(t *testing.T) {
 	}
 	out, errs, code := run(shipped, nil, "version")
 	tr.say("$ reporting-server version\n%sexit %d", out, code)
-	if code != 0 || !strings.Contains(out, "schema 9") {
+	if code != 0 || !strings.Contains(out, "schema 10") {
 		t.Fatalf("version: %d %s %s", code, out, errs)
 	}
 

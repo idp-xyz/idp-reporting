@@ -137,11 +137,11 @@ func capacityPlans(t *testing.T, admin *pgxpool.Pool) {
 		}
 	})
 	t.Run("after_009_each_statement_uses_its_index_and_none_scans_the_tables", func(t *testing.T) {
-		// A typical identity (7) and the identity with the long history (0). The three counts must use their index for both. The issue
-		// listing is only held to "no sequential scan": the planner keeps the unique key (tenant, integration, issuer, subject, kind, ...)
-		// for it, whose prefix the statement's own predicates fill, and at 30,000 rows it switches to jobs_identity_created for the
-		// identity with the long history but at a million rows (docs/CAPACITY.md, measured) it does not, so the test does not claim it. The
-		// plans are logged.
+		// A typical identity (7) and the identity with the long history (0). The three counts must use their index for both. The issue listing
+		// of the identity with the long history must read jobs_identity_created: with the extended statistics of migration 010 the planner knows
+		// how many of its rows match and reads the index newest first (without them, at a million rows, it estimated 91 rows for 20,000, kept the
+		// unique key and sorted them all; docs/CAPACITY.md). For a typical identity the unique key, whose prefix the statement's own predicates
+		// fill, serves the listings as well and the planner may keep it. No sequential scan of either table in any. The plans are logged.
 		t.Run("the_sweeps_statements", func(t *testing.T) { sweepPlans(t, sweepPool) })
 		for _, who := range []r.Identity{p.Identity(7), p.Identity(capacity.Hot)} {
 			hot := who == p.Identity(capacity.Hot)
@@ -158,7 +158,7 @@ func capacityPlans(t *testing.T, admin *pgxpool.Pool) {
 						t.Errorf("%s (hot=%t) still scans %s sequentially: %s", st.Name, hot, n.Relation, describe(nodes))
 					}
 				}
-				if !found && st.Name != "issue listing" && st.Name != "job listing" {
+				if !found && ((st.Name != "issue listing" && st.Name != "job listing") || (hot && st.Name == "issue listing")) {
 					t.Errorf("%s (hot=%t) does not use %s: %s", st.Name, hot, w[1], describe(nodes))
 				}
 			}
