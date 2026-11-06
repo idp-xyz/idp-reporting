@@ -566,12 +566,17 @@ body:not(.embed) {
   letter-spacing: 0.01em;
   color: var(--ink);
 }
+/* The page's name under the brand (S09-C): Chinese, 11px, spaced a little; the connection card's English tagline keeps the wide spacing below. */
 .wordmark small {
   display: block;
-  font-size: 10px;
-  letter-spacing: 0.19em;
+  font-size: 11px;
+  letter-spacing: 0.1em;
   color: var(--faint);
   margin-top: 3px;
+}
+.connection-card .wordmark small {
+  font-size: 10px;
+  letter-spacing: 0.19em;
   text-transform: uppercase;
 }
 .brand-icon {

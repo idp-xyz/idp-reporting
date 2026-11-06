@@ -1016,8 +1016,8 @@
 }
 #page-documents .wordmark small {
   display: block;
-  font-size: 10px;
-  letter-spacing: 0.19em;
+  font-size: 11px;
+  letter-spacing: 0.1em;
   color: var(--t-a2aab8);
   margin-top: 3px;
 }

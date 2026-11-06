@@ -16,15 +16,8 @@
     tasks: '任务工作区',
     system: '能力与环境',
   };
-  // The shell's wordmark names the page (S06-C); the studios and the centre carry their own wordmarks.
-  const labels = {
-    workspace: 'REPORT WORKBENCH',
-    dashboard: 'DASHBOARD STUDIO',
-    library: 'TEMPLATE WORKSPACE',
-    documents: 'DOCUMENT STUDIO',
-    tasks: 'BACKGROUND TASKS',
-    system: 'PLATFORM CAPABILITIES',
-  };
+  // The shell's wordmark names the page (S06-C) in the page's own words (S09-C, ADR 0014 decision 7); the studios and the centre carry
+  // their own wordmarks, hidden inside the console.
   let board = null;
   const state = {
     token: '',
@@ -440,12 +433,18 @@
     versions: makeDrawer('ly-d-versions', [], () => $('ly-version-list').querySelector('[aria-current="true"]')),
     publish: makeDrawer('ly-d-publish', [], () => $('ly-publish-confirm')),
   };
+  // The name of the dataset a query names, in the user's words (S09-C): the catalogue entry's title where the console has it, the id otherwise.
+  function datasetName(dataset) {
+    const known = state.datasets.find(d => d.dataset.id === dataset.id && d.dataset.version === dataset.version);
+    return known ? datasetTitle(known) : dataset.id;
+  }
   function dataSummary() {
     if (!state.lastResult || !state.query) return null;
     const q = state.query;
-    const text = q.dataset.id + '@' + q.dataset.version + ' · ' + q.company_ids.join('、') + ' · ' + q.as_of;
+    const dataset = q.dataset.id + '@' + q.dataset.version;
+    const text = datasetName(q.dataset) + ' · ' + q.company_ids.join('、') + ' · ' + q.as_of;
     return {
-      dataset: q.dataset.id + '@' + q.dataset.version,
+      dataset,
       scope: q.company_ids.join('、'),
       date: q.as_of,
       kind: state.snapshot ? '冻结快照' : '查询预览',
@@ -461,7 +460,10 @@
     $('sh-data-kind').hidden = !s;
     $('sh-data-kind').textContent = s ? s.kind : '';
     $('sh-data-kind').className = 'pill ' + (s && s.kind === '冻结快照' ? 'green' : 'blue');
-    chip.title = s ? '当前数据：' + s.text + ' · ' + s.kind + '（点击修改）' : '选择产品连接、数据集、公司范围与时点';
+    // The technical id and version stay in the title (decision 7: identifiers are secondary text).
+    chip.title = s
+      ? '当前数据：' + s.text + ' · ' + s.kind + ' · 数据集 ' + s.dataset + '（点击修改）'
+      : '选择产品连接、数据集、公司范围与时点';
     if (library && library.data) library.data();
   }
   // The page count of a PDF the server rendered, read from its page tree (/Type /Page objects, or the /Count of /Pages), for the studio's pager; 1 when it cannot be read.
@@ -959,7 +961,7 @@
       if (active) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
-    $('shell-label').textContent = labels[page] || 'REPORTING WORKSPACE';
+    $('shell-label').textContent = pages[page] || '报表工作区';
     document.title = 'IDP Reporting · ' + pages[page];
     history.replaceState(null, '', '#' + page);
     document.body.classList.toggle('studio-on', page === 'documents');
@@ -1058,13 +1060,28 @@
     list.append(head);
     for (const c of d.columns) {
       const line = node('div', undefined, 'column-line');
-      line.append(
-        node('b', c.label),
-        node('code', c.type + (c.currency ? ' · ' + c.currency : '') + (c.unit ? ' · ' + c.unit : ''))
+      const type = node(
+        'code',
+        typeName(c.type) + (c.currency ? ' · ' + c.currency : '') + (c.unit ? ' · ' + c.unit : '')
       );
+      type.title = c.type;
+      line.append(node('b', c.label), type);
       list.append(line);
     }
     list.hidden = false;
+  }
+  // The column types of the catalogue (docs/s00/INTERFACES.md) in the user's words; an unknown type is shown as it comes (S09-C).
+  const typeNames = {
+    string: '文本',
+    decimal: '小数',
+    integer: '整数',
+    date: '日期',
+    time: '时间',
+    boolean: '是/否',
+    text: '文本',
+  };
+  function typeName(type) {
+    return Object.hasOwn(typeNames, type) ? typeNames[type] : type;
   }
   async function loadProduct(id, refresh) {
     const epoch = state.epoch,

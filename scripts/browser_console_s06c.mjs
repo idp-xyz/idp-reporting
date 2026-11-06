@@ -382,9 +382,9 @@ async function main() {
   // S07-C: the task count is the server's listing of the identity's jobs (at most 50), not this session's; it rises by one with the snapshot below.
   const tasksBefore = Number(await evalJs(`document.getElementById('task-count').textContent`));
   check(
-    'the header: wordmark label REPORT WORKBENCH, the environment tag, the identity, 退出工作区; the steps of a first sign-in in the empty workbench',
+    'the header: wordmark label 报表工作台 (S09-C), the environment tag, the identity, 退出工作区; the steps of a first sign-in in the empty workbench',
     await evalJs(
-      `document.getElementById('shell-label').textContent==='REPORT WORKBENCH'&&!document.getElementById('start-steps').hidden&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`
+      `document.getElementById('shell-label').textContent==='报表工作台'&&!document.getElementById('start-steps').hidden&&document.querySelector('.console-header .environment').textContent==='合同模拟器'&&document.getElementById('actor-label').textContent.length>0&&!document.getElementById('logout').disabled`
     )
   );
   await shot('console-01-home');
@@ -402,7 +402,7 @@ async function main() {
   check(
     "the data drawer lists the chosen dataset's columns, types and currencies, and 刷新目录",
     await evalJs(
-      `(()=>{const l=document.getElementById('sh-fields-list');return l.querySelectorAll('.column-line').length===4&&/decimal · CNY/.test(l.textContent)&&/receivables\\.aging · v1\\.0\\.0/.test(document.getElementById('sh-fields-meta').textContent)&&document.getElementById('refresh-catalog').closest('#sh-d-data')!==null;})()`
+      `(()=>{const l=document.getElementById('sh-fields-list');return l.querySelectorAll('.column-line').length===4&&/小数 · CNY/.test(l.textContent)&&/receivables\\.aging · v1\\.0\\.0/.test(document.getElementById('sh-fields-meta').textContent)&&document.getElementById('refresh-catalog').closest('#sh-d-data')!==null;})()`
     )
   );
   await shot('console-02-data-fields');
@@ -414,7 +414,7 @@ async function main() {
   check(
     'the dashboard studio before a result: the start card with 选择数据…, 未查询, the console header above it (S07-F, one shell), the rail still there and the studio beside it and below the header',
     await evalJs(
-      `(()=>{const r=document.querySelector('.app-rail').getBoundingClientRect(),s=document.getElementById('bd-studio').getBoundingClientRect();return document.body.classList.contains('board-on')&&!document.getElementById('bd-start').hidden&&document.getElementById('bd-start-open').textContent.trim()==='选择数据…'&&document.getElementById('bd-state').textContent==='未查询'&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='DASHBOARD STUDIO'&&getComputedStyle(document.getElementById('bd-wordmark')).display==='none'&&r.width===56&&Math.abs(s.left-56)<=1&&Math.abs(s.top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1;})()`
+      `(()=>{const r=document.querySelector('.app-rail').getBoundingClientRect(),s=document.getElementById('bd-studio').getBoundingClientRect();return document.body.classList.contains('board-on')&&!document.getElementById('bd-start').hidden&&document.getElementById('bd-start-open').textContent.trim()==='选择数据…'&&document.getElementById('bd-state').textContent==='未查询'&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='看板工作室'&&getComputedStyle(document.getElementById('bd-wordmark')).display==='none'&&r.width===56&&Math.abs(s.left-56)<=1&&Math.abs(s.top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1;})()`
     )
   );
   await shot('console-05-dashboard-start');
@@ -697,7 +697,7 @@ async function main() {
   check(
     'the system page: the identity and the capabilities as definition lists',
     await evalJs(
-      `document.getElementById('shell-label').textContent==='PLATFORM CAPABILITIES'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`
+      `document.getElementById('shell-label').textContent==='能力与环境'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`
     )
   );
   await shot('console-13-system');
@@ -709,7 +709,7 @@ async function main() {
   check(
     'the template centre takes the screen beside the rail and below the console header (S07-F), its own wordmark and data chip hidden',
     await evalJs(
-      `document.body.classList.contains('library-on')&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='TEMPLATE WORKSPACE'&&Math.abs(document.getElementById('page-library').getBoundingClientRect().left-56)<=1&&Math.abs(document.getElementById('page-library').getBoundingClientRect().top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1&&getComputedStyle(document.getElementById('lib-data')).display==='none'&&getComputedStyle(document.querySelector('#page-library .library-header>.wordmark')).display==='none'`
+      `document.body.classList.contains('library-on')&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='模板中心'&&Math.abs(document.getElementById('page-library').getBoundingClientRect().left-56)<=1&&Math.abs(document.getElementById('page-library').getBoundingClientRect().top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1&&getComputedStyle(document.getElementById('lib-data')).display==='none'&&getComputedStyle(document.querySelector('#page-library .library-header>.wordmark')).display==='none'`
     )
   );
   await shot('console-14-library');
@@ -718,7 +718,7 @@ async function main() {
   check(
     'the document studio takes the screen beside the rail and below the console header (S07-F), its own wordmark hidden',
     await evalJs(
-      `document.body.classList.contains('studio-on')&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='DOCUMENT STUDIO'&&getComputedStyle(document.getElementById('st-wordmark')).display==='none'&&Math.abs(document.querySelector('#page-documents .studio').getBoundingClientRect().left-56)<=1&&Math.abs(document.querySelector('#page-documents .studio').getBoundingClientRect().top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1`
+      `document.body.classList.contains('studio-on')&&getComputedStyle(document.querySelector('.console-header')).display!=='none'&&document.getElementById('shell-label').textContent==='文档工作室'&&getComputedStyle(document.getElementById('st-wordmark')).display==='none'&&Math.abs(document.querySelector('#page-documents .studio').getBoundingClientRect().left-56)<=1&&Math.abs(document.querySelector('#page-documents .studio').getBoundingClientRect().top-document.querySelector('.console-header').getBoundingClientRect().bottom)<=1`
     )
   );
   await shot('console-15-studio');
