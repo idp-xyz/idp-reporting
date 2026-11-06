@@ -171,6 +171,7 @@ jobs:
           node --check console/assets/board.js
           node --check console/assets/documents.js
           node --check console/assets/canvas.js
+          node --check console/assets/versions.js
           node --check console/assets/embed.js
           node --check console/embed-host/host.js
           node --check console/embed.dom.test.mjs

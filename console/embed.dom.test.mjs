@@ -19,6 +19,7 @@ const [
   appScript,
   dashboardScript,
   canvasScript,
+  versionsScript,
   studioScript,
   documentsScript,
   embedScript,
@@ -30,6 +31,7 @@ const [
     'app.js',
     'dashboard.js',
     'canvas.js',
+    'versions.js',
     'studio.js',
     'documents.js',
     'embed.js',
@@ -289,6 +291,7 @@ async function embedPage({
   };
   w.eval(dashboardScript);
   w.eval(canvasScript);
+  w.eval(versionsScript);
   w.eval(studioScript);
   w.eval(documentsScript);
   w.eval(boardScript);
@@ -1102,6 +1105,7 @@ test('the console page loads none of the embed code, and answers no message', as
   w.TextEncoder = TextEncoder;
   w.eval(dashboardScript);
   w.eval(canvasScript);
+  w.eval(versionsScript);
   w.eval(studioScript);
   w.eval(documentsScript);
   w.eval(boardScript);
@@ -1191,6 +1195,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     ['embed.js', embedScript],
     ['dashboard.js', dashboardScript],
     ['documents.js', documentsScript],
+    ['versions.js', versionsScript],
   ]) {
     for (const pattern of [
       /\.innerHTML/,
@@ -1215,6 +1220,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     ['dashboard.js', dashboardScript],
     ['documents.js', documentsScript],
     ['studio.js', studioScript],
+    ['versions.js', versionsScript],
     ['canvas.js', canvasScript],
   ]) {
     assert.equal(/postMessage\(/.test(code) && name !== 'embed.js', false, name + ' posts a message');

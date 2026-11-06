@@ -429,9 +429,10 @@
       }
     }
   );
+  // The layout designer's version dialog and 发布前确认 are shell drawers; the shared component (versions.js) puts the focus in them.
   const lyDialogs = {
-    versions: makeDrawer('ly-d-versions', [], () => $('ly-version-list').querySelector('[aria-current="true"]')),
-    publish: makeDrawer('ly-d-publish', [], () => $('ly-publish-confirm')),
+    versions: makeDrawer('ly-d-versions', [], () => null),
+    publish: makeDrawer('ly-d-publish', [], () => null),
   };
   // The name of the dataset a query names, in the user's words (S09-C): the catalogue entry's title where the console has it, the id otherwise.
   function datasetName(dataset) {
@@ -1793,11 +1794,15 @@
   $('layout-release-publish').addEventListener('click', () => changeRelease('publish'));
   $('layout-release-withdraw').addEventListener('click', () => changeRelease('withdraw'));
   // ---- S07-G (ADR 0011): the layout designer's bar, its version dialog and 发布前确认, as the document studio has them ----
+  // The saved layout of the current data set, and its release state once it was read (another layout's does not count).
+  const layoutSaved = () => (state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null);
+  const layoutRelease = saved =>
+    state.releaseView && saved && state.releaseView.id === saved.id ? state.releaseView : null;
   function renderLayoutState() {
     const el = $('layout-state');
     if (!el) return;
-    const saved = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null,
-      release = state.releaseView && saved && state.releaseView.id === saved.id ? state.releaseView : null;
+    const saved = layoutSaved(),
+      release = layoutRelease(saved);
     let text = '未查询',
       tone = 'neutral';
     if (state.lastResult) {
@@ -1815,65 +1820,7 @@
     }
     el.textContent = text;
     el.className = 'pill ' + tone;
-    if (lyDialogs.versions.isOpen()) renderLayoutVersions();
-  }
-  let layoutPick = 0,
-    layoutPickFor = '',
-    layoutSaveFirst = false,
-    layoutHistorical = 0;
-  function renderLayoutVersions() {
-    const saved = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null,
-      latest = saved ? Math.max(state.layoutLatest || 0, saved.version) : 0,
-      release = state.releaseView && saved && state.releaseView.id === saved.id ? state.releaseView : null,
-      pub = release ? release.published : 0;
-    const editor = saved ? saved.id + ':' + saved.version : '';
-    if (editor !== layoutPickFor || !layoutPick || layoutPick > latest) {
-      layoutPick = saved ? saved.version : 0;
-      layoutPickFor = editor;
-    }
-    const list = $('ly-version-list'),
-      focused = list.contains(document.activeElement);
-    list.replaceChildren();
-    for (let v = latest; v >= 1; v--) {
-      const b = node('button', undefined, 'version-card');
-      b.type = 'button';
-      b.setAttribute('aria-current', String(v === layoutPick));
-      const top = node('div', undefined, 'between');
-      top.append(
-        node('strong', 'v' + v),
-        node('span', v === pub ? '已发布' : '已保存', 'pill ' + (v === pub ? 'green' : 'blue'))
-      );
-      b.append(
-        top,
-        node('p', v === saved.version ? '编辑器打开的版本' + (layoutDirty() ? '（有未保存修改）' : '') : '保存版本')
-      );
-      b.addEventListener('click', () => {
-        layoutPick = v;
-        renderLayoutVersions();
-      });
-      list.append(b);
-    }
-    if (focused) {
-      const c = list.querySelector('[aria-current="true"]');
-      if (c) c.focus();
-    }
-    const has = !!saved && layoutPick >= 1;
-    $('ly-version-empty').hidden = has;
-    $('ly-version-card').hidden = !has;
-    if (has) {
-      $('ly-vd-title').textContent = '布局 · v' + layoutPick;
-      $('ly-vd-note').textContent =
-        layoutPick === saved.version
-          ? layoutDirty()
-            ? '编辑器打开的版本，有未保存的修改；发布它会先保存为下一个版本。'
-            : '编辑器打开的版本。'
-          : '恢复该版本只改变当前草稿；发布指针仍指向 ' + (pub ? 'v' + pub : '未发布') + '。';
-      $('ly-ver-restore').disabled = layoutPick === saved.version && !layoutDirty();
-      $('layout-release-withdraw').disabled = !pub;
-    }
-    $('ly-version-note').textContent = saved
-      ? '保存版本不可变；当前发布指针：' + (release ? (pub ? 'v' + pub : '无') : '（发布状态未读取）')
-      : '尚未保存任何版本';
+    layoutVersions.sync();
   }
   // The latest version of this layout, from the listing (the dialog lists every saved version up to it).
   function readLayoutList(m) {
@@ -1896,24 +1843,6 @@
       showRelease(saved.id, value);
     });
   }
-  function openLayoutVersions() {
-    layoutAction(() => {
-      const saved = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null;
-      layoutPick = 0;
-      renderLayoutVersions();
-      lyDialogs.versions.open($('layout-versions'));
-      // Opening reads the list and the release state; 刷新发布状态 stays as the retry after a conflict.
-      if (saved)
-        perform(
-          async m => {
-            await readLayoutList(m);
-            await readLayoutRelease(m, saved);
-            renderLayoutState();
-          },
-          {label: '布局版本'}
-        );
-    });
-  }
   function restoreLayoutVersion(version) {
     layoutAction(() => {
       const saved = releaseTarget();
@@ -1932,78 +1861,13 @@
       );
     });
   }
-  // 发布 (S07-G): reads the release state and asks; unsaved changes, or no saved version yet, become the next version first (保存并发布, as the studios since S07-B).
-  function openLayoutPublish(version) {
-    layoutAction(() => {
-      const saved = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null;
-      layoutHistorical = saved && version && version !== saved.version ? version : 0;
-      layoutSaveFirst = !layoutHistorical && (!saved || layoutDirty());
-      const show = () => {
-        const s = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null,
-          release = state.releaseView && s && state.releaseView.id === s.id ? state.releaseView : null,
-          next = s ? s.version + 1 : 1,
-          target = layoutHistorical || (s ? s.version : 0);
-        const dl = $('ly-publish-summary');
-        dl.replaceChildren();
-        const rows = [
-          ['布局', s ? s.id : '新布局'],
-          [
-            '将发布的版本',
-            layoutSaveFirst
-              ? '先保存为版本 ' + next + '，再发布它'
-              : '保存版本 ' + target + (layoutHistorical ? '（历史版本）' : ''),
-          ],
-          ['数据集', state.query.dataset.id + '@' + state.query.dataset.version],
-        ];
-        if (!layoutHistorical) rows.push(['列', state.layout.columns.length + ' 列']);
-        rows.push(
-          ['当前发布', release ? (release.published ? '版本 ' + release.published : '未发布') : '保存后读取'],
-          ['发布修订', release ? String(release.revision) : '保存后读取']
-        );
-        for (const [k, v] of rows) dl.append(node('dt', k), node('dd', v));
-        $('ly-publish-note').textContent = layoutSaveFirst
-          ? s
-            ? '列或对齐有未保存的修改：先保存为新的不可变版本，再把发布指针移到它。'
-            : '这个布局还没有保存版本：先保存为版本 1，再发布它。'
-          : layoutHistorical
-            ? '发布历史版本是一次明确的回退：打开已发布版本得到 v' + layoutHistorical + '；编辑器里的列不变。'
-            : release && release.published === s.version
-              ? '这个保存版本已经是当前发布版本；再次发布会记一次新的发布修订。'
-              : '发布后，打开已发布版本得到的就是这个版本；之后的保存不改变发布指针。';
-        $('ly-publish-confirm').textContent = layoutSaveFirst ? '保存并发布' : '确认发布';
-        lyDialogs.publish.open($('layout-publish'));
-      };
-      if (layoutSaveFirst) {
-        show();
-        return;
-      }
-      perform(
-        async m => {
-          await readLayoutRelease(m, saved);
-          show();
-        },
-        {label: '发布状态'}
-      );
-    });
-  }
-  $('layout-versions').addEventListener('click', () => openLayoutVersions());
-  $('layout-publish').addEventListener('click', () => openLayoutPublish());
-  $('ly-ver-restore').addEventListener('click', () => {
-    const v = layoutPick;
-    lyDialogs.versions.close();
-    restoreLayoutVersion(v);
-  });
-  $('ly-ver-publish').addEventListener('click', () => {
-    const v = layoutPick;
-    lyDialogs.versions.close();
-    openLayoutPublish(v);
-  });
-  $('ly-publish-confirm').addEventListener('click', () => {
-    lyDialogs.publish.close();
+  // The confirmed publish (S07-G): a saved version is published as it is; unsaved changes, or no saved version yet, become the next
+  // version first (保存并发布, as the studios since S07-B).
+  function publishLayout(plan) {
     layoutAction(() => {
       const fresh = !state.savedLayout || !savedBindingMatches(state.savedLayout),
-        historical = layoutHistorical;
-      if (!layoutSaveFirst) {
+        historical = plan.historical;
+      if (!plan.saveFirst) {
         changeRelease('publish', historical || undefined);
         return;
       }
@@ -2039,6 +1903,58 @@
         }
       );
     });
+  }
+  // The version dialog and 发布前确认 are the shared component (versions.js, S09-E); these ports are the layout designer's state,
+  // requests and words. Opening reads the list and the release state; 刷新发布状态 stays as the retry after a conflict.
+  const layoutVersions = window.createReportingVersions({
+    prefix: 'ly',
+    ids: {withdraw: 'layout-release-withdraw', versionsButton: 'layout-versions', publishButton: 'layout-publish'},
+    dialogs: lyDialogs,
+    texts: {
+      thing: '布局',
+      opened: '打开已发布版本',
+      content: '列',
+      dirty: '列或对齐有未保存的修改',
+      count: ['列', '列'],
+    },
+    run: layoutAction,
+    state() {
+      const saved = layoutSaved(),
+        release = layoutRelease(saved),
+        dataset = state.query && state.query.dataset;
+      return {
+        saved,
+        latest: state.layoutLatest,
+        dirty: layoutDirty(),
+        release: release ? {revision: release.revision, published_version: release.published} : null,
+        dataset: dataset ? dataset.id + '@' + dataset.version : '—',
+        count: state.layout ? state.layout.columns.length : 0,
+      };
+    },
+    readVersions(then) {
+      const saved = layoutSaved();
+      perform(
+        async m => {
+          await readLayoutList(m);
+          await readLayoutRelease(m, saved);
+          renderLayoutState();
+          then();
+        },
+        {label: '布局版本'}
+      );
+    },
+    readRelease(then) {
+      const saved = layoutSaved();
+      perform(
+        async m => {
+          await readLayoutRelease(m, saved);
+          then();
+        },
+        {label: '发布状态'}
+      );
+    },
+    restore: restoreLayoutVersion,
+    publish: publishLayout,
   });
   $('layout-release-open').addEventListener('click', () =>
     layoutAction(() => {

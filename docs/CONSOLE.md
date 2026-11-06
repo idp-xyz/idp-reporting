@@ -9,6 +9,8 @@
 >
 > 手册的 38 张截图（`docs/manual/img/*.png`）由 `scripts/manual_screens.sh` 一次性重新截取（S09-A/B 之后，2026-11-06）：它构建并启动一个内存存储的全新演示、启动无头 Chrome，然后由 `scripts/manual_screens.mjs` 经 CDP 走一遍手册的路径（登录、查询与快照、三个设计器的版本与发布、示例复制与字段映射、边界样本检查、PDF 预览、正式出具、任务面板、暗色与 390 px），按原文件名与尺寸（1440 × 900；36–38 为 390 × 844）写出。需要已构建的演示（`GO`）、Chrome（`CHROME`、`CHROME_FLAGS`）与 Typst 环境变量（`REPORTING_TYPST` 等，否则 PDF 预览、边界样本与出具的图里没有 PDF）；界面改了之后重跑它，再对照手册里的图注。
 
+> S09-E 第一部分（ADR 0014 决定 9，2026-11-06）：三个设计器各自一份的“版本对话框 + 发布前确认”成为一个组件 `console/assets/versions.js`（`window.createReportingVersions(ports)`），`app.js`（报表布局）、`studio.js`（文档工作室）、`board.js`（看板工作室）删掉自己的那份改为调用；每个宿主的请求顺序与文案不变。验收是 DOM 测试一条断言不改全部通过、真实浏览器基线不变。新脚本由 `console/handler.go` 提供（`/console/versions.js`），两个页面在调用它的脚本之前加载它。见 docs/S09E_SCOPE.md。
+
 > S09-C（ADR 0014 决定 7，2026-11-06）：用户的话。页眉标签是页面的中文名（报表工作台 / 看板工作室 / 模板中心 / 文档工作室 / 任务工作区 / 能力与环境），不再是 REPORT WORKBENCH 一类的英文小写字母；标题块上方重复标签的英文眉题（REPORT WORKBENCH、BACKGROUND TASKS、PLATFORM CAPABILITIES、DOCUMENT OPERATIONS、SIGN IN）去掉，登录卡的品牌标语 DOCUMENT PLATFORM 保留。数据芯片写数据集的名字（`应收余额 · company_demo · 2026-11-06`），技术标识 `receivables.aging@1.0.0` 进 title。数据抽屉的字段类型写成 文本 / 小数 / 整数 / 日期 / 时间 / 是/否，原始类型在 title 里。布局设计器、文档工作室检查器与看板检查器里的整段说明各改成一句话。公司范围、任务 ID、产品连接与币种政策的标识、布局设计器的“版本 · 保存版本 · 发布”留到各自的前提（合同、S09-E）之后。见 docs/S09C_SCOPE.md。
 
 > S09-B（ADR 0014 决定 2、10，2026-11-06）：外壳高度。控制台页眉 68 → 56 px（`--shell-head` 同步），文档工作室与看板工作室的顶栏 64 → 52 px（嵌入页同），功能区 83 → 74 px（页签 30、工具 44），两个上下文条 38 → 34 px：文档工作室的画布区从 y = 274 提前到 216 px（1440 × 900 的 24%），看板桌面 170 → 142，工作台查询面板 196 → 187。`scripts/browser_console_s06c.mjs` 的几何检查改为 56 px，并新增 `legibility()`：最小字号（界面文字 ≥ 11 px，眉题、徽标、栏标签与键盘提示 ≥ 10 px）与三个壳的内容起点（≤ 225 px）从此和任务基线一样被守住（docs/UX_BASELINE_S07.md“可读性的两个数”）。见 docs/S09B_SCOPE.md。
