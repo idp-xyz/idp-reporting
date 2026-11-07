@@ -1,7 +1,8 @@
 # ADR 0014 · A legible console: type scale, chrome height, one notice stack, plain words, formatted code
 
 Status: Accepted 2026-11-06. The owner delegated this decision to the platform's engineering on 2026-11-06 ("你来自决"); it
-may be revisited when real designers have used the console. Amends ADR 0008 decision 1 for the type scale only; ADR 0009,
+may be revisited when real designers have used the console. The three questions it left open were delegated the same
+evening and are decided below (decisions 11–13). Amends ADR 0008 decision 1 for the type scale only; ADR 0009,
 0010 and 0011 stay in force. Implementation: a formatting chore, then S09-A to S09-E (the S08 series is reserved by the
 proposed ADR 0012 and 0013).
 
@@ -177,21 +178,60 @@ of the owner's judgement this ADR does not deliver, and the reason is a contract
   `embed.css`, `scripts/browser_console_s06c.mjs`, `scripts/browser_library_s06b.mjs` and docs/UX_BASELINE_S07.md
   together.
 - **S09-C** — words: decision 7. The DOM tests' expected texts change with it, and so do the manual's text and screenshots.
-- **S09-D** — company picker, after its contract ADR: decision 8. It is not scheduled until that ADR is accepted and one
-  source (the contract simulator first) implements the capability.
+- **S09-D** — company picker, after its contract ADR: decisions 8 and 13. ADR 0015 is accepted (2026-11-06); the slice
+  starts once the contract simulator and the platform API implement the capability.
 - **S09-E** — shared versions/publish component, CSS de-duplication and the declarative checker: decision 9's later part.
-  No visible change; the DOM tests are the proof.
+  No visible change; the DOM tests are the proof. Part 1 (the component) is done.
+- **S09-F** — one save / publish / history pattern: decision 11. After S09-G.
+- **S09-G** — 正式出具 as a page of its own, with the register: decision 12. A baseline task T8 comes with it.
 
 The Prettier reformat is a chore before S09-A, not a slice: one pull request with the pinned dependency, the `format` and
 `format:check` scripts, the CI step, the formatting itself and `.git-blame-ignore-revs`. Each slice measures the baseline on main before and on
 its branch after, as ADR 0011 decision 7 requires; a number that improves becomes the new limit.
 
-## Open questions for the owner
+## The open questions, decided (2026-11-06, evening)
 
-1. Whether the three editors should eventually share one save / publish / history pattern in place of the 版本 dialogs. ADR
-   0011 made the document studio's dialogs the model; once S09-E has one component, the report layout, which is only column
-   order and alignment, is the first place where three buttons may be enough.
-2. Whether 正式出具 should stay in the document studio's 检查与发布 ribbon or become a page of its own. It is the one action
-   in the console that needs the source product's confirmation (ADR 0003), and its panel is not designing.
-3. Whether the company picker is worth a contract change in the next source onboarding (docs/REAL_SOURCE_ONBOARDING.md),
-   whose 当前授权 row already asks how the current rights cover companies. The answer decides whether S09-D exists.
+The three questions this ADR left for the owner were delegated to engineering the same evening ("你帮我决定吧"). They are
+decided here as decisions 11 to 13, on the evidence above and on what people know from the tools they already use.
+
+11. **One save / publish / history pattern (S09-F, after S09-G).** Yes. The three things a person does with a design are
+    save it, publish it and go back to an earlier one, and every tool they know says so (Save, Publish, History or
+    Versions). The console says 版本 · 保存版本 · 发布 · 发布指针 · 修订 · 撤回发布 · 恢复到编辑器 · 发布此保存版本 · 刷新发布状态 ·
+    发布当前保存版本 · 打开已发布版本 · 另存为: twelve names for six ideas, and 发布指针 and 修订 are the server's consistency
+    model, which a person never needs. The server's model stays exactly as it is (immutable saved versions, one published
+    version, a revision count for concurrency, withdrawal). The console presents it as: the bar 保存 · 发布 · 历史, the badge
+    as it is; 历史 lists the versions, marks 已发布 and 当前打开, and offers for each 打开 (its content into the editor as
+    the draft, which is what 恢复到编辑器 does today, said plainly: 打开后保存会成为下一个版本) and 发布此版本 (a rollback),
+    and on the published one 撤回发布; 另存为 becomes 复制为新… in the dialog's footer; 刷新发布状态 goes (the dialog reads
+    on open, and a publish that finds the state changed says so and offers 重试); 发布当前保存版本 goes (the bar's 发布 is
+    it); 打开已发布版本 goes once S09-G has taken issuing out of the studio, because it was the ritual issuing needed; the
+    raw chooser (打开其他…或指定版本) goes under 高级 like the JSON (decision 5). 发布前确认 keeps its rows and says 当前发布
+    where it said 发布修订 (the revision becomes a title). Since S09-E this is one component (`versions.js`), the bars'
+    labels and the dialogs' markup; the tests, the baseline script and the manual follow the words. The order is S09-G
+    first: the studio's 打开已发布模板 exists for issuing, and only when issuing has its own page can 历史's 打开 be one action.
+12. **正式出具 is a page of its own (S09-G).** Yes. Issuing is an operator's recurring task; designing is occasional. Today
+    the recurring task runs through the design tool (文档 → 版本 → 打开已发布模板 → 检查与发布 → 正式出具 → the row → 正式出具 →
+    刷新出具记录: seven steps, two of them the designer's own ritual), and the register (出具记录), which is the audit record,
+    lives in a dialog. The rail gets 出具 between 文档 and 任务 (seven destinations; ADR 0011 decision 5's six were the designs
+    and the operations the console had then). The page takes the data context from the chip (a frozen snapshot is needed and
+    it says so), lists the published templates bound to the current dataset by name, takes the row or the group, previews
+    with the PREVIEW banner, issues after a confirmation that names the template, its version, the row or group and the
+    product that gives the number, and shows the register as its main table (编号, 状态, 时间, 模板·版本, 快照·行/分组, 摘要与
+    页数, 来源确认, 下载). The studio's 检查与发布 keeps 正式出具 as the way to the page with the template preselected, and no
+    longer needs 打开已发布模板. The embed's document-designer view keeps today's dialog until an issue view exists (ADR 0006
+    names three views; a fourth is its own amendment). A new baseline task T8 (从已发布模板出具一份文件并下载) is measured
+    on main before and on the branch after, as ADR 0011 decision 7 requires. ADR 0012 and 0013 (manually entered datasets,
+    issuing under the operator's numbers) extend this page, not the studio.
+13. **The company picker is worth the contract (ADR 0015; then S09-D).** Yes. Typing company ids separated by commas is the
+    largest usability defect left after S09-C: a person does not know ids, and a wrong one is refused only when the query
+    runs. The console must not invent the list (docs/s00/INTERFACES.md: `company_ids` are selectors and authorization is
+    the source's), so the list comes from the source as an optional adapter capability in the manner of ADR 0003's
+    `DocumentAuthority`: which companies the principal may currently choose, with their names, and whether the list is
+    complete. It is advisory; every read is authorized by `PrepareRead` and `AuthorizeCurrent` exactly as today, and an
+    adapter without the capability is unchanged (the console keeps the text input for it). docs/ADR_0015_COMPANY_DIRECTORY.md
+    states the contract; S09-D builds the picker (names shown, ids secondary, nothing remembered across sessions) once the
+    contract simulator implements it. T1's second typed text becomes a click; S09-D measures it.
+
+Order of the remaining work: S09-G, then S09-F; S09-D as soon as ADR 0015's capability exists in the contract simulator
+and the platform API, which is Go work before console work. The rest of S09-E (the dashboard studio's repeated CSS block,
+the declarative checker) has no visible effect and goes last.
