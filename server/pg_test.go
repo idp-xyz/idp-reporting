@@ -237,6 +237,10 @@ func pgRefusals(t *testing.T) {
 	if err := postgres.Up(ctx, p.admin, 0, "test"); err != nil {
 		t.Fatal(err)
 	}
+	// As the upgrade procedure says (docs/DEPLOYMENT.md): `roles` after an `up` whose steps created a table (011 designs, S11-A).
+	if err := postgres.Grants(ctx, p.admin, pgMigrator, pgApp); err != nil {
+		t.Fatal(err)
+	}
 	// The profile row.
 	if _, err := p.admin.Exec(ctx, "UPDATE reporting_s01.profile SET profile=$1", postgres.ProfileFixture); err != nil {
 		t.Fatal(err)
@@ -370,6 +374,10 @@ func pgReadiness(t *testing.T) {
 	}
 	ready(503, `{"status":"not_ready","reason":"schema"}`)
 	if err := postgres.Up(ctx, p.admin, 0, "test"); err != nil {
+		t.Fatal(err)
+	}
+	// As the upgrade procedure says (docs/DEPLOYMENT.md): `roles` after an `up` whose steps created a table (011 designs, S11-A).
+	if err := postgres.Grants(ctx, p.admin, pgMigrator, pgApp); err != nil {
 		t.Fatal(err)
 	}
 	ready(200, `{"status":"ready"}`)
