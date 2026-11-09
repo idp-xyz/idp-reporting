@@ -45,6 +45,8 @@ func TestRequiredRoleOfEachRouteClass(t *testing.T) {
 		{"POST", "POST /api/reporting/v1/schedules/{id}/pause", r.RoleViewer},
 		{"POST", "POST /api/reporting/v1/schedules/{id}/resume", r.RoleViewer},
 		{"DELETE", "DELETE /api/reporting/v1/schedules/{id}", r.RoleViewer},
+		// S18-B: the administrator's view, a read, is an administrator's.
+		{"GET", "GET /api/reporting/v1/admin/configuration", r.RoleAdministrator},
 	} {
 		if got := httpapi.RequiredRole(c.method, c.pattern); got != c.want {
 			t.Errorf("%s: %s, want %s", c.pattern, got, c.want)

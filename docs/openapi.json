@@ -62,6 +62,10 @@
     {
       "name": "schedules",
       "description": "Scheduled reports and their runs (S16-A, WithSchedules): mounted when the deployment configures `schedules`."
+    },
+    {
+      "name": "administration",
+      "description": "The administrator's read-only view of the configuration in force (S18-B)."
     }
   ],
   "paths": {
@@ -3781,6 +3785,38 @@
           }
         }
       }
+    },
+    "/api/reporting/v1/admin/configuration": {
+      "get": {
+        "operationId": "getAdminConfiguration",
+        "tags": [
+          "administration"
+        ],
+        "summary": "The configuration in force, read-only, for an administrator (S18-B)",
+        "description": "The administrator role, else 403 AUTH_ROLE_DENIED (recorded as `role.refused`). The product connections and the bindings of the caller's tenant, the SHA-256 digests the start and reload log lines give for the connections and the bindings file, when the server started and when the bindings were last loaded, and whether scheduled reports, their webhook and the browser sign-in are configured. Nothing writes a connection or a binding through the API (ADR 0016); the view carries no secret, no adapter option, no key and of the webhook only its host. A query is 400.",
+        "x-reporting-mount": "administration",
+        "responses": {
+          "200": {
+            "description": "The configuration in force for the caller's tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfiguration"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6285,6 +6321,140 @@
             "format": "date-time"
           }
         }
+      },
+      "AdminConfiguration": {
+        "type": "object",
+        "properties": {
+          "tenant": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "The server's build version (`demo` in the demo)."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminConnection"
+            }
+          },
+          "connections_sha256": {
+            "type": "string",
+            "description": "The digest of the configuration's connections, as the start line logs it."
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminBinding"
+            }
+          },
+          "bindings_sha256": {
+            "type": "string",
+            "description": "The digest of the bindings file in force, as the start and reload lines log it."
+          },
+          "bindings_loaded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "schedules": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "per_identity": {
+                "type": "integer"
+              },
+              "webhook": {
+                "type": "boolean"
+              },
+              "webhook_host": {
+                "type": "string",
+                "description": "The webhook URL's host (and port); never its path or query."
+              }
+            },
+            "required": [
+              "enabled",
+              "webhook"
+            ],
+            "additionalProperties": false
+          },
+          "sign_in": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tenant",
+          "version",
+          "started_at",
+          "connections",
+          "connections_sha256",
+          "bindings",
+          "bindings_sha256",
+          "bindings_loaded_at",
+          "schedules",
+          "sign_in"
+        ],
+        "additionalProperties": false
+      },
+      "AdminConnection": {
+        "type": "object",
+        "properties": {
+          "integration_id": {
+            "type": "string"
+          },
+          "source_tenant": {
+            "type": "string"
+          },
+          "adapter": {
+            "type": "string",
+            "description": "The adapter's registered name; its options are never shown."
+          }
+        },
+        "required": [
+          "integration_id",
+          "source_tenant",
+          "adapter"
+        ],
+        "additionalProperties": false
+      },
+      "AdminBinding": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "null: the binding names no role and has the default roles (viewer, designer, publisher, issuer)."
+          }
+        },
+        "required": [
+          "subject",
+          "client_id",
+          "integrations",
+          "roles"
+        ],
+        "additionalProperties": false
       }
     }
   }

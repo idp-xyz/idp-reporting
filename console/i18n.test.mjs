@@ -8,7 +8,6 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawn, execFileSync} from 'node:child_process';
-import {createServer} from 'node:net';
 import {randomBytes, webcrypto} from 'node:crypto';
 import {JSDOM, VirtualConsole} from 'jsdom';
 import * as espree from 'espree';
@@ -163,11 +162,6 @@ before(async () => {
       timeout: 120000,
     }
   );
-  const listener = createServer();
-  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
-  const port = listener.address().port;
-  await new Promise(resolve => listener.close(resolve));
-  url = 'http://127.0.0.1:' + port;
   child = spawn(
     join(temporary, 'reporting-demo'),
     [
@@ -175,7 +169,7 @@ before(async () => {
       'contract-simulator',
       '-memory',
       '-listen',
-      '127.0.0.1:' + port,
+      '127.0.0.1:0',
       '-layout-directory',
       join(temporary, 'layouts'),
       '-dashboard-directory',
@@ -187,7 +181,26 @@ before(async () => {
     ],
     {cwd: root, env: {...process.env, REPORTING_DEMO_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe']}
   );
-  child.stderr.resume();
+  // The demo binds a free port itself and says which (S18): a port picked here and handed over could be taken in between by the demo of
+  // another suite running at the same time, which then answers this suite's requests.
+  url = await new Promise((resolve, reject) => {
+    let seen = '';
+    const timer = setTimeout(() => reject(new Error('Go fixture startup timeout')), 60000);
+    child.stderr.on('data', chunk => {
+      if (seen === null) return;
+      seen += chunk;
+      const m = /listening at (http:\/\/127\.0\.0\.1:\d+)/.exec(seen);
+      if (m) {
+        clearTimeout(timer);
+        seen = null;
+        resolve(m[1]);
+      } else if (seen.length > 65536) seen = seen.slice(-4096);
+    });
+    child.once('exit', () => {
+      clearTimeout(timer);
+      if (seen !== null) reject(new Error('Go fixture did not start'));
+    });
+  });
   for (let i = 0; i < 100; i++) {
     try {
       if ((await fetch(url + '/console/')).ok) return;
@@ -334,7 +347,7 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
     await look('data drawer');
     a.w.document.querySelector('[data-panel="tasks"]').click();
     await look('tasks panel');
-    for (const p of ['dashboard', 'documents', 'library', 'audit', 'system']) {
+    for (const p of ['dashboard', 'documents', 'library', 'schedules', 'audit', 'admin', 'system']) {
       a.go(p);
       await sleep(400);
       await look(p);
@@ -387,6 +400,21 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
       tab.click();
       await look('studio tab ' + tab.id);
     }
+    // S18-A: a schedule made from the current result, its dialog, the list and its runs.
+    a.go('workspace');
+    a.$('preview').click();
+    await until(() => !a.$('schedule-from-result').disabled, 'a result to schedule');
+    a.$('schedule-from-result').click();
+    await until(() => !a.$('sc-d-new').hidden, 'the schedule dialog');
+    a.$('sc-frequency').value = 'monthly';
+    a.$('sc-frequency').dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    await look('schedule dialog');
+    a.$('sc-create').click();
+    await until(() => !a.$('page-schedules').hidden && a.$('schedules-body').rows.length === 1, 'the schedule');
+    await look('schedules with one');
+    a.$('schedules-body').querySelector('button').click();
+    await until(() => !a.$('schedule-runs-panel').hidden, 'its runs');
+    await look('schedule runs');
     a.go('audit');
     await sleep(400);
     await look('audit after actions');

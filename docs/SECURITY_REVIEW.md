@@ -126,6 +126,16 @@
 - 测试：`TestAScheduledRunActsAsItsOwnerNow`、`TestSchedulersOnOneStoreRunAnOccurrenceOnce`、`TestPostgresScheduleContract`、行级安全测试 `schedules_and_runs_are_their_identitys_and_the_schedulers`、`delivery/webhook` 的签名与重定向测试、`TestTheServerRunsSchedulesAndDeliversThem`（日志中不出现端点、密钥与报表名称）。
 - 已知不覆盖：投递至少一次（接收方按运行编号去重）；运行记录的保留期（S16-B）；邮件与按租户的端点（S16-B）。
 
+## 管理员只读视图（S18-B）
+
+- 要成立的：只有本租户的管理员能读；只读；不出现任何密钥、适配器选项、密钥标识以外的密钥材料，推送地址只出现主机。
+- 做法：`/admin/` 下的每条路由（含读取）都要求 administrator 角色（`RequiredRole`），拒绝记入审计；视图按调用者的租户构造，返回别的租户即完整性失败；
+  服务器在重新加载锁下读取生效的绑定。
+- 代码：`transport/httpapi/admin.go`、`server/admin.go`、`cmd/reporting-demo`（`demoAdminView`）。
+- 测试：`TestTheAdministratorsViewIsTheAdministratorsAlone`、`TestTheServerShowsTheConfigurationInForceToAnAdministrator`（推送地址的路径、查询与签名密钥、
+  适配器选项都不出现）、DOM S18-B。
+- 已知不覆盖：没有写入（ADR 0021 提议，未决定）；管理员看得到本租户每条绑定的主体与客户端标识，这是有意的。
+
 ## 已知没有覆盖的
 
 - 真实发行方、真实适配器、数据对账与准入决定（上线清单第 16–19 项）。

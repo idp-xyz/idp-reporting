@@ -580,8 +580,27 @@ no server ran is run once when one runs again; one missed while the schedule was
 
 When the deployment configures a webhook, each run's end is POSTed to it, signed (`X-Reporting-Signature: sha256=<hex HMAC-SHA256 of the body>`,
 `X-Reporting-Delivery: <run_id>`, `X-Reporting-Event: schedule.run.finished`), with the run's ids and outcome and never a value of the report;
-a run's `delivery` says `pending`, `delivered` or `failed` (`none` without a webhook). The endpoint is the deployment's: no route reads or writes
-it. An official issue is never scheduled.
+a run's `delivery` says `pending`, `delivered` or `failed` (`none` without a webhook). The endpoint is the deployment's: no route writes it,
+and an administrator sees only its host (`GET /admin/configuration`). An official issue is never scheduled. The console's 定时报表 page (S18-A)
+makes a schedule from the current query and lists the runs.
+
+## The configuration in force (S18-B, docs/S18_SCOPE.md)
+
+`GET /api/reporting/v1/admin/configuration` answers an administrator (the `administrator` role, else 403 `AUTH_ROLE_DENIED`, recorded as
+`role.refused`) the configuration in force for their own tenant, read-only:
+
+```json
+{"tenant": "t1", "version": "v1.4.0", "started_at": "2026-11-09T08:00:00Z",
+ "connections": [{"integration_id": "erp", "source_tenant": "acme", "adapter": "erp-http"}], "connections_sha256": "…",
+ "bindings": [{"subject": "u1", "client_id": "console", "integrations": ["erp"], "roles": ["viewer", "administrator"]},
+              {"subject": "u2", "client_id": "console", "integrations": ["erp"], "roles": null}],
+ "bindings_sha256": "…", "bindings_loaded_at": "2026-11-09T09:30:00Z",
+ "schedules": {"enabled": true, "per_identity": 20, "webhook": true, "webhook_host": "hooks.example.com"}, "sign_in": true}
+```
+
+`roles: null` is a binding that names none (the default roles). The digests are the ones the start and reload log lines give. Nothing of an
+adapter's options, no secret, no key and of the webhook only its host. No route writes a connection or a binding (ADR 0016; ADR 0021 proposes
+what could change). A query string is 400.
 
 ## Health and readiness (S05-A, docs/DEPLOYMENT.md)
 

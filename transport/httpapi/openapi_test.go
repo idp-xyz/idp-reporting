@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
@@ -163,6 +164,11 @@ func composedForProbing(t *testing.T) (http.Handler, *string) {
 				return nil, e
 			}
 			return httpapi.WithSchedules(next, service, auth, schedules)
+		},
+		func(next http.Handler) (http.Handler, error) {
+			return httpapi.WithAdministration(next, auth, func(context.Context, string) (httpapi.AdminConfiguration, error) {
+				return httpapi.AdminConfiguration{}, nil
+			})
 		},
 		func(next http.Handler) (http.Handler, error) {
 			return httpapi.WithProfile(next, service, auth, "probe", config)

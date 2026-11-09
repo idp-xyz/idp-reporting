@@ -374,9 +374,9 @@ async function main() {
     {geo, protoGeo}
   );
   check(
-    "the navigation: the rail's six named buttons (S07-H), the workbench active after the sign-in, the task count",
+    "the navigation: the rail's named buttons (S07-H; S18 adds 定时报表 and the administrator's 管理, hidden without the role), the workbench active after the sign-in, the task count",
     await evalJs(
-      `(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['报表工作台','看板工作室','模板中心','文档工作室','任务工作区','操作记录','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='workspace'&&!document.getElementById('page-workspace').hidden&&/^[0-9]+$/.test(document.getElementById('task-count').textContent);})()`
+      `(()=>{const n=document.querySelector('nav.app-rail[aria-label="主导航"]');const rows=[...n.querySelectorAll('.nav-item')].map(b=>b.getAttribute('aria-label'));return JSON.stringify(rows)===JSON.stringify(['报表工作台','看板工作室','模板中心','文档工作室','任务工作区','定时报表','操作记录','管理：数据源与绑定','能力与环境'])&&n.querySelector('[aria-current="page"]').dataset.page==='workspace'&&!document.getElementById('page-workspace').hidden&&/^[0-9]+$/.test(document.getElementById('task-count').textContent);})()`
     )
   );
   // S07-C: the task count is the server's listing of the identity's jobs (at most 50), not this session's; it rises by one with the snapshot below.

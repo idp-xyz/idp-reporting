@@ -3759,3 +3759,59 @@ body.no-issuer #st-tool-issue,
 body.no-administrator .needs-administrator {
   display: none !important;
 }
+
+/* S18-A / S18-B: the schedules page, its dialog, and the administrator's page. */
+.page-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.sc-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+.sc-form .field > span {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+.sc-form .field input,
+.sc-form .field select {
+  width: 100%;
+}
+.sc-form .field-full {
+  grid-column: 1 / -1;
+}
+#page-schedules .callout,
+#page-admin .callout {
+  margin-bottom: 16px;
+}
+#page-schedules .panel + .panel,
+#page-admin .panel + .panel {
+  margin-top: 18px;
+}
+#page-schedules td:last-child,
+#page-admin td:last-child {
+  white-space: nowrap;
+}
+#page-schedules td:last-child button + button {
+  margin-left: 6px;
+}
+@media (max-width: 640px) {
+  .sc-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+#page-schedules .sc-note {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+#page-admin .details > div {
+  grid-template-columns: 150px 1fr;
+}

@@ -14,7 +14,9 @@
     library: '模板中心',
     documents: '文档工作室',
     tasks: '任务工作区',
+    schedules: '定时报表',
     audit: '操作记录',
+    admin: '数据源与绑定',
     system: '能力与环境',
   };
   // The shell's wordmark names the page (S06-C) in the page's own words (S09-C, ADR 0014 decision 7); the studios and the centre carry
@@ -34,6 +36,8 @@
     catalogs: new Map(),
     roles: null,
     audit: {events: [], more: '', scope: ''},
+    schedules: {list: [], loaded: false, off: false, runsOf: '', runs: []},
+    admin: null,
     connections: new Map(),
     jobs: new Map(),
     jobsFilter: {kind: '', state: ''},
@@ -555,6 +559,7 @@
     document.querySelectorAll('.action').forEach(b => (b.disabled = blocked));
     $('export').disabled = blocked || !state.snapshot;
     $('export-pdf').disabled = blocked || !state.snapshot;
+    if ($('schedule-from-result')) $('schedule-from-result').disabled = blocked || !state.query || !state.lastResult;
     exportHint();
     $('next-page').disabled = blocked || !state.cursor;
     $('first-page').disabled = blocked || state.page <= 1;
@@ -638,6 +643,10 @@
     state.audit = {events: [], more: '', scope: ''};
     if ($('audit-scope')) $('audit-scope').value = '';
     if ($('audit-body')) renderAudit();
+    state.schedules = {list: [], loaded: false, off: false, runsOf: '', runs: []};
+    state.admin = null;
+    if ($('schedules-body')) renderSchedules();
+    if ($('admin-summary')) renderAdmin();
     if ($('connection-list')) $('connection-list').replaceChildren();
     if ($('sh-no-products')) $('sh-no-products').hidden = true;
     state.jobs.clear();
@@ -688,6 +697,8 @@
   }
   // The quotas of an identity (S04-D): the notice names the quota and gives the number the server states in its capabilities.
   const quotaNames = ['jobs_in_flight', 'stored_results', 'admissions_per_hour', 'queries_in_flight'];
+  // The quotas a refusal may name: the capabilities' four, and the schedules one identity may hold (S16-A), which capabilities do not list.
+  const refusalQuotas = [...quotaNames, 'schedules'];
   function validQuotas(q) {
     return (
       !!q &&
@@ -708,10 +719,11 @@
       stored_results: '已达到保留结果上限' + at + '，结果过期后自动释放',
       admissions_per_hour: '已达到每小时提交上限' + at + '，请稍后再试',
       queries_in_flight: '查询进行中过多' + at + '，请稍后再试',
+      schedules: '已达到每个身份的定时报表上限，请删除不再需要的定时报表后再试',
     }[name];
   }
   function errorMessage(error) {
-    if (error.code === 'QUOTA_EXCEEDED' && error.status === 429 && quotaNames.includes(error.quota))
+    if (error.code === 'QUOTA_EXCEEDED' && error.status === 429 && refusalQuotas.includes(error.quota))
       return quotaMessage(error.quota);
     if (error.status === 401) return '访问令牌无效或已失效，请重新连接。';
     // S12-A (ADR 0018): the binding's roles do not allow the action; the operator grants roles in the bindings.
@@ -848,7 +860,7 @@
             Array.isArray(problem) ||
             Object.keys(problem).sort().join() !== 'error,quota' ||
             code !== 'QUOTA_EXCEEDED' ||
-            !quotaNames.includes(problem.quota)
+            !refusalQuotas.includes(problem.quota)
           )
             throw new Failure(0, 'INVALID_RESPONSE');
           const refusal = new Failure(429, 'QUOTA_EXCEEDED');
@@ -1004,6 +1016,8 @@
     if (page === 'library' && library && state.session) library.show();
     if (page === 'dashboard' && board) board.show();
     if (page === 'audit' && state.session) loadAudit(false).catch(error => fail(error, mark(), {label: '操作记录'}));
+    if (page === 'schedules' && state.session) loadSchedules().catch(error => fail(error, mark(), {label: '定时报表'}));
+    if (page === 'admin' && state.session) loadAdmin().catch(error => fail(error, mark(), {label: '数据源与绑定'}));
     if (asked === 'catalog' && !embedded) {
       if (state.session) setTimeout(() => drawer.open($('sh-data-chip')), 0);
       else drawerAsked = true;
@@ -1154,6 +1168,7 @@
       row.append(name, badge);
       list.append(row);
     }
+    if (state.admin) renderAdmin();
     for (const option of $('query-product').options) {
       const known = state.connections.get(option.value);
       option.textContent = known && !known.ok ? option.value + '（' + known.state.text + '）' : option.value;
@@ -1190,6 +1205,8 @@
     'export.submit': '提交导出',
     'artifact.download': '下载文件',
     'role.refused': '被角色拒绝',
+    'schedule.change': '更改定时报表',
+    'schedule.run': '定时运行',
   };
   const auditKinds = {
     layout: '报表布局',
@@ -1201,6 +1218,7 @@
     export: '导出',
     artifact: '文件',
     route: '操作',
+    schedule: '定时报表',
   };
   const auditOutcomes = {requested: '已申请', succeeded: '成功', refused: '被拒绝', failed: '失败'};
   function checkAudit(list) {
@@ -1267,6 +1285,389 @@
     a.events = more ? a.events.concat(list.filter(e => !a.events.some(x => x.id === e.id))) : list;
     a.more = list.length === 50 ? list.at(-1).id : '';
     renderAudit();
+  }
+  // ---- S18-A: the scheduled reports (S16-A's routes): the person's own schedules, their runs, and a new one from the current query ----
+  const scheduleStates = {active: '运行中', paused: '已暂停'};
+  const runStates = {
+    due: '等待运行',
+    snapshot: '正在冻结快照',
+    export: '正在导出',
+    succeeded: '成功',
+    failed: '失败',
+    refused: '被拒绝',
+    cancelled: '已取消',
+  };
+  const deliveryStates = {none: '未配置推送', pending: '等待推送', delivered: '已推送', failed: '推送失败'};
+  const weekdays = ['', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+  const asOfRules = {run_date: '运行当天', previous_day: '运行日的前一天', fixed: '固定数据时点'};
+  function when(text) {
+    const at = new Date(text);
+    return isNaN(at) ? text || '—' : at.toLocaleString('zh-CN', {hour12: false});
+  }
+  function recurrenceText(c) {
+    const at = c.at + ' · ' + c.timezone;
+    if (c.frequency === 'weekly') return '每周 ' + (weekdays[c.weekday] || '?') + ' ' + at;
+    if (c.frequency === 'monthly') return '每月 ' + c.day + ' 日 ' + at;
+    return '每天 ' + at;
+  }
+  function validSchedule(v) {
+    return (
+      !!v &&
+      isID(v.schedule_id) &&
+      typeof v.name === 'string' &&
+      !!scheduleStates[v.state] &&
+      !!v.recurrence &&
+      typeof v.recurrence.at === 'string' &&
+      typeof v.recurrence.timezone === 'string' &&
+      ['daily', 'weekly', 'monthly'].includes(v.recurrence.frequency) &&
+      !!asOfRules[v.as_of] &&
+      !!v.query &&
+      !!v.query.dataset
+    );
+  }
+  function validRun(v) {
+    return (
+      !!v &&
+      isID(v.run_id) &&
+      !!runStates[v.state] &&
+      !!deliveryStates[v.delivery] &&
+      (v.snapshot_id === undefined || isID(v.snapshot_id)) &&
+      (v.artifact_id === undefined || isID(v.artifact_id))
+    );
+  }
+  function renderSchedules() {
+    const sc = state.schedules;
+    $('schedules-off').hidden = !sc.off;
+    $('schedules-panel').hidden = sc.off;
+    $('schedules-new').disabled = sc.off || !state.session;
+    $('schedules-empty').hidden = sc.list.length > 0;
+    $('schedules-table-wrap').hidden = sc.list.length === 0;
+    if ($('schedule-from-result')) $('schedule-from-result').hidden = sc.off || !state.session || embedded;
+    const body = $('schedules-body');
+    body.replaceChildren();
+    for (const v of sc.list) {
+      const row = node('tr');
+      const name = node('td');
+      name.append(node('b', v.name), node('small', ' ' + v.schedule_id.slice(0, 8), 'task-id'));
+      const data = node('td', datasetName(v.query.dataset) + ' · ' + (v.query.company_ids || []).join('、'));
+      data.append(
+        node(
+          'small',
+          asOfRules[v.as_of] +
+            (v.export_format ? ' · ' + (exportFormats[v.export_format] || {label: v.export_format}).label : ''),
+          'sc-note'
+        )
+      );
+      const status = node('td');
+      status.append(node('span', scheduleStates[v.state], 'badge' + (v.state === 'active' ? '' : ' neutral')));
+      const actions = node('td');
+      actions.append(button('运行记录', () => perform(() => loadRuns(v.schedule_id), {label: '运行记录'})));
+      actions.append(
+        v.state === 'active'
+          ? button('暂停', () => perform(() => setScheduleState(v.schedule_id, 'pause'), {label: '暂停定时报表'}))
+          : button('恢复', () => perform(() => setScheduleState(v.schedule_id, 'resume'), {label: '恢复定时报表'}))
+      );
+      actions.append(
+        button(
+          '删除',
+          () => {
+            if (window.confirm('删除定时报表「' + v.name + '」？已有的运行记录与结果保留到各自过期。'))
+              perform(() => setScheduleState(v.schedule_id, 'delete'), {label: '删除定时报表'});
+          },
+          'danger'
+        )
+      );
+      row.append(
+        name,
+        data,
+        node('td', recurrenceText(v.recurrence)),
+        node('td', v.state === 'active' ? when(v.next_run_at) : '—'),
+        status,
+        actions
+      );
+      body.append(row);
+    }
+    renderRuns();
+  }
+  function renderRuns() {
+    const sc = state.schedules,
+      panel = $('schedule-runs-panel');
+    const owner = sc.list.find(v => v.schedule_id === sc.runsOf);
+    panel.hidden = !owner;
+    if (!owner) return;
+    $('schedule-runs-title').textContent = '运行记录：' + owner.name;
+    $('schedule-runs-empty').hidden = sc.runs.length > 0;
+    $('schedule-runs-wrap').hidden = sc.runs.length === 0;
+    const body = $('schedule-runs-body');
+    body.replaceChildren();
+    for (const run of sc.runs) {
+      const row = node('tr');
+      const result = node('td');
+      result.append(
+        node(
+          'span',
+          runStates[run.state],
+          'badge' +
+            (run.state === 'succeeded'
+              ? ''
+              : ['due', 'snapshot', 'export'].includes(run.state)
+                ? ' neutral'
+                : run.state === 'cancelled'
+                  ? ' neutral'
+                  : ' danger')
+        )
+      );
+      if (run.error_code) result.append(node('small', ' ' + run.error_code, 'task-id'));
+      const delivery = node('td');
+      delivery.append(
+        node(
+          'span',
+          deliveryStates[run.delivery],
+          'badge' + (run.delivery === 'delivered' ? '' : run.delivery === 'failed' ? ' danger' : ' neutral')
+        )
+      );
+      const actions = node('td');
+      if (run.snapshot_id && run.state === 'succeeded')
+        actions.append(
+          button('查看结果', () =>
+            perform(
+              async m => {
+                const query = copy(owner.query);
+                if (run.as_of) query.as_of = run.as_of;
+                await loadSnapshot(run.snapshot_id, query, m, true);
+                if (current(m)) openPage('workspace');
+              },
+              {label: '定时运行结果'}
+            )
+          )
+        );
+      if (run.artifact_id && run.state === 'succeeded')
+        actions.append(
+          button('下载', () =>
+            perform(m => download(run.artifact_id, m, run.export_format === 'xlsx' ? undefined : run.export_format), {
+              label: '定时运行下载',
+            })
+          )
+        );
+      row.append(node('td', when(run.due_at)), node('td', run.as_of || '—'), result, delivery, actions);
+      body.append(row);
+    }
+  }
+  let scheduleReads = 0;
+  async function loadSchedules() {
+    const epoch = state.epoch,
+      read = ++scheduleReads;
+    let list;
+    try {
+      list = await request('/schedules?limit=100');
+    } catch (error) {
+      if (error && error.status === 404 && epoch === state.epoch) {
+        state.schedules = {list: [], loaded: true, off: true, runsOf: '', runs: []};
+        renderSchedules();
+        return;
+      }
+      throw error;
+    }
+    if (epoch !== state.epoch || read !== scheduleReads) throw new Stale();
+    if (!Array.isArray(list) || list.length > 100 || !list.every(validSchedule))
+      throw new Failure(0, 'INVALID_RESPONSE');
+    const sc = state.schedules;
+    sc.list = list.filter(v => v.state !== 'deleted');
+    sc.loaded = true;
+    sc.off = false;
+    if (!sc.list.some(v => v.schedule_id === sc.runsOf)) sc.runsOf = '';
+    renderSchedules();
+    if (sc.runsOf) await loadRuns(sc.runsOf);
+  }
+  async function loadRuns(id) {
+    const epoch = state.epoch;
+    const list = await request('/schedules/' + id + '/runs?limit=50');
+    if (epoch !== state.epoch) throw new Stale();
+    if (!Array.isArray(list) || list.length > 100 || !list.every(validRun)) throw new Failure(0, 'INVALID_RESPONSE');
+    state.schedules.runsOf = id;
+    state.schedules.runs = list;
+    renderRuns();
+  }
+  async function setScheduleState(id, action) {
+    const epoch = state.epoch;
+    await request('/schedules/' + id + (action === 'delete' ? '' : '/' + action), {
+      method: action === 'delete' ? 'DELETE' : 'POST',
+    });
+    if (epoch !== state.epoch) throw new Stale();
+    notify({pause: '定时报表已暂停。', resume: '定时报表已恢复。', delete: '定时报表已删除。'}[action], 'success');
+    if (action === 'delete' && state.schedules.runsOf === id) state.schedules.runsOf = '';
+    await loadSchedules();
+  }
+  // The dialog takes the current query (the workbench's dataset, companies, fields and as_of): the person never retypes a query.
+  const scheduleDialog = makeDrawer('sc-d-new', [], () => $('sc-name'));
+  let scheduleKey = '';
+  function scheduleFormats() {
+    const select = $('sc-format');
+    const formats =
+      state.capabilities && Array.isArray(state.capabilities.formats) ? state.capabilities.formats : ['xlsx'];
+    select.replaceChildren(node('option', '只冻结快照'));
+    select.options[0].value = '';
+    for (const f of formats)
+      if (exportFormats[f]) {
+        const o = node('option', exportFormats[f].label);
+        o.value = f;
+        select.append(o);
+      }
+  }
+  function scheduleFields() {
+    const f = $('sc-frequency').value;
+    $('sc-weekday-field').hidden = f !== 'weekly';
+    $('sc-day-field').hidden = f !== 'monthly';
+  }
+  function openScheduleDialog(from) {
+    if (!state.query || !state.lastResult) {
+      notify('先在报表工作台查询一次：定时报表使用当前查询的数据集、公司范围与字段。', 'error');
+      openPage('workspace');
+      return;
+    }
+    const q = state.query;
+    $('sc-query').textContent =
+      '数据：' + datasetName(q.dataset) + ' · ' + q.company_ids.join('、') + ' · 当前数据时点 ' + q.as_of;
+    $('sc-name').value = datasetName(q.dataset);
+    $('sc-timezone').value = q.timezone || 'Asia/Shanghai';
+    $('sc-error').hidden = true;
+    scheduleFormats();
+    scheduleFields();
+    scheduleKey = crypto.randomUUID();
+    scheduleDialog.open(from);
+  }
+  function scheduleInput() {
+    const name = $('sc-name').value.trim(),
+      frequency = $('sc-frequency').value,
+      at = $('sc-at').value,
+      timezone = $('sc-timezone').value.trim();
+    if (!name || name.length > 80) return '名称须为 1–80 个字符。';
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(at)) return '时间须为 HH:MM。';
+    if (!/^(UTC|[A-Z][A-Za-z]+(\/[A-Za-z0-9_+-]+){1,2})$/.test(timezone))
+      return '时区须为 IANA 名称，例如 Asia/Shanghai 或 UTC。';
+    const recurrence = {frequency, at, timezone};
+    if (frequency === 'weekly') recurrence.weekday = Number($('sc-weekday').value);
+    if (frequency === 'monthly') {
+      const day = Number($('sc-day').value);
+      if (!Number.isInteger(day) || day < 1 || day > 28) return '日期须为 1–28。';
+      recurrence.day = day;
+    }
+    const input = {name, query: copy(state.query), as_of: $('sc-asof').value, recurrence};
+    if ($('sc-format').value) input.export_format = $('sc-format').value;
+    return input;
+  }
+  async function createSchedule(m) {
+    const input = scheduleInput();
+    if (typeof input === 'string') {
+      $('sc-error').textContent = input;
+      $('sc-error').hidden = false;
+      return;
+    }
+    let made;
+    try {
+      made = await request('/schedules', {method: 'POST', body: input, key: scheduleKey});
+    } catch (error) {
+      if (error instanceof Stale) throw error;
+      if (error && error.status === 404) {
+        state.schedules.off = true;
+        renderSchedules();
+      }
+      $('sc-error').textContent = error && error.status === 404 ? '当前部署没有开启定时报表。' : errorMessage(error);
+      $('sc-error').hidden = false;
+      return;
+    }
+    if (!current(m)) throw new Stale();
+    if (!validSchedule(made)) throw new Failure(0, 'INVALID_RESPONSE');
+    scheduleDialog.close();
+    notify('已创建定时报表「' + made.name + '」，下次运行：' + when(made.next_run_at) + '。', 'success');
+    openPage('schedules');
+  }
+
+  // ---- S18-B: the administrator's read-only view of the configuration in force ----
+  function short(digest) {
+    return typeof digest === 'string' && digest ? digest.slice(0, 12) : '—';
+  }
+  function renderAdmin() {
+    const v = state.admin;
+    for (const id of ['admin-summary', 'admin-delivery', 'admin-connections', 'admin-bindings'])
+      $(id).replaceChildren();
+    if (!v) return;
+    addDetails('admin-summary', [
+      ['租户', v.tenant],
+      ['版本', v.version || '—'],
+      ['启动时间', when(v.started_at)],
+      ['连接摘要', short(v.connections_sha256)],
+      ['绑定摘要', short(v.bindings_sha256)],
+      ['绑定加载于', when(v.bindings_loaded_at)],
+    ]);
+    const held = state.session ? state.session.integrations : [];
+    for (const c of v.connections) {
+      const row = node('tr');
+      const status = node('td');
+      const known = state.connections.get(c.integration_id);
+      status.append(
+        !held.includes(c.integration_id)
+          ? node('span', '未检查（不在您的绑定中）', 'badge neutral')
+          : !known
+            ? node('span', '未检查', 'badge neutral')
+            : known.ok
+              ? node('span', '可用 · ' + known.count + ' 个数据集', 'badge')
+              : node('span', known.state.text, 'badge ' + known.state.tone)
+      );
+      row.append(node('td', c.integration_id), node('td', c.source_tenant), node('td', c.adapter), status);
+      $('admin-connections').append(row);
+    }
+    if (!v.connections.length) {
+      const row = node('tr');
+      const cell = node('td', '本租户没有产品连接。');
+      cell.colSpan = 4;
+      row.append(cell);
+      $('admin-connections').append(row);
+    }
+    for (const b of v.bindings) {
+      const row = node('tr');
+      const roles = Array.isArray(b.roles)
+        ? b.roles.map(r => roleNames[r] || r).join('、')
+        : '默认（查看、设计、发布、出具）';
+      row.append(
+        node('td', b.subject),
+        node('td', b.client_id),
+        node('td', b.integrations.join('、') || '—'),
+        node('td', roles)
+      );
+      $('admin-bindings').append(row);
+    }
+    const sc = v.schedules;
+    addDetails('admin-delivery', [
+      [
+        '定时报表',
+        sc.enabled ? '已开启' + (sc.per_identity ? ' · 每人最多 ' + sc.per_identity + ' 个' : '') : '未开启',
+      ],
+      ['推送', sc.webhook ? '已配置 · 接收方 ' + (sc.webhook_host || '—') : '未配置'],
+      ['浏览器登录', v.sign_in ? '已配置' : '未配置'],
+    ]);
+  }
+  function validAdmin(v) {
+    return (
+      !!v &&
+      typeof v.tenant === 'string' &&
+      Array.isArray(v.connections) &&
+      v.connections.length <= 256 &&
+      v.connections.every(c => c && typeof c.integration_id === 'string' && typeof c.adapter === 'string') &&
+      Array.isArray(v.bindings) &&
+      v.bindings.length <= 4096 &&
+      v.bindings.every(b => b && typeof b.subject === 'string' && Array.isArray(b.integrations)) &&
+      !!v.schedules &&
+      typeof v.schedules.enabled === 'boolean'
+    );
+  }
+  async function loadAdmin() {
+    const epoch = state.epoch;
+    const v = await request('/admin/configuration');
+    if (epoch !== state.epoch) throw new Stale();
+    if (!validAdmin(v)) throw new Failure(0, 'INVALID_RESPONSE');
+    state.admin = v;
+    renderAdmin();
   }
   async function loadProduct(id, refresh) {
     const epoch = state.epoch,
@@ -1583,6 +1984,7 @@
       state.session = session;
       state.capabilities = caps;
       $('export-pdf').hidden = !caps.formats.includes('pdf');
+      if ($('schedule-from-result')) $('schedule-from-result').hidden = state.schedules.off || embedded;
       for (const integration of offered) {
         const option = node('option', integration);
         option.value = integration;
@@ -2957,6 +3359,20 @@
     $('refresh-connections').addEventListener('click', () => {
       if (state.session) checkConnections(true).catch(() => {});
     });
+  if ($('schedules-refresh')) {
+    $('schedules-refresh').addEventListener('click', () => perform(() => loadSchedules(), {label: '定时报表'}));
+    $('schedules-new').addEventListener('click', () => openScheduleDialog($('schedules-new')));
+    $('schedule-from-result').addEventListener('click', () => openScheduleDialog($('schedule-from-result')));
+    $('schedule-runs-close').addEventListener('click', () => {
+      state.schedules.runsOf = '';
+      renderRuns();
+    });
+    $('sc-frequency').addEventListener('change', scheduleFields);
+    $('sc-create').addEventListener('click', () => perform(m => createSchedule(m), {label: '新建定时报表'}));
+    $('sc-form').addEventListener('submit', e => e.preventDefault());
+    $('admin-refresh').addEventListener('click', () => perform(() => loadAdmin(), {label: '数据源与绑定'}));
+    $('admin-check').addEventListener('click', () => checkConnections(true));
+  }
   if ($('audit-refresh')) {
     $('audit-refresh').addEventListener('click', () => perform(() => loadAudit(false), {label: '操作记录'}));
     $('audit-more-button').addEventListener('click', () => perform(() => loadAudit(true), {label: '操作记录'}));
