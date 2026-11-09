@@ -1,8 +1,13 @@
 # API · S03-A console composition over the existing protected source profile
 
-Base: `/api/reporting/v1`. This is the implemented subset, not a complete
-production OpenAPI, OIDC profile or designer API. Bearer authentication is a
-replaceable server-side port. `DemoBearer` is explicit synthetic identity only.
+Base: `/api/reporting/v1`. The machine-readable description of every route is
+`docs/openapi.json` (OpenAPI 3.1, S13-A, docs/S13A_SCOPE.md): the methods, paths,
+parameters, bodies, statuses and the JSON schemas of the main shapes.
+`TestOpenAPIMatchesTheBoundRoutes` (transport/httpapi/openapi_test.go) and
+`TestOpenAPIMatchesTheHealthRoutes` (server/openapi_test.go) fail when a bound
+route is not in it or it documents a route that is not bound. This document is
+the prose reference; it is not an OIDC profile or a designer API. Bearer
+authentication is a replaceable server-side port. `DemoBearer` is explicit synthetic identity only.
 S02-A adds identity/accessjwt at that same port; see ACCESS_JWT.md. Provisioning
 it does not change the simulator data classification or qualify a real issuer.
 
