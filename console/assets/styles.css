@@ -3637,3 +3637,39 @@ body:not(.embed) #page-library .library-header > .wordmark,
 body:not(.embed) #lib-data {
   display: none;
 }
+
+/* ADR 0016 (S10-B): the session's products and the state their catalogs answered; the note for an identity without a product. */
+.connections-panel {
+  margin-top: 18px;
+}
+.connection-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px 16px;
+  display: grid;
+  gap: 8px;
+}
+.connection-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.connection-list code {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.drawer-empty {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
+}

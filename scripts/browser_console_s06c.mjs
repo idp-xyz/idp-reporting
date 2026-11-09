@@ -700,6 +700,17 @@ async function main() {
       `document.getElementById('shell-label').textContent==='能力与环境'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`
     )
   );
+  // ADR 0016 (S10-B): the session's products, each with the state its catalog answered; on the demo both sources answer.
+  await waitFor(
+    `document.querySelectorAll('#connection-list li .badge').length===2&&[...document.querySelectorAll('#connection-list li .badge')].every(b=>b.textContent.startsWith('可用'))`,
+    'the product connections checked'
+  );
+  check(
+    'the system page lists the two products of the session, each 可用 with its number of datasets',
+    await evalJs(
+      `JSON.stringify([...document.querySelectorAll('#connection-list li code')].map(c=>c.textContent))===JSON.stringify(['brant-contract-demo','shipment-contract-demo'])`
+    )
+  );
   await shot('console-13-system');
   await contrast('system 1440 light');
   // The centre and the studio keep their own shells; the console chrome gives way to them too.
