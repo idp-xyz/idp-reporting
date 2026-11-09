@@ -401,6 +401,10 @@ func run() error {
 			return e
 		}
 	}
+	// S12-B: the demo records people's actions in its store too (memory, or the fixture database).
+	if log, ok := repo.(r.AuditLog); ok {
+		handler = httpapi.WithAudit(handler, log)
+	}
 	// The cap on requests in flight wraps the API alone, under the console, whose static pages are not what it protects (S04-G).
 	if handler, e = httpapi.WithMaxInFlight(handler, inFlight); e != nil {
 		return e

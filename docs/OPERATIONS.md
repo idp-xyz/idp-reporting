@@ -598,6 +598,14 @@ is written. Then each document is one transaction as its owner. A document alrea
 store, how many were imported and kept and how many files belong to no bound identity (those are not imported: add the binding, or leave them).
 No identity is printed. Then set `design_store` to `database`, remove the four directory fields and start the servers.
 
+## The audit (S12-B, ADR 0018)
+
+Migration 012 adds `audit_events`: people's actions (designs saved, versions published or withdrawn, issues and exports submitted, files
+downloaded, actions refused for a role), each with its outcome. The application role inserts and reads and never updates or deletes; the sweep
+does not touch it; nothing deletes it. A publication, a withdrawal and an issue are recorded before they run: if the database cannot take the
+event the action is refused (503 `AUDIT_UNAVAILABLE`), so an action that ran has its record. Back it up with the rest of the database. It grows
+with use: plan its retention outside the platform (an export, then a `DELETE` by the migrator) if a regulation sets one.
+
 ## Backup and restore (S04-F)
 
 Since S04-E the platform's state is in two places: the PostgreSQL store (jobs, snapshots, artifact rows, issue records, the ledgers) and, with an object

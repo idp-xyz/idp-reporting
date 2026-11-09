@@ -104,6 +104,13 @@
 - Typst 与字体按 SHA-256 固定（`scripts/fetch_pdf_tools.py`），服务端启动时再核对一次可执行文件。
 - CI：第三方 action 按完整提交 SHA 固定，令牌只读，不用仓库密钥；容器镜像（PostgreSQL、S3 兼容服务、veraPDF）按摘要固定；PDF 检查的 Python 依赖用 `--require-hashes` 安装。
 
+## 审计（S12-B，ADR 0018）
+
+- 要成立的：发布、撤回与正式出具在执行前写入审计，写不进就拒绝（503 `AUDIT_UNAVAILABLE`）；其余操作执行后尽力记录结果；审计只增不改。
+- 代码：`transport/httpapi/api.go`（`authenticated` 中的 `AuditAction` 与记录）、`storage/postgres/audit.go`、迁移 012（行级安全：本身份读写自己的事件；`reporting.audit = 'tenant'` 时只读同租户全部事件，服务端仅为管理员设置）。
+- 测试：`TestAuditRecordsActionsAndListsThem`、`TestPostgresAuditContract`、行级安全测试 `the_audit_is_read_by_its_identity_or_an_administrator_and_never_rewritten`。
+- 已知不覆盖：审计不记录读取查询与预览；审计的保留期由运营方在平台外决定。
+
 ## 已知没有覆盖的
 
 - 真实发行方、真实适配器、数据对账与准入决定（上线清单第 16–19 项）。

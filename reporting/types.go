@@ -15,14 +15,16 @@ var (
 	ErrInvalid = errors.New("INVALID_REQUEST")
 	ErrDenied  = errors.New("AUTH_SCOPE_DENIED")
 	// ErrRoleDenied is a refusal of an action the principal's roles do not allow (S12-A, ADR 0018): 403, distinct from a scope refusal.
-	ErrRoleDenied  = errors.New("AUTH_ROLE_DENIED")
-	ErrNotFound    = errors.New("NOT_FOUND")
-	ErrConflict    = errors.New("IDEMPOTENCY_CONFLICT")
-	ErrUnsupported = errors.New("UNSUPPORTED_COMBINATION")
-	ErrIntegrity   = errors.New("INTEGRITY_FAILURE")
-	ErrBudget      = errors.New("BUDGET_EXCEEDED")
-	ErrLease       = errors.New("LEASE_LOST")
-	ErrUnavailable = errors.New("AUTHORITY_UNAVAILABLE")
+	ErrRoleDenied = errors.New("AUTH_ROLE_DENIED")
+	// ErrAuditUnavailable is a refusal of a publication or an issue whose audit event could not be written (S12-B, ADR 0018 Q4): 503.
+	ErrAuditUnavailable = errors.New("AUDIT_UNAVAILABLE")
+	ErrNotFound         = errors.New("NOT_FOUND")
+	ErrConflict         = errors.New("IDEMPOTENCY_CONFLICT")
+	ErrUnsupported      = errors.New("UNSUPPORTED_COMBINATION")
+	ErrIntegrity        = errors.New("INTEGRITY_FAILURE")
+	ErrBudget           = errors.New("BUDGET_EXCEEDED")
+	ErrLease            = errors.New("LEASE_LOST")
+	ErrUnavailable      = errors.New("AUTHORITY_UNAVAILABLE")
 	// ErrUnpublished: an issue names a template version that is not the published one.
 	ErrUnpublished = errors.New("TEMPLATE_NOT_PUBLISHED")
 	// ErrUnreconciled: an issue job failed after the source product may have reserved or confirmed

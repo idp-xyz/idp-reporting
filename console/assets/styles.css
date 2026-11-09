@@ -3702,6 +3702,7 @@ body.no-publisher #st-publish,
 body.no-publisher #st-tool-publish,
 body.no-publisher #st-ver-publish,
 body.no-issuer #doc-issue,
-body.no-issuer #st-tool-issue {
+body.no-issuer #st-tool-issue,
+body.no-administrator .needs-administrator {
   display: none !important;
 }

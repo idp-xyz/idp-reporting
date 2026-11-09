@@ -13345,6 +13345,7 @@ test("S06-C C1/C2/C3/C4/C9: the shell is the prototype's header and navigation c
         ['BUTTON', 'library', '模板中心'],
         ['BUTTON', 'documents', '文档工作室'],
         ['BUTTON', 'panel:tasks', '任务工作区'],
+        ['BUTTON', 'audit', '操作记录'],
         ['BUTTON', 'system', '能力与环境'],
       ]
     );
@@ -13749,6 +13750,7 @@ test("S07-A A1–A3: the rail stays on every shell; the chip names the data cont
         ['library', '模板中心', '模板'],
         ['documents', '文档工作室', '文档'],
         ['panel:tasks', '任务工作区', '任务'],
+        ['audit', '操作记录', '记录'],
         ['system', '能力与环境', '能力'],
       ]
     );
@@ -14752,5 +14754,76 @@ test('S12-A2: the session roles hide what they do not allow, 能力与环境 nam
     assert.match(unknown.$('connect-error').textContent, /无法验证/);
   } finally {
     unknown.close();
+  }
+});
+
+// ---- S12-B: the audit page (docs/ADR_0018_ROLES_APPROVAL_AUDIT.md) ----
+test('S12-B: 操作记录 lists the identity own actions from the server, newest first; an administrator switches to the tenant, with who did it', async () => {
+  const a = app();
+  try {
+    await a.login();
+    a.configure();
+    a.click('snapshot');
+    await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled, 'snapshot');
+    a.click('export');
+    await until(() => a.downloads.length === 1, 'the export downloaded');
+    a.w.document.querySelector('[data-page="audit"]').click();
+    assert.equal(a.$('page-audit').hidden, false);
+    await until(() => a.$('audit-body').rows.length >= 2, 'the actions');
+    const rows = [...a.$('audit-body').rows].map(r => [r.cells[1].textContent, r.cells[3].textContent]);
+    assert.deepEqual(rows[0], ['下载文件', '成功']);
+    assert.ok(rows.some(r => r[0] === '提交导出' && r[1] === '成功'));
+    assert.equal(a.$('audit-who-head').hidden, true, 'no subject column for one own actions');
+    assert.equal(a.w.document.body.classList.contains('no-administrator'), true);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  const asked = [];
+  const admin = app(async (path, options) => {
+    if (path.endsWith('/session')) {
+      const session = await (await fetch(url + path, options)).json();
+      return json({...session, roles: ['viewer', 'administrator']});
+    }
+    if (path.includes('/audit?')) {
+      asked.push(path.slice(path.indexOf('?') + 1));
+      if (path.includes('scope=tenant'))
+        return json([
+          {
+            id: 'a'.repeat(32),
+            subject: 'colleague',
+            at: '2026-11-09T08:00:00Z',
+            action: 'design.release',
+            object_kind: 'template',
+            object_id: 'b'.repeat(32),
+            outcome: 'succeeded',
+          },
+        ]);
+    }
+  });
+  try {
+    await admin.login();
+    assert.equal(admin.w.document.body.classList.contains('no-administrator'), false);
+    admin.w.document.querySelector('[data-page="audit"]').click();
+    await until(() => asked.includes('limit=50'), 'own first');
+    admin.$('audit-scope').value = 'tenant';
+    admin.$('audit-scope').dispatchEvent(new admin.w.Event('change', {bubbles: true}));
+    await until(
+      () => admin.$('audit-body').rows.length === 1 && admin.$('audit-who-head').hidden === false,
+      'the tenant'
+    );
+    assert.ok(asked.includes('limit=50&scope=tenant'));
+    assert.deepEqual([...admin.$('audit-body').rows[0].cells].map(c => c.textContent).slice(1), [
+      'colleague',
+      '发布或撤回',
+      '单据模板 bbbbbbbb',
+      '成功',
+    ]);
+    assert.equal(admin.$('audit-title').textContent, '全租户操作');
+    admin.click('logout');
+    assert.equal(admin.$('audit-body').rows.length, 0);
+    assert.equal(admin.$('audit-scope').value, '');
+  } finally {
+    admin.close();
   }
 });

@@ -195,6 +195,47 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			return send(w, 201, v)
 		})
 	}
+	// S12-B: the audit, newest first: the caller's own events, or with scope=tenant (an administrator's) the tenant's, each with its subject.
+	bind("GET "+base+"/audit", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		log := auditLogOf(req.Context())
+		if log == nil {
+			return r.ErrNotFound
+		}
+		limit, before, tenant := 50, "", false
+		for key, v := range req.URL.Query() {
+			if len(v) != 1 || v[0] == "" {
+				return r.ErrInvalid
+			}
+			switch key {
+			case "limit":
+				n, e := strconv.Atoi(v[0])
+				if e != nil || n < 1 || n > r.MaxAuditListing {
+					return r.ErrInvalid
+				}
+				limit = n
+			case "before":
+				if len(v[0]) != 32 {
+					return r.ErrInvalid
+				}
+				before = v[0]
+			case "scope":
+				if v[0] != "tenant" {
+					return r.ErrInvalid
+				}
+				tenant = true
+			default:
+				return r.ErrInvalid
+			}
+		}
+		if tenant && !p.Has(r.RoleAdministrator) {
+			return r.ErrRoleDenied
+		}
+		events, e := log.Events(req.Context(), p.Identity, tenant, limit, before)
+		if e != nil {
+			return e
+		}
+		return send(w, 200, events)
+	})
 	bind("GET "+base+"/session", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		// Only the products the service serves for the principal (ADR 0016): a binding's product without a connection is never offered.
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": service.Served(p), "roles": p.EffectiveRoles()})
@@ -505,7 +546,7 @@ func classify(e error) (code string, status int, ok bool) {
 	for _, candidate := range []struct {
 		err    error
 		status int
-	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
+	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrAuditUnavailable, 503}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
 		if errors.Is(e, candidate.err) {
 			return candidate.err.Error(), candidate.status, true
 		}
@@ -542,6 +583,97 @@ func problem(w http.ResponseWriter, e error, status int) {
 		body["detail"] = detail
 	}
 	_ = send(w, status, body)
+}
+
+// auditKey carries the audit log of a handler composed WithAudit.
+type auditKey struct{}
+
+// WithAudit records people's actions in log (S12-B, ADR 0018): every route composed under h records what AuditAction names, and answers
+// GET /api/reporting/v1/audit. Without it nothing is recorded and the audit route answers 404.
+func WithAudit(h http.Handler, log r.AuditLog) http.Handler {
+	if log == nil {
+		return h
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		inner := req.WithContext(context.WithValue(req.Context(), auditKey{}, log))
+		// The mux under h writes the route it matched on the request it was given; the access line and the metrics above read it here,
+		// also when a handler panics.
+		defer func() { req.Pattern = inner.Pattern }()
+		h.ServeHTTP(w, inner)
+	})
+}
+
+func auditLogOf(ctx context.Context) r.AuditLog {
+	log, _ := ctx.Value(auditKey{}).(r.AuditLog)
+	return log
+}
+
+// AuditAction is what a route records (S12-B): the action, the kind of object, and whether the action must not run unrecorded (a
+// publication or withdrawal, an official issue). "" for a route that records nothing (reading, querying, previews).
+func AuditAction(method, pattern string) (action, kind string, mandatory bool) {
+	_, path, _ := strings.Cut(pattern, " ")
+	if path == "" {
+		path = pattern
+	}
+	designKind := func() string {
+		for prefix, k := range map[string]string{"/layouts": "layout", "/dashboards": "dashboard", "/document-templates": "template", "/document-backgrounds": "background", "/document-images": "image"} {
+			if strings.Contains(path, "/api/reporting/v1"+prefix) {
+				return k
+			}
+		}
+		return ""
+	}
+	switch {
+	case method == http.MethodGet && strings.HasSuffix(path, "/artifacts/{id}/content"):
+		return "artifact.download", "artifact", false
+	case method == http.MethodGet || method == http.MethodHead:
+		return "", "", false
+	case strings.HasSuffix(path, "/release"):
+		return "design.release", designKind(), true
+	case strings.HasSuffix(path, "/api/reporting/v1/issues"):
+		return "issue.submit", "issue", true
+	case strings.HasSuffix(path, "/api/reporting/v1/exports"):
+		return "export.submit", "export", false
+	}
+	if RequiredRole(method, pattern) == r.RoleDesigner {
+		if k := designKind(); k != "" {
+			return "design.change", k, false
+		}
+	}
+	return "", "", false
+}
+
+// statusRecorder keeps the status a handler wrote, for the outcome of its audit event.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.status == 0 {
+		s.status = code
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+// Unwrap lets http.ResponseController reach the writer (flushing, deadlines).
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+func outcomeOf(status int) string {
+	switch {
+	case status == 0 || status < 400:
+		return "succeeded"
+	case status < 500:
+		return "refused"
+	}
+	return "failed"
 }
 
 // designPaths are the routes of the private design stores (layouts, dashboards, templates, page backgrounds, images): a change of any of them
@@ -594,13 +726,34 @@ func authenticated(authenticate Authenticate, fn func(http.ResponseWriter, *http
 			return
 		}
 		// S12-A (ADR 0018): the route's role, from the pattern the mux matched; a refusal names the code only.
+		audit := auditLogOf(req.Context())
 		if role := RequiredRole(req.Method, req.Pattern); !p.Has(role) {
+			if audit != nil {
+				_ = audit.Record(req.Context(), r.AuditEvent{ID: r.NewID(), Identity: p.Identity, Action: "role.refused", ObjectKind: "route", Outcome: "refused", Code: r.ErrRoleDenied.Error()})
+			}
 			problem(w, r.ErrRoleDenied, 403)
 			return
 		}
 		ctx, cancel := context.WithTimeout(req.Context(), r.WorkTimeout)
 		defer cancel()
 		req = req.WithContext(ctx)
+		// S12-B: the action is recorded; a publication and an issue are recorded before they run and refused when that fails (ADR 0018 Q4).
+		if action, kind, mandatory := AuditAction(req.Method, req.Pattern); audit != nil && action != "" {
+			event := r.AuditEvent{ID: r.NewID(), Identity: p.Identity, Action: action, ObjectKind: kind, ObjectID: req.PathValue("id"), Outcome: "requested"}
+			if len(event.ObjectID) > 64 {
+				event.ObjectID = ""
+			}
+			if mandatory && audit.Record(ctx, event) != nil {
+				problem(w, r.ErrAuditUnavailable, 503)
+				return
+			}
+			rec := &statusRecorder{ResponseWriter: w}
+			w = rec
+			defer func() {
+				event.ID, event.Outcome = r.NewID(), outcomeOf(rec.status)
+				_ = audit.Record(context.WithoutCancel(req.Context()), event)
+			}()
+		}
 		if e = fn(w, req, p); e != nil {
 			problem(w, e, 0)
 		}

@@ -126,6 +126,77 @@
         }
       }
     },
+    "/api/reporting/v1/audit": {
+      "get": {
+        "operationId": "listAudit",
+        "tags": [
+          "core"
+        ],
+        "summary": "The audit of people's actions, newest first (S12-B, ADR 0018)",
+        "description": "The caller's own events; with `scope=tenant` (the administrator role, else 403 AUTH_ROLE_DENIED) every event of the caller's tenant and issuer, each with its `subject`. A publication, a withdrawal and an official issue are recorded before they run (`requested`) and refused with 503 AUDIT_UNAVAILABLE when that fails; every recorded action also gets its outcome. 404 when the server keeps no audit.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "The last `id` of the previous page."
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tenant"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEvent"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/api/reporting/v1/capabilities": {
       "get": {
         "operationId": "getCapabilities",
@@ -4771,6 +4842,70 @@
           "status"
         ],
         "additionalProperties": false
+      },
+      "AuditEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "action",
+          "object_kind",
+          "outcome"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Only in a tenant listing (scope=tenant)."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "design.change",
+              "design.release",
+              "issue.submit",
+              "export.submit",
+              "artifact.download",
+              "role.refused"
+            ]
+          },
+          "object_kind": {
+            "type": "string",
+            "enum": [
+              "layout",
+              "dashboard",
+              "template",
+              "background",
+              "image",
+              "issue",
+              "export",
+              "artifact",
+              "route"
+            ]
+          },
+          "object_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "succeeded",
+              "refused",
+              "failed"
+            ]
+          },
+          "code": {
+            "type": "string"
+          }
+        }
       }
     }
   }

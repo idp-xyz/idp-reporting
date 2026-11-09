@@ -87,3 +87,13 @@ func asWorker(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) er
 	}
 	return tx.Commit(ctx)
 }
+
+// setAuditTenantSQL is the one other setting of the context (S12-B, migration 012): with it the transaction may read every audit event of its
+// tenant and issuer (the tenant_audit policy). Transaction-local, like the identity's.
+const setAuditTenantSQL = `SELECT set_config('reporting.audit', $1, true)`
+
+// setAuditTenant says, in a transaction begun as an identity, that it reads its tenant's audit: the server does so only for an administrator.
+func setAuditTenant(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, setAuditTenantSQL, "tenant")
+	return err
+}

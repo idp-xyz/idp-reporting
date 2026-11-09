@@ -147,6 +147,10 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (
 var dataTables = []string{"jobs", "assets", "issue_numbers", "designs"}
 var readTables = []string{"profile", "schema_migrations", "sweeps"}
 
+// appendTables are the tables the application role inserts into and reads, and never updates (012 audit_events, S12-B): an audit is not
+// rewritten by the server that records it.
+var appendTables = []string{"audit_events"}
+
 // requiredTables are the tables a store at the latest version has for the application role; issue_numbers is not one, and sweeps is the
 // sweep role's (the application role never writes it and a store older than 006 still serves the rest).
 var requiredTables = []string{"jobs", "assets", "profile", "schema_migrations"}
@@ -167,6 +171,8 @@ var applicationRules = roleRules{
 		switch {
 		case slices.Contains(dataTables, t):
 			return writes{insert: true, update: true}, true
+		case slices.Contains(appendTables, t):
+			return writes{insert: true}, true
 		case slices.Contains(readTables, t):
 			return writes{}, true
 		}
@@ -325,6 +331,16 @@ var rlsTables = []string{"assets", "jobs"}
 // designsVersion is the schema version that has the designs table (011, S11-A): from it on the table is held to the same policies.
 const designsVersion = 11
 
+// auditVersion is the schema version that has the audit (012, S12-B), held to its own two policies (auditPolicies).
+const auditVersion = 12
+
+// The policies of 012 on audit_events: the identity policy of 007 for every command, and a tenant listing for SELECT only.
+const auditTenantQual = `tenant = nullif(current_setting('reporting.tenant', true), '') AND issuer = nullif(current_setting('reporting.issuer', true), '') AND current_setting('reporting.audit', true) = 'tenant'`
+
+type policyRule struct{ cmd, qual, check string }
+
+var auditPolicies = map[string]policyRule{"identity": {"ALL", identityQual, identityQual}, "tenant_audit": {"SELECT", auditTenantQual, ""}}
+
 // rlsTablesAt is the tables with business rows at a schema version.
 func rlsTablesAt(version int) []string {
 	if version >= designsVersion {
@@ -349,6 +365,17 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	var version int
 	if err := pool.QueryRow(ctx, "SELECT coalesce(max(version),0) FROM reporting_s01.schema_migrations").Scan(&version); err != nil || version < rlsVersion {
 		return nil, err
+	}
+	// The policies each table with business rows must have at this version: 007's two on jobs, assets and (011) designs; 012's two on the audit.
+	expected := map[string]map[string]policyRule{}
+	for _, table := range rlsTablesAt(version) {
+		expected[table] = map[string]policyRule{}
+		for name, qual := range rlsPolicies {
+			expected[table][name] = policyRule{"ALL", qual, qual}
+		}
+	}
+	if version >= auditVersion {
+		expected["audit_events"] = auditPolicies
 	}
 	var problems []string
 	enabled := map[string]bool{}
@@ -380,16 +407,17 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 			rows.Close()
 			return nil, err
 		}
-		if !slices.Contains(rlsTablesAt(version), table) {
+		rules, checked := expected[table]
+		if !checked {
 			continue
 		}
-		want, known := rlsPolicies[name]
+		want, known := rules[name]
 		if !known {
 			problems = append(problems, fmt.Sprintf("unexpected policy %s on %s", name, table))
 			continue
 		}
 		have[table+"."+name] = true
-		if permissive != "PERMISSIVE" || cmd != "ALL" || roles != "public" || normalQual(qual) != normalQual(want) || normalQual(check) != normalQual(want) {
+		if permissive != "PERMISSIVE" || cmd != want.cmd || roles != "public" || normalQual(qual) != normalQual(want.qual) || normalQual(check) != normalQual(want.check) {
 			problems = append(problems, fmt.Sprintf("policy %s on %s does not have its qualification", name, table))
 		}
 	}
@@ -397,16 +425,17 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, table := range rlsTablesAt(version) {
+	for table, rules := range expected {
 		if !enabled[table] {
 			problems = append(problems, "row-level security is not enabled on "+table)
 		}
-		for name := range rlsPolicies {
+		for name := range rules {
 			if !have[table+"."+name] {
 				problems = append(problems, fmt.Sprintf("policy %s is missing on %s", name, table))
 			}
 		}
 	}
+	slices.Sort(problems)
 	return problems, nil
 }
 
@@ -425,7 +454,7 @@ func tablesToGrant(ctx context.Context, tx pgx.Tx) ([]string, error) {
 			rows.Close()
 			return nil, err
 		}
-		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) {
+		if !slices.Contains(dataTables, name) && !slices.Contains(readTables, name) && !slices.Contains(appendTables, name) {
 			rows.Close()
 			return nil, fmt.Errorf("unexpected table %q in the schema: %w", name, r.ErrIntegrity)
 		}
@@ -475,6 +504,9 @@ func Grants(ctx context.Context, pool *pgxpool.Pool, migrator, app string) error
 		stmts = append(stmts, "GRANT SELECT ON "+table(t)+" TO "+q(app))
 		if slices.Contains(dataTables, t) {
 			stmts = append(stmts, "GRANT INSERT, UPDATE ON "+table(t)+" TO "+q(app))
+		}
+		if slices.Contains(appendTables, t) {
+			stmts = append(stmts, "GRANT INSERT ON "+table(t)+" TO "+q(app))
 		}
 	}
 	return execAll(ctx, tx, stmts)

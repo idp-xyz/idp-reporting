@@ -14,6 +14,7 @@
     library: '模板中心',
     documents: '文档工作室',
     tasks: '任务工作区',
+    audit: '操作记录',
     system: '能力与环境',
   };
   // The shell's wordmark names the page (S06-C) in the page's own words (S09-C, ADR 0014 decision 7); the studios and the centre carry
@@ -32,6 +33,7 @@
     datasets: [],
     catalogs: new Map(),
     roles: null,
+    audit: {events: [], more: '', scope: ''},
     connections: new Map(),
     jobs: new Map(),
     jobsFilter: {kind: '', state: ''},
@@ -631,7 +633,11 @@
     state.catalogs.clear();
     state.connections.clear();
     state.roles = null;
-    for (const role of ['designer', 'publisher', 'issuer']) document.body.classList.remove('no-' + role);
+    for (const role of ['designer', 'publisher', 'issuer', 'administrator'])
+      document.body.classList.remove('no-' + role);
+    state.audit = {events: [], more: '', scope: ''};
+    if ($('audit-scope')) $('audit-scope').value = '';
+    if ($('audit-body')) renderAudit();
     if ($('connection-list')) $('connection-list').replaceChildren();
     if ($('sh-no-products')) $('sh-no-products').hidden = true;
     state.jobs.clear();
@@ -989,6 +995,7 @@
     placeNotice(page);
     if (page === 'library' && library && state.session) library.show();
     if (page === 'dashboard' && board) board.show();
+    if (page === 'audit' && state.session) loadAudit(false).catch(error => fail(error, mark(), {label: '操作记录'}));
     if (asked === 'catalog' && !embedded) {
       if (state.session) setTimeout(() => drawer.open($('sh-data-chip')), 0);
       else drawerAsked = true;
@@ -1167,6 +1174,92 @@
       renderConnections();
     }
   }
+  // S12-B (ADR 0018): the audit of people's actions. Everyone reads their own; an administrator may read the tenant's, each with its subject.
+  const auditActions = {
+    'design.change': '保存设计',
+    'design.release': '发布或撤回',
+    'issue.submit': '提交正式出具',
+    'export.submit': '提交导出',
+    'artifact.download': '下载文件',
+    'role.refused': '被角色拒绝',
+  };
+  const auditKinds = {
+    layout: '报表布局',
+    dashboard: '看板',
+    template: '单据模板',
+    background: '页面底图',
+    image: '图片',
+    issue: '正式出具',
+    export: '导出',
+    artifact: '文件',
+    route: '操作',
+  };
+  const auditOutcomes = {requested: '已申请', succeeded: '成功', refused: '被拒绝', failed: '失败'};
+  function checkAudit(list) {
+    if (!Array.isArray(list) || list.length > 200) throw new Failure(0, 'INVALID_RESPONSE');
+    for (const e of list)
+      if (
+        !e ||
+        !isID(e.id) ||
+        typeof e.at !== 'string' ||
+        !auditActions[e.action] ||
+        !auditKinds[e.object_kind] ||
+        !auditOutcomes[e.outcome] ||
+        (e.subject !== undefined && (typeof e.subject !== 'string' || e.subject.length > 256)) ||
+        (e.object_id !== undefined && !isID(e.object_id))
+      )
+        throw new Failure(0, 'INVALID_RESPONSE');
+  }
+  function renderAudit() {
+    const a = state.audit,
+      tenant = a.scope === 'tenant';
+    $('audit-title').textContent = tenant ? '全租户操作' : '我的操作';
+    $('audit-lead').textContent = tenant
+      ? '当前租户所有人的操作，最新在前（仅管理员可见）。'
+      : '当前身份的操作，最新在前。';
+    $('audit-who-head').hidden = !tenant;
+    $('audit-empty').hidden = a.events.length > 0;
+    $('audit-table-wrap').hidden = a.events.length === 0;
+    $('audit-more').hidden = !a.more;
+    const body = $('audit-body');
+    body.replaceChildren();
+    for (const e of a.events) {
+      const row = node('tr');
+      const when = new Date(e.at);
+      row.append(node('td', isNaN(when) ? e.at : when.toLocaleString('zh-CN', {hour12: false})));
+      if (tenant) row.append(node('td', e.subject || ''));
+      row.append(node('td', auditActions[e.action]));
+      const what = node('td', auditKinds[e.object_kind]);
+      if (e.object_id) what.append(node('small', ' ' + e.object_id.slice(0, 8), 'task-id'));
+      row.append(what);
+      const result = node('td');
+      result.append(
+        node(
+          'span',
+          auditOutcomes[e.outcome],
+          'badge' + (e.outcome === 'succeeded' ? '' : e.outcome === 'requested' ? ' neutral' : ' danger')
+        )
+      );
+      row.append(result);
+      body.append(row);
+    }
+  }
+  let auditReads = 0;
+  async function loadAudit(more) {
+    const epoch = state.epoch,
+      read = ++auditReads,
+      a = state.audit,
+      before = more ? a.more : '';
+    if (more && !before) return;
+    const list = await request(
+      '/audit?limit=50' + (a.scope ? '&scope=' + a.scope : '') + (before ? '&before=' + before : '')
+    );
+    if (epoch !== state.epoch || read !== auditReads) throw new Stale();
+    checkAudit(list);
+    a.events = more ? a.events.concat(list.filter(e => !a.events.some(x => x.id === e.id))) : list;
+    a.more = list.length === 50 ? list.at(-1).id : '';
+    renderAudit();
+  }
   async function loadProduct(id, refresh) {
     const epoch = state.epoch,
       operation = ++state.catalogOperation;
@@ -1258,7 +1351,7 @@
       const roles = session.roles === undefined ? ['viewer', 'designer', 'publisher', 'issuer'] : session.roles;
       if (!Array.isArray(roles) || roles.length > 5 || !roles.every(role => roleNames[role]))
         throw new Failure(0, 'INVALID_RESPONSE');
-      for (const role of ['designer', 'publisher', 'issuer'])
+      for (const role of ['designer', 'publisher', 'issuer', 'administrator'])
         document.body.classList.toggle('no-' + role, !roles.includes(role));
       state.roles = roles;
       state.session = session;
@@ -2628,6 +2721,15 @@
     $('refresh-connections').addEventListener('click', () => {
       if (state.session) checkConnections(true).catch(() => {});
     });
+  if ($('audit-refresh')) {
+    $('audit-refresh').addEventListener('click', () => perform(() => loadAudit(false), {label: '操作记录'}));
+    $('audit-more-button').addEventListener('click', () => perform(() => loadAudit(true), {label: '操作记录'}));
+    $('audit-scope').addEventListener('change', () => {
+      state.audit = {events: [], more: '', scope: $('audit-scope').value};
+      renderAudit();
+      perform(() => loadAudit(false), {label: '操作记录'});
+    });
+  }
   $('refresh-catalog').addEventListener('click', () => {
     if (state.product)
       loadProduct(state.product, true)
