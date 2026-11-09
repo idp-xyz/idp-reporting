@@ -1,7 +1,8 @@
 # ADR 0018 · Roles, publication approval, a shared design space and an audit of people's actions
 
-Date: 2026-11-09. Status: **proposed** (the four questions at the end are the product owner's; the recommended answers are what S12 builds
-unless they are changed). ADR 0017's S12.
+Date: 2026-11-09. Status: **accepted** (2026-11-09: the product owner asked for the whole plan to be completed with the recommended answers
+to the four questions at the end: Q1 today's rights for a binding without roles, Q2 one shared space per tenant, Q3 approval for the shared
+space only, Q4 the audit fails closed for publication, approval and issue). ADR 0017's S12.
 
 ## Context
 
@@ -49,7 +50,7 @@ what in operator configuration; the access token carries no role and a token's o
 | S12-B | Migration 012 `audit_events`, the recorded actions, `GET /audit`, an audit page for administrators |
 | S12-C | The tenant's shared design space (row-level security policy, the console's 我的 / 团队 switch), publication approval |
 
-## Questions for the product owner
+## Questions for the product owner (answered: the recommended answers)
 
 - **Q1** A binding without `roles`: today's rights (recommended, nothing changes on upgrade), or `viewer` only (safer default, every existing
   binding must be edited)?
