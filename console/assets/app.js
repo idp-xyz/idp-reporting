@@ -670,7 +670,11 @@
     if (!embedded) $('logout').disabled = true;
     $('connection-overlay').hidden = false;
     document.querySelector('.shell').inert = true;
-    if (!embedded) $('connect-button').disabled = false;
+    if (!embedded) {
+      $('connect-button').disabled = false;
+      $('sso-button').disabled = !signInUsable();
+      forgetSignIn();
+    }
     $('notice').hidden = true;
     $('connect-error').hidden = !message;
     $('connect-error').textContent = message || '';
@@ -679,7 +683,8 @@
     if (embedded) {
       document.querySelector('.shell').hidden = true;
       if (embed) embed.forget();
-    } else $('access-token').focus();
+    } else if ($('access-token').hidden) $('sso-button').focus();
+    else $('access-token').focus();
   }
   // The quotas of an identity (S04-D): the notice names the quota and gives the number the server states in its capabilities.
   const quotaNames = ['jobs_in_flight', 'stored_results', 'admissions_per_hour', 'queries_in_flight'];
@@ -1313,6 +1318,223 @@
       target.append(row);
     }
   }
+  // ---- S15-A (ADR 0019): the browser sign-in, OpenID Connect's authorization code with PKCE (S256), the code exchanged by the server ----
+  // The provider cannot be called from this page (connect-src 'self'): the browser goes to its authorization endpoint by a top-level
+  // navigation and comes back to /console/?code=…&state=…; the server exchanges the code (POST /sign-in/token). What must outlive that one
+  // navigation, the state, the nonce and the PKCE verifier, is one session-storage entry of this tab, written just before leaving and removed
+  // as the page loads again, before anything else and whether it is used or not; sign-out and a page restored from the back-forward cache remove
+  // it too. Once the page runs nothing is stored: the token, like a pasted one, lives in state.token only.
+  const signInKey = 'reporting-sign-in',
+    signInLifetime = 10 * 60 * 1000;
+  let signIn = null;
+  const signInMessages = {
+    state: '登录结果与本页发起的登录不符或已过期，请重新登录。',
+    provider: '身份提供方未完成登录（已取消或被拒绝），请重新登录。',
+    SIGN_IN_REFUSED: '身份提供方拒绝了此次登录结果，请重新登录。',
+    SIGN_IN_REPLAYED: '此登录结果已使用过，请重新登录。',
+    SIGN_IN_TOKEN_REFUSED: '身份提供方签发的令牌不被本平台接受，请联系平台运营方。',
+    unavailable: '身份提供方暂时不可用，请稍后重试。',
+    storage: '浏览器不允许本页暂存登录过程，无法使用企业账号登录。',
+  };
+  function forgetSignIn() {
+    try {
+      sessionStorage.removeItem(signInKey);
+    } catch (_) {}
+  }
+  function base64url(bytes) {
+    let text = '';
+    for (const b of bytes) text += String.fromCharCode(b);
+    return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function randomText(length) {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return base64url(bytes);
+  }
+  // The return from the provider, read once as the page loads: the entry is removed whatever it holds, and the code and the state leave the
+  // address at once (not in the history, a bookmark or a later Referer). null when this load is not a return.
+  function takeSignInReturn() {
+    let saved = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(signInKey) || 'null');
+    } catch (_) {}
+    forgetSignIn();
+    const params = new URLSearchParams(location.search);
+    if (!['code', 'state', 'error'].some(k => params.has(k))) return null;
+    const hash = saved && typeof saved.hash === 'string' && /^#[a-z-]{0,32}$/.test(saved.hash) ? saved.hash : '';
+    history.replaceState(null, '', location.pathname + hash);
+    const one = k => (params.getAll(k).length === 1 ? params.get(k) : '');
+    const age = saved && Number.isSafeInteger(saved.at) ? Date.now() - saved.at : -1;
+    if (
+      !saved ||
+      typeof saved !== 'object' ||
+      !['state', 'verifier', 'nonce'].every(
+        k => typeof saved[k] === 'string' && /^[A-Za-z0-9_-]{22,128}$/.test(saved[k])
+      ) ||
+      !(age >= 0 && age < signInLifetime) ||
+      one('state') !== saved.state
+    )
+      return {error: 'state'};
+    const code = one('code');
+    if (params.has('error') || !code || code.length > 2048 || !/^[\x20-\x7e]+$/.test(code)) return {error: 'provider'};
+    return {code, verifier: saved.verifier, nonce: saved.nonce};
+  }
+  // A request of the sign-in, before there is a token: same origin, no credential, bounded.
+  async function anonymous(path, body) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+    try {
+      const response = await fetch(base + path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers:
+          body === undefined
+            ? {Accept: 'application/json'}
+            : {Accept: 'application/json', 'Content-Type': 'application/json'},
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: controller.signal,
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+      const bytes = await readBounded(response, 64 << 10);
+      let value = null;
+      try {
+        value = JSON.parse(new TextDecoder().decode(bytes));
+      } catch (_) {}
+      if (!response.ok)
+        throw new Failure(response.status, value && typeof value.error === 'string' ? value.error : 'REQUEST_FAILED');
+      if (!response.headers.get('Content-Type')?.includes('application/json') || !value || typeof value !== 'object')
+        throw new Failure(0, 'INVALID_RESPONSE');
+      return value;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  function validSignIn(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c) || c.enabled !== true) return false;
+    let target;
+    try {
+      target = new URL(c.authorization_endpoint);
+    } catch (_) {
+      return false;
+    }
+    const loopback = target.hostname === '127.0.0.1' || target.hostname === '[::1]';
+    return (
+      typeof c.authorization_endpoint === 'string' &&
+      (target.protocol === 'https:' || (target.protocol === 'http:' && loopback)) &&
+      !target.search &&
+      !target.hash &&
+      !target.username &&
+      typeof c.client_id === 'string' &&
+      /^[\x21-\x7e]{1,256}$/.test(c.client_id) &&
+      typeof c.redirect_uri === 'string' &&
+      typeof c.scope === 'string' &&
+      /^[\x21-\x7e]+( [\x21-\x7e]+)*$/.test(c.scope) &&
+      c.scope.length <= 512 &&
+      c.code_challenge_method === 'S256' &&
+      typeof c.paste_fallback === 'boolean'
+    );
+  }
+  // The sign-in works only at the address the provider knows (its redirect URI is this page's).
+  const signInUsable = () => !!signIn && signIn.redirect_uri === location.origin + '/console/';
+  function signInError(message) {
+    $('connect-error').textContent = message;
+    $('connect-error').hidden = false;
+  }
+  // The paste form: hidden when the sign-in is on, unless the deployment keeps it (paste_fallback); the error line stays in the form.
+  function showPaste(on) {
+    for (const e of [$('access-token'), $('connect-button'), document.querySelector('label[for="access-token"]')])
+      e.hidden = !on;
+    $('sso-or').hidden = !on || !signIn;
+  }
+  async function setupSignIn(back) {
+    $('sso-button').addEventListener('click', () => beginSignIn().catch(() => signInError(signInMessages.unavailable)));
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) {
+        forgetSignIn();
+        $('sso-button').disabled = !!state.token || !signInUsable();
+      }
+    });
+    if (back) $('sso-button').disabled = $('connect-button').disabled = true;
+    let config = null;
+    try {
+      config = await anonymous('/sign-in');
+    } catch (_) {}
+    if (state.token || state.starting) return;
+    if (validSignIn(config)) {
+      signIn = config;
+      $('sso').hidden = false;
+      showPaste(config.paste_fallback);
+      // The sign-in works only at the address the provider knows: the console says so instead of starting a sign-in that must fail.
+      if (!back) $('sso-button').disabled = !signInUsable();
+      if (!signInUsable()) {
+        $('sso-button').disabled = true;
+        signInError('单点登录只能从登记的地址使用，请改用此地址打开控制台：' + config.redirect_uri);
+      } else if (!back && !config.paste_fallback) $('sso-button').focus();
+    }
+    if (!back) return;
+    if (back.error) {
+      $('sso-button').disabled = !signInUsable();
+      $('connect-button').disabled = false;
+      signInError(signInMessages[back.error]);
+      return;
+    }
+    let answer;
+    try {
+      answer = await anonymous('/sign-in/token', {code: back.code, code_verifier: back.verifier, nonce: back.nonce});
+    } catch (error) {
+      $('sso-button').disabled = !signInUsable();
+      $('connect-button').disabled = false;
+      signInError(signInMessages[error.code] || signInMessages.unavailable);
+      return;
+    }
+    if (typeof answer.access_token !== 'string' || !/^[\x21-\x7e]{1,16384}$/.test(answer.access_token)) {
+      $('sso-button').disabled = !signInUsable();
+      $('connect-button').disabled = false;
+      signInError(signInMessages.unavailable);
+      return;
+    }
+    return start(answer.access_token);
+  }
+  // Leaves for the provider: the state, the nonce and the verifier are random and new, the challenge is the verifier's SHA-256.
+  async function beginSignIn() {
+    if (!signInUsable() || state.token || state.starting || !window.crypto?.subtle) return;
+    $('sso-button').disabled = true;
+    $('connect-error').hidden = true;
+    const verifier = randomText(32),
+      stateValue = randomText(16),
+      nonce = randomText(16);
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+    const target = new URL(signIn.authorization_endpoint);
+    for (const [k, v] of [
+      ['response_type', 'code'],
+      ['client_id', signIn.client_id],
+      ['redirect_uri', signIn.redirect_uri],
+      ['scope', signIn.scope],
+      ['state', stateValue],
+      ['nonce', nonce],
+      ['code_challenge', base64url(digest)],
+      ['code_challenge_method', 'S256'],
+    ])
+      target.searchParams.set(k, v);
+    const hash = /^#[a-z-]{0,32}$/.test(location.hash) ? location.hash : '';
+    try {
+      sessionStorage.setItem(signInKey, JSON.stringify({state: stateValue, verifier, nonce, at: Date.now(), hash}));
+    } catch (_) {
+      forgetSignIn();
+      $('sso-button').disabled = !signInUsable();
+      signInError(signInMessages.storage);
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = target.href;
+    link.rel = 'noreferrer';
+    link.click();
+    // Still here after a while: the navigation did not happen; nothing stays stored.
+    setTimeout(() => {
+      forgetSignIn();
+      if (!state.token) $('sso-button').disabled = !signInUsable();
+    }, 15000);
+  }
   function connect(event) {
     event.preventDefault();
     const token = $('access-token').value.trim();
@@ -1327,6 +1549,7 @@
     if (!embedded) {
       $('connect-error').hidden = true;
       $('connect-button').disabled = true;
+      $('sso-button').disabled = true;
     }
     const epoch = state.epoch;
     try {
@@ -1442,7 +1665,10 @@
       }
     } finally {
       if (epoch === state.epoch) state.starting = false;
-      if (!embedded && !state.session) $('connect-button').disabled = false;
+      if (!embedded && !state.session) {
+        $('connect-button').disabled = false;
+        $('sso-button').disabled = !signInUsable();
+      }
     }
   }
   // Embed: only the view the address names is shown; the query panel (company scope and date) comes with a view that is not the report viewer.
@@ -2817,8 +3043,8 @@
   if (!embedded)
     $('connection-overlay').addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;
-      const first = $('access-token'),
-        last = $('connect-button');
+      const first = $('sso').hidden ? $('access-token') : $('sso-button'),
+        last = $('connect-button').hidden ? $('sso-button') : $('connect-button');
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -2830,7 +3056,10 @@
   if (!embedded) window.addEventListener('hashchange', () => openPage(location.hash.slice(1)));
   if (embedded) startEmbed();
   else {
+    // First of all: the return from the provider (S15-A) is taken, and its entry removed, before anything else runs.
+    const back = takeSignInReturn();
     openPage(location.hash.slice(1));
     disconnect();
+    setupSignIn(back).catch(() => signInError(signInMessages.unavailable));
   }
 })();

@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawn, execFileSync} from 'node:child_process';
 import {createServer} from 'node:net';
+import {createServer as createHttpServer} from 'node:http';
 import {randomBytes, webcrypto, createHash} from 'node:crypto';
 import {JSDOM, VirtualConsole} from 'jsdom';
 import {inflateSync, deflateSync, crc32} from 'node:zlib';
@@ -117,8 +118,12 @@ function app(intercept, options) {
   virtualConsole.on('jsdomError', error => {
     if (!error.message.includes('navigation')) errors.push(error.message);
   });
+  // options.origin: another server than the shared one; options.search: the page's query (a return from the provider, S15-A);
+  // options.storage: this tab's sessionStorage as the page finds it.
+  const origin = options?.origin || url;
+  const navigations = [];
   const dom = new JSDOM(html, {
-    url: url + '/console/',
+    url: origin + '/console/' + (options?.search || ''),
     runScripts: 'outside-only',
     pretendToBeVisual: true,
     virtualConsole,
@@ -140,7 +145,7 @@ function app(intercept, options) {
     if (this.download) {
       const blob = blobs.get(this.href);
       downloads.push({name: this.download, blob});
-    }
+    } else navigations.push(this.href);
   };
   w.fetch = async (path, options) => {
     trace.push({method: options?.method || 'GET', path: String(path), key: options?.headers?.['Idempotency-Key']});
@@ -149,9 +154,10 @@ function app(intercept, options) {
       if (response) return response;
     }
     if (!listing && /\/jobs\?limit=\d+(&|$)/.test(String(path))) return json([]);
-    return fetch(url + path, options);
+    return fetch(origin + path, options);
   };
   const listing = !!options?.listing;
+  for (const [k, v] of Object.entries(options?.storage || {})) w.sessionStorage.setItem(k, v);
   w.eval(dashboardScript);
   w.eval(canvasScript);
   w.eval(versionsScript);
@@ -177,7 +183,7 @@ function app(intercept, options) {
     assert.equal($('page-workspace').hidden, false);
     input('query-companies', 'company_demo');
   }
-  return {dom, w, $, input, click, login, configure, downloads, trace, errors, close: () => w.close()};
+  return {dom, w, $, input, click, login, configure, downloads, navigations, trace, errors, close: () => w.close()};
 }
 function problem(status, code) {
   return new Response(JSON.stringify({error: code}), {status, headers: {'Content-Type': 'application/json'}});
@@ -250,6 +256,394 @@ test('invalid login and company selector escalation are rejected without cached 
     assert.ok(a.$('notice').textContent.includes('无权访问'));
   } finally {
     a.close();
+  }
+});
+
+// ---- S15-A (ADR 0019): the browser sign-in. The provider is a fixture: its authorization endpoint is never fetched (the console leaves
+// for it by a navigation, which the harness records), its return is a new page with ?code&state, and the exchange is intercepted here or,
+// in the last test, made by a second Go server against a fake token endpoint. ----
+const signInKey = 'reporting-sign-in';
+const s256 = verifier => createHash('sha256').update(verifier).digest('base64url');
+function signInConfig(origin, changes) {
+  return {
+    enabled: true,
+    authorization_endpoint: 'https://idp.example.test/oauth2/authorize',
+    client_id: 'reporting-console',
+    redirect_uri: origin + '/console/',
+    scope: 'openid reporting.read',
+    code_challenge_method: 'S256',
+    paste_fallback: false,
+    ...changes,
+  };
+}
+// The console's first page, up to its departure for the provider: the navigation's parameters and the one entry it stored.
+async function leaveForProvider(intercept, options) {
+  const a = app(intercept, options);
+  try {
+    await until(() => !a.$('sso').hidden, 'sign-in button');
+    assert.equal(a.w.sessionStorage.length, 0, 'nothing stored before the sign-in starts');
+    a.click('sso-button');
+    await until(() => a.navigations.length === 1, 'navigation to the provider');
+    const target = new URL(a.navigations[0]);
+    assert.equal(a.w.sessionStorage.length, 1);
+    return {target, entry: a.w.sessionStorage.getItem(signInKey), a};
+  } catch (error) {
+    a.close();
+    throw error;
+  }
+}
+
+test('S15-A: without a sign_in configuration the console offers the paste form alone and stores nothing', async () => {
+  const a = app();
+  try {
+    await until(() => a.trace.some(t => t.path.endsWith('/sign-in')), 'sign-in configuration asked');
+    assert.deepEqual(await (await fetch(url + '/api/reporting/v1/sign-in')).json(), {enabled: false});
+    await sleep(50);
+    assert.equal(a.$('sso').hidden, true);
+    assert.equal(a.$('access-token').hidden, false);
+    assert.equal(a.$('connect-button').hidden, false);
+    assert.equal(a.w.document.activeElement, a.$('access-token'));
+    await a.login();
+    assert.equal(a.w.sessionStorage.length, 0);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S15-A: the sign-in goes to the provider with S256 PKCE, comes back, has the code exchanged by the server and keeps nothing stored', async () => {
+  const exchanges = [];
+  const intercept = async (path, options) => {
+    if (path === '/api/reporting/v1/sign-in') {
+      assert.equal(options.headers.Authorization, undefined, 'the configuration is asked without a token');
+      return json(signInConfig(url));
+    }
+    if (path === '/api/reporting/v1/sign-in/token') {
+      assert.equal(options.method, 'POST');
+      assert.equal(options.headers.Authorization, undefined);
+      exchanges.push(JSON.parse(options.body));
+      return json({access_token: token, expires_in: 300});
+    }
+  };
+  const first = await leaveForProvider(intercept);
+  first.a.close();
+  const {target, entry} = first;
+  assert.equal(target.origin + target.pathname, 'https://idp.example.test/oauth2/authorize');
+  const q = target.searchParams;
+  assert.deepEqual([...q.keys()].sort(), [
+    'client_id',
+    'code_challenge',
+    'code_challenge_method',
+    'nonce',
+    'redirect_uri',
+    'response_type',
+    'scope',
+    'state',
+  ]);
+  assert.equal(q.get('response_type'), 'code');
+  assert.equal(q.get('client_id'), 'reporting-console');
+  assert.equal(q.get('redirect_uri'), url + '/console/');
+  assert.equal(q.get('scope'), 'openid reporting.read');
+  assert.equal(q.get('code_challenge_method'), 'S256');
+  assert.match(q.get('state'), /^[A-Za-z0-9_-]{22}$/);
+  assert.match(q.get('nonce'), /^[A-Za-z0-9_-]{22}$/);
+  const saved = JSON.parse(entry);
+  assert.deepEqual(Object.keys(saved).sort(), ['at', 'hash', 'nonce', 'state', 'verifier']);
+  assert.match(saved.verifier, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(q.get('code_challenge'), s256(saved.verifier), 'the challenge is the S256 of the verifier');
+  assert.equal(saved.state, q.get('state'));
+  assert.equal(saved.nonce, q.get('nonce'));
+  assert.equal(entry.includes(token), false);
+
+  // The provider sends the browser back to the console: a new page, the same tab's sessionStorage.
+  const b = app(intercept, {
+    search: '?code=code-from-the-provider&state=' + q.get('state') + '&session_state=x',
+    storage: {[signInKey]: entry},
+  });
+  try {
+    await until(() => b.$('connection-overlay').hidden, 'signed in by the provider');
+    await until(() => b.$('query-dataset').options.length > 0, 'catalog loaded');
+    assert.deepEqual(exchanges, [{code: 'code-from-the-provider', code_verifier: saved.verifier, nonce: saved.nonce}]);
+    assert.equal(b.w.location.search, '', 'the code left the address');
+    assert.equal(b.w.location.href.split('#')[0], url + '/console/');
+    assert.equal(b.w.sessionStorage.length, 0, 'nothing stored after the sign-in');
+    assert.equal(b.w.localStorage.length, 0);
+    // The token is used as a pasted one: the Bearer of the API's requests, and nowhere in the page.
+    const session = b.trace.find(t => t.path.endsWith('/session'));
+    assert.ok(session);
+    assert.equal(b.w.document.documentElement.outerHTML.includes(token), false);
+    assert.equal(b.$('actor-label').textContent.length > 0, true);
+    b.click('logout');
+    assert.equal(b.$('connection-overlay').hidden, false);
+    assert.equal(b.$('sso').hidden, false);
+    assert.equal(b.$('sso-button').disabled, false);
+    assert.equal(b.w.sessionStorage.length, 0);
+    assert.equal(b.errors.length, 0, b.errors.join('|'));
+  } finally {
+    b.close();
+  }
+});
+
+test('S15-A: a return that this tab did not start, a replay, a refusal and an outage are refused with fixed messages', async () => {
+  const exchanged = [];
+  let answer = () => json({access_token: token});
+  const intercept = async (path, options) => {
+    if (path === '/api/reporting/v1/sign-in') return json(signInConfig(url));
+    if (path === '/api/reporting/v1/sign-in/token') {
+      exchanged.push(JSON.parse(options.body));
+      return answer();
+    }
+  };
+  const {entry, a} = await leaveForProvider(intercept);
+  a.close();
+  const saved = JSON.parse(entry);
+  const back = async (search, storage, message) => {
+    const b = app(intercept, {search, storage});
+    try {
+      await until(() => !b.$('connect-error').hidden, 'refusal shown: ' + message);
+      assert.equal(b.$('connect-error').textContent, message);
+      assert.equal(b.$('connection-overlay').hidden, false);
+      assert.equal(b.w.location.search, '');
+      assert.equal(b.w.sessionStorage.length, 0, 'the entry is gone, used or not');
+      await until(() => !b.$('sso-button').disabled, 'sign-in available again');
+      assert.equal(b.errors.length, 0, b.errors.join('|'));
+      return b;
+    } finally {
+      b.close();
+    }
+  };
+  const stateMessage = '登录结果与本页发起的登录不符或已过期，请重新登录。';
+  // Another state than the one this tab sent (a forged or crossed return): no exchange.
+  await back('?code=c1&state=' + 'x'.repeat(22), {[signInKey]: entry}, stateMessage);
+  // No entry at all (the link opened again, another tab, a reload after the return): no exchange.
+  await back('?code=c1&state=' + saved.state, {}, stateMessage);
+  // An entry older than ten minutes.
+  await back(
+    '?code=c1&state=' + saved.state,
+    {[signInKey]: JSON.stringify({...saved, at: Date.now() - 11 * 60 * 1000})},
+    stateMessage
+  );
+  // The state twice.
+  await back('?code=c1&state=' + saved.state + '&state=' + saved.state, {[signInKey]: entry}, stateMessage);
+  assert.equal(exchanged.length, 0, 'nothing reached the exchange');
+  // The provider's own refusal: its text is never shown.
+  await back(
+    '?error=access_denied&error_description=%3Cimg%20src%3Dx%3E%20Provider%20says&state=' + saved.state,
+    {[signInKey]: entry},
+    '身份提供方未完成登录（已取消或被拒绝），请重新登录。'
+  );
+  assert.equal(exchanged.length, 0);
+  // The server's fixed codes.
+  for (const [status, code, message] of [
+    [409, 'SIGN_IN_REPLAYED', '此登录结果已使用过，请重新登录。'],
+    [400, 'SIGN_IN_REFUSED', '身份提供方拒绝了此次登录结果，请重新登录。'],
+    [403, 'SIGN_IN_TOKEN_REFUSED', '身份提供方签发的令牌不被本平台接受，请联系平台运营方。'],
+    [502, 'SIGN_IN_UNAVAILABLE', '身份提供方暂时不可用，请稍后重试。'],
+    [503, 'SIGN_IN_BUSY', '身份提供方暂时不可用，请稍后重试。'],
+    [500, 'PROVIDER SAID <b>no</b>', '身份提供方暂时不可用，请稍后重试。'],
+  ]) {
+    answer = () => problem(status, code);
+    await back('?code=c2&state=' + saved.state, {[signInKey]: entry}, message);
+  }
+  // An answer that is not a token.
+  answer = () => json({access_token: 'two words'});
+  await back('?code=c3&state=' + saved.state, {[signInKey]: entry}, '身份提供方暂时不可用，请稍后重试。');
+  assert.equal(exchanged.length, 7);
+});
+
+test('S15-A: the paste form stays only with paste_fallback, and the sign-in refuses to start at an address the provider does not know', async () => {
+  const a = app(async path => {
+    if (path === '/api/reporting/v1/sign-in') return json(signInConfig(url, {paste_fallback: true}));
+  });
+  try {
+    await until(() => !a.$('sso').hidden, 'sign-in button');
+    assert.equal(a.$('sso-or').hidden, false);
+    assert.equal(a.$('access-token').hidden, false);
+    await a.login();
+    assert.equal(a.$('connection-overlay').hidden, true);
+  } finally {
+    a.close();
+  }
+  const b = app(async path => {
+    if (path === '/api/reporting/v1/sign-in') return json(signInConfig(url));
+  });
+  try {
+    await until(() => !b.$('sso').hidden, 'sign-in button');
+    assert.equal(b.$('access-token').hidden, true);
+    assert.equal(b.$('connect-button').hidden, true);
+    assert.equal(b.$('sso-or').hidden, true);
+    assert.equal(b.w.document.activeElement, b.$('sso-button'));
+    // The focus stays in the card: Tab on the one control comes back to it.
+    const tab = new b.w.KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true});
+    b.$('sso-button').dispatchEvent(tab);
+    assert.equal(tab.defaultPrevented, true);
+  } finally {
+    b.close();
+  }
+  const c = app(async path => {
+    if (path === '/api/reporting/v1/sign-in')
+      return json(signInConfig('https://reporting.example.test', {paste_fallback: true}));
+  });
+  try {
+    await until(() => !c.$('sso').hidden, 'sign-in button');
+    assert.equal(c.$('sso-button').disabled, true);
+    assert.equal(
+      c.$('connect-error').textContent,
+      '单点登录只能从登记的地址使用，请改用此地址打开控制台：https://reporting.example.test/console/'
+    );
+    c.click('sso-button');
+    await sleep(30);
+    assert.equal(c.navigations.length, 0);
+    assert.equal(c.w.sessionStorage.length, 0);
+  } finally {
+    c.close();
+  }
+  // A configuration the console cannot trust (another scheme, a plain-HTTP provider off loopback, no S256) is no sign-in at all.
+  for (const changes of [
+    {authorization_endpoint: 'javascript:alert(1)'},
+    {authorization_endpoint: 'http://idp.example.test/authorize'},
+    {authorization_endpoint: 'https://idp.example.test/authorize?prompt=none'},
+    {code_challenge_method: 'plain'},
+    {scope: ''},
+    {enabled: false},
+  ]) {
+    const d = app(async path => {
+      if (path === '/api/reporting/v1/sign-in') return json(signInConfig(url, changes));
+    });
+    try {
+      await until(() => d.trace.some(t => t.path.endsWith('/sign-in')), 'configuration asked');
+      await sleep(30);
+      assert.equal(d.$('sso').hidden, true, JSON.stringify(changes));
+      assert.equal(d.$('access-token').hidden, false);
+    } finally {
+      d.close();
+    }
+  }
+});
+
+// The whole flow with the real exchange: a second Go server with the -sign-in flags, whose token endpoint is a fake provider here that
+// knows the code it issued, the code's S256 challenge and redirect URI, and answers the demo's secret as the access token.
+test('S15-A: end to end, the Go server exchanges the code at a fake provider and the console signs in with the token', async () => {
+  const issued = new Map();
+  const seen = [];
+  const provider = createHttpServer((req, res) => {
+    let body = '';
+    req.on('data', c => (body += c));
+    req.on('end', () => {
+      const form = new URLSearchParams(body);
+      seen.push({path: req.url, form: Object.fromEntries(form), type: req.headers['content-type']});
+      const code = issued.get(form.get('code'));
+      const ok =
+        req.method === 'POST' &&
+        req.url === '/oauth2/token' &&
+        form.get('grant_type') === 'authorization_code' &&
+        form.get('client_id') === 'reporting-console' &&
+        code &&
+        !code.used &&
+        code.redirect === form.get('redirect_uri') &&
+        code.challenge === s256(form.get('code_verifier') || '');
+      if (code) code.used = true;
+      res.setHeader('Content-Type', 'application/json');
+      if (!ok) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({error: 'invalid_grant', error_description: 'PROVIDER-TEXT'}));
+        return;
+      }
+      res.end(
+        JSON.stringify({access_token: token, token_type: 'Bearer', expires_in: 300, refresh_token: 'REFRESH-TOKEN'})
+      );
+    });
+  });
+  await new Promise(resolve => provider.listen(0, '127.0.0.1', resolve));
+  const idp = 'http://127.0.0.1:' + provider.address().port;
+  const listener = createServer();
+  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
+  const port = listener.address().port;
+  await new Promise(resolve => listener.close(resolve));
+  const origin = 'http://127.0.0.1:' + port;
+  const second = spawn(
+    join(temporary, 'reporting-demo'),
+    [
+      '-profile',
+      'contract-simulator',
+      '-memory',
+      '-listen',
+      '127.0.0.1:' + port,
+      '-sign-in-authorization-endpoint',
+      idp + '/oauth2/authorize',
+      '-sign-in-token-endpoint',
+      idp + '/oauth2/token',
+      '-sign-in-client-id',
+      'reporting-console',
+      '-sign-in-redirect-uri',
+      origin + '/console/',
+      '-sign-in-scope',
+      'openid reporting.read',
+    ],
+    {cwd: root, env: {...process.env, REPORTING_DEMO_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe']}
+  );
+  let stderr = '';
+  second.stderr.on('data', c => (stderr += c));
+  try {
+    for (let i = 0; ; i++) {
+      try {
+        if ((await fetch(origin + '/console/')).ok) break;
+      } catch (_) {}
+      if (second.exitCode !== null || i > 200) throw new Error('second Go server did not start: ' + stderr);
+      await sleep(30);
+    }
+    const config = await (await fetch(origin + '/api/reporting/v1/sign-in')).json();
+    assert.deepEqual(config, {
+      enabled: true,
+      authorization_endpoint: idp + '/oauth2/authorize',
+      client_id: 'reporting-console',
+      redirect_uri: origin + '/console/',
+      scope: 'openid reporting.read',
+      code_challenge_method: 'S256',
+      paste_fallback: false,
+    });
+    const {target, entry, a} = await leaveForProvider(undefined, {origin});
+    a.close();
+    assert.equal(target.origin + target.pathname, idp + '/oauth2/authorize');
+    // The provider's authorization endpoint, played here: the user signs in, a code is issued for the challenge and the redirect URI.
+    issued.set('code-e2e', {
+      challenge: target.searchParams.get('code_challenge'),
+      redirect: target.searchParams.get('redirect_uri'),
+    });
+    const search = '?code=code-e2e&state=' + target.searchParams.get('state');
+    const b = app(undefined, {origin, search, storage: {[signInKey]: entry}});
+    try {
+      await until(() => b.$('connection-overlay').hidden, 'signed in through the Go exchange', 10000);
+      await until(() => b.$('query-dataset').options.length > 0, 'catalog loaded');
+      assert.equal(b.w.sessionStorage.length, 0);
+      assert.equal(b.w.location.search, '');
+      assert.equal(seen.length, 1);
+      assert.equal(seen[0].type, 'application/x-www-form-urlencoded');
+      assert.deepEqual(Object.keys(seen[0].form).sort(), [
+        'client_id',
+        'code',
+        'code_verifier',
+        'grant_type',
+        'redirect_uri',
+      ]);
+      assert.equal(b.errors.length, 0, b.errors.join('|'));
+    } finally {
+      b.close();
+    }
+    // The same return again (the address replayed in another tab with a copy of the entry): the server refuses the code it already redeemed.
+    const c = app(undefined, {origin, search, storage: {[signInKey]: entry}});
+    try {
+      await until(() => !c.$('connect-error').hidden, 'replay refused');
+      assert.equal(c.$('connect-error').textContent, '此登录结果已使用过，请重新登录。');
+      assert.equal(seen.length, 1, 'the replay did not reach the provider');
+    } finally {
+      c.close();
+    }
+    assert.equal(stderr.includes('code-e2e') || stderr.includes(token) || stderr.includes('PROVIDER-TEXT'), false);
+  } finally {
+    second.kill('SIGTERM');
+    if (second.exitCode === null) await new Promise(resolve => second.once('exit', resolve));
+    await new Promise(resolve => provider.close(resolve));
   }
 });
 

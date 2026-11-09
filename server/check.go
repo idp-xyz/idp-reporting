@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	"idp.local/reporting/identity/signin"
 	"idp.local/reporting/storage/objects"
 	"idp.local/reporting/storage/postgres"
 )
@@ -34,6 +35,8 @@ type Report struct {
 	// ADR 0016: the digests the start line and every reload log, so that a reviewed file can be matched to a running server.
 	BindingsDigest, ConnectionsDigest string
 	DesignStore                       string
+	// S15-A: the console's browser sign-in, and whether a confidential client's secret is in the environment.
+	SignIn, SignInSecretSet bool
 }
 
 // Print writes the report as lines of `name: value`.
@@ -57,6 +60,7 @@ func (p Report) Print(w io.Writer) {
 	fmt.Fprintf(w, "workers: %d\n", p.Workers)
 	fmt.Fprintf(w, "quotas: jobs_in_flight %d, stored_results %d, admissions_per_hour %d, queries_in_flight %d\n", p.Quotas[0], p.Quotas[1], p.Quotas[2], p.Quotas[3])
 	fmt.Fprintf(w, "object store: %t, pdf: %t, private directories: %d, embedding integrations: %d, sweep seconds: %d, simulators allowed: %t\n", p.ObjectStore, p.PDF, p.Directories, p.EmbedIntegr, p.SweepSeconds, p.AllowSimulator)
+	fmt.Fprintf(w, "browser sign-in: %t\n", p.SignIn)
 	if p.TLS {
 		fmt.Fprintf(w, "certificate: valid for another %d days\n", int(p.CertExpiresIn.Hours()/24))
 	}
@@ -69,6 +73,9 @@ func (p Report) Print(w io.Writer) {
 	fmt.Fprintf(w, "environment: %s %s", StoreDSNEnv, set(p.StoreDSNSet))
 	if p.ObjectStore {
 		fmt.Fprintf(w, ", object store keys %s", set(p.ObjectKeysSet))
+	}
+	if p.SignIn {
+		fmt.Fprintf(w, ", %s %s (a public client needs none)", signin.ClientSecretEnv, set(p.SignInSecretSet))
 	}
 	fmt.Fprintln(w)
 }
@@ -114,6 +121,19 @@ func Check(cfg Config, reg Registry, getenv func(string) string) (Report, error)
 			}
 		}
 		rep.ObjectKeysSet = getenv(objects.AccessKeyEnv) != "" && getenv(objects.SecretKeyEnv) != ""
+	}
+	if si := cfg.SignIn; si != nil {
+		rep.SignIn = true
+		if si.CAFile != "" {
+			if _, err := readTrustedFile("sign_in.ca_file", si.CAFile, publicFile, maxCertFileBytes); err != nil {
+				return rep, err
+			}
+		}
+		secret := getenv(signin.ClientSecretEnv)
+		rep.SignInSecretSet = secret != ""
+		if _, err := signin.New(si.Client(secret)); err != nil {
+			return rep, fmt.Errorf("sign_in is refused with %s or its ca_file (the value is not shown)", signin.ClientSecretEnv)
+		}
 	}
 	if p := cfg.PDF; p != nil {
 		rep.PDF = true

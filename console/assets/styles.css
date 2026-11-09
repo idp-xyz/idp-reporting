@@ -1797,6 +1797,13 @@ tbody tr:last-child td {
   color: var(--err);
   margin-top: 12px;
 }
+/* S15-A: the browser sign-in above the paste form, and the line between them when both are shown. */
+.sso-or {
+  font-size: 12px;
+  color: var(--faint);
+  text-align: center;
+  margin: 14px 0 12px;
+}
 
 /* ---- the dashboard studio (#page-dashboard): the document studio's regions (studio.css) with the dashboard's functions ---- */
 body.board-on .console-footer,
