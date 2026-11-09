@@ -130,3 +130,35 @@ func (t *designTxn) Rollback() error {
 	rollback(t.ctx, t.tx)
 	return nil
 }
+
+// ImportDesign writes one owner's document of one store as the owner (row-level security applies to a role it binds), for the import of
+// private directories (S11-C, `reporting-migrate import-designs`). A document already in the database is kept unless replace is set: written
+// says whether this call wrote it.
+func ImportDesign(ctx context.Context, pool *pgxpool.Pool, store string, owner r.Identity, data []byte, replace bool) (written bool, err error) {
+	if !owner.Valid() || len(data) == 0 || len(data) > privatedocs.MaxDocument {
+		return false, r.ErrInvalid
+	}
+	known := false
+	for _, s := range DesignStores {
+		known = known || s == store
+	}
+	if !known {
+		return false, r.ErrInvalid
+	}
+	b := &designBackend{pool: pool, store: store}
+	tx, err := b.Begin(owner)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if existing, _ := tx.Load(); existing != nil && !replace {
+		return false, nil
+	}
+	if err = tx.Store(data); err != nil {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}

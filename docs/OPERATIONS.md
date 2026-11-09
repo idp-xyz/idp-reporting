@@ -577,6 +577,27 @@ rows, not objects: a test that shares a bucket empties it first.
 Not in this slice: moving existing inline artifacts, snapshots in the object store, server-side encryption, bucket lifecycle rules, multipart
 uploads, AWS S3 qualification by test, backups, capacity, key lifecycle.
 
+## Designs in the store (S11, ADR 0017)
+
+From migration 011 the designs (report layouts, dashboards, document templates, page backgrounds, images) may live in the table `designs`
+instead of the server's private directories: `"design_store": "database"` in the server's configuration (docs/DEPLOYMENT.md "Several servers").
+After `up` to 011 run `roles` (a new data table). Back the table up with the rest of the database; it is not in the object store.
+
+**Moving a deployment from its directories.** With the servers stopped (the import takes each directory's lock, as a server does):
+
+```
+reporting-migrate import-designs --issuer https://idp.example.com --bindings /etc/reporting/issuer/bindings.json \
+  --layout-directory /var/lib/reporting/layouts --dashboard-directory /var/lib/reporting/dashboards \
+  --template-directory /var/lib/reporting/templates --background-directory /var/lib/reporting/backgrounds
+```
+
+A file of a private directory is named by a digest of its owner, not by the owner, so the import looks for the documents of the identities the
+bindings file binds (`--issuer` is the server's `issuer.issuer`). It reads every such document first and holds it to its store's rules (the
+layouts', dashboards' and templates' own validation of every version; the record rules for the backgrounds and images); if one fails, nothing
+is written. Then each document is one transaction as its owner. A document already in the store is kept unless `--replace`. It prints, per
+store, how many were imported and kept and how many files belong to no bound identity (those are not imported: add the binding, or leave them).
+No identity is printed. Then set `design_store` to `database`, remove the four directory fields and start the servers.
+
 ## Backup and restore (S04-F)
 
 Since S04-E the platform's state is in two places: the PostgreSQL store (jobs, snapshots, artifact rows, issue records, the ledgers) and, with an object

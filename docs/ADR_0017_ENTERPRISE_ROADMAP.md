@@ -1,6 +1,7 @@
 # ADR 0017 · From a qualified single server to an enterprise reporting platform: the order of the work
 
 Date: 2026-11-09. Status: accepted. A plan of slices, each with its own scope document and pull request; this ADR is updated as they land.
+Progress: S11-A, S11-B and S11-C written (docs/S11A_SCOPE.md, S11B_SCOPE.md, S11C_SCOPE.md).
 
 ## Context
 
