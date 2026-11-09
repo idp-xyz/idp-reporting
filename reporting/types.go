@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
 var (
-	ErrInvalid     = errors.New("INVALID_REQUEST")
-	ErrDenied      = errors.New("AUTH_SCOPE_DENIED")
+	ErrInvalid = errors.New("INVALID_REQUEST")
+	ErrDenied  = errors.New("AUTH_SCOPE_DENIED")
+	// ErrRoleDenied is a refusal of an action the principal's roles do not allow (S12-A, ADR 0018): 403, distinct from a scope refusal.
+	ErrRoleDenied  = errors.New("AUTH_ROLE_DENIED")
 	ErrNotFound    = errors.New("NOT_FOUND")
 	ErrConflict    = errors.New("IDEMPOTENCY_CONFLICT")
 	ErrUnsupported = errors.New("UNSUPPORTED_COMBINATION")
@@ -103,7 +106,52 @@ type Identity struct {
 type Principal struct {
 	Identity
 	Integrations []string
+	// Roles are the binding's (S12-A, ADR 0018), never a token's. nil is a binding that names none: the rights every bound identity had
+	// before roles (DefaultRoles); administrator is never implied.
+	Roles []string
 }
+
+// The roles of ADR 0018.
+const (
+	RoleViewer        = "viewer"
+	RoleDesigner      = "designer"
+	RolePublisher     = "publisher"
+	RoleIssuer        = "issuer"
+	RoleAdministrator = "administrator"
+)
+
+// AllRoles are the five role names, in their order.
+var AllRoles = []string{RoleViewer, RoleDesigner, RolePublisher, RoleIssuer, RoleAdministrator}
+
+// DefaultRoles are a binding's roles when it names none: what every bound identity could do before roles (ADR 0018 Q1).
+var DefaultRoles = []string{RoleViewer, RoleDesigner, RolePublisher, RoleIssuer}
+
+// ValidRoles says whether a binding's roles are 1..5 distinct known names.
+func ValidRoles(roles []string) bool {
+	if len(roles) == 0 || len(roles) > len(AllRoles) {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, role := range roles {
+		if seen[role] || !slices.Contains(AllRoles, role) {
+			return false
+		}
+		seen[role] = true
+	}
+	return true
+}
+
+// EffectiveRoles are the principal's roles: its binding's, or DefaultRoles when the binding names none.
+func (p Principal) EffectiveRoles() []string {
+	if p.Roles == nil {
+		return slices.Clone(DefaultRoles)
+	}
+	return slices.Clone(p.Roles)
+}
+
+// Has says whether the principal's roles include role.
+func (p Principal) Has(role string) bool { return slices.Contains(p.EffectiveRoles(), role) }
+
 type Owner struct {
 	Identity
 	Integration string

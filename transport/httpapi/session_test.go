@@ -20,8 +20,10 @@ func TestSessionReturnsOnlyAuthenticatedIdentityAndConnections(t *testing.T) {
 	}
 	var fields map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &fields)
-	if len(fields) != 2 {
-		t.Fatal("unexpected session disclosure")
+	// identity, integrations and (S12-A) the effective roles: a binding that names none has the default four.
+	roles, _ := fields["roles"].([]any)
+	if len(fields) != 3 || len(roles) != 4 || roles[0] != "viewer" || roles[3] != "issuer" {
+		t.Fatal("unexpected session disclosure", fields)
 	}
 	if request(h, "GET", "/api/reporting/v1/session", nil, false).Code != 401 {
 		t.Fatal("anonymous session allowed")

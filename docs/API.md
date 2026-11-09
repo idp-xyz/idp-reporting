@@ -8,7 +8,8 @@ it does not change the simulator data classification or qualify a real issuer.
 
 | Method and path | Request / response |
 |---|---|
-| GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials. The integrations are the principal's that the server has a connection for (ADR 0016); a bound product without a connection is not listed |
+| GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials. The integrations are the principal's that the server has a connection for (ADR 0016); a bound product without a connection is not listed `roles` (S12-A) are the binding's effective roles. |
+| (every route) | S12-A (ADR 0018): a route needs a role, from its pattern: a `.../release` a `publisher`, `POST /issues` an `issuer`, any other change of a layout, dashboard, template, background or image (and its catalog, a sample's copy) a `designer`; reading, querying, freezing, exporting, previews and checks a `viewer`. A principal without it gets 403 `{"error":"AUTH_ROLE_DENIED"}` before the route does anything. |
 | GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |

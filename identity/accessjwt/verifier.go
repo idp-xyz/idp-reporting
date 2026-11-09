@@ -44,6 +44,8 @@ func (scopeDenied) InsufficientScope() bool { return true }
 type Binding struct {
 	Subject, ClientID, Tenant string
 	Integrations              []string
+	// Roles are the binding's roles (S12-A, ADR 0018): nil for none named (the default rights), else 1..5 distinct known names.
+	Roles []string
 }
 
 // Config is one issuer's explicit trust and identity map. JWKS contains public
@@ -95,7 +97,10 @@ func (v *Verifier) Replace(c Config) error {
 	}
 	next := &configuration{issuer: c.Issuer, audience: c.Audience, requiredScope: c.RequiredScope, maxLifetime: int64(c.MaxTokenLifetime / time.Second), keys: keys, bindings: make(map[subjectClient]r.Principal)}
 	for _, b := range c.Bindings {
-		p := r.Principal{Identity: r.Identity{Tenant: b.Tenant, Issuer: c.Issuer, Subject: b.Subject}, Integrations: slices.Clone(b.Integrations)}
+		p := r.Principal{Identity: r.Identity{Tenant: b.Tenant, Issuer: c.Issuer, Subject: b.Subject}, Integrations: slices.Clone(b.Integrations), Roles: slices.Clone(b.Roles)}
+		if b.Roles != nil && !r.ValidRoles(b.Roles) {
+			return ErrInvalidConfig
+		}
 		id := subjectClient{b.Subject, b.ClientID}
 		if _, exists := next.bindings[id]; exists {
 			return ErrInvalidConfig

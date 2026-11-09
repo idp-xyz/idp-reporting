@@ -139,6 +139,7 @@ type bindingEntry struct {
 	ClientID     string   `json:"client_id"`
 	Tenant       string   `json:"tenant"`
 	Integrations []string `json:"integrations"`
+	Roles        []string `json:"roles"`
 }
 
 // issuerFiles are the two files a reload re-reads. digest is the SHA-256 of the bindings file as read (ADR 0016: what is in force).
@@ -276,7 +277,7 @@ func parseBindings(raw []byte) ([]accessjwt.Binding, error) {
 	if len(list) > 4096 {
 		return bad("the file holds more than 4096 bindings")
 	}
-	allowed := map[string]bool{"subject": true, "client_id": true, "tenant": true, "integrations": true}
+	allowed := map[string]bool{"subject": true, "client_id": true, "tenant": true, "integrations": true, "roles": true}
 	for _, item := range list {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -294,7 +295,10 @@ func parseBindings(raw []byte) ([]accessjwt.Binding, error) {
 	}
 	out := make([]accessjwt.Binding, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, accessjwt.Binding{Subject: e.Subject, ClientID: e.ClientID, Tenant: e.Tenant, Integrations: e.Integrations})
+		if e.Roles != nil && len(e.Roles) == 0 {
+			return bad("a binding's roles name at least one role (leave the field out for the default rights)")
+		}
+		out = append(out, accessjwt.Binding{Subject: e.Subject, ClientID: e.ClientID, Tenant: e.Tenant, Integrations: e.Integrations, Roles: e.Roles})
 	}
 	return out, nil
 }

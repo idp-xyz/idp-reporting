@@ -197,7 +197,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	}
 	bind("GET "+base+"/session", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		// Only the products the service serves for the principal (ADR 0016): a binding's product without a connection is never offered.
-		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": service.Served(p)})
+		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": service.Served(p), "roles": p.EffectiveRoles()})
 	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		return send(w, 200, capabilities(service, false))
@@ -505,7 +505,7 @@ func classify(e error) (code string, status int, ok bool) {
 	for _, candidate := range []struct {
 		err    error
 		status int
-	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
+	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
 		if errors.Is(e, candidate.err) {
 			return candidate.err.Error(), candidate.status, true
 		}
@@ -544,6 +544,37 @@ func problem(w http.ResponseWriter, e error, status int) {
 	_ = send(w, status, body)
 }
 
+// designPaths are the routes of the private design stores (layouts, dashboards, templates, page backgrounds, images): a change of any of them
+// is a designer's (S12-A).
+var designPaths = []string{"/layouts", "/dashboards", "/document-templates", "/document-backgrounds", "/document-images"}
+
+// RequiredRole is the role a route needs (S12-A, ADR 0018), from its method and the pattern the mux matched: a publication or withdrawal
+// (".../release") is a publisher's, an official issue an issuer's, any other change of a design a designer's; reading, querying, freezing,
+// exporting, previewing and checking are a viewer's. A route added later falls under the same rules.
+func RequiredRole(method, pattern string) string {
+	_, path, _ := strings.Cut(pattern, " ")
+	if path == "" {
+		path = pattern
+	}
+	if method == http.MethodGet || method == http.MethodHead {
+		return r.RoleViewer
+	}
+	switch {
+	case strings.HasSuffix(path, "/release"):
+		return r.RolePublisher
+	case strings.HasSuffix(path, "/api/reporting/v1/issues"):
+		return r.RoleIssuer
+	case strings.HasSuffix(path, "/previews"):
+		return r.RoleViewer
+	}
+	for _, d := range designPaths {
+		if strings.Contains(path, "/api/reporting/v1"+d) {
+			return r.RoleDesigner
+		}
+	}
+	return r.RoleViewer
+}
+
 func authenticated(authenticate Authenticate, fn func(http.ResponseWriter, *http.Request, r.Principal) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		p, e := authenticate(req)
@@ -560,6 +591,11 @@ func authenticated(authenticate Authenticate, fn func(http.ResponseWriter, *http
 				w.Header().Set("WWW-Authenticate", `Bearer realm="reporting", error="insufficient_scope"`)
 			}
 			problem(w, r.ErrDenied, status)
+			return
+		}
+		// S12-A (ADR 0018): the route's role, from the pattern the mux matched; a refusal names the code only.
+		if role := RequiredRole(req.Method, req.Pattern); !p.Has(role) {
+			problem(w, r.ErrRoleDenied, 403)
 			return
 		}
 		ctx, cancel := context.WithTimeout(req.Context(), r.WorkTimeout)

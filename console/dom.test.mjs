@@ -14680,3 +14680,24 @@ test('S10-B: 能力与环境 lists each product with the state its catalog answe
     c.close();
   }
 });
+
+// ---- S12-A: a role refusal is told as one (docs/ADR_0018_ROLES_APPROVAL_AUDIT.md) ----
+test('S12-A: an action the identity has no role for is refused with a notice that names the roles and who grants them', async () => {
+  const a = app(async (path, options) => {
+    if (/\/dashboards$/.test(path) && options?.method === 'POST') return problem(403, 'AUTH_ROLE_DENIED');
+  });
+  try {
+    await a.login();
+    a.configure();
+    a.click('snapshot');
+    await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled, 'snapshot');
+    a.w.document.querySelector('[data-page="dashboard"]').click();
+    a.click('board-add-metric');
+    a.click('board-server-save');
+    await until(() => a.$('notice').textContent.includes('角色'), 'the role refusal');
+    assert.match(a.$('notice').textContent, /没有执行此操作的角色.*平台运营方/);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});

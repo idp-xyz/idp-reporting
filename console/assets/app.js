@@ -692,6 +692,9 @@
     if (error.code === 'QUOTA_EXCEEDED' && error.status === 429 && quotaNames.includes(error.quota))
       return quotaMessage(error.quota);
     if (error.status === 401) return '访问令牌无效或已失效，请重新连接。';
+    // S12-A (ADR 0018): the binding's roles do not allow the action; the operator grants roles in the bindings.
+    if (error.status === 403 && error.code === 'AUTH_ROLE_DENIED')
+      return '当前身份没有执行此操作的角色（设计、发布或正式出具），请联系平台运营方在身份绑定中授予。';
     if (error.status === 403)
       return error.code === 'INSUFFICIENT_TOKEN_SCOPE'
         ? '令牌缺少报表访问范围。'

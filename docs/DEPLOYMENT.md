@@ -96,7 +96,7 @@ the rule and never repeats a value of the file.
 | `issuer.issuer` | required | `https://` URL. |
 | `issuer.audience`, `.required_scope` | required | Exact match. |
 | `issuer.max_token_lifetime` | required | 1..3600 seconds. |
-| `issuer.jwks_file`, `.bindings_file` | required | The public keys (at most 64 KiB, 16 RSA keys of 2048..4096 bits, e=65537) and the list of `{subject, client_id, tenant, integrations}` (strict, at most 4096). Re-read by a reload. |
+| `issuer.jwks_file`, `.bindings_file` | required | The public keys (at most 64 KiB, 16 RSA keys of 2048..4096 bits, e=65537) and the list of `{subject, client_id, tenant, integrations[, roles]}` (`roles`, S12-A, ADR 0018: 1..5 of `viewer`, `designer`, `publisher`, `issuer`, `administrator`; absent: `viewer, designer, publisher, issuer`, the rights before roles) (strict, at most 4096). Re-read by a reload. |
 | `cursor_key_files` | required | 1..4 files, newest first; each holds one key, hex or base64 (a text valid as both is read as hex), 32..64 bytes; two files may not hold the same key. |
 | `connections` | required | 1..256 entries `{tenant, integration, source_tenant, adapter, options}`; `(tenant, integration)` unique; `adapter` names a registry entry. |
 | `quotas.*` | 8, 64, 120, 4 | `jobs_in_flight` 1..1000, `stored_results` 1..100000, `admissions_per_hour` 1..100000, `queries_in_flight` 1..64; 0 is the default of each. |
