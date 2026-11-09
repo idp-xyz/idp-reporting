@@ -252,8 +252,8 @@ templates, backgrounds and images; a change of one owner's designs is one transa
 their changes. Jobs, snapshots, artifacts and issue records were already shared (the store, the object store). What stays per process: the
 requests-in-flight cap (`max_in_flight`) and the queries-in-flight quota (docs/API.md "Limits"). The start line says `design_store`.
 
-Moving an existing deployment from the directories to the database needs its designs imported (S11-C, docs/ADR_0017_ENTERPRISE_ROADMAP.md);
-until then keep `directories` on one server.
+Moving an existing deployment from the directories to the database: stop the servers, run `reporting-migrate import-designs` (docs/OPERATIONS.md
+"Designs in the store"), then switch `design_store` and start them.
 
 ## Upgrade procedure
 

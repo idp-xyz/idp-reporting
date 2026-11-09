@@ -33,6 +33,8 @@ func usage() error {
 the store is REPORTING_STORE_DSN; up/down/roles/init-profile run as the migrator role (or an owner); sweep runs as the sweep role or the migrator;
 sweep deletes the objects of the artifacts it deletes, and reconciles the bucket, when the object store flags are given (the keys are in
 REPORTING_OBJECT_STORE_ACCESS_KEY and REPORTING_OBJECT_STORE_SECRET_KEY, never flags); without them it deletes rows only;
+import-designs --issuer URL --bindings FILE [--layout-directory D] [--dashboard-directory D] [--template-directory D] [--background-directory D] [--replace]
+copies the designs of the bound identities from the server's private directories into the store (design_store database, S11-C), the server stopped;
 verify-objects only reads (it needs the object store flags and prints counts; --deep reads every object, --ids also prints the artifact ids that fail)`)
 }
 
@@ -78,6 +80,15 @@ func run(args []string, out io.Writer) error {
 	deep := fs.Bool("deep", false, "verify-objects: read every object once and compare its length and SHA-256 with the row's (slow)")
 	ids := fs.Bool("ids", false, "verify-objects: also print the artifact ids of the missing, mismatched and invalid rows (identifiers on stdout)")
 	objectStore := objects.Register(fs)
+	importIssuer := fs.String("issuer", "", "import-designs: the https issuer of the bindings (issuer.issuer of the server's configuration)")
+	importBindings := fs.String("bindings", "", "import-designs: the server's issuer.bindings_file (the identities whose designs are imported)")
+	importDirs := map[string]*string{
+		"layouts":     fs.String("layout-directory", "", "import-designs: the server's layout_directory"),
+		"dashboards":  fs.String("dashboard-directory", "", "import-designs: the server's dashboard_directory"),
+		"templates":   fs.String("template-directory", "", "import-designs: the server's template_directory"),
+		"backgrounds": fs.String("background-directory", "", "import-designs: the server's background_directory (its images/ too)"),
+	}
+	importReplace := fs.Bool("replace", false, "import-designs: overwrite a document already in the store")
 	timeout := fs.Duration("timeout", 5*time.Minute, "the whole run's time limit (002 rewrites every row; size it for the store)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -274,6 +285,14 @@ func run(args []string, out io.Writer) error {
 			return fmt.Errorf("verify-objects: %d missing, %d mismatched, %d invalid: %w", res.Missing, res.Mismatched, res.Invalid, r.ErrIntegrity)
 		}
 		return nil
+	case "import-designs":
+		o := importOptions{issuer: *importIssuer, bindings: *importBindings, dirs: map[string]string{}, replace: *importReplace}
+		for store, dir := range importDirs {
+			if *dir != "" {
+				o.dirs[store] = *dir
+			}
+		}
+		return importDesigns(ctx, pool, o, out)
 	case "init-profile":
 		if fs.NArg() != 1 || (fs.Arg(0) != postgres.ProfileProduction && fs.Arg(0) != postgres.ProfileFixture) {
 			return fmt.Errorf("init-profile takes %s or %s", postgres.ProfileProduction, postgres.ProfileFixture)
