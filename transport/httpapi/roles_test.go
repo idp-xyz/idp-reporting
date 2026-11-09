@@ -39,6 +39,12 @@ func TestRequiredRoleOfEachRouteClass(t *testing.T) {
 		{"POST", "POST /api/reporting/v1/dashboards/{id}/release", r.RolePublisher},
 		{"POST", "POST /api/reporting/v1/document-templates/{id}/release", r.RolePublisher},
 		{"POST", "POST /api/reporting/v1/issues", r.RoleIssuer},
+		// S16-A: a schedule's routes are a viewer's, the role of the jobs its runs submit.
+		{"POST", "POST /api/reporting/v1/schedules", r.RoleViewer},
+		{"GET", "GET /api/reporting/v1/schedules/{id}/runs", r.RoleViewer},
+		{"POST", "POST /api/reporting/v1/schedules/{id}/pause", r.RoleViewer},
+		{"POST", "POST /api/reporting/v1/schedules/{id}/resume", r.RoleViewer},
+		{"DELETE", "DELETE /api/reporting/v1/schedules/{id}", r.RoleViewer},
 	} {
 		if got := httpapi.RequiredRole(c.method, c.pattern); got != c.want {
 			t.Errorf("%s: %s, want %s", c.pattern, got, c.want)

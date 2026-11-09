@@ -19,10 +19,10 @@ type AuditEvent struct {
 	Code       string    `json:"code,omitempty"`
 }
 
-// The actions, object kinds and outcomes an event may have (migration 012 checks them too).
+// The actions, object kinds and outcomes an event may have (migration 012 checks them too; 013 adds the schedules' two actions and kind, S16-A).
 var (
-	AuditActions     = []string{"design.change", "design.release", "issue.submit", "export.submit", "artifact.download", "role.refused"}
-	AuditObjectKinds = []string{"layout", "dashboard", "template", "background", "image", "issue", "export", "artifact", "route"}
+	AuditActions     = []string{"design.change", "design.release", "issue.submit", "export.submit", "artifact.download", "role.refused", "schedule.change", "schedule.run"}
+	AuditObjectKinds = []string{"layout", "dashboard", "template", "background", "image", "issue", "export", "artifact", "route", "schedule"}
 	AuditOutcomes    = []string{"requested", "succeeded", "refused", "failed"}
 )
 

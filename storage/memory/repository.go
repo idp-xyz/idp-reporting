@@ -20,10 +20,12 @@ type Store struct {
 	snapshots map[string]r.Snapshot
 	artifacts map[string]r.Artifact
 	issues    map[string]r.Issue
-	order     []string             // job ids in admission order, for the issue listing
-	admitted  map[string]time.Time // when each job was admitted, by this store's clock (the quota of jobs per hour, S04-D)
-	objects   r.ObjectStore        // only for the sweep's deletes and reconciliation (UseObjects); nil: none
-	audit     []r.AuditEvent       // S12-B, in the order recorded
+	order     []string              // job ids in admission order, for the issue listing
+	admitted  map[string]time.Time  // when each job was admitted, by this store's clock (the quota of jobs per hour, S04-D)
+	objects   r.ObjectStore         // only for the sweep's deletes and reconciliation (UseObjects); nil: none
+	audit     []r.AuditEvent        // S12-B, in the order recorded
+	schedules map[string]r.Schedule // S16-A, by id; made by the first schedule
+	runs      map[string]*storedRun // S16-A, by id
 }
 
 // UseObjects tells the store which object store the artifacts it is given have their files in (S04-E), so that its sweep deletes the objects

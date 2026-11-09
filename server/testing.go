@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -35,6 +36,16 @@ func WithPollIntervalForTests(d time.Duration) Option { return func(o *options) 
 // WithSweepTickerForTests replaces the ticker of the sweep loop.
 func WithSweepTickerForTests(f func(time.Duration) (<-chan time.Time, func())) Option {
 	return func(o *options) { o.sweepTicker = f }
+}
+
+// WithScheduleTickerForTests replaces the ticker of the scheduler (S16-A).
+func WithScheduleTickerForTests(f func(time.Duration) (<-chan time.Time, func())) Option {
+	return func(o *options) { o.scheduleTick = f }
+}
+
+// WithWebhookTransportForTests gives the webhook client a transport of the test's (a TLS server with its own certificate).
+func WithWebhookTransportForTests(rt http.RoundTripper) Option {
+	return func(o *options) { o.webhookRT = rt }
 }
 
 // WithHooksForTests gives the test its signals.

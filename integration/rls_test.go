@@ -259,6 +259,7 @@ func rowLevelSecurity(t *testing.T, admin *pgxpool.Pool) {
 	t.Run("the_sweep_deletes_across_identities_only_in_the_worker_scope", func(t *testing.T) { w.sweepAcrossIdentities(t) })
 	t.Run("designs_are_seen_and_written_only_by_their_identity", func(t *testing.T) { w.designs(t) })
 	t.Run("the_audit_is_read_by_its_identity_or_an_administrator_and_never_rewritten", func(t *testing.T) { w.audit(t) })
+	t.Run("schedules_and_runs_are_their_identitys_and_the_schedulers", func(t *testing.T) { w.schedules(t) })
 	t.Run("a_restore_leaves_the_roles_the_policies_and_the_isolation_in_place", func(t *testing.T) { w.afterARestore(t) })
 	t.Run("migration_007_round_trip_and_upgrade_from_version_6", func(t *testing.T) { migration007(t, admin) })
 }
@@ -1070,4 +1071,69 @@ func (w *rlsWorld) audit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// schedules and schedule_runs (013, S16-A), as the application role: the store's whole contract runs under the policies (the person's calls in
+// the identity's context, the scheduler's in the worker scope); without a context nothing is seen, an identity sees and writes only its own
+// rows, and nothing is deleted.
+func (w *rlsWorld) schedules(t *testing.T) {
+	ctx := context.Background()
+	clean := func() {
+		_, _ = w.admin.Exec(context.Background(), "DELETE FROM reporting_s01.schedule_runs")
+		_, _ = w.admin.Exec(context.Background(), "DELETE FROM reporting_s01.schedules")
+	}
+	clean()
+	t.Cleanup(clean)
+	day := 0
+	runScheduleContract(t, scheduleHarness{store: w.store,
+		makeDue: func(t *testing.T) {
+			day++
+			if _, e := w.admin.Exec(ctx, "UPDATE reporting_s01.schedules SET next_run_at = timestamptz '2026-01-01 08:00:00+00' + $1 * interval '1 day' WHERE state='active'", day); e != nil {
+				t.Fatal(e)
+			}
+		},
+		expireLeases: func(t *testing.T) {
+			if _, e := w.admin.Exec(ctx, "UPDATE reporting_s01.schedule_runs SET lease_until = clock_timestamp() - interval '1 second' WHERE lease_until IS NOT NULL"); e != nil {
+				t.Fatal(e)
+			}
+		},
+	})
+	a := r.Identity{Tenant: "t", Issuer: "i", Subject: "a"}
+	b := r.Identity{Tenant: "t", Issuer: "i", Subject: "b"}
+	all := count(t, w.admin, "SELECT count(*) FROM reporting_s01.schedules")
+	runs := count(t, w.admin, "SELECT count(*) FROM reporting_s01.schedule_runs")
+	if all < 3 || runs < 2 {
+		t.Fatalf("the contract left %d schedules and %d runs", all, runs)
+	}
+	for _, table := range []string{"schedules", "schedule_runs"} {
+		if n := count(t, w.app, "SELECT count(*) FROM reporting_s01."+table); n != 0 {
+			t.Fatalf("without a context the application role sees %d rows of %s", n, table)
+		}
+		mine := count(t, w.admin, "SELECT count(*) FROM reporting_s01."+table+" WHERE subject='a'")
+		inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+			if n := count(t, tx, "SELECT count(*) FROM reporting_s01."+table); n != mine {
+				t.Fatalf("an identity sees %d rows of %s, want %d", n, table, mine)
+			}
+			if n, e := affected(t, tx, "UPDATE reporting_s01."+table+" SET state=state WHERE subject=$1", b.Subject); e != nil || n != 0 {
+				t.Fatalf("another identity's %s was updated: %d %v", table, n, e)
+			}
+		})
+		inTx(t, w.app, [][2]string{{"reporting.scope", "worker"}}, func(tx pgx.Tx) {
+			if n := count(t, tx, "SELECT count(*) FROM reporting_s01."+table); n != map[string]int{"schedules": all, "schedule_runs": runs}[table] {
+				t.Fatalf("the worker scope sees %d rows of %s", n, table)
+			}
+		})
+		inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+			if _, e := tx.Exec(ctx, "DELETE FROM reporting_s01."+table); e == nil {
+				t.Fatalf("the application role deleted from %s", table)
+			}
+		})
+	}
+	inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+		_, e := tx.Exec(ctx, `INSERT INTO reporting_s01.schedules (id,tenant,integration,issuer,subject,idem_key,request_hash,state,data,data_sha256,next_run_at)
+VALUES ($1,$2,'p',$3,$4,'k',repeat('0',64),'paused','{}',repeat('0',64),NULL)`, r.NewID(), b.Tenant, b.Issuer, b.Subject)
+		if !isRLS(e) {
+			t.Fatalf("a schedule of another identity was inserted: %v", e)
+		}
+	})
 }

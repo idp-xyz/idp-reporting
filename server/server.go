@@ -16,6 +16,7 @@ import (
 
 	"idp.local/reporting/console"
 	"idp.local/reporting/dashboards"
+	"idp.local/reporting/delivery/webhook"
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
@@ -39,6 +40,8 @@ type Store interface {
 	LedgerVersion(context.Context) (int, error)
 	// The audit of people's actions (S12-B, migration 012).
 	r.AuditLog
+	// The scheduled reports and their runs (S16-A, migration 013).
+	r.ScheduleStore
 	// Designs answers the backend of one of the private stores in this store (S11-B: design_store database).
 	Designs(store string) (privatedocs.Backend, error)
 	Close()
@@ -93,6 +96,8 @@ type options struct {
 	graceTimer    func(time.Duration) (<-chan time.Time, func())
 	poll          time.Duration
 	sweepTicker   func(time.Duration) (<-chan time.Time, func())
+	scheduleTick  func(time.Duration) (<-chan time.Time, func())
+	webhookRT     http.RoundTripper
 	hooks         *Hooks
 }
 
@@ -108,6 +113,8 @@ type Hooks struct {
 	Reloaded chan struct{}
 	// Swept receives (buffered) after each pass of the sweep loop.
 	Swept chan struct{}
+	// Scheduled receives (buffered) after each pass of the scheduler (S16-A).
+	Scheduled chan struct{}
 }
 
 // Server is a running (or draining) server.
@@ -122,9 +129,11 @@ type Server struct {
 	issuer   issuerFiles // the bindings in force and their digest (ADR 0016); replaced by a successful reload under reloadMu
 	store    Store
 	svc      *r.Service
-	objects  *objects.S3
-	srv      *http.Server
-	listener net.Listener
+	// schedules is the scheduled reports' service when the configuration has a schedules section (S16-A); nil otherwise.
+	schedules *r.Schedules
+	objects   *objects.S3
+	srv       *http.Server
+	listener  net.Listener
 	// metricsListener is the loopback listener of GET /metrics, when metrics_listen is set.
 	metricsListener net.Listener
 	tls             bool
@@ -195,6 +204,12 @@ func Start(ctx context.Context, cfg Config, reg Registry, getenv func(string) st
 			return t.C, t.Stop
 		}
 	}
+	if o.scheduleTick == nil {
+		o.scheduleTick = func(d time.Duration) (<-chan time.Time, func()) {
+			t := time.NewTicker(d)
+			return t.C, t.Stop
+		}
+	}
 	if getenv == nil {
 		getenv = func(string) string { return "" }
 	}
@@ -254,6 +269,18 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		}
 		s.objects = client
 		s.defer_(client.Close)
+	}
+	// The webhook of the scheduled reports (S16-A): its signing secret is the environment's.
+	var hook *webhook.Webhook
+	if sc := cfg.Schedules; sc != nil && sc.Webhook != nil {
+		secret := getenv(webhook.SecretEnv)
+		if secret == "" {
+			return refuse(StepSecrets, webhook.SecretEnv+" must be set when schedules.webhook is configured")
+		}
+		hook, err = webhook.New(webhook.Config{URL: sc.Webhook.URL, Secret: []byte(secret), Timeout: seconds(sc.Webhook.Timeout), LoopbackHTTP: sc.Webhook.LoopbackHTTP, Transport: s.opts.webhookRT})
+		if err != nil {
+			return refuse(StepSecrets, webhook.SecretEnv+" must hold 32 to 1024 bytes (the secret is not shown)")
+		}
 	}
 	var tlsConfig *tls.Config
 	if cfg.TLSCertFile != "" {
@@ -447,6 +474,18 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 			return err
 		}
 	}
+	if sc := cfg.Schedules; sc != nil {
+		o := r.ScheduleOptions{Store: s.store, Resolve: verifier.Bound, Limit: sc.PerIdentity, Audit: s.store}
+		if hook != nil {
+			o.Deliver = hook
+		}
+		if s.schedules, err = r.NewSchedules(svc, o); err != nil {
+			return refuse(StepService, "the scheduled reports could not be composed")
+		}
+		if err := compose(httpapi.WithSchedules(handler, svc, authenticate, s.schedules)); err != nil {
+			return err
+		}
+	}
 	label := cfg.Label()
 	if cfg.AllowSimulator {
 		label = "simulated:" + label
@@ -581,6 +620,8 @@ func (s *Server) logStart(ledger, ring, connections int, embed bool) {
 		"listen_port":        s.listener.Addr().(*net.TCPAddr).Port,
 		"metrics":            s.metricsListener != nil,
 		"sign_in":            c.SignIn != nil,
+		"schedules":          s.schedules != nil,
+		"webhook":            s.schedules != nil && s.schedules.Delivers(),
 	})
 }
 

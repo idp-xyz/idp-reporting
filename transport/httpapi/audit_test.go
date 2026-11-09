@@ -38,6 +38,12 @@ func TestAuditActionOfEachRouteClass(t *testing.T) {
 		{"GET", "GET /api/reporting/v1/layouts", "", "", false},
 		{"POST", "POST /api/reporting/v1/queries", "", "", false},
 		{"POST", "POST /api/reporting/v1/document-templates/{id}/previews", "", "", false},
+		{"POST", "POST /api/reporting/v1/schedules", "schedule.change", "schedule", false},
+		{"POST", "POST /api/reporting/v1/schedules/{id}/pause", "schedule.change", "schedule", false},
+		{"POST", "POST /api/reporting/v1/schedules/{id}/resume", "schedule.change", "schedule", false},
+		{"DELETE", "DELETE /api/reporting/v1/schedules/{id}", "schedule.change", "schedule", false},
+		{"GET", "GET /api/reporting/v1/schedules", "", "", false},
+		{"GET", "GET /api/reporting/v1/schedules/{id}/runs", "", "", false},
 	} {
 		a, k, m := httpapi.AuditAction(c.method, c.pattern)
 		if a != c.action || k != c.kind || m != c.mandatory {

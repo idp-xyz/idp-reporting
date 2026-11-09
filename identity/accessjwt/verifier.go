@@ -140,6 +140,41 @@ func (v *Verifier) Authenticate(req *http.Request) (r.Principal, error) {
 	return c.authenticate(req)
 }
 
+// Bound answers the principal an identity is bound as in the configuration in force (S16-A): what a scheduled run of the identity acts as,
+// with no token. An identity is the binding's tenant and subject under this issuer, whatever its client; when several bindings (one per client)
+// name it, it holds only what all of them grant, the products they share and the roles they share, so that a run never holds more than any
+// one of the person's own sessions would. false when no binding names it, or when the bindings share no product.
+func (v *Verifier) Bound(i r.Identity) (r.Principal, bool) {
+	if v == nil {
+		return r.Principal{}, false
+	}
+	c := v.current.Load()
+	if c == nil || i.Issuer != c.issuer || !i.Valid() {
+		return r.Principal{}, false
+	}
+	var out r.Principal
+	found := false
+	for _, p := range c.bindings {
+		if p.Identity != i {
+			continue
+		}
+		if !found {
+			out, found = r.Principal{Identity: i, Integrations: slices.Clone(p.Integrations), Roles: p.EffectiveRoles()}, true
+			continue
+		}
+		out.Integrations = slices.DeleteFunc(out.Integrations, func(x string) bool { return !slices.Contains(p.Integrations, x) })
+		out.Roles = slices.DeleteFunc(out.Roles, func(x string) bool { return !p.Has(x) })
+	}
+	if !found || len(out.Integrations) == 0 {
+		return r.Principal{}, false
+	}
+	slices.Sort(out.Integrations)
+	if out.Roles == nil {
+		out.Roles = []string{}
+	}
+	return out, true
+}
+
 // KeyIDs lists the kids of the issuer keys in force, sorted: nothing of the keys themselves, no modulus and no exponent. It is what an
 // operator checks after a rotation, and what the server may log at start. The zero Verifier, which denies everything, trusts none.
 func (v *Verifier) KeyIDs() []string {

@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"idp.local/reporting/delivery/webhook"
 	"idp.local/reporting/embedding"
 	"idp.local/reporting/identity/signin"
 	r "idp.local/reporting/reporting"
@@ -92,6 +93,8 @@ type Config struct {
 	ProfileLabel string              `json:"profile_label"`
 	// SignIn, when set, is the console's browser sign-in (S15-A, ADR 0019); a confidential client's secret is the environment's.
 	SignIn *SignInConfig `json:"sign_in"`
+	// Schedules turns the scheduled reports on (S16-A): the routes under /schedules, and the scheduler in every server on the store.
+	Schedules *SchedulesConfig `json:"schedules"`
 }
 
 // SignInConfig is the console's OpenID Connect sign-in (identity/signin): authorization code with PKCE (S256), the code exchanged by the
@@ -113,6 +116,30 @@ type SignInConfig struct {
 func (s *SignInConfig) Client(secret string) signin.Config {
 	return signin.Config{AuthorizationEndpoint: s.AuthorizationEndpoint, TokenEndpoint: s.TokenEndpoint, ClientID: s.ClientID, RedirectURI: s.RedirectURI, Scope: s.Scope, PasteFallback: s.PasteFallback, CA: s.CAFile, LoopbackHTTP: s.LoopbackHTTP, Timeout: seconds(s.Timeout), ClientSecret: secret}
 }
+
+// SchedulesConfig is S16-A's section. The webhook's signing secret is the environment's (REPORTING_WEBHOOK_SECRET), never the file's.
+type SchedulesConfig struct {
+	// PollInterval is the seconds between two passes of the scheduler: 0 (the default, 30) or 5..300.
+	PollInterval int `json:"poll_interval"`
+	// PerIdentity is the schedules one identity may hold: 0 (the default, 20) or 1..200.
+	PerIdentity int            `json:"per_identity"`
+	Webhook     *WebhookConfig `json:"webhook"`
+}
+
+// WebhookConfig is the one endpoint every run's end is delivered to (delivery/webhook): https, or plain http to a loopback IP address with
+// loopback_http (tests); the timeout of one attempt in seconds, 0 (the default, 10) or 1..30.
+type WebhookConfig struct {
+	URL          string `json:"url"`
+	Timeout      int    `json:"timeout"`
+	LoopbackHTTP bool   `json:"loopback_http"`
+}
+
+// The bounds of the schedules section.
+const (
+	DefaultSchedulePoll = 30
+	MinSchedulePoll     = 5
+	MaxSchedulePoll     = 300
+)
 
 // StoreConfig is the platform store's non-secret configuration; the connection string is the environment's (REPORTING_STORE_DSN).
 type StoreConfig struct {
@@ -537,6 +564,22 @@ func (c *Config) Validate() error {
 	}
 	if p := c.PDF; p != nil && (p.Typst == "" || p.SHA256 == "" || p.Fonts == "") {
 		return configProblem("pdf needs typst, sha256 and fonts together")
+	}
+	if sc := c.Schedules; sc != nil {
+		if sc.PollInterval != 0 && (sc.PollInterval < MinSchedulePoll || sc.PollInterval > MaxSchedulePoll) {
+			return configProblem("schedules.poll_interval must be 0 (the default, %d seconds) or between %d and %d", DefaultSchedulePoll, MinSchedulePoll, MaxSchedulePoll)
+		}
+		if sc.PerIdentity < 0 || sc.PerIdentity > r.MaxSchedulesPerIdentity {
+			return configProblem("schedules.per_identity must be 0 (the default, %d) or between 1 and %d", r.DefaultSchedulesPerIdentity, r.MaxSchedulesPerIdentity)
+		}
+		if h := sc.Webhook; h != nil {
+			if !webhook.ValidURL(h.URL, h.LoopbackHTTP) {
+				return configProblem("schedules.webhook.url must be an https URL without user information or fragment (plain http only to a loopback IP address, with loopback_http)")
+			}
+			if h.Timeout < 0 || h.Timeout > int(webhook.MaxTimeout/time.Second) {
+				return configProblem("schedules.webhook.timeout must be 0 (the default, %d seconds) or between 1 and %d", int(webhook.DefaultTimeout/time.Second), int(webhook.MaxTimeout/time.Second))
+			}
+		}
 	}
 	if c.ProfileLabel != "" && !httpapi.ValidProfileLabel(c.ProfileLabel) {
 		return configProblem("profile_label is 1 to %d printable ASCII characters", httpapi.MaxProfileLabel)

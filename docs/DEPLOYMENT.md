@@ -122,6 +122,9 @@ the rule and never repeats a value of the file.
 | `sign_in.ca_file` | none (the system's roots) | PEM file of the CA that vouches for an `https://` token endpoint; it replaces the system's roots for that endpoint. |
 | `sign_in.loopback_http` | `false` | Allows `http://` for an endpoint or the redirect URI on a loopback IP, for qualification only. |
 | `sign_in.timeout` | 10 | 0 (default) or 1..60 seconds for one exchange at the token endpoint (connection, TLS, request and answer). |
+| `schedules` | none (off) | S16-A (docs/S16A_SCOPE.md): present, the routes under `/schedules` and the scheduler in this server are on. Every server on the store may run it: the store gives each run to one of them. |
+| `schedules.poll_interval`, `.per_identity` | 30, 20 | `poll_interval` 0 (default) or 5..300 seconds between two passes; `per_identity` 0 (default) or 1..200 schedules an identity may hold. |
+| `schedules.webhook.url`, `.timeout`, `.loopback_http` | none, 10, `false` | The one endpoint every run's end is delivered to: `https://` without user information or fragment (`loopback_http` allows `http://` to a loopback IP address, for tests only); `timeout` 0 (default) or 1..30 seconds per attempt. The secret is `REPORTING_WEBHOOK_SECRET`. |
 
 ## Secrets
 
@@ -136,6 +139,7 @@ tenant, cursor key, connection-string password and object store keys and looks f
 | TLS private key | file named by `tls_key_file` | The same rules as a cursor key; the certificate file must not be writable by group or others. |
 | Issuer JWKS and bindings | files named by `jwks_file`, `bindings_file` (public data, personal identifiers) | Regular file, not a symbolic link, owned by the server's user or root, not writable by group or others. |
 | Sign-in client secret | environment `REPORTING_SIGN_IN_CLIENT_SECRET`, only for a confidential client; absent for a public client (the recommended registration, PKCE alone) | 1..512 printable ASCII characters without a space; sent as HTTP Basic (`client_secret_basic`) to the token endpoint only. |
+| Webhook signing secret (S16-A) | environment `REPORTING_WEBHOOK_SECRET`, required when `schedules.webhook` is configured | 32..1024 bytes (generate with `openssl rand -hex 32`); give the receiver the same value. Never shown; rotating it is a restart, rolled, with the receiver accepting both for the while. |
 
 A symbolic link is refused for the file itself (it is opened with `O_NOFOLLOW`); a link in a directory above it is the operator's layout and is not checked.
 
@@ -204,6 +208,8 @@ authentication, so a scraper on another host reaches them through an agent or a 
 | `reporting_jobs_run_total` | counter | none: jobs this process's workers claimed and ran to their end |
 | `reporting_worker_failures_total` | counter | `code` (the platform's error code, as in `worker_failed`) |
 | `reporting_sweeps_total`, `reporting_reloads_total` | counter | `outcome`: `ok` or the code of the failure or refusal |
+| `reporting_schedule_passes_total` | counter | `outcome`: `ok` or the code of a failed pass of the scheduler (S16-A) |
+| `reporting_deliveries_total` | counter | `outcome`: `delivered`, `rejected`, `redirected`, `throttled`, `server_error`, `unreachable` |
 | `reporting_http_in_flight`, `reporting_workers_busy`, `reporting_draining` | gauge | none |
 | `reporting_ready` | gauge | `reason`: `none`, or the word `/readyz` would answer |
 | `reporting_build_info` | gauge | `version` |
@@ -215,7 +221,7 @@ who uses it. Counters start at zero with the process. Alert on `reporting_ready 
 ## Logging
 
 One JSON object per line on stderr (the journal): `ts`, `level`, `event` and counts and codes only. Events: `start`, `start_refused`, `reload` (outcome `ok` with the trusted `kid`s and the binding count, or `refused` with a code),
-`sweep` (counts) and `sweep_failed` (a code), `sign_in` (one per code exchange, S15-A: `outcome` `ok` at info, else `replayed`, `busy`, `provider_refused`, `provider_client_refused`, `provider_status`, `timeout`, `unreachable`, `oversized`, `malformed` or `nonce_mismatch` at warn; never the code, the verifier, a token or the provider's text), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
+`sweep` (counts) and `sweep_failed` (a code), `schedule` (counts of runs started, advanced and whose lease was lost) and `schedule_failed` (a code), `delivery` (S16-A: the attempt's outcome word, the HTTP status, the attempt's number, the delivery's state and the run's and schedule's platform ids; never the endpoint or the secret), `sign_in` (one per code exchange, S15-A: `outcome` `ok` at info, else `replayed`, `busy`, `provider_refused`, `provider_client_refused`, `provider_status`, `timeout`, `unreachable`, `oversized`, `malformed` or `nonce_mismatch` at warn; never the code, the verifier, a token or the provider's text), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
 neither the panic's value nor the client's address), and one `access` line per request: `method`, `route` (the mux pattern, e.g. `GET /api/reporting/v1/jobs/{id}`, `unmatched` for a 404), `status`, `duration_ms` and a random
 `request_id` (also the `X-Request-Id` of the answer), and the request's `trace_id` and `span_id`. No query string, body, header, subject, tenant, path or error text is logged.
 
@@ -307,7 +313,7 @@ Moving an existing deployment from the directories to the database: stop the ser
 ## Upgrade procedure
 
 1. Build or install the new binary beside the old one. Run `reporting-server check-config -config …` with it (offline).
-2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs` and 012 `audit_events` do: without `roles` the server refuses to start at step store, "no INSERT … on designs" or "on audit_events") (docs/OPERATIONS.md "Schema lifecycle").
+2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs`, 012 `audit_events` and 013 `schedules` and `schedule_runs` do: without `roles` the server refuses to start at step store, "no INSERT … on designs", "on audit_events" or "on schedules") (docs/OPERATIONS.md "Schema lifecycle").
    The ledger check goes both ways: an **older binary refuses to start against a newer ledger, and a running older server turns `/readyz` 503 `schema`** the moment `up` has been applied. That is the check doing its work, so
    roll the servers right after the migration; a migration is not a thing to apply and then leave for a day.
 3. Roll the servers **one at a time**: take one out of the balancer (`kill -TERM`; `/readyz` says `draining`), wait for it to exit (0), start the new binary, wait for `/readyz` 200, put it back, next. Binaries that read the jobs of a newer version may destroy them (docs/OPERATIONS.md "Workers and issue jobs"): never run an older worker against a store that holds newer jobs.

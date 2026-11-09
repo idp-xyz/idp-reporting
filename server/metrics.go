@@ -23,6 +23,8 @@ type metrics struct {
 	workerErr map[string]uint64 // code -> count
 	sweeps    map[string]uint64 // "ok" or the code -> count
 	reloads   map[string]uint64 // "ok" or the code -> count
+	schedules map[string]uint64 // a scheduler pass: "ok" or the code -> count (S16-A)
+	delivers  map[string]uint64 // a delivery attempt's outcome word -> count (S16-A)
 	jobsRun   atomic.Uint64
 }
 
@@ -36,7 +38,7 @@ type histogram struct {
 }
 
 func newMetrics() *metrics {
-	return &metrics{requests: map[[2]string]uint64{}, durations: map[string]*histogram{}, workerErr: map[string]uint64{}, sweeps: map[string]uint64{}, reloads: map[string]uint64{}}
+	return &metrics{requests: map[[2]string]uint64{}, durations: map[string]*histogram{}, workerErr: map[string]uint64{}, sweeps: map[string]uint64{}, reloads: map[string]uint64{}, schedules: map[string]uint64{}, delivers: map[string]uint64{}}
 }
 
 // statusClass is 2xx, 3xx, 4xx or 5xx.
@@ -88,6 +90,12 @@ func (m *metrics) swept(code string) {
 }
 func (m *metrics) reloaded(code string) {
 	m.count(func(m *metrics) map[string]uint64 { return m.reloads }, code)
+}
+func (m *metrics) scheduled(code string) {
+	m.count(func(m *metrics) map[string]uint64 { return m.schedules }, code)
+}
+func (m *metrics) delivered(outcome string) {
+	m.count(func(m *metrics) map[string]uint64 { return m.delivers }, outcome)
 }
 func (m *metrics) jobRan() {
 	if m != nil {
@@ -151,6 +159,8 @@ func (m *metrics) write(g gauges, version string) []byte {
 		{"reporting_worker_failures_total", "Calls of a worker that failed, by the platform's error code.", "code", m.workerErr},
 		{"reporting_sweeps_total", "Retention sweeps of this process's loop, by outcome: ok or the failure's code.", "outcome", m.sweeps},
 		{"reporting_reloads_total", "Issuer reloads (SIGHUP), by outcome: ok or the refusal's code.", "outcome", m.reloads},
+		{"reporting_schedule_passes_total", "Passes of this process's scheduler, by outcome: ok or the failure's code.", "outcome", m.schedules},
+		{"reporting_deliveries_total", "Delivery attempts of scheduled runs' ends, by outcome word.", "outcome", m.delivers},
 	} {
 		family(f.name, "counter", f.help)
 		names := make([]string, 0, len(f.values))

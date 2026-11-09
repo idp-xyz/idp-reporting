@@ -641,6 +641,9 @@ func AuditAction(method, pattern string) (action, kind string, mandatory bool) {
 		return "issue.submit", "issue", true
 	case strings.HasSuffix(path, "/api/reporting/v1/exports"):
 		return "export.submit", "export", false
+	case strings.Contains(path, "/api/reporting/v1/schedules"):
+		// S16-A: a schedule's creation, pause, resumption and deletion; its runs are recorded by the scheduler (schedule.run).
+		return "schedule.change", "schedule", false
 	}
 	if RequiredRole(method, pattern) == r.RoleDesigner {
 		if k := designKind(); k != "" {
@@ -698,7 +701,8 @@ var designPaths = []string{"/layouts", "/dashboards", "/document-templates", "/d
 
 // RequiredRole is the role a route needs (S12-A, ADR 0018), from its method and the pattern the mux matched: a publication or withdrawal
 // (".../release") is a publisher's, an official issue an issuer's, any other change of a design a designer's; reading, querying, freezing,
-// exporting, previewing and checking are a viewer's. A route added later falls under the same rules.
+// exporting, previewing and checking are a viewer's, and so is a schedule's every route (S16-A): a schedule submits a viewer's jobs, as its
+// owner, at each run. A route added later falls under the same rules.
 func RequiredRole(method, pattern string) string {
 	path := routePath(pattern)
 	if method == http.MethodGet || method == http.MethodHead {
