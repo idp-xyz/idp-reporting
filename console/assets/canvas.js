@@ -940,6 +940,8 @@ window.createReportingCanvas = function (ports) {
             'text',
             {
               class: 'cv-text',
+              // S17-A: the template's own text is the document's, never the console's to translate.
+              ...(e.source === 'literal' ? {translate: 'no'} : {}),
               x: e.align === 'left' ? 0 : e.align === 'center' ? w / 2 : w,
               y: 1.16 * fs,
               'font-size': fs,
@@ -1273,6 +1275,7 @@ window.createReportingCanvas = function (ports) {
             'text',
             {
               class: 'cv-text',
+              ...(e.source === 'literal' || e.source === 'page' ? {translate: 'no'} : {}),
               'font-weight': e.bold ? '700' : '400',
               x: e.align === 'left' ? 0 : e.align === 'center' ? w / 2 : w,
               y: 1.16 * fs,
@@ -2222,7 +2225,11 @@ window.createReportingCanvas = function (ports) {
       selection = selection.filter(k => known.includes(k));
       for (const k of [...locked]) if (!known.includes(k)) locked.delete(k);
       for (const k of [...hidden]) if (!known.includes(k)) hidden.delete(k);
-      if (c && statusLine && statusLine.textContent === idle)
+      if (
+        c &&
+        statusLine &&
+        (window.reportingLanguage ? window.reportingLanguage.source(statusLine) : statusLine.textContent) === idle
+      )
         status('画布显示当前模板；点击项目开始编辑，Ctrl/Cmd+K 打开命令面板。');
       draw();
       syncToolbar();

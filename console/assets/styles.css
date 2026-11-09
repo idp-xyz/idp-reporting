@@ -604,6 +604,52 @@ body:not(.embed) {
   padding: 3px 8px;
   white-space: nowrap;
 }
+/* S17-A: the 中文 / English switch, in the console header and on the sign-in card (docs/S17A_SCOPE.md). */
+.lang-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.lang-switch button {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+.lang-switch button + button {
+  border-left: 1px solid var(--line);
+}
+.lang-switch button[aria-pressed="true"] {
+  background: var(--tag-bg);
+  color: var(--ink);
+  font-weight: 600;
+}
+.lang-switch button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.connection-card .lang-switch {
+  float: right;
+}
+/* English is longer than the Chinese the console was laid out for: a text button that is quiet (two characters wide in Chinese)
+   takes its text's width, and the rails' labels are a size smaller. Chinese is unchanged. */
+html[lang="en"] .button.quiet {
+  width: auto;
+  min-width: 29px;
+  padding: 0 7px;
+}
+html[lang="en"] .app-rail .nav-item small,
+html[lang="en"] #page-dashboard .toolrail button small,
+html[lang="en"] #page-documents .toolrail button small {
+  font-size: 10px;
+  letter-spacing: 0;
+}
 .actor {
   font-size: 12px;
   color: var(--muted);

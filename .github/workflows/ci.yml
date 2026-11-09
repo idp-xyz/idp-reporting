@@ -173,6 +173,10 @@ jobs:
           node --check console/assets/canvas.js
           node --check console/assets/versions.js
           node --check console/assets/embed.js
+          node --check console/assets/en.js
+          node --check console/assets/lang.js
+          node --check console/i18n.test.mjs
+          node --check scripts/i18n_extract.mjs
           node --check console/embed-host/host.js
           node --check console/embed.dom.test.mjs
           node --check scripts/browser_visual_s03c4.mjs
@@ -180,6 +184,7 @@ jobs:
           node --check scripts/browser_canvas_s03l.mjs
           node --check scripts/browser_embed_s03n.mjs
           node --check scripts/browser_console_s06c.mjs
+          node --check scripts/browser_english_s17a.mjs
           node --check scripts/ux_baseline_s07.mjs
           node --check scripts/seed_demo_data.mjs
           bash -n scripts/ci_browser_evidence.sh
@@ -189,7 +194,7 @@ jobs:
       # The formatter's verdict on the files package.json's "format" names (ADR 0014 decision 9): a change that is not formatted fails here.
       - name: Formatting
         run: npm run format:check
-      - run: node --test console/dom.test.mjs console/embed.dom.test.mjs
+      - run: node --test console/dom.test.mjs console/embed.dom.test.mjs console/i18n.test.mjs
 
   pdf:
     name: PDF export and document previews with the pinned Typst, fonts and veraPDF
@@ -234,7 +239,7 @@ jobs:
           REPORTING_DOCUMENT_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
-          node --test console/dom.test.mjs console/embed.dom.test.mjs
+          node --test console/dom.test.mjs console/embed.dom.test.mjs console/i18n.test.mjs
           # console_issued.json is the checker's expectation of the issued PDF of the real stack (the product's record,
           # the template's boxes and values) and console_issued.preview.pdf the preview of the same document, so that
           # the checker, not only veraPDF, checks it; console_issued_record.json is the record as it was read, kept out.
