@@ -28,134 +28,10 @@ func WithDocumentTemplates(fallback http.Handler, service *r.Service, authentica
 	mux := http.NewServeMux()
 	mux.Handle("/", fallback)
 	const base = "/api/reporting/v1/document-templates"
-	mountPrivateDocuments(mux, base, authenticate, store, authorize, func(req *http.Request, p r.Principal, d doctemplates.Document) error {
-		_, e := describeBinding(req, p, d.Binding)
-		return e
-	}, func(d doctemplates.Document) any { return d.Binding }, func(d doctemplates.Document) map[string]any {
-		preset := ""
-		if pre, ok := d.PagePreset(); ok {
-			preset = pre.ID
-		}
-		return map[string]any{"name": d.Name, "schema_version": d.Schema, "preset": preset}
-	}, true)
-	if renderer != nil {
-		mux.HandleFunc("POST "+base+"/{id}/previews", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-			var input struct {
-				Version    *int   `json:"version"`
-				SnapshotID string `json:"snapshot_id"`
-				RowIndex   *int   `json:"row_index"`
-			}
-			if e := decode(w, req, &input, bodyDocument); e != nil {
-				return e
-			}
-			if input.Version == nil || input.RowIndex == nil {
-				return r.ErrInvalid
-			}
-			entry, e := store.Get(p.Identity, req.PathValue("id"), *input.Version)
-			if e != nil {
-				return e
-			}
-			w.Header().Set("X-Template-ID", entry.ID)
-			w.Header().Set("X-Template-Version", strconv.Itoa(entry.Version))
-			return renderDocumentPreview(w, req, service, p, renderer, entry.Layout, input.SnapshotID, *input.RowIndex, assets)
-		}))
-	}
-	// Official issue (S03-G): the published version, frozen into a durable job; the row is
-	// bound here once so that a wrong row, a field the snapshot lacks or a value the previews
-	// could not print as the template binds it is refused at once, and again by the worker from
-	// the stored snapshot. What only the renderer's layout can refuse (a value too wide for its
-	// box, a table that cannot be laid out) is not asked here: the worker's issuer check finds it
-	// before the source product is asked for a number (S03-H), so that it costs the product no
-	// reservation to void, and the render repeats it. Mounted with the templates whether or not
-	// the service can issue, so that a deployment without the renderer answers 422, not 404; so
-	// does an integration whose adapter cannot issue (S03-H): the source product numbers and
-	// confirms every document.
-	//
-	// A schema 2.0 template is issued by row group (S03-K, ADR 0004 decision 7): the request names the group by
-	// its key values (`group`, in the order of the template's group fields, none for a template without one) or
-	// by a row it contains (`row_index`, as the console does), never both and never neither; a 1.x template
-	// takes `row_index` alone. The group is resolved in the frozen snapshot and frozen with the job (its key,
-	// its row indices and the digest of its rows), so that both ways of naming one group are one request.
-	{
-		mux.HandleFunc("POST /api/reporting/v1/issues", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-			var input struct {
-				TemplateID string    `json:"template_id"`
-				Version    *int      `json:"version"`
-				SnapshotID string    `json:"snapshot_id"`
-				RowIndex   *int      `json:"row_index"`
-				Group      *[]string `json:"group"`
-			}
-			if e := decode(w, req, &input, bodySmall); e != nil {
-				return e
-			}
-			if input.Version == nil || (input.RowIndex == nil) == (input.Group == nil) {
-				return r.ErrInvalid
-			}
-			key, e := idem(req)
-			if e != nil {
-				return e
-			}
-			if !service.CanIssue() {
-				return r.ErrUnsupported
-			}
-			if _, e = store.Get(p.Identity, input.TemplateID, *input.Version); e != nil {
-				return e
-			}
-			entry, e := store.Published(p.Identity, input.TemplateID)
-			if errors.Is(e, r.ErrNotFound) || (e == nil && entry.Version != *input.Version) {
-				return r.ErrUnpublished
-			}
-			if e != nil {
-				return e
-			}
-			banded := entry.Layout.Banded() && !entry.Layout.IssuedByRow()
-			// A template issued by row (1.x, or a form with no group fields) has rows and no group.
-			if !banded && input.Group != nil {
-				return r.ErrInvalid
-			}
-			if e = authorize(req, p, entry.Layout); e != nil {
-				return e
-			}
-			frozen, e := doctemplates.Canonical(entry.Layout)
-			if e != nil {
-				return e
-			}
-			snap, e := service.AuthorizedSnapshot(req.Context(), p, input.SnapshotID)
-			if e != nil {
-				return e
-			}
-			in := r.IssueInput{TemplateID: entry.ID, TemplateVersion: entry.Version, Template: frozen, SnapshotID: snap.ID}
-			if banded {
-				if in.Group, e = resolveIssueGroup(entry.Layout, snap, input.RowIndex, input.Group); e != nil {
-					return e
-				}
-			} else if entry.Layout.Banded() {
-				// A form without group fields: the document of the row, bound as a preview binds it.
-				group, e := doctemplates.GroupOf(entry.Layout, snap, *input.RowIndex)
-				if e != nil {
-					return e
-				}
-				if _, _, e = doctemplates.BindGroup(entry.Layout, snap, group); e != nil {
-					return e
-				}
-				in.RowIndex = *input.RowIndex
-			} else {
-				if _, e = doctemplates.Bind(entry.Layout, snap, *input.RowIndex); e != nil {
-					return e
-				}
-				if _, e = doctemplates.BindTable(entry.Layout, snap); e != nil {
-					return e
-				}
-				in.RowIndex = *input.RowIndex
-			}
-			v, e := service.SubmitIssue(req.Context(), p, in, key)
-			if e != nil {
-				return e
-			}
-			w.Header().Set("Location", "/api/reporting/v1/jobs/"+v.ID)
-			return send(w, 202, v)
-		}))
-	}
+	// S12-C (ADR 0018 decision 2): the templates of the caller's own space, and the same routes under /team for the tenant's shared space,
+	// whose publications are another person's approval; an issue of a shared template reads its publication there.
+	mountTemplateRoutes(mux, base, "/api/reporting/v1/issues", ownSpace, service, authenticate, store, renderer, assets, authorize, describeBinding)
+	mountTemplateRoutes(mux, "/api/reporting/v1/team/document-templates", "/api/reporting/v1/team/issues", teamSpace, service, authenticate, store, renderer, assets, authorize, describeBinding)
 	// The sample pack (S06-B). A template id is 32 hex digits, so "samples" is never one; its routes are in a mux of their own that
 	// the paths under document-templates/samples go to, because the patterns of the templates' own ids ({id}/release...) and
 	// of the samples ({kind}) overlap on a request none of them is more specific for.
@@ -199,4 +75,140 @@ func resolveIssueGroup(layout doctemplates.Document, snap r.Snapshot, row *int, 
 		return nil, e
 	}
 	return &issued, nil
+}
+
+// mountTemplateRoutes mounts the routes of one space's templates (S12-C): base for the templates, issues for their official issue. The caller's
+// own space and the tenant's shared space are the same routes over another owner.
+func mountTemplateRoutes(mux *http.ServeMux, base, issues string, space docSpace, service *r.Service, authenticate Authenticate, store *doctemplates.Store, renderer DocumentRenderer, assets *doctemplates.Assets, authorize func(*http.Request, r.Principal, doctemplates.Document) error, describeBinding func(*http.Request, r.Principal, doctemplates.Binding) (r.Dataset, error)) {
+	mountSpacedDocuments(mux, base, space, authenticate, store, authorize, func(req *http.Request, p r.Principal, d doctemplates.Document) error {
+		_, e := describeBinding(req, p, d.Binding)
+		return e
+	}, func(d doctemplates.Document) any { return d.Binding }, func(d doctemplates.Document) map[string]any {
+		preset := ""
+		if pre, ok := d.PagePreset(); ok {
+			preset = pre.ID
+		}
+		return map[string]any{"name": d.Name, "schema_version": d.Schema, "preset": preset}
+	}, true)
+	if renderer != nil {
+		mux.HandleFunc("POST "+base+"/{id}/previews", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			var input struct {
+				Version    *int   `json:"version"`
+				SnapshotID string `json:"snapshot_id"`
+				RowIndex   *int   `json:"row_index"`
+			}
+			if e := decode(w, req, &input, bodyDocument); e != nil {
+				return e
+			}
+			if input.Version == nil || input.RowIndex == nil {
+				return r.ErrInvalid
+			}
+			entry, e := store.Get(space.owner(p.Identity), req.PathValue("id"), *input.Version)
+			if e != nil {
+				return e
+			}
+			w.Header().Set("X-Template-ID", entry.ID)
+			w.Header().Set("X-Template-Version", strconv.Itoa(entry.Version))
+			return renderDocumentPreview(w, req, service, p, renderer, entry.Layout, input.SnapshotID, *input.RowIndex, assets)
+		}))
+	}
+	// Official issue (S03-G): the published version, frozen into a durable job; the row is
+	// bound here once so that a wrong row, a field the snapshot lacks or a value the previews
+	// could not print as the template binds it is refused at once, and again by the worker from
+	// the stored snapshot. What only the renderer's layout can refuse (a value too wide for its
+	// box, a table that cannot be laid out) is not asked here: the worker's issuer check finds it
+	// before the source product is asked for a number (S03-H), so that it costs the product no
+	// reservation to void, and the render repeats it. Mounted with the templates whether or not
+	// the service can issue, so that a deployment without the renderer answers 422, not 404; so
+	// does an integration whose adapter cannot issue (S03-H): the source product numbers and
+	// confirms every document.
+	//
+	// A schema 2.0 template is issued by row group (S03-K, ADR 0004 decision 7): the request names the group by
+	// its key values (`group`, in the order of the template's group fields, none for a template without one) or
+	// by a row it contains (`row_index`, as the console does), never both and never neither; a 1.x template
+	// takes `row_index` alone. The group is resolved in the frozen snapshot and frozen with the job (its key,
+	// its row indices and the digest of its rows), so that both ways of naming one group are one request.
+	{
+		mux.HandleFunc("POST "+issues, authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+			var input struct {
+				TemplateID string    `json:"template_id"`
+				Version    *int      `json:"version"`
+				SnapshotID string    `json:"snapshot_id"`
+				RowIndex   *int      `json:"row_index"`
+				Group      *[]string `json:"group"`
+			}
+			if e := decode(w, req, &input, bodySmall); e != nil {
+				return e
+			}
+			if input.Version == nil || (input.RowIndex == nil) == (input.Group == nil) {
+				return r.ErrInvalid
+			}
+			key, e := idem(req)
+			if e != nil {
+				return e
+			}
+			if !service.CanIssue() {
+				return r.ErrUnsupported
+			}
+			if _, e = store.Get(space.owner(p.Identity), input.TemplateID, *input.Version); e != nil {
+				return e
+			}
+			entry, e := store.Published(space.owner(p.Identity), input.TemplateID)
+			if errors.Is(e, r.ErrNotFound) || (e == nil && entry.Version != *input.Version) {
+				return r.ErrUnpublished
+			}
+			if e != nil {
+				return e
+			}
+			banded := entry.Layout.Banded() && !entry.Layout.IssuedByRow()
+			// A template issued by row (1.x, or a form with no group fields) has rows and no group.
+			if !banded && input.Group != nil {
+				return r.ErrInvalid
+			}
+			if e = authorize(req, p, entry.Layout); e != nil {
+				return e
+			}
+			frozen, e := doctemplates.Canonical(entry.Layout)
+			if e != nil {
+				return e
+			}
+			snap, e := service.AuthorizedSnapshot(req.Context(), p, input.SnapshotID)
+			if e != nil {
+				return e
+			}
+			in := r.IssueInput{TemplateID: entry.ID, TemplateVersion: entry.Version, Template: frozen, SnapshotID: snap.ID}
+			if space.team {
+				in.Space = "team"
+			}
+			if banded {
+				if in.Group, e = resolveIssueGroup(entry.Layout, snap, input.RowIndex, input.Group); e != nil {
+					return e
+				}
+			} else if entry.Layout.Banded() {
+				// A form without group fields: the document of the row, bound as a preview binds it.
+				group, e := doctemplates.GroupOf(entry.Layout, snap, *input.RowIndex)
+				if e != nil {
+					return e
+				}
+				if _, _, e = doctemplates.BindGroup(entry.Layout, snap, group); e != nil {
+					return e
+				}
+				in.RowIndex = *input.RowIndex
+			} else {
+				if _, e = doctemplates.Bind(entry.Layout, snap, *input.RowIndex); e != nil {
+					return e
+				}
+				if _, e = doctemplates.BindTable(entry.Layout, snap); e != nil {
+					return e
+				}
+				in.RowIndex = *input.RowIndex
+			}
+			v, e := service.SubmitIssue(req.Context(), p, in, key)
+			if e != nil {
+				return e
+			}
+			w.Header().Set("Location", "/api/reporting/v1/jobs/"+v.ID)
+			return send(w, 202, v)
+		}))
+	}
 }

@@ -609,6 +609,24 @@ body.library-on #notice {
   background: var(--sel-bg);
   color: var(--sel-ink);
 }
+/* S12-C: 我的模板 / 团队模板, the space the centre lists (the view toggle's shape, with text). */
+#page-library .space-switch {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--field);
+  border-radius: 5px;
+  padding: 2px;
+  background: var(--panel);
+}
+#page-library .space-switch button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+#page-library .space-switch [aria-pressed="true"] {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
 #page-library .catalog-results {
   display: flex;
   align-items: center;

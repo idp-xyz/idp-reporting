@@ -50,6 +50,18 @@ window.reportingRefusal = (() => {
 })();
 // The group a schema 2.0 issue names in place of a row (S03-K): the template's group fields, the key values in their order,
 // how many rows the group has and the digest of those rows. The key values are the caller's own data, shown as text.
+// S12-C (ADR 0018): the template space the console works in: '' (one's own) or 'team' (the tenant's shared space, under /team/...). The
+// template centre switches it; the studio, the previews and the official issue follow it. The embed page stays in its own space.
+window.reportingTemplateSpace = (() => {
+  let space = '';
+  return {
+    get: () => space,
+    set: value => {
+      space = value === 'team' ? 'team' : '';
+    },
+    path: path => (space === 'team' ? '/team' : '') + path,
+  };
+})();
 window.reportingIssueGroup = (() => {
   const valid = g =>
     !!g &&
@@ -936,7 +948,7 @@ window.createReportingDocuments = function (ports) {
         document = canonical(config);
       resetRelease();
       ports.exchange(
-        '/document-templates',
+        window.reportingTemplateSpace.path('/document-templates'),
         {method: 'POST', body: {id: prior?.id || '', expected_version: prior?.version || 0, config: document}},
         v => {
           serverEntry(v, prior?.id, (prior?.version || 0) + 1);
@@ -956,7 +968,7 @@ window.createReportingDocuments = function (ports) {
   function listServer(then) {
     action(() =>
       ports.exchange(
-        '/document-templates',
+        window.reportingTemplateSpace.path('/document-templates'),
         undefined,
         values => {
           if (
@@ -992,7 +1004,7 @@ window.createReportingDocuments = function (ports) {
         throw Error('请选择有效模板版本。');
       resetRelease();
       ports.exchange(
-        '/document-templates/' + id + '?version=' + version,
+        window.reportingTemplateSpace.path('/document-templates/') + id + '?version=' + version,
         undefined,
         v => {
           serverEntry(v, id, version);
@@ -1014,7 +1026,7 @@ window.createReportingDocuments = function (ports) {
       const id = savedID();
       resetRelease();
       ports.exchange(
-        '/document-templates/' + id + '/release',
+        window.reportingTemplateSpace.path('/document-templates/') + id + '/release',
         undefined,
         v => {
           showRelease(v);
@@ -1036,7 +1048,7 @@ window.createReportingDocuments = function (ports) {
         version = name === 'publish' ? pick || saved.version : 0;
       resetRelease();
       ports.exchange(
-        '/document-templates/' + id + '/release',
+        window.reportingTemplateSpace.path('/document-templates/') + id + '/release',
         {method: 'POST', body: {action: name, version, expected_revision: expected}},
         v => {
           if (v.revision !== expected + 1 || v.published_version !== version) throw Error('意外发布修订，请刷新核对。');
@@ -1053,7 +1065,7 @@ window.createReportingDocuments = function (ports) {
       if (!validID(id)) throw Error('请选择有效模板。');
       resetRelease();
       ports.exchange(
-        '/document-templates/' + id + '/published',
+        window.reportingTemplateSpace.path('/document-templates/') + id + '/published',
         undefined,
         v => {
           serverEntry(v, id);
@@ -1235,7 +1247,7 @@ window.createReportingDocuments = function (ports) {
       throw Error('请先打开冻结快照并填写有效行号。');
     ports.download(
       {version: version || saved.version, snapshot_id: ports.snapshot(), row_index: row - 1},
-      '/document-templates/' + id + '/previews',
+      window.reportingTemplateSpace.path('/document-templates/') + id + '/previews',
       refusalFor()
     );
   }
@@ -3477,7 +3489,7 @@ window.createReportingDocuments = function (ports) {
         return;
       }
       ports.exchange(
-        '/document-templates/' + id + '?version=' + n,
+        window.reportingTemplateSpace.path('/document-templates/') + id + '?version=' + n,
         undefined,
         v => {
           serverEntry(v, id, n);
@@ -3520,7 +3532,7 @@ window.createReportingDocuments = function (ports) {
         const row = rows[i];
         action(() =>
           ports.exchange(
-            '/document-templates/' + row.id + '?version=' + row.versions,
+            window.reportingTemplateSpace.path('/document-templates/') + row.id + '?version=' + row.versions,
             undefined,
             v => {
               const c = v && v.config;
@@ -3543,7 +3555,7 @@ window.createReportingDocuments = function (ports) {
                 () =>
                   action(() =>
                     ports.exchange(
-                      '/document-templates/' + row.id + '/release',
+                      window.reportingTemplateSpace.path('/document-templates/') + row.id + '/release',
                       undefined,
                       r => {
                         if (

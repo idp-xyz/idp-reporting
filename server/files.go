@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"idp.local/reporting/identity/accessjwt"
+	r "idp.local/reporting/reporting"
 )
 
 // File kinds, by what they may be readable by.
@@ -295,6 +296,9 @@ func parseBindings(raw []byte) ([]accessjwt.Binding, error) {
 	}
 	out := make([]accessjwt.Binding, 0, len(entries))
 	for _, e := range entries {
+		if e.Subject == r.TeamSubject {
+			return bad("a binding names the subject of the tenant's shared design space, which is no person's")
+		}
 		if e.Roles != nil && len(e.Roles) == 0 {
 			return bad("a binding's roles name at least one role (leave the field out for the default rights)")
 		}

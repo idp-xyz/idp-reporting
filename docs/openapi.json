@@ -2652,6 +2652,565 @@
         }
       }
     },
+    "/api/reporting/v1/team/document-templates": {
+      "get": {
+        "operationId": "listDocumentTemplatesTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The caller's templates the caller may still read — the tenant's shared space (S12-C)",
+        "description": "The latest version of each; one whose binding or fields are no longer authorized is left out. S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it).",
+        "x-reporting-mount": "document-templates",
+        "responses": {
+          "200": {
+            "description": "The listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveDocumentTemplatesTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Save a new immutable version of a template — the tenant's shared space (S12-C)",
+        "description": "A new template with an empty `id` and `expected_version` 0; else the next version of the given one, against the latest version read (stale is 409). S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it).",
+        "x-reporting-mount": "document-templates",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/team/document-templates/{id}": {
+      "get": {
+        "operationId": "getDocumentTemplatesTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "One saved version — the tenant's shared space (S12-C)",
+        "description": "After the current authorization of its binding and fields. Reading a version records the time as the template's `last_opened`. S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it).",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "$ref": "#/components/parameters/Version"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/team/document-templates/{id}/catalog": {
+      "get": {
+        "operationId": "getTemplateCatalogTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The template centre's metadata of one template — the tenant's shared space (S12-C)",
+        "description": "A template that never had any answers the empty one (`revision` 0). S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it).",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putTemplateCatalogTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Replace the template centre's metadata — the tenant's shared space (S12-C)",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCatalogUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The metadata after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "description": " S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it)."
+      }
+    },
+    "/api/reporting/v1/team/document-templates/{id}/previews": {
+      "post": {
+        "operationId": "previewTemplateTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Preview a stored version bound to a frozen row — the tenant's shared space (S12-C)",
+        "description": "Never caller configuration: the stored version is rendered. S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it).",
+        "x-reporting-mount": "document-templates (with a PDF renderer)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplatePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A PDF/A-2b preview.",
+            "headers": {
+              "X-Content-SHA256": {
+                "$ref": "#/components/headers/XContentSHA256"
+              },
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"document-preview.pdf\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Template-ID": {
+                "schema": {
+                  "$ref": "#/components/schemas/Id"
+                }
+              },
+              "X-Template-Version": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/team/document-templates/{id}/published": {
+      "get": {
+        "operationId": "getPublishedDocumentTemplatesTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The published version — the tenant's shared space (S12-C)",
+        "description": "404 when none is published. S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it).",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/team/document-templates/{id}/release": {
+      "get": {
+        "operationId": "getDocumentTemplatesReleaseTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The release history — the tenant's shared space (S12-C)",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The release state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "description": " S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it)."
+      },
+      "post": {
+        "operationId": "releaseDocumentTemplatesTeam",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Publish a version or withdraw the published one — the tenant's shared space (S12-C)",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The release state after the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "description": " S12-C (ADR 0018): the same route over the tenant's shared design space instead of the caller's own; every version records who saved it, and a publication by the person who saved the version is 409 APPROVAL_REQUIRED (another publisher approves by publishing it)."
+      }
+    },
+    "/api/reporting/v1/team/issues": {
+      "post": {
+        "operationId": "submitIssueTeam",
+        "tags": [
+          "issues"
+        ],
+        "summary": "Admit an official issue job — the tenant's shared space (S12-C)",
+        "description": "The core API answers 422 UNSUPPORTED_COMBINATION; WithDocumentTemplates replaces the route. It answers 422 too when the deployment or the integration's adapter cannot issue. The version must be the published one, the row or group must exist in the snapshot and the template's fields must be authorized. See docs/API.md and docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md. S12-C (ADR 0018): the official issue of a published template of the tenant's shared space; the worker checks the publication there.",
+        "x-reporting-mount": "core; document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Admitted: the job is queued.",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "getHealth",

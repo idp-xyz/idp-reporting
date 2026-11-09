@@ -14,15 +14,40 @@ import (
 // With catalogue (the document templates, S06-B) the listing carries each template's catalogue metadata, reading a version records
 // when it was opened, and GET and PUT /{id}/catalog read and replace the metadata.
 func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate Authenticate, store *privatedocs.Store[T], authorize func(*http.Request, r.Principal, T) error, authorizeBinding func(*http.Request, r.Principal, T) error, binding func(T) any, summary func(T) map[string]any, catalogue ...bool) {
+	mountSpacedDocuments(mux, base, ownSpace, authenticate, store, authorize, authorizeBinding, binding, summary, catalogue...)
+}
+
+// docSpace is whose designs a mount serves (S12-C): the caller's own, or the tenant's shared space, where every version records who saved it
+// and a publication is another person's approval.
+type docSpace struct {
+	owner func(r.Identity) r.Identity
+	team  bool
+}
+
+var (
+	ownSpace  = docSpace{owner: func(i r.Identity) r.Identity { return i }}
+	teamSpace = docSpace{owner: r.TeamOf, team: true}
+)
+
+// actor is the caller's mark in the space: its digest in the shared space, nothing in its own.
+func (d docSpace) actor(p r.Principal) string {
+	if d.team {
+		return r.ActorDigest(p.Identity)
+	}
+	return ""
+}
+
+// mountSpacedDocuments is mountPrivateDocuments for a space.
+func mountSpacedDocuments[T any](mux *http.ServeMux, base string, space docSpace, authenticate Authenticate, store *privatedocs.Store[T], authorize func(*http.Request, r.Principal, T) error, authorizeBinding func(*http.Request, r.Principal, T) error, binding func(T) any, summary func(T) map[string]any, catalogue ...bool) {
 	withCatalog := len(catalogue) > 0 && catalogue[0]
 	mux.HandleFunc("GET "+base, authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		all, e := store.List(p.Identity)
+		all, e := store.List(space.owner(p.Identity))
 		if e != nil {
 			return e
 		}
 		var catalogs map[string]privatedocs.Catalog
 		if withCatalog {
-			if catalogs, e = store.Catalogs(p.Identity); e != nil {
+			if catalogs, e = store.Catalogs(space.owner(p.Identity)); e != nil {
 				return e
 			}
 		}
@@ -40,7 +65,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 				for k, v := range summary(entry.Layout) {
 					item[k] = v
 				}
-				if state, e := store.Release(p.Identity, entry.ID); e == nil {
+				if state, e := store.Release(space.owner(p.Identity), entry.ID); e == nil {
 					item["published_version"] = state.PublishedVersion
 				}
 			}
@@ -60,7 +85,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 		if e != nil {
 			return r.ErrInvalid
 		}
-		entry, e := store.Get(p.Identity, req.PathValue("id"), version)
+		entry, e := store.Get(space.owner(p.Identity), req.PathValue("id"), version)
 		if e != nil {
 			return e
 		}
@@ -69,13 +94,18 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 		}
 		if withCatalog {
 			// Opening a version records the time, for the template centre's "recent" list; a failure to record it does not fail the read.
-			_, _, _ = store.Opened(p.Identity, entry.ID, entry.Version, time.Now())
+			_, _, _ = store.Opened(space.owner(p.Identity), entry.ID, entry.Version, time.Now())
 		}
-		return send(w, 200, map[string]any{"id": entry.ID, "version": entry.Version, "config": entry.Layout})
+		out := map[string]any{"id": entry.ID, "version": entry.Version, "config": entry.Layout}
+		if space.team {
+			// S12-C: whether the caller saved this version (who did is never answered): a publisher cannot approve its own.
+			out["saved_by_me"] = entry.SavedBy == space.actor(p)
+		}
+		return send(w, 200, out)
 	}))
 	if withCatalog {
 		mux.HandleFunc("GET "+base+"/{id}/catalog", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-			c, e := store.Catalog(p.Identity, req.PathValue("id"))
+			c, e := store.Catalog(space.owner(p.Identity), req.PathValue("id"))
 			if e != nil {
 				return e
 			}
@@ -96,7 +126,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 			if input.Domain == nil || input.Flow == nil || input.Favourite == nil || input.Archived == nil || input.Collections == nil || input.Expected == nil {
 				return r.ErrInvalid
 			}
-			c, e := store.SetCatalog(p.Identity, req.PathValue("id"), *input.Expected, privatedocs.Catalog{Domain: *input.Domain, Flow: *input.Flow, Favourite: *input.Favourite, Archived: *input.Archived, Collections: *input.Collections})
+			c, e := store.SetCatalog(space.owner(p.Identity), req.PathValue("id"), *input.Expected, privatedocs.Catalog{Domain: *input.Domain, Flow: *input.Flow, Favourite: *input.Favourite, Archived: *input.Archived, Collections: *input.Collections})
 			if e != nil {
 				return e
 			}
@@ -105,21 +135,21 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 	}
 	// History/withdrawal authorize the fixed binding; publish/read authorize actual target fields.
 	mux.HandleFunc("GET "+base+"/{id}/release", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		entry, e := store.Get(p.Identity, req.PathValue("id"), 1)
+		entry, e := store.Get(space.owner(p.Identity), req.PathValue("id"), 1)
 		if e != nil {
 			return e
 		}
 		if e = authorizeBinding(req, p, entry.Layout); e != nil {
 			return e
 		}
-		state, e := store.Release(p.Identity, entry.ID)
+		state, e := store.Release(space.owner(p.Identity), entry.ID)
 		if e != nil {
 			return e
 		}
 		return send(w, 200, state)
 	}))
 	mux.HandleFunc("GET "+base+"/{id}/published", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		entry, e := store.Published(p.Identity, req.PathValue("id"))
+		entry, e := store.Published(space.owner(p.Identity), req.PathValue("id"))
 		if e != nil {
 			return e
 		}
@@ -144,7 +174,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 		if input.Action == "publish" {
 			target = input.Version
 		}
-		entry, e := store.Get(p.Identity, req.PathValue("id"), target)
+		entry, e := store.Get(space.owner(p.Identity), req.PathValue("id"), target)
 		if e != nil {
 			return e
 		}
@@ -157,7 +187,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 				return e
 			}
 		}
-		state, e := store.Publish(p.Identity, entry.ID, input.Action, input.Version, input.Expected)
+		state, e := store.PublishAs(space.owner(space.owner(p.Identity)), space.actor(p), entry.ID, input.Action, input.Version, input.Expected)
 		if e != nil {
 			return e
 		}
@@ -175,7 +205,7 @@ func mountPrivateDocuments[T any](mux *http.ServeMux, base string, authenticate 
 		if e := authorize(req, p, input.Config); e != nil {
 			return e
 		}
-		entry, e := store.Save(p.Identity, input.ID, input.Expected, input.Config)
+		entry, e := store.SaveAs(space.owner(space.owner(p.Identity)), space.actor(p), input.ID, input.Expected, input.Config)
 		if e != nil {
 			return e
 		}
