@@ -1,16 +1,14 @@
-// Package privatedocs stores validated private document versions in a single-writer local directory.
+// Package privatedocs stores validated private document versions: one document per owner and store, kept by a Backend (a single-writer
+// local directory, memory, or the platform's database: S11-A, docs/S11A_SCOPE.md).
 package privatedocs
 
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	r "idp.local/reporting/reporting"
 	"io"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -44,7 +42,7 @@ type database[T any] struct {
 }
 type Store[T any] struct {
 	mu       sync.Mutex
-	dir      string
+	backend  Backend
 	closed   bool
 	validate func(T) error
 	binding  func(T) string
@@ -67,25 +65,19 @@ func OpenCap[T any](dir string, cap int, validate func(T) error, binding func(T)
 	if dir == "" || validate == nil || binding == nil || cap < 1 || cap > 1024 {
 		return nil, r.ErrInvalid
 	}
-	abs, e := filepath.Abs(dir)
+	b, e := openFileBackend(dir)
 	if e != nil {
 		return nil, e
 	}
-	if e = os.MkdirAll(abs, 0700); e != nil {
-		return nil, e
-	}
-	info, e := os.Lstat(abs)
-	if e != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+	return &Store[T]{backend: b, validate: validate, binding: binding, cap: cap}, nil
+}
+
+// OpenBackend is OpenCap over another backend: memory, or the platform's database (storage/postgres, S11-A). The Store closes the backend.
+func OpenBackend[T any](b Backend, cap int, validate func(T) error, binding func(T) string) (*Store[T], error) {
+	if b == nil || validate == nil || binding == nil || cap < 1 || cap > 1024 {
 		return nil, r.ErrInvalid
 	}
-	f, e := os.OpenFile(filepath.Join(abs, ".lock"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if e != nil {
-		return nil, r.ErrConflict
-	}
-	if e = f.Close(); e != nil {
-		return nil, e
-	}
-	return &Store[T]{dir: abs, validate: validate, binding: binding, cap: cap}, nil
+	return &Store[T]{backend: b, validate: validate, binding: binding, cap: cap}, nil
 }
 func (s *Store[T]) Close() error {
 	s.mu.Lock()
@@ -94,16 +86,11 @@ func (s *Store[T]) Close() error {
 		return nil
 	}
 	s.closed = true
-	return os.Remove(filepath.Join(s.dir, ".lock"))
+	return s.backend.Close()
 }
 func ValidID(id string) bool {
 	b, e := hex.DecodeString(id)
 	return e == nil && len(b) == 16 && hex.EncodeToString(b) == id
-}
-func (s *Store[T]) path(owner r.Identity) string {
-	b, _ := json.Marshal(owner)
-	h := sha256.Sum256(b)
-	return filepath.Join(s.dir, hex.EncodeToString(h[:])+".json")
 }
 func (s *Store[T]) read(owner r.Identity) ([]record[T], error) {
 	if s.closed {
@@ -112,24 +99,57 @@ func (s *Store[T]) read(owner r.Identity) ([]record[T], error) {
 	if !owner.Valid() {
 		return nil, r.ErrDenied
 	}
-	path := s.path(owner)
-	info, e := os.Lstat(path)
-	if os.IsNotExist(e) {
+	data, e := s.backend.Load(owner)
+	if e != nil {
+		return nil, e
+	}
+	return s.decode(data)
+}
+
+// begin starts a change of the owner's document: the records as the change found them. The caller ends the change (commit, or Rollback).
+func (s *Store[T]) begin(owner r.Identity) (Txn, []record[T], error) {
+	if s.closed {
+		return nil, nil, r.ErrUnavailable
+	}
+	if !owner.Valid() {
+		return nil, nil, r.ErrDenied
+	}
+	tx, e := s.backend.Begin(owner)
+	if e != nil {
+		return nil, nil, e
+	}
+	data, e := tx.Load()
+	if e == nil {
+		var all []record[T]
+		if all, e = s.decode(data); e == nil {
+			return tx, all, nil
+		}
+	}
+	tx.Rollback()
+	return nil, nil, e
+}
+
+// commit encodes the records, replaces the owner's document with them and commits the change.
+func (s *Store[T]) commit(tx Txn, all []record[T]) error {
+	data, e := json.Marshal(database[T]{Schema: 2, Records: all})
+	if e != nil {
+		return e
+	}
+	if len(data) > maxFile {
+		return r.ErrBudget
+	}
+	if e = tx.Store(data); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+
+// decode reads an owner's document (nil: none) and holds it to every rule a written document follows.
+func (s *Store[T]) decode(data []byte) ([]record[T], error) {
+	if data == nil {
 		return []record[T]{}, nil
 	}
-	if e != nil {
-		return nil, e
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxFile {
-		return nil, r.ErrIntegrity
-	}
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, e
-	}
-	defer f.Close()
-	data, e := io.ReadAll(io.LimitReader(f, maxFile+1))
-	if e != nil || len(data) > maxFile {
+	if len(data) > maxFile {
 		return nil, r.ErrIntegrity
 	}
 	data = bytes.TrimSpace(data)
@@ -250,10 +270,11 @@ func (s *Store[T]) Save(owner r.Identity, id string, expected int, d T) (Entry[T
 	if e := s.validate(d); e != nil {
 		return Entry[T]{}, e
 	}
-	all, e := s.read(owner)
+	tx, all, e := s.begin(owner)
 	if e != nil {
 		return Entry[T]{}, e
 	}
+	defer tx.Rollback()
 	index := -1
 	if id == "" {
 		if expected != 0 {
@@ -294,45 +315,10 @@ func (s *Store[T]) Save(owner r.Identity, id string, expected int, d T) (Entry[T
 	}
 	entry := Entry[T]{ID: id, Version: len(all[index].Versions) + 1, Layout: d}
 	all[index].Versions = append(all[index].Versions, entry)
-	if e = s.write(owner, all); e != nil {
+	if e = s.commit(tx, all); e != nil {
 		return Entry[T]{}, e
 	}
 	return entry, nil
-}
-func (s *Store[T]) write(owner r.Identity, all []record[T]) error {
-	data, e := json.Marshal(database[T]{Schema: 2, Records: all})
-	if e != nil {
-		return e
-	}
-	if len(data) > maxFile {
-		return r.ErrBudget
-	}
-	f, e := os.CreateTemp(s.dir, ".layout-")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(f.Name())
-	if _, e = f.Write(data); e != nil {
-		f.Close()
-		return e
-	}
-	if e = f.Sync(); e != nil {
-		f.Close()
-		return e
-	}
-	if e = f.Close(); e != nil {
-		return e
-	}
-	if e = os.Rename(f.Name(), s.path(owner)); e != nil {
-		return e
-	}
-	dir, e := os.Open(s.dir)
-	if e != nil {
-		return e
-	}
-	e = dir.Sync()
-	dir.Close()
-	return e
 }
 func releaseState(events []ReleaseEvent) ReleaseState {
 	out := ReleaseState{Revision: len(events), History: append([]ReleaseEvent{}, events...)}
@@ -364,10 +350,11 @@ func (s *Store[T]) Publish(owner r.Identity, id, action string, version, expecte
 	if !ValidID(id) || expected < 0 || (action != "publish" && action != "withdraw") {
 		return ReleaseState{}, r.ErrInvalid
 	}
-	all, e := s.read(owner)
+	tx, all, e := s.begin(owner)
 	if e != nil {
 		return ReleaseState{}, e
 	}
+	defer tx.Rollback()
 	for i, item := range all {
 		if item.Versions[0].ID != id {
 			continue
@@ -388,7 +375,7 @@ func (s *Store[T]) Publish(owner r.Identity, id, action string, version, expecte
 		}
 		event := ReleaseEvent{Revision: expected + 1, Action: action, Version: version, At: time.Now().UTC().Format(time.RFC3339Nano)}
 		all[i].Releases = append(item.Releases, event)
-		if e = s.write(owner, all); e != nil {
+		if e = s.commit(tx, all); e != nil {
 			return ReleaseState{}, e
 		}
 		return releaseState(all[i].Releases), nil

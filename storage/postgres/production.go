@@ -141,10 +141,10 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (
 	return (&Store{pool: pool}).apply(opts), nil
 }
 
-// dataTables are the tables the application role reads and writes; the ledger, the profile and the sweeps ledger (S04-B) it only reads.
+// dataTables are the tables the application role reads and writes (designs, from 011, where it exists, as issue_numbers); the ledger, the profile and the sweeps ledger (S04-B) it only reads.
 // issue_numbers, S03-G's counters, exists at version 3 only (004 drops it): where it exists it is a data table, and the schemas older than
 // the latest stay serviceable by roles. sweeps exists from version 6.
-var dataTables = []string{"jobs", "assets", "issue_numbers"}
+var dataTables = []string{"jobs", "assets", "issue_numbers", "designs"}
 var readTables = []string{"profile", "schema_migrations", "sweeps"}
 
 // requiredTables are the tables a store at the latest version has for the application role; issue_numbers is not one, and sweeps is the
@@ -321,6 +321,18 @@ const (
 )
 
 var rlsTables = []string{"assets", "jobs"}
+
+// designsVersion is the schema version that has the designs table (011, S11-A): from it on the table is held to the same policies.
+const designsVersion = 11
+
+// rlsTablesAt is the tables with business rows at a schema version.
+func rlsTablesAt(version int) []string {
+	if version >= designsVersion {
+		return append(slices.Clone(rlsTables), "designs")
+	}
+	return rlsTables
+}
+
 var rlsPolicies = map[string]string{"identity": identityQual, "worker": workerQual}
 
 var qualNoise = strings.NewReplacer(" ", "", "\n", "", "\t", "", "(", "", ")", "", "::text", "", "::name", "")
@@ -368,7 +380,7 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 			rows.Close()
 			return nil, err
 		}
-		if !slices.Contains(rlsTables, table) {
+		if !slices.Contains(rlsTablesAt(version), table) {
 			continue
 		}
 		want, known := rlsPolicies[name]
@@ -385,7 +397,7 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, table := range rlsTables {
+	for _, table := range rlsTablesAt(version) {
 		if !enabled[table] {
 			problems = append(problems, "row-level security is not enabled on "+table)
 		}
