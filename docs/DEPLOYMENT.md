@@ -175,7 +175,15 @@ who uses it. Counters start at zero with the process. Alert on `reporting_ready 
 One JSON object per line on stderr (the journal): `ts`, `level`, `event` and counts and codes only. Events: `start`, `start_refused`, `reload` (outcome `ok` with the trusted `kid`s and the binding count, or `refused` with a code),
 `sweep` (counts) and `sweep_failed` (a code), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
 neither the panic's value nor the client's address), and one `access` line per request: `method`, `route` (the mux pattern, e.g. `GET /api/reporting/v1/jobs/{id}`, `unmatched` for a 404), `status`, `duration_ms` and a random
-`request_id` (also the `X-Request-Id` of the answer). No query string, body, header, subject, tenant, path or error text is logged.
+`request_id` (also the `X-Request-Id` of the answer), and the request's `trace_id` and `span_id`. No query string, body, header, subject, tenant, path or error text is logged.
+
+Tracing (S14-A, docs/S14A_SCOPE.md) follows W3C Trace Context. Every request, health and console included, gets a server span: when it carries exactly one `traceparent` header that parses
+strictly (version `00` exactly 55 characters, lowercase hex, neither id all zero; a higher version read by the specification's rules; `ff` refused), the span continues that trace with a new
+span id and the caller's sampled flag; otherwise it is the root of a new trace (random ids, sampled). The answer carries the server span as its own `traceparent` (`00-<trace_id>-<span_id>-<flags>`,
+nothing else); `access` logs the same two ids. A `tracestate` header is ignored: not logged, not answered, not passed on. The trace id is the caller's when its header is valid, so it correlates and
+proves nothing: `request_id` is always the server's own. The span is in the request's context, where a source adapter reads it (`tracecontext.FromContext`) and sends
+`tracecontext.Traceparent(ctx)` to its source product. A job runs in a trace of its own, started when a worker claims it: `worker_failed` carries that `trace_id` and `span_id` (the admitting
+request's trace is not stored with the job). No exporter or span store exists; the ids are for the log and the source products' logs.
 
 ## Reload (SIGHUP)
 
@@ -282,7 +290,7 @@ alone to do.
 | 12 | Database and object store credentials rotated by a rolling restart with the stated window | Done (the failure side proved) / Operator (the schedule) | S04-H |
 | 13 | TLS certificate for the server, renewed before it expires (a restart) | Operator (no automatic renewal) | S05-A |
 | 14 | The unit, the user, the file modes, `TimeoutStopSec` above `shutdown_grace`, the balancer pointed at `/readyz` | Operator (the example above is untested) | S05-A |
-| 15 | Logs shipped and watched (`worker_failed`, `reload` refusals, `drain_end` with `clean:false`, `http_server_error`); metrics scraped from `metrics_listen` and alerts on `reporting_ready` and the failure counters | Done (the log events, the metrics listener) / Operator (shipping, scraping, the alerts) / Open (no tracing) | S05-A, "Metrics" |
+| 15 | Logs shipped and watched (`worker_failed`, `reload` refusals, `drain_end` with `clean:false`, `http_server_error`); metrics scraped from `metrics_listen` and alerts on `reporting_ready` and the failure counters | Done (the log events, the metrics listener, trace ids in the log and the `traceparent` header, S14-A) / Operator (shipping, scraping, the alerts) / Open (no span exporter; a job's trace is not the admitting request's) | S05-A, S14-A, "Metrics", "Logging" |
 | 16 | **The real issuer**: its JWKS, the real bindings (subject, client, tenant, integrations), its lifetime policy, discovery and emergency revocation | **Open** (waits for the real IdP contract; docs/ACCESS_JWT.md) | S02-A |
 | 17 | **A real adapter** for each source product and its contract (catalog, prepared reads, current authorization, issue authority), registered in the host's `main` | **Open** (the integration slice) | docs/REAL_SOURCE_ONBOARDING.md |
 | 18 | **Data reconciliation** with the product: totals, the issue records against the product's numbers after a restore, the grants | **Open** (needs the real adapter) | S03-H, S04-F |
