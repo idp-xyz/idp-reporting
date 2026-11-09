@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"idp.local/reporting/tracecontext"
 	"idp.local/reporting/transport/httpapi"
 )
 
@@ -83,16 +84,22 @@ func requestID() string {
 // knownMethods are logged by name; any other method a client invents is logged as OTHER.
 var knownMethods = map[string]bool{http.MethodGet: true, http.MethodHead: true, http.MethodPost: true, http.MethodPut: true, http.MethodPatch: true, http.MethodDelete: true, http.MethodOptions: true}
 
-// access is the outermost handler: it counts the request in, gives it an id (also the X-Request-Id of the answer) and, when the handler
-// has returned or panicked, writes the one access line: method, the route pattern the mux matched (never the path, so no identifier and no
-// query), status, duration in milliseconds and the id. No header, body, query, subject or tenant is read for it.
+// access is the outermost handler: it counts the request in, gives it an id (also the X-Request-Id of the answer) and a server span (S14-A:
+// a child of the caller's when its one traceparent header parses strictly, else the root of a new trace; the span is in the request's context
+// for the service and the adapters, and is the traceparent of the answer) and, when the handler has returned or panicked, writes the one
+// access line: method, the route pattern the mux matched (never the path, so no identifier and no query), status, duration in milliseconds,
+// the id and the span's trace_id and span_id. The traceparent header is the only header read for it, and only its two ids and the sampled
+// flag are kept; tracestate is ignored. No body, query, subject or tenant is read.
 func (s *Server) access(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		s.requests.enter()
 		defer s.requests.leave()
 		start := s.now()
 		id := requestID()
+		span, _ := tracecontext.Incoming(req.Header.Values(tracecontext.Header))
 		w.Header().Set("X-Request-Id", id)
+		w.Header().Set(tracecontext.Header, span.String())
+		req = req.WithContext(tracecontext.WithSpan(req.Context(), span))
 		rec := &statusRecorder{ResponseWriter: w}
 		finished := false
 		defer func() {
@@ -112,7 +119,8 @@ func (s *Server) access(next http.Handler) http.Handler {
 				route = "unmatched"
 			}
 			elapsed := s.now().Sub(start)
-			s.log.info("access", map[string]any{"method": method, "route": route, "status": status, "duration_ms": elapsed.Milliseconds(), "request_id": id})
+			s.log.info("access", map[string]any{"method": method, "route": route, "status": status, "duration_ms": elapsed.Milliseconds(), "request_id": id,
+				"trace_id": span.TraceIDString(), "span_id": span.SpanIDString()})
 			s.metrics.request(route, status, elapsed)
 		}()
 		next.ServeHTTP(rec, req)

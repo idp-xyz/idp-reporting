@@ -7,6 +7,7 @@ import (
 	"time"
 
 	r "idp.local/reporting/reporting"
+	"idp.local/reporting/tracecontext"
 )
 
 // codeOf is the code a worker failure is logged by: the platform's own codes, else EXECUTION_FAILED. The error itself is never logged.
@@ -33,17 +34,20 @@ func (s *Server) startWorkers() {
 	}
 }
 
-// worker claims and runs jobs until the drain begins. A job it holds runs to its end on the work context.
+// worker claims and runs jobs until the drain begins. A job it holds runs to its end on the work context. Each claim runs in the root span of a
+// new trace (S14-A), so that the adapter's calls for the job carry one traceparent and a worker_failed line names that trace; it is not the
+// trace of the request that admitted the job, which the store does not keep (docs/S14A_SCOPE.md).
 func (s *Server) worker() {
 	defer s.workers.Done()
 	timer := time.NewTimer(s.opts.poll)
 	defer timer.Stop()
 	for s.loopCtx.Err() == nil {
 		s.busy.Add(1)
-		ran, err := s.svc.RunOne(s.workCtx)
+		span := tracecontext.New()
+		ran, err := s.svc.RunOne(tracecontext.WithSpan(s.workCtx, span))
 		s.busy.Add(-1)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			s.log.warn("worker_failed", map[string]any{"code": codeOf(err)})
+			s.log.warn("worker_failed", map[string]any{"code": codeOf(err), "trace_id": span.TraceIDString(), "span_id": span.SpanIDString()})
 			s.metrics.workerFailed(codeOf(err))
 		}
 		if ran && err == nil {

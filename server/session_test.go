@@ -198,7 +198,7 @@ func TestSessionOverTLSWithRealTokens(t *testing.T) {
 	for _, a := range accesses {
 		for k := range a {
 			switch k {
-			case "ts", "level", "event", "method", "route", "status", "duration_ms", "request_id":
+			case "ts", "level", "event", "method", "route", "status", "duration_ms", "request_id", "trace_id", "span_id":
 			default:
 				t.Errorf("an access line has the field %q", k)
 			}

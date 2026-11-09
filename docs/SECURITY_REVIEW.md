@@ -94,6 +94,7 @@
 - 对象存储（`storage/objects/`）：只接受 https，可以指定只信任某个 CA；http 只允许回环地址且需显式参数；密钥只从环境变量读，给密钥的参数被拒绝；不跟随重定向，每个请求有超时；取回的对象先按库里记录的长度与摘要核对，再返回。签名（SigV4）是手写的，用规范公开的示例测试。测试：`TestSigV4MatchesTheSpecificationsPublishedExamples`、`TestHTTPSIsVerifiedAgainstTheNamedCAAlone`、`TestRedirectsAreNotFollowed`、`TestGetChecksTheObjectAgainstTheRowBeforeReturningAByte`、`TestErrorsCarryNoBodyKeyEndpointOrCredential`、`TestTheKeysAreTheEnvironmentsAndAFlagForEitherIsRefusedWithoutRepeatingIt`。
 - 密钥文件：必须是私有的普通文件，不能是符号链接；公开的文件不能被他人写（`server/files.go`）；私有目录要求 0700。测试：`TestSecretFilesMustBePrivateRegularAndNotSymlinks`、`TestPublicFilesMustNotBeWritableByOthers`。
 - 日志、拒绝信息与指标只带计数与代码。测试：`TestConfigRefusalsCarryNoSecret`、`TestCheckConfigPrintsCountsAndNoValue`、`TestWorkerFailuresAreLoggedByCodeOnly`、`TestAPanicInAHandlerIsLoggedWithoutItsValue`。`/metrics` 默认关闭，只能监听回环地址、不能与 API 同端口，标签只有服务端选定的值（`server/metrics.go`，`TestMetricsListener`）。
+- 追踪（S14-A，`tracecontext/`）：只读一个 `traceparent` 头，按规范严格解析（小写十六进制、长度、全零 ID、版本 `ff`），只保留两个 ID 与 sampled 位；无效或多个值就开始新的追踪。`tracestate` 不读、不记、不回、不转发（调用方可放任意内容，来源产品在信任边界之后）。调用方能选 `trace_id`，所以它只用于关联，不证明什么；`request_id` 始终由服务端生成。测试：`tracecontext` 包的解析测试、`TestTheServerSpanContinuesAValidTraceparentAndReachesTheAdapter`、`TestAJobRunsInATraceOfItsOwnAndItsFailureNamesIt`。
 - 审查时看：SigV4 与 JWT 校验一样是手写的；新加的日志行是否只带代码。
 
 ## 9. 依赖与构建
@@ -107,7 +108,7 @@
 
 - 真实发行方、真实适配器、数据对账与准入决定（上线清单第 16–19 项）。
 - 令牌吊销与 JWKS 自动发现；时钟偏差容忍为零。
-- 追踪（tracing）；TLS 证书自动续期；systemd 单元示例未经测试（上线清单第 13–15 项）。
+- 追踪只到日志：请求按 W3C Trace Context 带 `trace_id`/`span_id`（S14-A），但没有 span 导出器；后台任务的追踪不是受理它的请求的追踪（存储里没有这个字段）。TLS 证书自动续期；systemd 单元示例未经测试（上线清单第 13–15 项）。
 - 容量数字是一台机器上的合成测量，不是生产规划（docs/CAPACITY.md）。
 - 演示只有一个可登录的身份；跨身份隔离只在 Go 测试里验证（docs/TEST_SCENARIOS.md）。
 - 仓库里没有渗透测试或第三方安全审查的记录。
