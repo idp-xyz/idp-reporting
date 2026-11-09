@@ -103,13 +103,27 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 		"an embed origin that is http":       with(func(d map[string]any) { d["embed_origins"] = map[string]any{"i": []string{"http://127.0.0.1:1"}} }),
 		"an embed origin for no connection":  with(func(d map[string]any) { d["embed_origins"] = map[string]any{"other": []string{"https://app.example"}} }),
 		"a profile label with a newline":     with(func(d map[string]any) { d["profile_label"] = "a\nb" }),
-		"a certificate without its key":      with(func(d map[string]any) { delete(d, "tls_key_file") }),
-		"plain and TLS together":             with(func(d map[string]any) { d["allow_plain_loopback"] = true }),
-		"neither TLS nor plain":              with(func(d map[string]any) { delete(d, "tls_cert_file"); delete(d, "tls_key_file") }),
-		"metrics on a public address":        with(func(d map[string]any) { d["metrics_listen"] = "0.0.0.0:9090" }),
-		"metrics on a host name":             with(func(d map[string]any) { d["metrics_listen"] = "localhost:9090" }),
-		"metrics without a port":             with(func(d map[string]any) { d["metrics_listen"] = "127.0.0.1" }),
-		"metrics on the API's address":       with(func(d map[string]any) { d["metrics_listen"] = d["listen"] }),
+		"a schedule poll under five seconds": with(func(d map[string]any) { d["schedules"] = map[string]any{"poll_interval": 4} }),
+		"schedules per identity over 200":    with(func(d map[string]any) { d["schedules"] = map[string]any{"per_identity": 201} }),
+		"a webhook over plain http": with(func(d map[string]any) {
+			d["schedules"] = map[string]any{"webhook": map[string]any{"url": "http://hooks.example/" + secret}}
+		}),
+		"a webhook with user information": with(func(d map[string]any) {
+			d["schedules"] = map[string]any{"webhook": map[string]any{"url": "https://u:" + secret + "@hooks.example/"}}
+		}),
+		"a webhook timeout over 30 s": with(func(d map[string]any) {
+			d["schedules"] = map[string]any{"webhook": map[string]any{"url": "https://hooks.example/", "timeout": 31}}
+		}),
+		"an inline webhook secret": with(func(d map[string]any) {
+			d["schedules"] = map[string]any{"webhook": map[string]any{"url": "https://hooks.example/", "secret": secret}}
+		}),
+		"a certificate without its key": with(func(d map[string]any) { delete(d, "tls_key_file") }),
+		"plain and TLS together":        with(func(d map[string]any) { d["allow_plain_loopback"] = true }),
+		"neither TLS nor plain":         with(func(d map[string]any) { delete(d, "tls_cert_file"); delete(d, "tls_key_file") }),
+		"metrics on a public address":   with(func(d map[string]any) { d["metrics_listen"] = "0.0.0.0:9090" }),
+		"metrics on a host name":        with(func(d map[string]any) { d["metrics_listen"] = "localhost:9090" }),
+		"metrics without a port":        with(func(d map[string]any) { d["metrics_listen"] = "127.0.0.1" }),
+		"metrics on the API's address":  with(func(d map[string]any) { d["metrics_listen"] = d["listen"] }),
 		"plain HTTP on a public address": with(func(d map[string]any) {
 			delete(d, "tls_cert_file")
 			delete(d, "tls_key_file")

@@ -119,6 +119,12 @@
 - 代码：`transport/httpapi/private_documents.go`（`docSpace`、`mountSpacedDocuments`）、`privatedocs.PublishAs`、`issuance/issuer.go`（团队模板的发布核对）。
 - 测试：`TestTeamSpaceIsSharedWithinTheTenantAndPublicationIsAnApproval`、`TestPublicationOfASharedVersionIsAnotherPersonsApproval`、DOM S12-C。
 - 已知不覆盖：只覆盖单据模板；看板与报表布局的团队空间、团队成员分组在后续切片。
+## 定时报表与投递（S16-A，ADR 0020）
+
+- 要成立的：定时运行以所有者当时生效的绑定提交与本人相同的快照/导出作业（同一准入、配额与来源产品授权）；绑定被移除、产品被移除、缺少 `viewer` 角色或来源拒绝时运行被拒绝；同一触发时刻在多台服务器上只运行一次；投递只含编号与结果，不含报表数据，用环境变量中的密钥做 HMAC-SHA256 签名，只投 https（测试可用回环 http），不跟随重定向；投递端点由部署配置，没有任何接口可以读写它；定时任务从不正式出具。
+- 代码：`reporting/schedule.go`、`reporting/scheduler.go`、`delivery/webhook/webhook.go`、`identity/accessjwt`（`Bound`）、`storage/postgres/schedules.go`、迁移 013（行级安全同 007）、`transport/httpapi/schedules.go`。
+- 测试：`TestAScheduledRunActsAsItsOwnerNow`、`TestSchedulersOnOneStoreRunAnOccurrenceOnce`、`TestPostgresScheduleContract`、行级安全测试 `schedules_and_runs_are_their_identitys_and_the_schedulers`、`delivery/webhook` 的签名与重定向测试、`TestTheServerRunsSchedulesAndDeliversThem`（日志中不出现端点、密钥与报表名称）。
+- 已知不覆盖：投递至少一次（接收方按运行编号去重）；运行记录的保留期（S16-B）；邮件与按租户的端点（S16-B）。
 
 ## 已知没有覆盖的
 

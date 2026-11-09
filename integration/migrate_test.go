@@ -707,7 +707,7 @@ func TestPostgresMigrations(t *testing.T) {
 		// counters table that 003 made is not there at the latest version either).
 		if _, e := admin.Exec(ctx, `DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
 ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
-DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 DROP TABLE reporting_s01.schema_migrations;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check; ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));
 ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check; ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));
@@ -735,7 +735,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		// three legacy rows and applies 004.
 		if _, e := admin.Exec(ctx, `DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
 ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
-DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 DROP TABLE reporting_s01.schema_migrations;
 CREATE TABLE reporting_s01.issue_numbers (
   tenant text NOT NULL, integration text NOT NULL, last bigint NOT NULL CHECK(last >= 0),

@@ -202,6 +202,7 @@ func run() error {
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
 	sweepInterval := flag.Duration("sweep-interval", 10*time.Minute, "retention sweep (S04-B) every interval in the worker loop: expired artifacts and snapshots are deleted once 24 hours past their expiry; 0 disables it")
+	scheduleInterval := flag.Duration("schedule-interval", 30*time.Second, "scheduled reports (S16-A): a pass of the scheduler every interval; 0 turns the schedules (routes and scheduler) off")
 	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
 	dashboardDir := flag.String("dashboard-directory", "", "optional private single-process dashboard directory (0700)")
 	typst := flag.String("pdf-typst", "", "optional pinned Typst binary; with -pdf-typst-sha256 and -pdf-fonts enables PDF export")
@@ -238,6 +239,9 @@ func run() error {
 	host, _, e := net.SplitHostPort(*listen)
 	if e != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return fmt.Errorf("loopback listen address required")
+	}
+	if *scheduleInterval < 0 {
+		return fmt.Errorf("-schedule-interval must be 0 (off) or positive")
 	}
 	if *sweepInterval < 0 {
 		return fmt.Errorf("-sweep-interval must be 0 (off) or positive")
@@ -419,6 +423,20 @@ func run() error {
 			return e
 		}
 	}
+	// S16-A: the scheduled reports, in the demo's store; a run acts as the demo's one principal (its bindings are this process's).
+	var schedules *r.Schedules
+	if store, ok := repo.(r.ScheduleStore); ok && *scheduleInterval > 0 {
+		o := r.ScheduleOptions{Store: store, Resolve: func(i r.Identity) (r.Principal, bool) { return p, i == p.Identity }}
+		if log, ok := repo.(r.AuditLog); ok {
+			o.Audit = log
+		}
+		if schedules, e = r.NewSchedules(s, o); e != nil {
+			return e
+		}
+		if handler, e = httpapi.WithSchedules(handler, s, auth, schedules); e != nil {
+			return e
+		}
+	}
 	// S12-B: the demo records people's actions in its store too (memory, or the fixture database).
 	if log, ok := repo.(r.AuditLog); ok {
 		handler = httpapi.WithAudit(handler, log)
@@ -466,6 +484,24 @@ func run() error {
 		go func() {
 			defer workers.Done()
 			sweepLoop(ctx, s, *sweepInterval, log.Printf)
+		}()
+	}
+	if !*pauseWorkers && schedules != nil {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			ticker := time.NewTicker(*scheduleInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if _, e := schedules.Tick(ctx); e != nil && !errors.Is(e, context.Canceled) {
+						log.Print("the scheduler's pass stopped; it runs again at the next interval")
+					}
+				}
+			}
 		}()
 	}
 	go func() {

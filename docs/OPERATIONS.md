@@ -606,6 +606,29 @@ does not touch it; nothing deletes it. A publication, a withdrawal and an issue 
 event the action is refused (503 `AUDIT_UNAVAILABLE`), so an action that ran has its record. Back it up with the rest of the database. It grows
 with use: plan its retention outside the platform (an export, then a `DELETE` by the migrator) if a regulation sets one.
 
+## Scheduled reports (S16-A, ADR 0020)
+
+Migration 013 adds `schedules` and `schedule_runs` (row-level security as on the jobs; data tables of the application role; run
+`reporting-migrate roles` after `up`) and lets the audit record `schedule.change` and `schedule.run`. With a `schedules` section every server runs
+the scheduler every `poll_interval`: it takes each due schedule with `FOR UPDATE SKIP LOCKED`, starts one run of its occurrence (unique per
+schedule and occurrence) and moves it to its next occurrence, then advances the open runs under a 2-minute lease. Several servers never run an
+occurrence twice; a downtime is caught up once, by the oldest missed occurrence. The servers' clocks do not decide it: the database's does.
+
+A run is its owner's snapshot job (and export) submitted as the owner's binding in force then. An operator who removes a binding, or a product
+from it, stops that person's schedules: the next run ends `refused` (`AUTH_SCOPE_DENIED`), and so does one the source product refuses; a binding
+without `viewer` ends them `AUTH_ROLE_DENIED`. The jobs count against the owner's quotas. To see what ran: `GET /schedules/{id}/runs` as the owner,
+the `schedule.run` events of the audit (an administrator's tenant listing shows everyone's), and the log's `schedule` and `delivery` lines.
+
+The webhook gets each run's end, signed with HMAC-SHA256 over the body under `REPORTING_WEBHOOK_SECRET`; the receiver checks
+`X-Reporting-Signature` against the raw body before it parses it (`webhook.Verify` is the reference), treats `X-Reporting-Delivery` (the run's id)
+as an idempotency key (a delivery may come twice), answers 2xx quickly and fetches nothing it does not need. A 5xx, 408, 429 or no answer is retried
+after 30 s, 1, 2, 4 and 8 minutes; a 3xx or another 4xx is not (the run's `delivery` says `failed`, the log `rejected` or `redirected`). Alert on
+`reporting_deliveries_total{outcome!="delivered"}` and `reporting_schedule_passes_total{outcome!="ok"}`.
+
+Deleted schedules stay as rows (the application role never deletes) and runs accumulate, a few hundred bytes each; until S16-B adds them to the
+retention, remove old ones with the migrator if they grow (`DELETE FROM reporting_s01.schedule_runs WHERE finished_at < now() - interval '400 days'`).
+Migration 013 down drops both tables and the audit's schedule events.
+
 ## Backup and restore (S04-F)
 
 Since S04-E the platform's state is in two places: the PostgreSQL store (jobs, snapshots, artifact rows, issue records, the ledgers) and, with an object

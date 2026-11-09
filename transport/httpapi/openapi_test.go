@@ -158,6 +158,13 @@ func composedForProbing(t *testing.T) (http.Handler, *string) {
 			return httpapi.WithEmbedding(next, service, auth, config)
 		},
 		func(next http.Handler) (http.Handler, error) {
+			schedules, e := r.NewSchedules(service, r.ScheduleOptions{Store: memory.New(time.Now), Resolve: func(r.Identity) (r.Principal, bool) { return r.Principal{}, false }})
+			if e != nil {
+				return nil, e
+			}
+			return httpapi.WithSchedules(next, service, auth, schedules)
+		},
+		func(next http.Handler) (http.Handler, error) {
 			return httpapi.WithProfile(next, service, auth, "probe", config)
 		},
 		func(next http.Handler) (http.Handler, error) {

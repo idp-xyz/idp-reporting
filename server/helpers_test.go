@@ -178,6 +178,7 @@ type world struct {
 	cursorFile2 string
 	finance     string
 	tenant      string
+	env         map[string]string // further environment variables the server reads (S16-A: the webhook's secret)
 }
 
 type bindingJSON struct {
@@ -222,6 +223,9 @@ func (w *world) registry() Registry {
 }
 
 func (w *world) getenv(name string) string {
+	if v, ok := w.env[name]; ok {
+		return v
+	}
 	switch name {
 	case StoreDSNEnv:
 		return testDSN

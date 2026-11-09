@@ -32,6 +32,63 @@ func (s *Server) startWorkers() {
 		s.workers.Add(1)
 		go s.sweepLoop()
 	}
+	if s.schedules != nil {
+		s.workers.Add(1)
+		go s.scheduleLoop()
+	}
+}
+
+// scheduleLoop runs a pass of the scheduler every schedules.poll_interval seconds (S16-A): it starts the runs that are due and advances the
+// open ones. Every server on the store runs it; the store's locks and leases give each run to one of them. A pass runs on the work context,
+// so that the drain lets it finish; what it did is logged by counts, each delivery attempt by its outcome word, a failure by its code.
+func (s *Server) scheduleLoop() {
+	defer s.workers.Done()
+	interval := s.cfg.Schedules.PollInterval
+	if interval == 0 {
+		interval = DefaultSchedulePoll
+	}
+	tick, stop := s.opts.scheduleTick(seconds(interval))
+	defer stop()
+	for {
+		select {
+		case <-s.loopCtx.Done():
+			return
+		case <-tick:
+			s.scheduleOnce()
+			if h := s.opts.hooks; h != nil && h.Scheduled != nil {
+				select {
+				case h.Scheduled <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
+}
+
+func (s *Server) scheduleOnce() {
+	s.busy.Add(1)
+	defer s.busy.Add(-1)
+	res, err := s.schedules.Tick(s.workCtx)
+	for _, d := range res.Deliveries {
+		fields := map[string]any{"outcome": d.Outcome, "status": d.Status, "attempt": d.Attempt, "delivery": d.Delivery, "run_id": d.RunID, "schedule_id": d.ScheduleID}
+		if d.Outcome == r.DeliveryOutcomeDelivered {
+			s.log.info("delivery", fields)
+		} else {
+			s.log.warn("delivery", fields)
+		}
+		s.metrics.delivered(d.Outcome)
+	}
+	fields := map[string]any{"started": res.Started, "advanced": res.Advanced, "lost": res.Lost}
+	if err != nil && !errors.Is(err, context.Canceled) {
+		fields["code"] = codeOf(err)
+		s.log.warn("schedule_failed", fields)
+		s.metrics.scheduled(codeOf(err))
+		return
+	}
+	if res.Started > 0 || res.Advanced > 0 || res.Lost > 0 {
+		s.log.info("schedule", fields)
+	}
+	s.metrics.scheduled("ok")
 }
 
 // worker claims and runs jobs until the drain begins. A job it holds runs to its end on the work context. Each claim runs in the root span of a

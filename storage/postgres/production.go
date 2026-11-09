@@ -141,10 +141,11 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (
 	return (&Store{pool: pool}).apply(opts), nil
 }
 
-// dataTables are the tables the application role reads and writes (designs, from 011, where it exists, as issue_numbers); the ledger, the profile and the sweeps ledger (S04-B) it only reads.
+// dataTables are the tables the application role reads and writes (designs, from 011, and the schedules and their runs, from 013, where they
+// exist, as issue_numbers); the ledger, the profile and the sweeps ledger (S04-B) it only reads.
 // issue_numbers, S03-G's counters, exists at version 3 only (004 drops it): where it exists it is a data table, and the schemas older than
 // the latest stay serviceable by roles. sweeps exists from version 6.
-var dataTables = []string{"jobs", "assets", "issue_numbers", "designs"}
+var dataTables = []string{"jobs", "assets", "issue_numbers", "designs", "schedules", "schedule_runs"}
 var readTables = []string{"profile", "schema_migrations", "sweeps"}
 
 // appendTables are the tables the application role inserts into and reads, and never updates (012 audit_events, S12-B): an audit is not
@@ -341,12 +342,19 @@ type policyRule struct{ cmd, qual, check string }
 
 var auditPolicies = map[string]policyRule{"identity": {"ALL", identityQual, identityQual}, "tenant_audit": {"SELECT", auditTenantQual, ""}}
 
+// schedulesVersion is the schema version that has the schedules and their runs (013, S16-A), held to the policies of 007.
+const schedulesVersion = 13
+
 // rlsTablesAt is the tables with business rows at a schema version.
 func rlsTablesAt(version int) []string {
+	out := slices.Clone(rlsTables)
 	if version >= designsVersion {
-		return append(slices.Clone(rlsTables), "designs")
+		out = append(out, "designs")
 	}
-	return rlsTables
+	if version >= schedulesVersion {
+		out = append(out, "schedules", "schedule_runs")
+	}
+	return out
 }
 
 var rlsPolicies = map[string]string{"identity": identityQual, "worker": workerQual}

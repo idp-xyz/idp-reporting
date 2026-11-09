@@ -15,8 +15,13 @@ it does not change the simulator data classification or qualify a real issuer.
 |---|---|
 | GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials. The integrations are the principal's that the server has a connection for (ADR 0016); a bound product without a connection is not listed `roles` (S12-A) are the binding's effective roles. |
 | (every route) | S12-A (ADR 0018): a route needs a role, from its pattern: a `.../release` a `publisher`, `POST /issues` an `issuer`, any other change of a layout, dashboard, template, background or image (and its catalog, a sample's copy) a `designer`; reading, querying, freezing, exporting, previews and checks a `viewer`. A principal without it gets 403 `{"error":"AUTH_ROLE_DENIED"}` before the route does anything. |
-| GET /audit?limit=N&before=ID&scope=tenant | S12-B (ADR 0018): people's actions, newest first (N 1..200, default 50): the caller's own `{id, at, action, object_kind, object_id?, outcome, code?}`; with `scope=tenant` (the `administrator` role, else 403 `AUTH_ROLE_DENIED`) the tenant's and issuer's, each with its `subject`. Recorded: `design.change`, `design.release`, `issue.submit`, `export.submit`, `artifact.download`, `role.refused`, each with its outcome (`succeeded`, `refused`, `failed`); a publication, a withdrawal and an official issue are first recorded as `requested` and refused with 503 `{"error":"AUDIT_UNAVAILABLE"}` when that cannot be written. 404 when the server keeps no audit. |
+| GET /audit?limit=N&before=ID&scope=tenant | S12-B (ADR 0018): people's actions, newest first (N 1..200, default 50): the caller's own `{id, at, action, object_kind, object_id?, outcome, code?}`; with `scope=tenant` (the `administrator` role, else 403 `AUTH_ROLE_DENIED`) the tenant's and issuer's, each with its `subject`. Recorded: `design.change`, `design.release`, `issue.submit`, `export.submit`, `artifact.download`, `role.refused`, and (S16-A) `schedule.change` and `schedule.run`, each with its outcome (`succeeded`, `refused`, `failed`); a publication, a withdrawal and an official issue are first recorded as `requested` and refused with 503 `{"error":"AUDIT_UNAVAILABLE"}` when that cannot be written. 404 when the server keeps no audit. |
 | /team/document-templates…, POST /team/issues | S12-C (ADR 0018): the template routes over the tenant's shared design space instead of the caller's own (same bodies, roles and audit). Every version records who saved it; `GET /team/document-templates/{id}?version=N` answers `saved_by_me`; publishing a version by the person who saved it is 409 `{"error":"APPROVAL_REQUIRED"}` (another publisher approves by publishing it); a withdrawal is any publisher's. An issue of a team template reads its publication in the shared space. The samples copy into the caller's own space. |
+| POST /schedules | S16-A (ADR 0020, "Scheduled reports" below): `{name, query, export_format?, as_of?, recurrence}` + one Idempotency-Key → 201 the schedule and `Location`. A `viewer`'s. 400 for a request outside the forms, 422 for a dataset or format the server does not have, 403 for a product the caller does not hold, 429 `QUOTA_EXCEEDED` with `quota: "schedules"` over the limit. |
+| GET /schedules?limit=N&before=ID | The caller's schedules under the products the caller holds, newest first (N 1..100, default 50); `before` is the last `schedule_id` of the previous page. |
+| GET /schedules/{id} | One of the caller's schedules: `{schedule_id, name, integration_id, state, recurrence, as_of, export_format?, query, next_run_at?, created_at}`. Another identity's or a deleted one is 404. |
+| POST /schedules/{id}/pause, POST /schedules/{id}/resume, DELETE /schedules/{id} | No body. The schedule after the change (`paused` without `next_run_at`; `active` from the next occurrence after now, the catalog checked again; `deleted`, then 404). Each is `schedule.change` in the audit. |
+| GET /schedules/{id}/runs?limit=N&before=ID | The schedule's runs, newest occurrence first: `{run_id, schedule_id, due_at, state, as_of, snapshot_job_id?, export_job_id?, snapshot_id?, artifact_id?, export_format?, error_code?, delivery, finished_at?}`. The jobs and results are read through their own routes, as the owner. |
 | GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
@@ -553,6 +558,30 @@ answers `GET /sign-in` with `200 {"enabled": false}` (so that the console's ques
 
 The ID token and a refresh token, when the provider returns them, never leave the server. The server never redirects; the redirect URI is
 the configured one, the console's page.
+
+## Scheduled reports (S16-A, docs/S16A_SCOPE.md, docs/ADR_0020_SCHEDULED_REPORTS.md)
+
+Mounted when the server's configuration has a `schedules` section (the demo: unless `-schedule-interval 0`). A schedule is the caller's: a query of
+the published catalog (the same `QuerySpec` as `POST /snapshot-jobs`, checked against the catalog when it is made, no row read), an optional
+`export_format` (`xlsx` or a format of `/capabilities`), an `as_of` rule and a `recurrence`:
+
+```json
+{"name": "应收周报", "query": {…}, "export_format": "xlsx", "as_of": "previous_day",
+ "recurrence": {"frequency": "weekly", "at": "07:30", "weekday": 1, "timezone": "Asia/Shanghai"}}
+```
+
+`frequency` is `daily`, `weekly` (with `weekday` 1 Monday..7 Sunday) or `monthly` (with `day` 1..28); `at` is `HH:MM`; `timezone` an IANA zone
+(`UTC`, `Asia/Shanghai`; not `Local`). A field of another form is 400. `as_of` is `run_date` (the default: each run reads as of the occurrence's
+date in the zone), `previous_day`, or `fixed` (the query's own). At each occurrence the server submits the snapshot job as the schedule's owner,
+exactly as the owner's `POST /snapshot-jobs` would be (the owner's binding in force then, the `viewer` role, the source product's authority, the
+quotas), then the export. The jobs are the owner's: they are in `GET /jobs` and readable and cancellable by the owner. An occurrence missed while
+no server ran is run once when one runs again; one missed while the schedule was paused is not. Runs end `succeeded`, `failed`, `refused` or
+`cancelled` with a code (docs/S16A_SCOPE.md A2).
+
+When the deployment configures a webhook, each run's end is POSTed to it, signed (`X-Reporting-Signature: sha256=<hex HMAC-SHA256 of the body>`,
+`X-Reporting-Delivery: <run_id>`, `X-Reporting-Event: schedule.run.finished`), with the run's ids and outcome and never a value of the report;
+a run's `delivery` says `pending`, `delivered` or `failed` (`none` without a webhook). The endpoint is the deployment's: no route reads or writes
+it. An official issue is never scheduled.
 
 ## Health and readiness (S05-A, docs/DEPLOYMENT.md)
 
