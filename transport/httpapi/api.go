@@ -9,6 +9,7 @@ import (
 	"errors"
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/layouts"
+	"idp.local/reporting/privatedocs"
 	r "idp.local/reporting/reporting"
 	"io"
 	"mime"
@@ -546,7 +547,7 @@ func classify(e error) (code string, status int, ok bool) {
 	for _, candidate := range []struct {
 		err    error
 		status int
-	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrAuditUnavailable, 503}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
+	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrAuditUnavailable, 503}, {privatedocs.ErrApprovalRequired, 409}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
 		if errors.Is(e, candidate.err) {
 			return candidate.err.Error(), candidate.status, true
 		}
@@ -611,10 +612,7 @@ func auditLogOf(ctx context.Context) r.AuditLog {
 // AuditAction is what a route records (S12-B): the action, the kind of object, and whether the action must not run unrecorded (a
 // publication or withdrawal, an official issue). "" for a route that records nothing (reading, querying, previews).
 func AuditAction(method, pattern string) (action, kind string, mandatory bool) {
-	_, path, _ := strings.Cut(pattern, " ")
-	if path == "" {
-		path = pattern
-	}
+	path := routePath(pattern)
 	designKind := func() string {
 		for prefix, k := range map[string]string{"/layouts": "layout", "/dashboards": "dashboard", "/document-templates": "template", "/document-backgrounds": "background", "/document-images": "image"} {
 			if strings.Contains(path, "/api/reporting/v1"+prefix) {
@@ -676,6 +674,15 @@ func outcomeOf(status int) string {
 	return "failed"
 }
 
+// routePath is a pattern's path, the tenant's shared space's (S12-C, /team/...) read as the same route as one's own.
+func routePath(pattern string) string {
+	_, path, _ := strings.Cut(pattern, " ")
+	if path == "" {
+		path = pattern
+	}
+	return strings.Replace(path, "/api/reporting/v1/team/", "/api/reporting/v1/", 1)
+}
+
 // designPaths are the routes of the private design stores (layouts, dashboards, templates, page backgrounds, images): a change of any of them
 // is a designer's (S12-A).
 var designPaths = []string{"/layouts", "/dashboards", "/document-templates", "/document-backgrounds", "/document-images"}
@@ -684,10 +691,7 @@ var designPaths = []string{"/layouts", "/dashboards", "/document-templates", "/d
 // (".../release") is a publisher's, an official issue an issuer's, any other change of a design a designer's; reading, querying, freezing,
 // exporting, previewing and checking are a viewer's. A route added later falls under the same rules.
 func RequiredRole(method, pattern string) string {
-	_, path, _ := strings.Cut(pattern, " ")
-	if path == "" {
-		path = pattern
-	}
+	path := routePath(pattern)
 	if method == http.MethodGet || method == http.MethodHead {
 		return r.RoleViewer
 	}

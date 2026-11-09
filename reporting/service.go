@@ -460,6 +460,8 @@ type IssueInput struct {
 	SnapshotID      string
 	RowIndex        int
 	Group           *IssueGroup
+	// Space is "team" for a template of the tenant's shared space (S12-C), "" for the caller's own.
+	Space string
 }
 
 // SubmitIssue admits an issue job for the caller's current, unexpired snapshot. The caller
@@ -491,6 +493,11 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 	sum := bytesDigest(in.Template)
 	job := Job{ID: NewID(), Owner: snap.Owner, Kind: "issue", State: "queued", Key: key, Query: snap.Query, Prepared: snap.Prepared, SnapshotID: in.SnapshotID, Format: "pdf",
 		TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: sum, Template: string(in.Template)}
+	if in.Space == "team" {
+		job.TemplateSpace = "team"
+	} else if in.Space != "" {
+		return JobView{}, ErrInvalid
+	}
 	if in.Group != nil {
 		// The product must speak the contract that carries a group: a version-1 adapter is never sent one.
 		if !GroupIssueSupported(c.Adapter) {

@@ -111,6 +111,14 @@
 - 测试：`TestAuditRecordsActionsAndListsThem`、`TestPostgresAuditContract`、行级安全测试 `the_audit_is_read_by_its_identity_or_an_administrator_and_never_rewritten`。
 - 已知不覆盖：审计不记录读取查询与预览；审计的保留期由运营方在平台外决定。
 
+## 团队共享空间（S12-C，ADR 0018）
+
+- 要成立的：团队模板只在本租户内可见；保存者不能发布自己保存的版本（审批）；没有人能以团队身份登录。
+- 做法：共享空间是保留主体 `~team` 的所有者，行级安全仍按租户与发行方隔离（与任何身份的行相同）；租户内谁能读、改、发布由服务端角色决定。每个版本记录保存者的摘要（`reporting.ActorDigest`），接口只回答 `saved_by_me`。
+- 代码：`transport/httpapi/private_documents.go`（`docSpace`、`mountSpacedDocuments`）、`privatedocs.PublishAs`、`issuance/issuer.go`（团队模板的发布核对）。
+- 测试：`TestTeamSpaceIsSharedWithinTheTenantAndPublicationIsAnApproval`、`TestPublicationOfASharedVersionIsAnotherPersonsApproval`、DOM S12-C。
+- 已知不覆盖：只覆盖单据模板；看板与报表布局的团队空间、团队成员分组在后续切片。
+
 ## 已知没有覆盖的
 
 - 真实发行方、真实适配器、数据对账与准入决定（上线清单第 16–19 项）。

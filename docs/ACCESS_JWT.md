@@ -100,3 +100,5 @@ tenant 时拥有相同 owner，当前客户端的产品许可仍限制操作。�
 ## 角色（S12-A，ADR 0018）
 
 绑定可带 `roles`：`viewer`、`designer`、`publisher`、`issuer`、`administrator` 中的 1–5 个、不重复。未写 `roles` 的绑定保持角色引入前的权利（`viewer, designer, publisher, issuer`），`administrator` 从不默认给予。令牌里的角色声明一律忽略，与产品相同：只有绑定能授予。服务端在每个路由处按其模式要求一个角色（`transport/httpapi.RequiredRole`），不满足时回答 403 `AUTH_ROLE_DENIED`；`GET /session` 列出有效角色。空的 `roles` 列表或未知角色名被拒绝（启动或重载时，重载保持旧绑定）。
+
+团队共享空间（S12-C）：主体 `~team` 保留给每个租户的共享设计空间，任何绑定都不能使用它（绑定文件与访问令牌配置都拒绝）。

@@ -157,13 +157,21 @@ window.createReportingLibrary = function (ports) {
   // The latest refresh is the one that counts: the centre is shown again while a listing is still in flight (the crumb, then the rail), and the
   // earlier answer, arriving after the later one, must not put back what it listed.
   let refreshes = 0;
+  function setSpace(space) {
+    window.reportingTemplateSpace.set(space);
+    const team = window.reportingTemplateSpace.get() === 'team';
+    ui.spaceOwn.setAttribute('aria-pressed', String(!team));
+    ui.spaceTeam.setAttribute('aria-pressed', String(team));
+    ui.title.textContent = team ? '团队模板' : '模板中心';
+    refresh();
+  }
   async function refresh() {
     const seq = ++refreshes;
     state.loading = true;
     state.failed = '';
     render();
     try {
-      const list = await ports.call('/document-templates', undefined, '模板列表');
+      const list = await ports.call(window.reportingTemplateSpace.path('/document-templates'), undefined, '模板列表');
       if (seq !== refreshes) return;
       if (!Array.isArray(list) || list.length > 64) throw Error('无法验证模板列表。');
       state.own = list.map(normalize).filter(Boolean);
@@ -243,10 +251,15 @@ window.createReportingLibrary = function (ports) {
         expected_revision: t.catalog.revision,
       };
       try {
-        const v = await ports.call('/document-templates/' + t.id + '/catalog', {method: 'PUT', body}, '模板分类', {
-          409: '这个模板的分类刚在别处改过，列表已刷新；请再操作一次。',
-          400: '分类不符合规则：业务域与流程各至多 40 个字符，集合至多 16 个，每个 1–40 个字符、单行、前后无空白。',
-        });
+        const v = await ports.call(
+          window.reportingTemplateSpace.path('/document-templates/') + t.id + '/catalog',
+          {method: 'PUT', body},
+          '模板分类',
+          {
+            409: '这个模板的分类刚在别处改过，列表已刷新；请再操作一次。',
+            400: '分类不符合规则：业务域与流程各至多 40 个字符，集合至多 16 个，每个 1–40 个字符、单行、前后无空白。',
+          }
+        );
         const n = normalize({id: t.id, version: t.versions, catalog: v});
         if (!n) throw Error('无法验证分类。');
         t.catalog = n.catalog;
@@ -1271,7 +1284,11 @@ window.createReportingLibrary = function (ports) {
       return;
     }
     try {
-      const v = await ports.call('/document-templates/' + t.id + '?version=' + t.versions, undefined, '复制模板');
+      const v = await ports.call(
+        window.reportingTemplateSpace.path('/document-templates/') + t.id + '?version=' + t.versions,
+        undefined,
+        '复制模板'
+      );
       if (!v || v.id !== t.id || !v.config || typeof v.config !== 'object') throw Error('无法验证模板。');
       const base = fallbackName(t),
         suffix = ' 副本',
@@ -1282,7 +1299,7 @@ window.createReportingLibrary = function (ports) {
             .trimEnd() + suffix;
       const config = {...v.config, name};
       const saved = await ports.call(
-        '/document-templates',
+        window.reportingTemplateSpace.path('/document-templates'),
         {method: 'POST', body: {id: '', expected_version: 0, config}},
         '复制模板',
         {
@@ -1295,7 +1312,7 @@ window.createReportingLibrary = function (ports) {
       const c = t.catalog;
       try {
         await ports.call(
-          '/document-templates/' + saved.id + '/catalog',
+          window.reportingTemplateSpace.path('/document-templates/') + saved.id + '/catalog',
           {
             method: 'PUT',
             body: {
@@ -1560,7 +1577,7 @@ window.createReportingLibrary = function (ports) {
         if (w.layout === 'blank') {
           const config = studio().blank(w.name, w.preset);
           made = await ports.call(
-            '/document-templates',
+            window.reportingTemplateSpace.path('/document-templates'),
             {method: 'POST', body: {id: '', expected_version: 0, config}},
             '新建模板',
             {413: '已达到每个身份 64 个模板的上限。', 400: '模板不被接受。', 403: '当前身份无权使用所选的数据集。'}
@@ -1569,7 +1586,7 @@ window.createReportingLibrary = function (ports) {
           if (w.domain)
             try {
               await ports.call(
-                '/document-templates/' + made.id + '/catalog',
+                window.reportingTemplateSpace.path('/document-templates/') + made.id + '/catalog',
                 {
                   method: 'PUT',
                   body: {
@@ -1792,6 +1809,19 @@ window.createReportingLibrary = function (ports) {
             })),
           ]
         : []),
+      // S12-C: 我的模板 / 团队模板. The team's templates are the tenant's shared space; publishing one there is another publisher's approval.
+      h(
+        'div',
+        {class: 'space-switch', role: 'group', 'aria-label': '模板空间'},
+        (ui.spaceOwn = btn('我的模板', () => setSpace(''), 'small', null, {
+          id: 'lib-space-own',
+          'aria-pressed': 'true',
+        })),
+        (ui.spaceTeam = btn('团队模板', () => setSpace('team'), 'small', null, {
+          id: 'lib-space-team',
+          'aria-pressed': 'false',
+        }))
+      ),
       btn('返回设计器', () => ports.open('documents'), null, 'left'),
       btn('数据中心', e => (ports.data ? ports.data(e.currentTarget) : ports.open('workspace')), null, 'database', {
         id: 'lib-datacenter',
@@ -1901,6 +1931,13 @@ window.createReportingLibrary = function (ports) {
       if (alive) render();
     },
     clear() {
+      // S12-C: a new session starts in its own space.
+      window.reportingTemplateSpace.set('');
+      if (ui.spaceOwn) {
+        ui.spaceOwn.setAttribute('aria-pressed', 'true');
+        ui.spaceTeam.setAttribute('aria-pressed', 'false');
+        ui.title.textContent = '模板中心';
+      }
       alive = 0;
       for (const d of dialogs.slice()) d.close();
       dialogs = [];

@@ -101,6 +101,9 @@ func (v *Verifier) Replace(c Config) error {
 		if b.Roles != nil && !r.ValidRoles(b.Roles) {
 			return ErrInvalidConfig
 		}
+		if b.Subject == r.TeamSubject {
+			return ErrInvalidConfig // S12-C: the shared design space's subject is no person's
+		}
 		id := subjectClient{b.Subject, b.ClientID}
 		if _, exists := next.bindings[id]; exists {
 			return ErrInvalidConfig

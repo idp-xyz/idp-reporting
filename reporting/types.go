@@ -4,7 +4,9 @@ package reporting
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -163,6 +165,26 @@ func (i Identity) Valid() bool {
 	return i.Tenant != "" && i.Issuer != "" && i.Subject != "" && len(i.Tenant)+len(i.Issuer)+len(i.Subject) <= 1024
 }
 
+// TeamSubject is the subject of a tenant's shared design space (S12-C, ADR 0018 decision 2): a reserved owner beside the people of the
+// tenant and issuer. No binding may name it (the bindings file and the access-token profile refuse it), so no person is the team. Row-level
+// security keeps the space to its tenant like any identity's rows; who of the tenant may read, change or publish it is the server's roles.
+const TeamSubject = "~team"
+
+// TeamOf is the owner of the shared design space of an identity's tenant and issuer.
+func TeamOf(i Identity) Identity {
+	return Identity{Tenant: i.Tenant, Issuer: i.Issuer, Subject: TeamSubject}
+}
+
+// IsTeam says whether an owner is a shared design space.
+func (i Identity) IsTeam() bool { return i.Subject == TeamSubject }
+
+// ActorDigest is a person's mark in a version of the shared space (who saved it): the SHA-256 of the identity, never shown to another person.
+func ActorDigest(i Identity) string {
+	b, _ := json.Marshal(i)
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
 type Ref struct {
 	ID      string `json:"id"`
 	Version string `json:"version"`
@@ -315,8 +337,10 @@ type Job struct {
 	TemplateID      string `json:",omitempty"`
 	TemplateVersion int    `json:",omitempty"`
 	TemplateSHA256  string `json:",omitempty"`
-	Template        string `json:",omitempty"` // the canonical JSON text, as a string: JSONB would reorder an object
-	RowIndex        int    `json:",omitempty"`
+	// TemplateSpace is "team" when the template is the tenant's shared space's (S12-C): the worker reads its publication there.
+	TemplateSpace string `json:",omitempty"`
+	Template      string `json:",omitempty"` // the canonical JSON text, as a string: JSONB would reorder an object
+	RowIndex      int    `json:",omitempty"`
 	// Group is the row group a schema 2.0 template is issued for (S03-K): frozen at admission in place of the
 	// row, so that RowIndex is 0 for a group job. Nil for a 1.x job.
 	Group *IssueGroup `json:",omitempty"`

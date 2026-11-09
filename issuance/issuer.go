@@ -87,7 +87,11 @@ func (i *Issuer) prepare(j r.Job, snap r.Snapshot) (document, error) {
 	if string(frozen) != j.Template {
 		return document{}, r.ErrIntegrity
 	}
-	published, e := i.store.Published(j.Owner.Identity, j.TemplateID)
+	owner := j.Owner.Identity
+	if j.TemplateSpace == "team" {
+		owner = r.TeamOf(owner) // S12-C: a template of the tenant's shared space
+	}
+	published, e := i.store.Published(owner, j.TemplateID)
 	if errors.Is(e, r.ErrNotFound) {
 		return document{}, r.ErrUnpublished
 	}

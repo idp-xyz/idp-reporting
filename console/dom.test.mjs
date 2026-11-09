@@ -12183,11 +12183,11 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       const text = s => libq(a, s).textContent.replace(/\s+/g, ' ').trim();
       assert.match(text('.wordmark'), /^IDP REPORTING\s*模板中心$/);
       assert.deepEqual(
-        libqa(a, '.library-header .btn:not(#lib-data)').map(b => b.textContent.trim()),
+        libqa(a, '.library-header > .btn:not(#lib-data)').map(b => b.textContent.trim()),
         ['返回设计器', '数据中心', '新建模板']
       );
       assert.equal(a.$('lib-datacenter').title, '打开数据面板：数据集、字段与币种，以及查询');
-      assert.equal(libqa(a, '.library-header .btn')[0].id, 'lib-data', 'the data chip leads the header (S07-A)');
+      assert.equal(libqa(a, '.library-header > .btn')[0].id, 'lib-data', 'the data chip leads the header (S07-A)');
       assert.equal(libq(a, '.library-eyebrow'), null, 'S09-C: no English eyebrow over the title');
       assert.equal(text('h1'), '模板中心');
       assert.equal(text('.catalog-top p'), '从业务流程找到模板，再选择版式、数据和版本。');
@@ -12403,7 +12403,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       assert.equal((await rest('/document-templates/' + ids.a + '?version=1')).status, 200);
       await new Promise(r => setTimeout(r, 5));
       assert.equal((await rest('/document-templates/' + ids.b + '?version=1')).status, 200);
-      libq(a, '.library-header .btn:not(#lib-data)').click(); // 返回设计器, then back
+      libq(a, '.library-header > .btn:not(#lib-data)').click(); // 返回设计器, then back
       assert.equal(a.$('page-library').hidden, true);
       q(a, '[data-page="library"]').click();
       await until(
@@ -12635,7 +12635,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       assert.equal(a.$('page-library').hidden, false);
       // 新建模板 can be opened (the samples can be read) but step 3 needs the data set.
       // With a result: 编辑 opens the latest version in the studio.
-      libqa(a, '.library-header .btn')
+      libqa(a, '.library-header > .btn')
         .find(b => b.textContent.trim() === '数据中心')
         .click();
       assert.equal(a.$('sh-d-data').hidden, false, 'S07-H: 数据中心 is the data drawer');
@@ -12661,7 +12661,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
         q(a, sel).click();
         assert.equal(a.$('page-library').hidden, false, sel);
         assert.equal(a.$('page-documents').hidden, true);
-        libqa(a, '.library-header .btn:not(#lib-data)')[0].click();
+        libqa(a, '.library-header > .btn:not(#lib-data)')[0].click();
         assert.equal(a.$('page-documents').hidden, false);
         assert.equal(a.$('st-name').textContent, '编辑-' + tag);
       }
@@ -12671,7 +12671,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       await until(() => ownCard(a, '编辑-' + tag), 'the opened template is in 最近使用');
       // Another data set: the card's reason differs.
       rewrite = true;
-      libq(a, '.library-header .btn').click();
+      libq(a, '.library-header > .btn').click();
       q(a, '[data-page="library"]').click();
       await until(
         () =>
@@ -13278,7 +13278,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       await centre(a);
       assert.ok(ownCards(a).length > 0);
       held = true;
-      libq(a, '.library-header .btn').click();
+      libq(a, '.library-header > .btn').click();
       q(a, '[data-page="library"]').click();
       await sleep(30);
       a.click('logout');
@@ -14825,5 +14825,35 @@ test('S12-B: 操作记录 lists the identity own actions from the server, newest
     assert.equal(admin.$('audit-scope').value, '');
   } finally {
     admin.close();
+  }
+});
+
+// ---- S12-C: the team's shared templates (docs/ADR_0018_ROLES_APPROVAL_AUDIT.md) ----
+test('S12-C: the template centre switches between 我的模板 and 团队模板; the team listing, the studio and the issue use /team; sign-out returns to one own space', async () => {
+  const asked = [];
+  const a = app(async path => {
+    if (/\/document-templates|\/issues/.test(path)) asked.push(path.replace(/^.*\/api\/reporting\/v1/, ''));
+  });
+  try {
+    const d = a.w.document;
+    await a.login();
+    d.querySelector('[data-page="library"]').click();
+    await until(() => asked.includes('/document-templates') && d.getElementById('lib-space-team'), 'the own listing');
+    assert.equal(d.getElementById('lib-space-own').getAttribute('aria-pressed'), 'true');
+    d.getElementById('lib-space-team').click();
+    await until(() => asked.includes('/team/document-templates'), 'the team listing');
+    assert.equal(d.getElementById('lib-space-team').getAttribute('aria-pressed'), 'true');
+    assert.equal(a.w.reportingTemplateSpace.get(), 'team');
+    assert.equal(a.w.reportingTemplateSpace.path('/issues'), '/team/issues');
+    d.getElementById('lib-space-own').click();
+    await until(() => asked.filter(p => p === '/document-templates').length >= 2, 'the own listing again');
+    assert.equal(a.w.reportingTemplateSpace.get(), '');
+    d.getElementById('lib-space-team').click();
+    await until(() => a.w.reportingTemplateSpace.get() === 'team' && !a.$('preview').disabled, 'team again');
+    a.click('logout');
+    assert.equal(a.w.reportingTemplateSpace.get(), '');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
   }
 });
