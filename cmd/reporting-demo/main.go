@@ -158,6 +158,43 @@ func openObjectStore(flags *objects.Flags, getenv func(string) string, useMemory
 // rotation of the demo token can be rehearsed. They only verify; the current token signs.
 const previousTokensEnv = "REPORTING_DEMO_PREVIOUS_TOKENS"
 
+// colleagueTokenEnv names the optional token of a second person of the demo's tenant (S12-D): subject user_b, the same issuer and the
+// same source grants as user_a. It exists so that what needs two people (the team space's approval, ADR 0018) can be shown and measured
+// in the demo; without it the demo has one person, as before. It must differ from the demo token and be at least 32 characters.
+const colleagueTokenEnv = "REPORTING_DEMO_COLLEAGUE_TOKEN"
+
+// colleagueSubject is the colleague's subject.
+const colleagueSubject = "user_b"
+
+// demoAuthenticate answers the demo's authenticator: the demo token's person, and the colleague's when a colleague token is set.
+func demoAuthenticate(secret, colleague string, p r.Principal) (httpapi.Authenticate, error) {
+	first, e := httpapi.DemoBearer(secret, p)
+	if e != nil || colleague == "" {
+		return first, e
+	}
+	if colleague == secret || len(colleague) < 32 {
+		return nil, fmt.Errorf("%s must be at least 32 characters and differ from the demo token", colleagueTokenEnv)
+	}
+	second, e := httpapi.DemoBearer(colleague, colleaguePrincipal(p))
+	if e != nil {
+		return nil, e
+	}
+	return func(req *http.Request) (r.Principal, error) {
+		if got, err := first(req); err == nil {
+			return got, nil
+		}
+		return second(req)
+	}, nil
+}
+
+// colleaguePrincipal is the demo's person with the colleague's subject.
+func colleaguePrincipal(p r.Principal) r.Principal {
+	c := p
+	c.Identity.Subject = colleagueSubject
+	c.Integrations = slices.Clone(p.Integrations)
+	return c
+}
+
 // maxPreviousTokens is the ring's size, 4, less the current key.
 const maxPreviousTokens = r.MaxCursorKeys - 1
 
@@ -265,6 +302,7 @@ func run() error {
 		return e
 	}
 	secret := os.Getenv("REPORTING_DEMO_TOKEN")
+	colleague := os.Getenv(colleagueTokenEnv)
 	cursorKeys, e := demoCursorKeys(secret, os.Getenv(previousTokensEnv))
 	if e != nil {
 		return e
@@ -275,6 +313,10 @@ func run() error {
 	p := contractsim.DemoPrincipal()
 	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
 	// Read before anything is opened: a malformed origin, or an integration this demo does not have, stops the start.
+	people := []r.Principal{p}
+	if colleague != "" {
+		people = append(people, colleaguePrincipal(p))
+	}
 	embed, e := embedConfig(embedOrigins, p.Integrations)
 	if e != nil {
 		return e
@@ -286,10 +328,12 @@ func run() error {
 		}
 		repo = memory.New(time.Now)
 		a, b := contractsim.Financial(), contractsim.Shipment()
-		a.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
-		grant := contractsim.DefaultGrant()
-		grant.CurrencyPolicy = nil
-		b.Grant(contractsim.DemoOwner(p, contractsim.ShipmentIntegration), grant)
+		for _, person := range people {
+			a.Grant(contractsim.DemoOwner(person, contractsim.FinanceIntegration), contractsim.DefaultGrant())
+			grant := contractsim.DefaultGrant()
+			grant.CurrencyPolicy = nil
+			b.Grant(contractsim.DemoOwner(person, contractsim.ShipmentIntegration), grant)
+		}
 		finance, shipment = a, b
 	} else {
 		dsn := os.Getenv("REPORTING_S01_TEST_DSN")
@@ -318,8 +362,10 @@ func run() error {
 			if i == 1 {
 				grant.CurrencyPolicy = nil
 			}
-			if e = source.EnsureGrant(dbctx, r.SourceContext{Owner: contractsim.DemoOwner(p, id), SourceTenant: "tenant_a"}, grant); e != nil {
-				return fmt.Errorf("source fixture grant could not be ensured")
+			for _, person := range people {
+				if e = source.EnsureGrant(dbctx, r.SourceContext{Owner: contractsim.DemoOwner(person, id), SourceTenant: "tenant_a"}, grant); e != nil {
+					return fmt.Errorf("source fixture grant could not be ensured")
+				}
 			}
 		}
 		finance, shipment = source, source
@@ -369,7 +415,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	auth, e := httpapi.DemoBearer(secret, p)
+	auth, e := demoAuthenticate(secret, colleague, p)
 	if e != nil {
 		return e
 	}

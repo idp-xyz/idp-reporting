@@ -440,3 +440,41 @@ func TestTheDemosLogCarriesNoTokenAndNoKey(t *testing.T) {
 		}
 	}
 }
+
+// S12-D: the colleague token is a second person of the same tenant, refused when it repeats the demo token or is short, and absent by default.
+func TestTheColleagueTokenIsASecondPersonOfTheDemosTenant(t *testing.T) {
+	p := r.Principal{Identity: r.Identity{Tenant: "platform_demo", Issuer: "urn:idp:contract-demo", Subject: "user_a"}, Integrations: []string{"finance"}}
+	first, second := strings.Repeat("a", 32), strings.Repeat("b", 32)
+	for _, bad := range []string{first, "short"} {
+		if _, e := demoAuthenticate(first, bad, p); e == nil || strings.Contains(e.Error(), bad) {
+			t.Fatalf("colleague token %q was not refused without naming it: %v", bad, e)
+		}
+	}
+	ask := func(auth func(*http.Request) (r.Principal, error), token string) (r.Principal, error) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		return auth(req)
+	}
+	alone, e := demoAuthenticate(first, "", p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := ask(alone, second); e == nil {
+		t.Fatal("without a colleague token a second token was accepted")
+	}
+	auth, e := demoAuthenticate(first, second, p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := ask(auth, first)
+	if e != nil || a.Subject != "user_a" {
+		t.Fatalf("demo token: %v %v", a.Identity, e)
+	}
+	b, e := ask(auth, second)
+	if e != nil || b.Subject != colleagueSubject || b.Tenant != p.Tenant || b.Issuer != p.Issuer || len(b.Integrations) != 1 {
+		t.Fatalf("colleague token: %v %v", b, e)
+	}
+	if _, e := ask(auth, strings.Repeat("c", 32)); e == nil {
+		t.Fatal("an unknown token was accepted")
+	}
+}

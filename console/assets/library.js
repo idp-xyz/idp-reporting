@@ -162,7 +162,7 @@ window.createReportingLibrary = function (ports) {
     const team = window.reportingTemplateSpace.get() === 'team';
     ui.spaceOwn.setAttribute('aria-pressed', String(!team));
     ui.spaceTeam.setAttribute('aria-pressed', String(team));
-    ui.title.textContent = team ? '团队模板' : '模板中心';
+    renderTop();
     refresh();
   }
   async function refresh() {
@@ -454,7 +454,9 @@ window.createReportingLibrary = function (ports) {
   }
   function renderTop() {
     const titles = {favourites: '我的收藏', recent: '最近使用', archived: '归档模板'};
-    ui.title.textContent = titles[state.quick] || state.domain || '模板中心';
+    // S12-C: the centre's name says which space it shows, unless a quick view or a domain narrows it.
+    const space = window.reportingTemplateSpace.get() === 'team' ? '团队模板' : '模板中心';
+    ui.title.textContent = titles[state.quick] || state.domain || space;
     ui.stats.available.textContent = String(active().length);
     ui.stats.domains.textContent = String(DOMAINS.length);
     // The flow filter: the flows of the chosen domain, else every flow of the four domains.
@@ -1550,7 +1552,13 @@ window.createReportingLibrary = function (ports) {
             {class: 'summary'},
             rows.flatMap(([k, v]) => [h('dt', {text: k}), h('dd', {text: v})])
           ),
-          h('div', {class: 'callout', text: '创建后是您自己的普通模板（保存版本 1），可在设计器里修改与发布。'})
+          h('div', {
+            class: 'callout',
+            text:
+              window.reportingTemplateSpace.get() === 'team'
+                ? '创建后是团队模板（保存版本 1）：团队成员都能看到与修改；发布须由另一位发布者完成。'
+                : '创建后是您自己的普通模板（保存版本 1），可在设计器里修改与发布。',
+          })
         );
       }
       d.body.replaceChildren(strip, body, err);

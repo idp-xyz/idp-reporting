@@ -15239,9 +15239,15 @@ test('S12-C: the template centre switches between 我的模板 and 团队模板;
     assert.equal(d.getElementById('lib-space-team').getAttribute('aria-pressed'), 'true');
     assert.equal(a.w.reportingTemplateSpace.get(), 'team');
     assert.equal(a.w.reportingTemplateSpace.path('/issues'), '/team/issues');
+    // S12-D: the centre's name says which space it shows, also after the listing renders.
+    await until(
+      () => d.querySelector('#page-library h1')?.textContent === '团队模板',
+      'the team title after the listing'
+    );
     d.getElementById('lib-space-own').click();
     await until(() => asked.filter(p => p === '/document-templates').length >= 2, 'the own listing again');
     assert.equal(a.w.reportingTemplateSpace.get(), '');
+    assert.equal(d.querySelector('#page-library h1').textContent, '模板中心');
     d.getElementById('lib-space-team').click();
     await until(() => a.w.reportingTemplateSpace.get() === 'team' && !a.$('preview').disabled, 'team again');
     a.click('logout');

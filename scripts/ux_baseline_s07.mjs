@@ -6,14 +6,18 @@
 // Not part of `npm test`; CI runs it through scripts/ci_browser_evidence.sh (job "browser") and holds its totals. By hand it needs a running reporting-demo (dashboard and template directories, the PDF flags are not needed) and a
 // Chrome started with --headless=new --remote-debugging-port=<cdp> --user-data-dir=<empty temp dir> --no-proxy-server.
 // Safety: --base must be loopback because the bearer token is typed into the page. The script writes one JSON file (--out) and nothing else.
+// S12-D: --tasks team runs instead the three tasks of ADR 0018's team space, which need two people of one tenant: the demo started with
+// REPORTING_DEMO_COLLEAGUE_TOKEN, whose token --colleague-token-file names (docs/UX_BASELINE_S07.md, "团队任务"). Its totals are held apart.
 // Usage: node scripts/ux_baseline_s07.mjs --out FILE.json --token-file FILE --label before|after [--base http://127.0.0.1:PORT] [--cdp PORT]
+//   [--tasks core|team --colleague-token-file FILE]
 import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 import {dirname} from 'node:path';
 
 const usage = why => {
   console.error(
-    why + '\nusage: --out FILE.json --token-file FILE --label TEXT [--base http://127.0.0.1:PORT] [--cdp PORT]'
+    why +
+      '\nusage: --out FILE.json --token-file FILE --label TEXT [--base http://127.0.0.1:PORT] [--cdp PORT] [--tasks core|team --colleague-token-file FILE]'
   );
   process.exit(2);
 };
@@ -26,6 +30,8 @@ try {
       label: {type: 'string'},
       base: {type: 'string'},
       cdp: {type: 'string'},
+      tasks: {type: 'string'},
+      'colleague-token-file': {type: 'string'},
     },
     strict: true,
   }));
@@ -43,7 +49,12 @@ try {
 }
 if (baseUrl.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(baseUrl.hostname))
   usage('--base must be an http loopback address');
+const set = args.tasks || 'core';
+if (!['core', 'team'].includes(set)) usage('--tasks is core or team');
+if ((set === 'team') !== !!args['colleague-token-file'])
+  usage('--colleague-token-file goes with --tasks team, and only with it');
 const token = readFileSync(args['token-file'], 'utf8').trim();
+const colleagueToken = set === 'team' ? readFileSync(args['colleague-token-file'], 'utf8').trim() : '';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function connect(url) {
@@ -181,8 +192,8 @@ async function task(name, fn) {
   tasks.push(row);
   console.log('TASK', name, JSON.stringify({...row, log: undefined}));
 }
-async function signIn() {
-  await typeInto('#access-token', token);
+async function signIn(with_ = token) {
+  await typeInto('#access-token', with_);
   await clickBtn('.connection-card', '连接工作区');
   await waitFor(
     `document.getElementById('connection-overlay').hidden&&document.getElementById('query-dataset').options.length>0`,
@@ -225,36 +236,11 @@ async function openPage(name) {
   await sleep(250);
 }
 
-async function main() {
-  const list = await (await fetch(`http://127.0.0.1:${cdp}/json/list`)).json();
-  const target = list.find(t => t.type === 'page');
-  if (!target) throw new Error('no page target on the debugging port');
-  page = connect(target.webSocketDebuggerUrl);
-  await page.ready;
-  await send('Page.enable');
-  await send('Runtime.enable');
-  await send('Emulation.setFocusEmulationEnabled', {enabled: true});
-  await send('Browser.setDownloadBehavior', {behavior: 'deny'}).catch(() => {});
-  await send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 900, deviceScaleFactor: 1, mobile: false});
-  await send('Page.navigate', {url: base + '/console/'});
-  await waitFor(`document.readyState==='complete'&&!!document.getElementById('access-token')`, 'the console');
-  await sleep(400);
-  await meter();
-
+async function coreTasks() {
   // T1 · 登录到第一份导出：sign in, reach the workbench, scope the query, freeze a snapshot, export Excel.
   await task('T1 登录 → 冻结快照 → 导出 Excel', async () => {
     await signIn();
-    await openPage('workspace');
-    await typeInto('#query-companies', 'company_demo');
-    await clickBtn('#page-workspace', '创建快照');
-    await waitFor(
-      `document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`,
-      'snapshot',
-      60000
-    );
-    await clickBtn('#page-workspace', '导出 Excel');
-    await waitFor(`document.getElementById('notice').textContent.includes('下载已发起')`, 'export', 60000);
-    await idle();
+    await previewData();
   });
 
   // T2 · 发布一个看板, starting from a signed-in console with no query made yet (a fresh session): the dashboard first, as a person would.
@@ -482,6 +468,136 @@ async function main() {
     );
     await idle();
   });
+}
+
+// ---- S12-D: the team space (ADR 0018 decisions 2 and 3), two people of one tenant -------------------------------------------------------
+const teamTemplate = '团队月度对账单';
+async function openTeamSpace() {
+  await openPage('library');
+  if (!(await evalJs(`${q('#lib-space-team')}.getAttribute('aria-pressed')==='true'`))) await click('#lib-space-team');
+  await waitFor(
+    `[...document.querySelectorAll('#page-library h1')].some(h=>h.textContent==='团队模板')&&!(document.getElementById('lib-count')?.textContent||'').startsWith('正在读取')`,
+    'the team space',
+    30000
+  );
+  await sleep(400);
+}
+async function previewData() {
+  await openPage('workspace');
+  await typeInto('#query-companies', 'company_demo');
+  await click('#preview');
+  await waitFor(
+    `document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden`,
+    'preview',
+    60000
+  );
+  await idle();
+}
+const editTeamTemplate = () =>
+  clickExpr(
+    `[...document.querySelectorAll('#page-library button')].find(b=>(b.getAttribute('aria-label')||'')===${JSON.stringify('编辑 ' + teamTemplate)})`,
+    '编辑 ' + teamTemplate
+  );
+const inStudio = `!document.getElementById('page-documents').hidden&&document.getElementById('doc-server-status').textContent.includes('正在编辑模板 ')`;
+async function publishInStudio() {
+  await clickBtn('#page-documents .topbar', '发布');
+  await waitFor(`${q('#st-d-publish.open')}`, 'publish confirm', 30000);
+  await sleep(200);
+  await clickBtn('#st-d-publish', '确认发布');
+}
+async function teamTasks() {
+  // T8 · 在团队空间新建模板并请求发布: the saver's own publication is refused and says who can publish it.
+  await task('T8 团队模板：预览数据 → 新建模板 → 发布（需同事审批）', async () => {
+    await signIn();
+    await openPage('workspace');
+    await typeInto('#query-companies', 'company_demo');
+    await click('#preview');
+    await waitFor(
+      `document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden`,
+      'preview',
+      60000
+    );
+    await idle();
+    await openTeamSpace();
+    await clickBtn('#page-library .library-header', '新建模板');
+    await waitFor(`${q('#page-library .overlay.open input[name=lib-flow][value=blank]')}`, 'wizard', 30000);
+    await click('#page-library .overlay.open input[name=lib-flow][value=blank]');
+    // The wizard's steps, as many as the blank path has: 下一步 until the last step, which names the template.
+    while (!(await evalJs(`!!document.getElementById('lib-wizard-name')`))) {
+      await clickBtn('#page-library .overlay.open', '下一步');
+      await sleep(300);
+    }
+    await typeInto('#lib-wizard-name', teamTemplate);
+    await clickBtn('#page-library .overlay.open', '创建并进入设计器');
+    await waitFor(
+      `!document.getElementById('page-documents').hidden&&document.getElementById('doc-server-status').textContent.includes('正在编辑模板 ')`,
+      'studio',
+      60000
+    );
+    await idle();
+    await sleep(400);
+    await publishInStudio();
+    await waitFor(`document.body.innerText.includes('另一位发布者审批')`, 'the approval refusal', 30000);
+    await sleep(300);
+  });
+
+  // T9 · 同事审批: sign out, the colleague signs in, finds the template in the team space and publishes it.
+  await task('T9 同事：登录 → 团队模板 → 打开 → 发布（审批）', async () => {
+    // Back to the console, the way a person leaves the studio (the rail), and out of the workspace.
+    await openPage('workspace');
+    await click('#logout');
+    await waitFor(`!document.getElementById('connection-overlay').hidden`, 'signed out', 30000);
+    await sleep(300);
+    await signIn(colleagueToken);
+    await openTeamSpace();
+    await editTeamTemplate();
+    // The studio needs the colleague's own authorized data first (the source decides every read): the centre says so, which is a dead end
+    // for someone who came only to approve. Recorded as one, then done the way a person would: preview, back, open again.
+    await sleep(600);
+    if (!(await evalJs(inStudio))) {
+      await evalJs(`window.__ux.deadEnd()`);
+      await previewData();
+      await openTeamSpace();
+      await editTeamTemplate();
+    }
+    await waitFor(inStudio, 'studio', 60000);
+    await idle();
+    await sleep(400);
+    await publishInStudio();
+    await waitFor(`document.getElementById('st-state').textContent.startsWith('已发布')`, 'published', 60000);
+    await idle();
+  });
+
+  // T10 · 操作记录: the colleague finds the approval in their own record.
+  await task('T10 操作记录：找到这次审批', async () => {
+    await openPage('audit');
+    await waitFor(
+      `[...document.querySelectorAll('#audit-body tr')].some(r=>r.textContent.includes('发布'))`,
+      'the approval in the record',
+      30000
+    );
+    await sleep(300);
+  });
+}
+
+async function main() {
+  const list = await (await fetch(`http://127.0.0.1:${cdp}/json/list`)).json();
+  const target = list.find(t => t.type === 'page');
+  if (!target) throw new Error('no page target on the debugging port');
+  page = connect(target.webSocketDebuggerUrl);
+  await page.ready;
+  await send('Page.enable');
+  await send('Runtime.enable');
+  await send('Emulation.setFocusEmulationEnabled', {enabled: true});
+  await send('Browser.setDownloadBehavior', {behavior: 'deny'}).catch(() => {});
+  await send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 900, deviceScaleFactor: 1, mobile: false});
+  await send('Page.navigate', {url: base + '/console/'});
+  await waitFor(`document.readyState==='complete'&&!!document.getElementById('access-token')`, 'the console');
+  await sleep(400);
+  await meter();
+
+  if (set === 'team') await teamTasks();
+  else await coreTasks();
 
   const meterState = await read();
   const out = {
