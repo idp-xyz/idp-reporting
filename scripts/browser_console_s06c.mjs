@@ -697,7 +697,7 @@ async function main() {
   check(
     'the system page: the identity and the capabilities as definition lists',
     await evalJs(
-      `document.getElementById('shell-label').textContent==='能力与环境'&&document.querySelectorAll('#identity-details dt').length===4&&document.querySelectorAll('#capability-details dt').length>=5`
+      `document.getElementById('shell-label').textContent==='能力与环境'&&document.querySelectorAll('#identity-details dt').length===5&&document.querySelectorAll('#capability-details dt').length>=5`
     )
   );
   // ADR 0016 (S10-B): the session's products, each with the state its catalog answered; on the demo both sources answer.

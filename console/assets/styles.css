@@ -3673,3 +3673,35 @@ body:not(.embed) #lib-data {
   font-size: 12px;
   line-height: 1.7;
 }
+
+/* S12-A2 (ADR 0018): what a role does not allow is not offered (the server refuses it with AUTH_ROLE_DENIED whatever is shown). */
+body.no-designer .needs-designer,
+body.no-designer #board-server-save,
+body.no-designer #board-server-new,
+body.no-designer #doc-server-save,
+body.no-designer #doc-server-new,
+body.no-designer #layout-server-save,
+body.no-designer #layout-server-new,
+body.no-designer #doc-background-upload,
+body.no-designer #doc-image-upload,
+body.no-designer #st-chooser-new,
+body.no-designer #st-chooser-import,
+body.no-designer #st-import-json,
+body.no-designer #st-import-sample,
+body.no-publisher #bd-publish,
+body.no-publisher #bd-ver-publish,
+body.no-publisher #board-release-publish,
+body.no-publisher #board-release-withdraw,
+body.no-publisher #doc-release-publish,
+body.no-publisher #doc-release-withdraw,
+body.no-publisher #layout-publish,
+body.no-publisher #layout-release-publish,
+body.no-publisher #layout-release-withdraw,
+body.no-publisher #ly-ver-publish,
+body.no-publisher #st-publish,
+body.no-publisher #st-tool-publish,
+body.no-publisher #st-ver-publish,
+body.no-issuer #doc-issue,
+body.no-issuer #st-tool-issue {
+  display: none !important;
+}

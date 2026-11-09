@@ -31,6 +31,7 @@
     product: '',
     datasets: [],
     catalogs: new Map(),
+    roles: null,
     connections: new Map(),
     jobs: new Map(),
     jobsFilter: {kind: '', state: ''},
@@ -277,6 +278,14 @@
       })
     : null;
   // S07-E: the most jobs the console keeps (the list, the pages read with 加载更多) and the size of a page of the server's listing.
+  // The roles of ADR 0018 in the console's words (S12-A2).
+  const roleNames = {
+    viewer: '查看',
+    designer: '设计',
+    publisher: '发布',
+    issuer: '正式出具',
+    administrator: '审计管理',
+  };
   const maxKnownJobs = 500,
     jobsPage = 50;
   const statuses = {
@@ -621,6 +630,8 @@
     state.datasets = [];
     state.catalogs.clear();
     state.connections.clear();
+    state.roles = null;
+    for (const role of ['designer', 'publisher', 'issuer']) document.body.classList.remove('no-' + role);
     if ($('connection-list')) $('connection-list').replaceChildren();
     if ($('sh-no-products')) $('sh-no-products').hidden = true;
     state.jobs.clear();
@@ -1242,6 +1253,14 @@
         : session.integrations;
       // ADR 0016: the server lists only the products it serves; an identity with none signs in and is told so (the embed needs its one).
       if (!offered.length && embedded) throw new Failure(403, 'AUTH_SCOPE_DENIED');
+      // S12-A2 (ADR 0018): the roles the server enforces, so that the console does not offer what it would refuse. A session without the
+      // field is a server before roles: the rights every identity had then.
+      const roles = session.roles === undefined ? ['viewer', 'designer', 'publisher', 'issuer'] : session.roles;
+      if (!Array.isArray(roles) || roles.length > 5 || !roles.every(role => roleNames[role]))
+        throw new Failure(0, 'INVALID_RESPONSE');
+      for (const role of ['designer', 'publisher', 'issuer'])
+        document.body.classList.toggle('no-' + role, !roles.includes(role));
+      state.roles = roles;
       state.session = session;
       state.capabilities = caps;
       $('export-pdf').hidden = !caps.formats.includes('pdf');
@@ -1259,6 +1278,7 @@
         ['平台租户', session.identity.tenant],
         ['当前主体', session.identity.subject],
         ['发行方', session.identity.issuer],
+        ['角色', roles.map(role => roleNames[role]).join('、')],
         ['产品连接', session.integrations.length ? session.integrations.length + ' 个（状态见下方）' : '无'],
       ]);
       addDetails('capability-details', [

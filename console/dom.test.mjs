@@ -14701,3 +14701,56 @@ test('S12-A: an action the identity has no role for is refused with a notice tha
     a.close();
   }
 });
+
+// ---- S12-A2: the console offers what the roles allow (docs/ADR_0018_ROLES_APPROVAL_AUDIT.md) ----
+test('S12-A2: the session roles hide what they do not allow, 能力与环境 names them, an unknown role is not believed, sign-out clears', async () => {
+  const withRoles = roles =>
+    app(async (path, options) => {
+      if (path.endsWith('/session')) {
+        const session = await (await fetch(url + path, options)).json();
+        return json({...session, roles});
+      }
+    });
+  const classes = a =>
+    ['no-designer', 'no-publisher', 'no-issuer'].filter(c => a.w.document.body.classList.contains(c));
+  const rolesRow = a =>
+    [...a.$('identity-details').querySelectorAll('div')]
+      .find(d => d.querySelector('dt').textContent === '角色')
+      ?.querySelector('dd').textContent;
+  const viewer = withRoles(['viewer']);
+  try {
+    await viewer.login();
+    assert.deepEqual(classes(viewer), ['no-designer', 'no-publisher', 'no-issuer']);
+    assert.equal(rolesRow(viewer), '查看');
+    viewer.click('logout');
+    assert.deepEqual(classes(viewer), []);
+  } finally {
+    viewer.close();
+  }
+  const publisher = withRoles(['viewer', 'publisher']);
+  try {
+    await publisher.login();
+    assert.deepEqual(classes(publisher), ['no-designer', 'no-issuer']);
+    assert.equal(rolesRow(publisher), '查看、发布');
+  } finally {
+    publisher.close();
+  }
+  // The real server: a binding without roles has the default four, and nothing is hidden.
+  const all = app();
+  try {
+    await all.login();
+    assert.deepEqual(classes(all), []);
+    assert.equal(rolesRow(all), '查看、设计、发布、正式出具');
+  } finally {
+    all.close();
+  }
+  const unknown = withRoles(['viewer', 'owner']);
+  try {
+    unknown.input('access-token', token);
+    unknown.$('connect-form').dispatchEvent(new unknown.w.Event('submit', {bubbles: true, cancelable: true}));
+    await until(() => !unknown.$('connect-error').hidden, 'refused');
+    assert.match(unknown.$('connect-error').textContent, /无法验证/);
+  } finally {
+    unknown.close();
+  }
+});

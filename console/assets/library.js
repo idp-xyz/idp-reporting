@@ -616,7 +616,7 @@ window.createReportingLibrary = function (ports) {
           'aria-label': '预览示例 ' + name,
           'data-focus': 'pv' + s.kind,
         }),
-        btn('复制到我的模板', () => startCopy(s), 'small primary', null, {
+        btn('复制到我的模板', () => startCopy(s), 'small primary needs-designer', null, {
           'aria-label': '复制示例 ' + name + ' 到我的模板',
           'data-focus': 'cp' + s.kind,
         })
@@ -1797,7 +1797,7 @@ window.createReportingLibrary = function (ports) {
         id: 'lib-datacenter',
         title: '打开数据面板：数据集、字段与币种，以及查询',
       }),
-      btn('新建模板', newTemplate, 'primary', 'plus', {id: 'lib-new'})
+      btn('新建模板', newTemplate, 'primary needs-designer', 'plus', {id: 'lib-new'})
     );
     const main = h(
       'main',
@@ -1820,7 +1820,7 @@ window.createReportingLibrary = function (ports) {
         'div',
         {class: 'catalog-search'},
         h('label', null, icon('search'), search),
-        btn('导入模板', importDialog, null, 'upload', {id: 'lib-import'})
+        btn('导入模板', importDialog, 'needs-designer', 'upload', {id: 'lib-import'})
       ),
       h(
         'div',
