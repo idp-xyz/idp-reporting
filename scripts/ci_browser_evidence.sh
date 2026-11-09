@@ -3,6 +3,7 @@
 #   1. scripts/browser_console_s06c.mjs  – the shell, the pages, the drawers and panels at 1440 → 390, light and dark, contrast
 #   2. scripts/browser_library_s06b.mjs  – the template centre, its samples, PDF previews and wizard
 #   3. scripts/ux_baseline_s07.mjs       – the seven-task baseline, held to the numbers of docs/UX_BASELINE_S07.md
+#   4. the same script with --tasks team – the three team-space tasks of two people (S12-D), held to their own numbers there
 # Each run gets a fresh reporting-demo (memory store, its own directories) and a fresh headless Chrome profile: the scripts assume an
 # identity with nothing saved yet. The prototype is not in the repository, so its screens and the side-by-side pairs are skipped.
 #
@@ -23,10 +24,11 @@ trap cleanup EXIT
 
 (cd "$root" && "$GO" build -o "$work/reporting-demo" ./cmd/reporting-demo)
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$work/token"; chmod 600 "$work/token"
+head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$work/colleague"; chmod 600 "$work/colleague"
 
 start() { # a fresh server and, unless one is running, a fresh browser
   local data="$work/data-$1"; mkdir -p "$data"/{layouts,dashboards,templates,backgrounds}; chmod 700 "$data"/*
-  REPORTING_DEMO_TOKEN=$(cat "$work/token") "$work/reporting-demo" -profile contract-simulator -memory -listen "127.0.0.1:$PORT" \
+  REPORTING_DEMO_TOKEN=$(cat "$work/token") REPORTING_DEMO_COLLEAGUE_TOKEN=$(cat "$work/colleague") "$work/reporting-demo" -profile contract-simulator -memory -listen "127.0.0.1:$PORT" \
     -layout-directory "$data/layouts" -dashboard-directory "$data/dashboards" -template-directory "$data/templates" -background-directory "$data/backgrounds" \
     -pdf-typst "$REPORTING_TYPST" -pdf-typst-sha256 "$REPORTING_TYPST_SHA256" -pdf-fonts "$REPORTING_PDF_FONTS" > "$out/server-$1.log" 2>&1 &
   server=$!
@@ -55,13 +57,20 @@ run() { # name script args...
 run console scripts/browser_console_s06c.mjs --out "$out/console"
 run library scripts/browser_library_s06b.mjs --out "$out/library"
 run baseline scripts/ux_baseline_s07.mjs --out "$out/baseline.json" --label ci
+run baseline-team scripts/ux_baseline_s07.mjs --out "$out/baseline-team.json" --label ci --tasks team --colleague-token-file "$work/colleague"
 
 # The baseline is held to docs/UX_BASELINE_S07.md: a slice may lower these numbers, never raise them without saying so there.
+hold() { # file clicks pages shells deadEnds
 node -e '
 const t=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).totals;
-const max={clicks:31,pages:9,shells:0,deadEnds:0};
+const [clicks,pages,shells,deadEnds]=process.argv.slice(2).map(Number);
+const max={clicks,pages,shells,deadEnds};
 const over=Object.keys(max).filter(k=>t[k]>max[k]);
 console.log("== baseline totals",JSON.stringify(t),"held to",JSON.stringify(max));
 if(over.length){console.error("== baseline: over the documented numbers: "+over.join(", "));process.exit(1);}
-' "$out/baseline.json" || failed=1
+' "$@"
+}
+hold "$out/baseline.json" 31 9 0 0 || failed=1
+# S12-D: the team tasks. Their one dead end is the approver's: the studio needs their own authorized data before it opens a template.
+hold "$out/baseline-team.json" 25 8 0 1 || failed=1
 exit $failed
