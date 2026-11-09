@@ -1137,6 +1137,10 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   // Everything the shared scripts look up is there, except what the embed must not have: the token form, the logout, the navigation of the pages it leaves out.
   const notInEmbed = [
     'logout',
+    'connection-list',
+    'refresh-connections',
+    'connections-title',
+    'sh-no-products',
     'connect-form',
     'access-token',
     'connect-button',

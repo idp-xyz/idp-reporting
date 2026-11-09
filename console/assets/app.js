@@ -31,6 +31,7 @@
     product: '',
     datasets: [],
     catalogs: new Map(),
+    connections: new Map(),
     jobs: new Map(),
     jobsFilter: {kind: '', state: ''},
     jobsMore: '',
@@ -619,6 +620,9 @@
     state.product = '';
     state.datasets = [];
     state.catalogs.clear();
+    state.connections.clear();
+    if ($('connection-list')) $('connection-list').replaceChildren();
+    if ($('sh-no-products')) $('sh-no-products').hidden = true;
     state.jobs.clear();
     state.jobsMore = '';
     state.jobsFilter = {kind: '', state: ''};
@@ -1084,6 +1088,71 @@
   function typeName(type) {
     return Object.hasOwn(typeNames, type) ? typeNames[type] : type;
   }
+  // ADR 0016 (S10-B): each product of the session and what its catalog answered: the list on 能力与环境 and the marks of the product select.
+  // A catalog read is the source's own answer for this identity (DescribeCatalog), cached as loadProduct caches it.
+  function connectionState(error) {
+    if (!error) return null;
+    if (error.code === 'INVALID_RESPONSE') return {tone: 'danger', text: '回答无法验证'};
+    if (error.status === 403) return {tone: 'danger', text: '来源拒绝访问'};
+    if (
+      error.status === 0 ||
+      error.status === 502 ||
+      error.status === 503 ||
+      error.status === 504 ||
+      error.name === 'AbortError'
+    )
+      return {tone: 'warning', text: '来源暂时不可用'};
+    return {tone: 'danger', text: '无法读取（' + (error.code || error.status) + '）'};
+  }
+  function renderConnections() {
+    const list = $('connection-list');
+    if (!list) return;
+    list.replaceChildren();
+    const products = state.session ? state.session.integrations : [];
+    if (!products.length) {
+      list.append(node('li', '当前身份没有可用的产品连接。请联系平台运营方：先为租户配置连接，再把产品加入身份绑定。'));
+      return;
+    }
+    for (const id of products) {
+      const row = node('li');
+      const name = node('code', id);
+      const known = state.connections.get(id);
+      const badge = known
+        ? known.ok
+          ? node('span', '可用 · ' + known.count + ' 个数据集', 'badge')
+          : node('span', known.state.text, 'badge ' + known.state.tone)
+        : node('span', '检查中…', 'badge neutral');
+      row.append(name, badge);
+      list.append(row);
+    }
+    for (const option of $('query-product').options) {
+      const known = state.connections.get(option.value);
+      option.textContent = known && !known.ok ? option.value + '（' + known.state.text + '）' : option.value;
+    }
+  }
+  async function checkConnections(fresh) {
+    const epoch = state.epoch,
+      products = state.session ? state.session.integrations.slice() : [];
+    if (fresh) state.connections.clear();
+    renderConnections();
+    for (const id of products) {
+      let entry;
+      try {
+        let datasets = fresh ? undefined : state.catalogs.get(id);
+        if (!datasets) datasets = await request('/catalog?integration_id=' + encodeURIComponent(id));
+        if (!Array.isArray(datasets) || datasets.length > 100 || !datasets.every(validDataset))
+          throw new Failure(0, 'INVALID_RESPONSE');
+        if (epoch !== state.epoch) return;
+        if (!state.catalogs.has(id)) state.catalogs.set(id, datasets);
+        entry = {ok: true, count: datasets.length};
+      } catch (error) {
+        if (error instanceof Stale || epoch !== state.epoch) return;
+        entry = {ok: false, state: connectionState(error)};
+      }
+      state.connections.set(id, entry);
+      renderConnections();
+    }
+  }
   async function loadProduct(id, refresh) {
     const epoch = state.epoch,
       operation = ++state.catalogOperation;
@@ -1158,7 +1227,6 @@
         !session.identity ||
         !['tenant', 'issuer', 'subject'].every(k => typeof session.identity[k] === 'string' && session.identity[k]) ||
         !Array.isArray(session.integrations) ||
-        !session.integrations.length ||
         session.integrations.length > 32 ||
         !session.integrations.every(i => typeof i === 'string' && i.length <= 128) ||
         !Array.isArray(caps.formats) ||
@@ -1169,7 +1237,8 @@
       const offered = embedded
         ? session.integrations.filter(i => i === embedRequest.integration)
         : session.integrations;
-      if (!offered.length) throw new Failure(403, 'AUTH_SCOPE_DENIED');
+      // ADR 0016: the server lists only the products it serves; an identity with none signs in and is told so (the embed needs its one).
+      if (!offered.length && embedded) throw new Failure(403, 'AUTH_SCOPE_DENIED');
       state.session = session;
       state.capabilities = caps;
       $('export-pdf').hidden = !caps.formats.includes('pdf');
@@ -1187,7 +1256,7 @@
         ['平台租户', session.identity.tenant],
         ['当前主体', session.identity.subject],
         ['发行方', session.identity.issuer],
-        ['产品连接', session.integrations.join('、')],
+        ['产品连接', session.integrations.length ? session.integrations.length + ' 个（状态见下方）' : '无'],
       ]);
       addDetails('capability-details', [
         ['来源配置', caps.profile],
@@ -1222,8 +1291,17 @@
         }
       }
       state.starting = false;
+      if (!embedded) {
+        $('sh-no-products').hidden = offered.length > 0;
+        renderConnections();
+      }
+      if (!offered.length) {
+        notify('当前身份没有可用的产品连接，暂时不能查询。请联系平台运营方开通。', 'error');
+        return;
+      }
       try {
         await loadProduct(offered[0]);
+        if (!embedded) checkConnections().catch(() => {});
         // The resource is prepared before anything can be started: a dataset selected under a query in flight would discard that query.
         if (embedded) {
           busy(1);
@@ -2522,6 +2600,11 @@
     $('query-date').value = selected() ? dateInZone(selected().timezone) : '';
   });
   for (const id of ['query-companies', 'query-date']) $(id).addEventListener('input', queryChanged);
+  // ADR 0016 (S10-B): 重新检查 asks every product's source again, without the cache.
+  if ($('refresh-connections'))
+    $('refresh-connections').addEventListener('click', () => {
+      if (state.session) checkConnections(true).catch(() => {});
+    });
   $('refresh-catalog').addEventListener('click', () => {
     if (state.product)
       loadProduct(state.product, true)

@@ -14600,3 +14600,83 @@ test("S07-G G2: the dashboard studio's 版本 is the version dialog: the list an
     a.close();
   }
 });
+
+// ---- S10-B: the products of the session and their state (docs/ADR_0016_PRODUCT_CONNECTIONS.md) ----
+test('S10-B: 能力与环境 lists each product with the state its catalog answered, the product select marks one that is not available, 重新检查 asks again; an identity without a product signs in and is told so', async () => {
+  let down = '';
+  const a = app(async path => {
+    if (down && path.includes('/catalog?integration_id=' + encodeURIComponent(down)))
+      return problem(503, 'AUTHORITY_UNAVAILABLE');
+  });
+  try {
+    const rows = () =>
+      [...a.$('connection-list').querySelectorAll('li')].map(li => [
+        li.querySelector('code')?.textContent,
+        li.querySelector('.badge')?.textContent,
+      ]);
+    down = 'shipment-contract-demo';
+    await a.login();
+    await until(() => rows().length === 2 && rows().every(r => r[1] !== '检查中…'), 'both products checked');
+    assert.deepEqual(rows(), [
+      ['brant-contract-demo', '可用 · 1 个数据集'],
+      ['shipment-contract-demo', '来源暂时不可用'],
+    ]);
+    assert.deepEqual(
+      [...a.$('query-product').options].map(o => [o.value, o.textContent]),
+      [
+        ['brant-contract-demo', 'brant-contract-demo'],
+        ['shipment-contract-demo', 'shipment-contract-demo（来源暂时不可用）'],
+      ]
+    );
+    assert.equal(a.$('sh-no-products').hidden, true);
+    // 重新检查 reads every catalog again, without the cache: the source answers now.
+    down = '';
+    const before = a.trace.filter(t => t.path.includes('/catalog?')).length;
+    a.click('refresh-connections');
+    await until(() => rows()[1][1] === '可用 · 1 个数据集', 'the second product answers');
+    assert.equal(a.trace.filter(t => t.path.includes('/catalog?')).length, before + 2);
+    assert.equal(a.$('query-product').options[1].textContent, 'shipment-contract-demo');
+    // Sign-out clears the list.
+    a.click('logout');
+    assert.equal(a.$('connection-list').children.length, 0);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  // A refusal of the source is told as one.
+  const b = app(async path => {
+    if (path.includes('/catalog?integration_id=shipment-contract-demo')) return problem(403, 'AUTH_SCOPE_DENIED');
+  });
+  try {
+    await b.login();
+    await until(
+      () =>
+        [...b.$('connection-list').querySelectorAll('.badge')].map(x => x.textContent).join() ===
+        '可用 · 1 个数据集,来源拒绝访问',
+      'the refusal'
+    );
+  } finally {
+    b.close();
+  }
+  // No product: the sign-in completes, nothing asks a catalog, the notice and the data drawer say who to ask.
+  const c = app(async (path, options) => {
+    if (path.endsWith('/session')) {
+      const session = await (await fetch(url + path, options)).json();
+      return json({...session, integrations: []});
+    }
+  });
+  try {
+    c.input('access-token', token);
+    c.$('connect-form').dispatchEvent(new c.w.Event('submit', {bubbles: true, cancelable: true}));
+    await until(() => c.$('connection-overlay').hidden, 'signed in');
+    await until(() => !c.$('notice').hidden, 'the notice');
+    assert.match(c.$('notice').textContent, /没有可用的产品连接.*平台运营方/);
+    assert.equal(c.$('sh-no-products').hidden, false);
+    assert.match(c.$('connection-list').textContent, /没有可用的产品连接/);
+    assert.equal(c.$('query-product').options.length, 0);
+    assert.equal(c.trace.filter(t => t.path.includes('/catalog?')).length, 0);
+    assert.equal(c.errors.length, 0, c.errors.join('|'));
+  } finally {
+    c.close();
+  }
+});
