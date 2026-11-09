@@ -4,6 +4,7 @@
 #   2. scripts/browser_library_s06b.mjs  – the template centre, its samples, PDF previews and wizard
 #   3. scripts/ux_baseline_s07.mjs       – the seven-task baseline, held to the numbers of docs/UX_BASELINE_S07.md
 #   4. the same script with --tasks team – the three team-space tasks of two people (S12-D), held to their own numbers there
+#   5. scripts/browser_english_s17a.mjs  – the English console (S17-A) at 1440 and 390: overflow, cut-off controls, Chinese left
 # Each run gets a fresh reporting-demo (memory store, its own directories) and a fresh headless Chrome profile: the scripts assume an
 # identity with nothing saved yet. The prototype is not in the repository, so its screens and the side-by-side pairs are skipped.
 #
@@ -58,6 +59,8 @@ run console scripts/browser_console_s06c.mjs --out "$out/console"
 run library scripts/browser_library_s06b.mjs --out "$out/library"
 run baseline scripts/ux_baseline_s07.mjs --out "$out/baseline.json" --label ci
 run baseline-team scripts/ux_baseline_s07.mjs --out "$out/baseline-team.json" --label ci --tasks team --colleague-token-file "$work/colleague"
+# S17-A: the English console, last (it leaves the profile with no stored language choice, so a Chinese run after it would not see one).
+run english scripts/browser_english_s17a.mjs --out "$out/english"
 
 # The baseline is held to docs/UX_BASELINE_S07.md: a slice may lower these numbers, never raise them without saying so there.
 hold() { # file clicks pages shells deadEnds

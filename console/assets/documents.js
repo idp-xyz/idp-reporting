@@ -1649,6 +1649,8 @@ window.createReportingDocuments = function (ports) {
   // options), the controls already there are updated in place, so that the focus stays where the user's Tab or Enter left it and a click is not lost to a
   // control that was replaced between the press and the release; otherwise (another element selected, another list) the panel is replaced. `key` says
   // what the panel is about: the controls' handlers hold on to it.
+  // The text a control was written with (S17-A: the English console shows a translation of it; the comparison is of what was written).
+  const written = n => (window.reportingLanguage ? window.reportingLanguage.source(n) : n.textContent);
   const shape = n =>
     n.nodeType === 3
       ? '#'
@@ -1656,7 +1658,7 @@ window.createReportingDocuments = function (ports) {
         '#' +
         n.id +
         (n.type ? '/' + n.type : '') +
-        (n.tagName === 'SELECT' ? '[' + [...n.options].map(o => o.value + '=' + o.textContent).join('|') + ']' : '') +
+        (n.tagName === 'SELECT' ? '[' + [...n.options].map(o => o.value + '=' + written(o)).join('|') + ']' : '') +
         '(' +
         [...n.childNodes].map(shape).join(',') +
         ')';
@@ -1688,8 +1690,7 @@ window.createReportingDocuments = function (ports) {
   // The options of a select that lists something: replaced only when the list changed; the value stays when it is still there.
   function listOptions(select, pairs) {
     if (
-      [...select.options].map(o => o.value + '=' + o.textContent).join('|') ===
-      pairs.map(p => p[0] + '=' + p[1]).join('|')
+      [...select.options].map(o => o.value + '=' + written(o)).join('|') === pairs.map(p => p[0] + '=' + p[1]).join('|')
     )
       return;
     const prev = select.value;

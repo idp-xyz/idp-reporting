@@ -24,6 +24,8 @@ const [
   documentsScript,
   embedScript,
   boardScript,
+  englishScript,
+  languageScript,
 ] = await Promise.all(
   [
     'index.html',
@@ -36,6 +38,8 @@ const [
     'documents.js',
     'embed.js',
     'board.js',
+    'en.js',
+    'lang.js',
   ].map(read)
 );
 const token = randomBytes(32).toString('hex');
@@ -1215,6 +1219,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     ['dashboard.js', dashboardScript],
     ['documents.js', documentsScript],
     ['versions.js', versionsScript],
+    ['lang.js', languageScript],
   ]) {
     for (const pattern of [
       /\.innerHTML/,
@@ -1241,12 +1246,19 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     ['studio.js', studioScript],
     ['versions.js', versionsScript],
     ['canvas.js', canvasScript],
+    ['en.js', englishScript],
+    ['lang.js', languageScript],
   ]) {
     assert.equal(/postMessage\(/.test(code) && name !== 'embed.js', false, name + ' posts a message');
     assert.equal(/['"`]\*['"`]\s*\)/.test(code.replace(/\/\*[\s\S]*?\*\//g, '')), false, name + ' has a "*" argument');
     // S15-A (ADR 0019): the one exception is app.js's sign-in entry, under its one key, for one navigation to the provider.
+    // S17-A (docs/S17A_SCOPE.md): lang.js keeps the console's language under its one key, and only the choice of English.
     const own =
-      name === 'app.js' ? code.replace(/sessionStorage\.(getItem|setItem|removeItem)\(signInKey\b/g, '') : code;
+      name === 'app.js'
+        ? code.replace(/sessionStorage\.(getItem|setItem|removeItem)\(signInKey\b/g, '')
+        : name === 'lang.js'
+          ? code.replace(/localStorage\.(getItem|setItem|removeItem)\(KEY\b/g, '')
+          : code;
     assert.equal(
       /localStorage|sessionStorage|indexedDB|document\.cookie|caches\./.test(own),
       false,

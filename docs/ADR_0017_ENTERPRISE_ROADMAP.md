@@ -33,6 +33,7 @@ The work goes in this order; a later slice may start while an earlier one is in 
 | S14-A | W3C Trace Context on the API and in the logs, forwarded to adapters | — |
 | S15 | Browser single sign-on (OIDC, authorization code with PKCE) once the identity provider's contract is known; until then a generic implementation tested against a fake provider | the IdP contract |
 | S16 | Scheduled reports and their delivery | S12 |
+| S17-A | An English console: a catalog keyed by the Chinese source text, a 中文 / English switch (docs/S17A_SCOPE.md) | — |
 | — | Real adapters, reconciliation, admission (items 17–19) | the source products |
 
 What does not change: the source's authority over every read; no write endpoint for connections or bindings (ADR 0016); the core stays

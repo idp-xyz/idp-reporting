@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/console/styles.css">
   <link rel="stylesheet" href="/console/studio.css">
   <link rel="stylesheet" href="/console/library.css">
+  <script src="/console/en.js" defer></script>
+  <script src="/console/lang.js" defer></script>
   <script src="/console/dashboard.js" defer></script>
  <script src="/console/canvas.js" defer></script>
  <script src="/console/versions.js" defer></script>
@@ -40,7 +42,7 @@
     <a class="wordmark" href="#workspace" aria-label="IDP Reporting 报表工作台"><span class="brand-icon" aria-hidden="true"><svg class="ic" focusable="false"><use href="#s-layers"/></svg></span><span>IDP <b>REPORTING</b><small id="shell-label">报表工作区</small></span></a>
     <span class="flex"></span>
     <button type="button" class="data-chip is-empty" id="sh-data-chip" aria-haspopup="dialog" aria-controls="sh-d-data" title="选择产品连接、数据集、公司范围与时点"><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-database"/></svg><span id="sh-data-text">未选择数据</span><span class="pill blue" id="sh-data-kind" hidden></span></button>
-    <span class="environment">合同模拟器</span><span id="actor-label" class="actor">未连接</span>
+    <div class="lang-switch" role="group" aria-label="界面语言"><button type="button" data-lang="zh" lang="zh-CN" aria-pressed="true">中文</button><button type="button" data-lang="en" lang="en" aria-pressed="false">English</button></div><span class="environment">合同模拟器</span><span id="actor-label" class="actor">未连接</span>
     <button type="button" id="logout" class="btn" disabled><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-logout"/></svg>退出工作区</button>
   </header>
   <div class="console-layout">
@@ -165,7 +167,7 @@
 <div class="sh-overlay center" id="ly-d-publish" hidden><div class="sh-dialog" role="dialog" aria-modal="true" aria-labelledby="ly-d-publish-title"><div class="dialog-head"><div class="head-title"><span class="head-icon"><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-publish"/></svg></span><div><h2 id="ly-d-publish-title">发布前确认</h2><p>发布把指针移到一个保存版本；屏幕表格的数据仍来自每次查询</p></div></div><button type="button" class="quiet" data-act="close" aria-label="关闭对话框"><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-close"/></svg></button></div><div class="dialog-body"><dl id="ly-publish-summary"></dl><p class="help" id="ly-publish-note"></p></div><div class="dialog-footer"><span class="footer-note">发布版本仅当前身份私有，不冻结数据或授予访问权限。</span><button type="button" class="btn" data-act="close">取消</button><button type="button" class="btn primary" id="ly-publish-confirm">确认发布</button></div></div></div>
 <div class="connection-overlay" id="connection-overlay">
   <div class="connection-card" role="dialog" aria-modal="true" aria-labelledby="connect-title">
-    <div class="wordmark" aria-hidden="true"><span class="brand-icon"><svg class="ic" focusable="false"><use href="#s-layers"/></svg></span><span>IDP <b>REPORTING</b><small>DOCUMENT PLATFORM</small></span></div>
+    <div class="lang-switch" role="group" aria-label="界面语言"><button type="button" data-lang="zh" lang="zh-CN" aria-pressed="true">中文</button><button type="button" data-lang="en" lang="en" aria-pressed="false">English</button></div><div class="wordmark" aria-hidden="true"><span class="brand-icon"><svg class="ic" focusable="false"><use href="#s-layers"/></svg></span><span>IDP <b>REPORTING</b><small>DOCUMENT PLATFORM</small></span></div>
     <h1 id="connect-title">进入报表工作区</h1><p>连接当前独立服务，查看授权数据与私有任务。</p>
     <div class="sso" id="sso" hidden><button type="button" id="sso-button" class="btn primary full">使用企业账号登录</button><p class="sso-or" id="sso-or" hidden>或粘贴访问令牌</p></div>
     <form id="connect-form" autocomplete="off"><label for="access-token">访问令牌</label><input type="password" id="access-token" autocomplete="off" placeholder="粘贴当前环境的访问令牌" required spellcheck="false"><p id="connect-error" class="connect-error" role="alert" hidden></p><button type="submit" id="connect-button" class="btn primary full">连接工作区</button></form>

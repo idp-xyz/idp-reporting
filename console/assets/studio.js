@@ -810,7 +810,8 @@ window.createReportingStudio = function (api) {
   // ---- rendering from the designer's state ------------------------------------------------------------------------------------------------------
   const text = (id, v) => {
     const e = $(id);
-    if (e && e.textContent !== v) e.textContent = v;
+    // S17-A: compared with what was written, not with its English.
+    if (e && (window.reportingLanguage ? window.reportingLanguage.source(e) : e.textContent) !== v) e.textContent = v;
   };
   const setAria = (el, on, reason) => {
     if (on) {
