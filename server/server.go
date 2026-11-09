@@ -36,6 +36,8 @@ type Store interface {
 	// Ready is "" when the store answers, its ledger is at the binary's version and the role check is clean, else "store", "schema" or "roles".
 	Ready(context.Context) string
 	LedgerVersion(context.Context) (int, error)
+	// The audit of people's actions (S12-B, migration 012).
+	r.AuditLog
 	// Designs answers the backend of one of the private stores in this store (S11-B: design_store database).
 	Designs(store string) (privatedocs.Backend, error)
 	Close()
@@ -438,6 +440,8 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 	if err := compose(httpapi.WithProfile(handler, svc, authenticate, label, embed)); err != nil {
 		return err
 	}
+	// S12-B: people's actions are recorded in the store (audit_events), and GET /audit reads them.
+	handler = httpapi.WithAudit(handler, s.store)
 	var gauge func() int64
 	{
 		h, g, err := httpapi.WithMaxInFlightGauge(handler, inFlight)

@@ -76,7 +76,7 @@ func (s *Store) ResetFixture(ctx context.Context) error {
 	if !s.fixture {
 		return r.ErrDenied
 	}
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.sweeps, reporting_s01.designs")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.sweeps, reporting_s01.designs, reporting_s01.audit_events")
 	return e
 }
 

@@ -258,6 +258,7 @@ func rowLevelSecurity(t *testing.T, admin *pgxpool.Pool) {
 	t.Run("a_store_without_its_policies_is_refused", func(t *testing.T) { w.policiesAreChecked(t) })
 	t.Run("the_sweep_deletes_across_identities_only_in_the_worker_scope", func(t *testing.T) { w.sweepAcrossIdentities(t) })
 	t.Run("designs_are_seen_and_written_only_by_their_identity", func(t *testing.T) { w.designs(t) })
+	t.Run("the_audit_is_read_by_its_identity_or_an_administrator_and_never_rewritten", func(t *testing.T) { w.audit(t) })
 	t.Run("a_restore_leaves_the_roles_the_policies_and_the_isolation_in_place", func(t *testing.T) { w.afterARestore(t) })
 	t.Run("migration_007_round_trip_and_upgrade_from_version_6", func(t *testing.T) { migration007(t, admin) })
 }
@@ -1027,4 +1028,46 @@ func (w *rlsWorld) designs(t *testing.T) {
 			t.Fatal("the application role deleted a design")
 		}
 	})
+}
+
+// audit_events (012, S12-B), as the application role: an identity sees and inserts only its own events; with reporting.audit = 'tenant' it
+// reads, never writes, every event of its tenant and issuer; no event is updated or deleted.
+func (w *rlsWorld) audit(t *testing.T) {
+	ctx := context.Background()
+	a, b := w.identity(w.who[0]), w.identity(w.who[1])
+	insert := `INSERT INTO reporting_s01.audit_events (id, tenant, issuer, subject, action, object_kind, outcome) VALUES ($1,$2,$3,$4,'design.change','layout','succeeded')`
+	for n, i := range []r.Identity{a, b} {
+		if _, e := w.admin.Exec(ctx, insert, fmt.Sprintf("%032x", n+1), i.Tenant, i.Issuer, i.Subject); e != nil {
+			t.Fatal(e)
+		}
+	}
+	t.Cleanup(func() { _, _ = w.admin.Exec(context.Background(), "DELETE FROM reporting_s01.audit_events") })
+	sameTenant := a.Tenant == b.Tenant && a.Issuer == b.Issuer
+	inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+		if n := count(t, tx, "SELECT count(*) FROM reporting_s01.audit_events"); n != 1 {
+			t.Fatalf("an identity sees %d events", n)
+		}
+		if _, e := tx.Exec(ctx, insert, fmt.Sprintf("%032x", 9), b.Tenant, b.Issuer, b.Subject); !isRLS(e) {
+			t.Fatalf("an event of another identity was inserted: %v", e)
+		}
+	})
+	inTx(t, w.app, append(settingsOf(a), [2]string{"reporting.audit", "tenant"}), func(tx pgx.Tx) {
+		want := 1
+		if sameTenant {
+			want = 2
+		}
+		if n := count(t, tx, "SELECT count(*) FROM reporting_s01.audit_events"); n != want {
+			t.Fatalf("the tenant listing sees %d events, want %d", n, want)
+		}
+		if _, e := tx.Exec(ctx, insert, fmt.Sprintf("%032x", 8), b.Tenant, b.Issuer, b.Subject); !isRLS(e) {
+			t.Fatalf("the tenant listing wrote another identity's event: %v", e)
+		}
+	})
+	for _, sql := range []string{"UPDATE reporting_s01.audit_events SET outcome='failed'", "DELETE FROM reporting_s01.audit_events"} {
+		inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+			if _, e := tx.Exec(ctx, sql); e == nil {
+				t.Fatalf("the application role ran %s", sql)
+			}
+		})
+	}
 }

@@ -20,7 +20,7 @@ func contextProblems(name, src string) []string {
 	code := strings.ReplaceAll(comments.ReplaceAllString(src, ""), "SET ROLE in effect", "")
 	var out []string
 	calls := regexp.MustCompile(`(?i)set_config\(`).FindAllString(code, -1)
-	good := regexp.MustCompile(`(?i)set_config\('reporting\.(tenant|issuer|subject|scope)', \$[1-9], true\)`).FindAllString(code, -1)
+	good := regexp.MustCompile(`(?i)set_config\('reporting\.(tenant|issuer|subject|scope|audit)', \$[1-9], true\)`).FindAllString(code, -1)
 	if len(calls) != len(good) {
 		out = append(out, name+": a set_config that is not set_config('reporting.x', $n, true): the value is a parameter and the setting transaction-local")
 	}
@@ -32,7 +32,7 @@ func contextProblems(name, src string) []string {
 	if regexp.MustCompile(`(?i)set_config\([^)]*false`).MatchString(code) {
 		out = append(out, name+": set_config(..., false) lasts the session")
 	}
-	if name != "context.go" && name != "production.go" && regexp.MustCompile(`reporting\.(tenant|issuer|subject|scope)`).MatchString(code) {
+	if name != "context.go" && name != "production.go" && regexp.MustCompile(`reporting\.(tenant|issuer|subject|scope|audit)`).MatchString(code) {
 		out = append(out, name+": names a context setting outside context.go (and the policies the role check expects, in production.go)")
 	}
 	return out

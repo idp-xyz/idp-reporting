@@ -266,7 +266,7 @@ Moving an existing deployment from the directories to the database: stop the ser
 ## Upgrade procedure
 
 1. Build or install the new binary beside the old one. Run `reporting-server check-config -config …` with it (offline).
-2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs` does: without `roles` the server refuses to start at step store, "no INSERT and UPDATE on designs") (docs/OPERATIONS.md "Schema lifecycle").
+2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs` and 012 `audit_events` do: without `roles` the server refuses to start at step store, "no INSERT … on designs" or "on audit_events") (docs/OPERATIONS.md "Schema lifecycle").
    The ledger check goes both ways: an **older binary refuses to start against a newer ledger, and a running older server turns `/readyz` 503 `schema`** the moment `up` has been applied. That is the check doing its work, so
    roll the servers right after the migration; a migration is not a thing to apply and then leave for a day.
 3. Roll the servers **one at a time**: take one out of the balancer (`kill -TERM`; `/readyz` says `draining`), wait for it to exit (0), start the new binary, wait for `/readyz` 200, put it back, next. Binaries that read the jobs of a newer version may destroy them (docs/OPERATIONS.md "Workers and issue jobs"): never run an older worker against a store that holds newer jobs.
