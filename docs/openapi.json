@@ -52,6 +52,10 @@
       "description": "Ephemeral previews and layout checks (WithDocumentPreviews)."
     },
     {
+      "name": "sign-in",
+      "description": "The console's browser sign-in (S15-A, ADR 0019): OpenID Connect authorization code with PKCE, the code exchanged by the server. Unauthenticated. GET /sign-in is the core API's ({\"enabled\": false}) unless WithSignIn answers it; POST /sign-in/token is WithSignIn's alone."
+    },
+    {
       "name": "health",
       "description": "The production server's health and readiness, outside the API's authentication."
     }
@@ -3274,6 +3278,121 @@
           }
         }
       }
+    },
+    "/api/reporting/v1/sign-in": {
+      "get": {
+        "operationId": "getSignIn",
+        "tags": [
+          "sign-in"
+        ],
+        "summary": "How the console starts a browser sign-in",
+        "description": "Unauthenticated and never cached. The core API answers {\"enabled\": false}; WithSignIn, mounted when the deployment configures sign_in, answers the public sign-in configuration in its place.",
+        "x-reporting-mount": "core",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The public sign-in configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/sign-in/token": {
+      "post": {
+        "operationId": "exchangeSignInCode",
+        "tags": [
+          "sign-in"
+        ],
+        "summary": "Exchange an authorization code for an access token",
+        "description": "Unauthenticated; mounted only with sign_in (else the mux's 404). The server sends the code, the verifier, the configured redirect URI and client id to the configured token endpoint (HTTPS, at most 10 seconds by default, an answer of at most 64 KiB, no redirect followed) and answers the access token only when its own verifier accepts it. A code is redeemed at most once per process. A refusal is a fixed code; nothing of the provider's answer is repeated.",
+        "x-reporting-mount": "WithSignIn",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "description": "At most 4 KiB.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST (a body or field out of its bounds) or SIGN_IN_REFUSED (the provider refused the code or the verifier, or the ID token's nonce is not the one sent).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SIGN_IN_TOKEN_REFUSED: the provider issued a token this server's verifier does not accept (issuer, audience, keys, bindings or scope).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "SIGN_IN_REPLAYED: this code was already presented to this server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "502": {
+            "description": "SIGN_IN_UNAVAILABLE: the provider did not answer in time, could not be reached, answered a server error or an answer that is not a Bearer token answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SIGN_IN_BUSY (with Retry-After: 1): too many exchanges at once, or OVERLOADED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3508,9 +3627,14 @@
           "AUTHORITY_UNAVAILABLE",
           "OVERLOADED",
           "EXECUTION_FAILED",
-          "METHOD_NOT_ALLOWED"
+          "METHOD_NOT_ALLOWED",
+          "SIGN_IN_REFUSED",
+          "SIGN_IN_REPLAYED",
+          "SIGN_IN_TOKEN_REFUSED",
+          "SIGN_IN_UNAVAILABLE",
+          "SIGN_IN_BUSY"
         ],
-        "description": "The code of a refusal (`classify` in transport/httpapi/api.go). OVERLOADED is the in-flight bound's 503 (WithMaxInFlight); METHOD_NOT_ALLOWED is only answered by /healthz and /readyz."
+        "description": "The code of a refusal (`classify` in transport/httpapi/api.go). OVERLOADED is the in-flight bound's 503 (WithMaxInFlight); METHOD_NOT_ALLOWED is only answered by /healthz and /readyz. The SIGN_IN_* codes are answered only by POST /sign-in/token."
       },
       "Error": {
         "type": "object",
@@ -5465,6 +5589,100 @@
             "type": "string"
           }
         }
+      },
+      "SignInConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "false when the deployment configures no sign-in (the core API's answer, and then the only member); true with every other member (WithSignIn)."
+          },
+          "authorization_endpoint": {
+            "type": "string",
+            "format": "uri",
+            "description": "Where the browser is sent: https://, no query or fragment."
+          },
+          "client_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "redirect_uri": {
+            "type": "string",
+            "format": "uri",
+            "description": "The one registered redirect URI, the console's page: https://host[:port]/console/."
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "code_challenge_method": {
+            "type": "string",
+            "const": "S256"
+          },
+          "paste_fallback": {
+            "type": "boolean",
+            "description": "Whether the console still shows its paste-a-token form under the sign-in button."
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "additionalProperties": false,
+        "description": "What the console needs to start the authorization request, or {\"enabled\": false}. Nothing secret: no token endpoint, no client secret. With enabled true every member is present."
+      },
+      "SignInRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "description": "The authorization code from the redirect (printable ASCII)."
+          },
+          "code_verifier": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
+            "description": "The PKCE verifier whose S256 challenge the authorization request carried."
+          },
+          "nonce": {
+            "type": "string",
+            "minLength": 22,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._~-]{22,128}$",
+            "description": "The nonce of the authorization request; compared with the ID token's when the provider returns one."
+          }
+        },
+        "required": [
+          "code",
+          "code_verifier",
+          "nonce"
+        ],
+        "additionalProperties": false
+      },
+      "SignInToken": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "The provider's access token, already accepted by this server's verifier; used as the Bearer token of every request."
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "description": "Present when the provider said it."
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "additionalProperties": false
       }
     }
   }

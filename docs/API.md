@@ -539,6 +539,21 @@ Retry-After: 1
 
 Nothing was run (the source product was not asked). Unlike the three durable quotas this one is not shared between processes.
 
+## Browser sign-in (S15-A, ADR 0019, docs/S15A_SCOPE.md)
+
+Mounted by `httpapi.WithSignIn` when the deployment configures `sign_in` (docs/DEPLOYMENT.md "Browser sign-in"). Without it the core API
+answers `GET /sign-in` with `200 {"enabled": false}` (so that the console's question before sign-in is not a 404 on every page load) and
+`POST /sign-in/token` is the mux's 404. Both routes are **unauthenticated**, carry the API's security headers and `Cache-Control: no-store`, and are inside
+`max_in_flight`.
+
+| Method and path | Request / response |
+|---|---|
+| GET /sign-in | No query (else 400). `200 {"enabled": true, "authorization_endpoint", "client_id", "redirect_uri", "scope", "code_challenge_method": "S256", "paste_fallback"}`: what the console needs to send the browser to the provider. Nothing secret and not the token endpoint |
+| POST /sign-in/token | `{"code", "code_verifier", "nonce"}`, strict JSON, at most 4 KiB: a code of 1..2048 printable ASCII characters, a PKCE verifier of 43..128 of `[A-Za-z0-9._~-]`, a nonce of 22..128 of the same; anything else `400 INVALID_REQUEST` before any exchange. The server exchanges the code at the configured token endpoint with the verifier and the configured redirect URI, and answers `200 {"access_token", "expires_in"?}` only when its own verifier accepts the token; the token is then the Bearer of every request, like a pasted one. Refusals, each `{"error": CODE}` and nothing of the provider's answer: `400 SIGN_IN_REFUSED` (the provider refused the code, the verifier, the redirect URI or the client, or the ID token's nonce is not the one sent), `403 SIGN_IN_TOKEN_REFUSED` (the provider's token is not one this server accepts), `409 SIGN_IN_REPLAYED` (the code was already presented to this server, within ten minutes), `502 SIGN_IN_UNAVAILABLE` (no answer within the timeout, unreachable, an untrusted certificate, a status other than 200/400/401, a redirect, an answer over 64 KiB, not JSON or without a Bearer access token), `503 SIGN_IN_BUSY` with `Retry-After: 1` (16 exchanges at once in the process), `413 REQUEST_TOO_LARGE` |
+
+The ID token and a refresh token, when the provider returns them, never leave the server. The server never redirects; the redirect URI is
+the configured one, the console's page.
+
 ## Health and readiness (S05-A, docs/DEPLOYMENT.md)
 
 The production server (`reporting-server`) mounts two routes outside `/api/reporting/v1`, ahead of the API and the console, **without authentication** and without touching the API's authentication or `max_in_flight`. They carry

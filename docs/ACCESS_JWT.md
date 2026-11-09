@@ -1,7 +1,8 @@
 # Access JWT 资源端认证模块
 
-状态：S02-A，本地协议及合成数据 HTTP 验证。未连接真实 IdP，未实现浏览器
-登录、动态发现/JWKS 轮询、令牌交换、代客或生产认证控制面。
+状态：S02-A，本地协议及合成数据 HTTP 验证。未连接真实 IdP，未实现动态发现/JWKS
+轮询、令牌交换、代客或生产认证控制面。浏览器登录见下文“浏览器登录（S15-A）”：
+它只负责让控制台拿到访问令牌，令牌照旧由本模块逐个请求验证。
 
 ## 组合方式
 
@@ -102,3 +103,17 @@ tenant 时拥有相同 owner，当前客户端的产品许可仍限制操作。�
 绑定可带 `roles`：`viewer`、`designer`、`publisher`、`issuer`、`administrator` 中的 1–5 个、不重复。未写 `roles` 的绑定保持角色引入前的权利（`viewer, designer, publisher, issuer`），`administrator` 从不默认给予。令牌里的角色声明一律忽略，与产品相同：只有绑定能授予。服务端在每个路由处按其模式要求一个角色（`transport/httpapi.RequiredRole`），不满足时回答 403 `AUTH_ROLE_DENIED`；`GET /session` 列出有效角色。空的 `roles` 列表或未知角色名被拒绝（启动或重载时，重载保持旧绑定）。
 
 团队共享空间（S12-C）：主体 `~team` 保留给每个租户的共享设计空间，任何绑定都不能使用它（绑定文件与访问令牌配置都拒绝）。
+
+## 浏览器登录（S15-A，ADR 0019）
+
+配置 `sign_in` 后（docs/DEPLOYMENT.md“Browser sign-in”），控制台用 OpenID Connect 授权码 + PKCE（S256）向身份提供方登录，
+授权码由服务端在 `POST /api/reporting/v1/sign-in/token` 换取（`identity/signin`，经 `httpapi.WithSignIn`）。与本模块的关系：
+
+- 换到的访问令牌在交给页面之前先由本模块的 `Authenticate` 判一次（不接受即 403 `SIGN_IN_TOKEN_REFUSED`），之后与粘贴的令牌完全一样，
+  每个请求照旧验证 `iss`、`aud`、`scope`、寿命、签名密钥与绑定、角色。浏览器登录不新增任何信任：提供方签发的必须是本模块已接受的 JWT。
+- ID 令牌不用于授权。提供方返回时只比较其 `nonce` 与浏览器发来的是否相同（经 TLS 直接取自配置的端点，OIDC Core §3.1.3.7），随即丢弃；
+  刷新令牌也丢弃，二者都不交给浏览器。
+- 因此提供方的访问令牌须满足上文“验证规则”：RS256、`typ` 为 `at+jwt`、`aud` 为 `issuer.audience`、`scope` 含 `required_scope`、寿命不超过
+  `max_token_lifetime`，`sub` 与客户端须在绑定表里。签发不透明令牌或其他 `typ` 的提供方需要先改本模块（上线清单第 16 项的待定问题）。
+- 绑定表的 `client_id` 是访问令牌里的客户端声明。控制台登录得到的令牌带的通常是控制台客户端（`sign_in.client_id`），所以绑定要按它写。
+

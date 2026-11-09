@@ -20,6 +20,7 @@ import (
 	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
 	"idp.local/reporting/identity/accessjwt"
+	"idp.local/reporting/identity/signin"
 	"idp.local/reporting/issuance"
 	"idp.local/reporting/layouts"
 	"idp.local/reporting/privatedocs"
@@ -65,6 +66,7 @@ const (
 	StepSecrets     = "secrets"
 	StepCursorRing  = "cursor keys"
 	StepIssuer      = "issuer"
+	StepSignIn      = "sign in"
 	StepAdapters    = "adapters"
 	StepStore       = "store"
 	StepObjectStore = "object store"
@@ -266,6 +268,21 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		return refuse(StepIssuer, err.Error())
 	}
 	s.verifier, s.issuer = verifier, files
+	// The console's browser sign-in (S15-A): the client's secret, when the client is confidential, is the environment's alone.
+	var signIn *signin.Client
+	if si := cfg.SignIn; si != nil {
+		c := si.Client(getenv(signin.ClientSecretEnv))
+		c.Outcome = func(outcome string) {
+			if outcome == signin.OutcomeOK {
+				s.log.info("sign_in", map[string]any{"outcome": outcome})
+				return
+			}
+			s.log.warn("sign_in", map[string]any{"outcome": outcome})
+		}
+		if signIn, err = signin.New(c); err != nil {
+			return refuse(StepSignIn, "the sign_in section is refused (the client secret in "+signin.ClientSecretEnv+" or ca_file; the value is not shown)")
+		}
+	}
 	connections, closers, err := buildAdapters(cfg, reg, getenv)
 	if err != nil {
 		return refuse(StepAdapters, err.Error())
@@ -442,6 +459,11 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 	}
 	// S12-B: people's actions are recorded in the store (audit_events), and GET /audit reads them.
 	handler = httpapi.WithAudit(handler, s.store)
+	if signIn != nil {
+		if err := compose(httpapi.WithSignIn(handler, signIn, authenticate)); err != nil {
+			return err
+		}
+	}
 	var gauge func() int64
 	{
 		h, g, err := httpapi.WithMaxInFlightGauge(handler, inFlight)
@@ -558,6 +580,7 @@ func (s *Server) logStart(ledger, ring, connections int, embed bool) {
 		"simulators":         c.AllowSimulator,
 		"listen_port":        s.listener.Addr().(*net.TCPAddr).Port,
 		"metrics":            s.metricsListener != nil,
+		"sign_in":            c.SignIn != nil,
 	})
 }
 

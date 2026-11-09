@@ -70,7 +70,14 @@ the rule and never repeats a value of the file.
   ],
   "quotas": { "jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120, "queries_in_flight": 4 },
   "retention": { "sweep_interval": 0 },
-  "profile_label": "staging-eu"
+  "profile_label": "staging-eu",
+  "sign_in": {
+    "authorization_endpoint": "https://idp.example.com/oauth2/authorize",
+    "token_endpoint": "https://idp.example.com/oauth2/token",
+    "client_id": "reporting-console",
+    "redirect_uri": "https://reporting.example.com/console/",
+    "scope": "openid reporting.read"
+  }
 }
 ```
 
@@ -107,6 +114,14 @@ the rule and never repeats a value of the file.
 | `design_store` | `directories` | `directories` (the four private directories above, one server each) or `database`: every design (layouts, dashboards, templates, backgrounds, images) in the platform's store, table `designs` (migration 011), shared by every server on it; the four directory fields must then be absent, and the four features are on. See "Several servers" below (S11-B, ADR 0017). |
 | `embed_origins` | none | `{integration: [origin]}`, validated as `embedding.New` does (https origins only here); every integration must be served by a connection. |
 | `profile_label` | `unqualified` | 1..64 printable ASCII characters, shown in `/capabilities`. |
+| `sign_in.authorization_endpoint`, `sign_in.token_endpoint` | none (the section is off: the console shows its paste form alone) | The console's browser sign-in (S15-A, ADR 0019; "Browser sign-in" below). `https://host[:port]/path`, no user, query or fragment. The browser is sent to the first; the server exchanges the code at the second. |
+| `sign_in.client_id` | required with the section | 1..256 printable ASCII characters without a space: the client registered at the provider. A confidential client's secret is the environment's (`REPORTING_SIGN_IN_CLIENT_SECRET`), never a field. |
+| `sign_in.redirect_uri` | required with the section | Exactly the URI registered at the provider, which must be the console's page: `https://host[:port]/console/`, no query or fragment. Sent unchanged in the authorization request and the exchange. |
+| `sign_in.scope` | required with the section | 1..512 characters, scope tokens separated by one space (`openid` and whatever the provider needs to put the platform's `issuer.required_scope` in the access token). |
+| `sign_in.paste_fallback` | `false` | `true` keeps the paste-a-token form under the sign-in button (ADR 0019: for a break-glass procedure; the API accepts any valid token either way). |
+| `sign_in.ca_file` | none (the system's roots) | PEM file of the CA that vouches for an `https://` token endpoint; it replaces the system's roots for that endpoint. |
+| `sign_in.loopback_http` | `false` | Allows `http://` for an endpoint or the redirect URI on a loopback IP, for qualification only. |
+| `sign_in.timeout` | 10 | 0 (default) or 1..60 seconds for one exchange at the token endpoint (connection, TLS, request and answer). |
 
 ## Secrets
 
@@ -120,6 +135,7 @@ tenant, cursor key, connection-string password and object store keys and looks f
 | Cursor keys | files named by `cursor_key_files` | Regular file, **not a symbolic link**, owned by the user the server runs as, mode **0600 or 0400**, at most 4 KiB. Generate with `openssl rand -hex 32`. |
 | TLS private key | file named by `tls_key_file` | The same rules as a cursor key; the certificate file must not be writable by group or others. |
 | Issuer JWKS and bindings | files named by `jwks_file`, `bindings_file` (public data, personal identifiers) | Regular file, not a symbolic link, owned by the server's user or root, not writable by group or others. |
+| Sign-in client secret | environment `REPORTING_SIGN_IN_CLIENT_SECRET`, only for a confidential client; absent for a public client (the recommended registration, PKCE alone) | 1..512 printable ASCII characters without a space; sent as HTTP Basic (`client_secret_basic`) to the token endpoint only. |
 
 A symbolic link is refused for the file itself (it is opened with `O_NOFOLLOW`); a link in a directory above it is the operator's layout and is not checked.
 
@@ -127,17 +143,42 @@ A symbolic link is refused for the file itself (it is opened with `O_NOFOLLOW`);
 
 Each failure is a refusal whose text is fixed and names the step (`reporting-server: start refused at step "store": …`) and is logged as `start_refused` with the step only:
 **configuration** (the file's own rules, including a ring of five, plain HTTP on a public address) → **secrets** (cursor keys, the connection string's presence, the object store keys, the
-TLS pair) → **issuer** (the access-token profile; then every product of every binding must be a connection of the binding's tenant, ADR 0016) → **adapters** (an unregistered or unknown adapter name, a factory that fails, a simulator without the allowance) → **store**
+TLS pair) → **issuer** (the access-token profile; then every product of every binding must be a connection of the binding's tenant, ADR 0016) → **sign in** (the `sign_in` section with the client secret of the environment, the CA file read) → **adapters** (an unregistered or unknown adapter name, a factory that fails, a simulator without the allowance) → **store**
 (`OpenProduction`; its own refusals keep their text, any other error, a connection failure, is reduced to a fixed text because it may name the host or the user) → **object store**
 (`HEAD bucket`) → **pdf**, **private directories** → **service** → workers and sweep → **listen** (`the listen address cannot be bound`). A refused start releases everything it
 opened and stops the workers it started. The start line (`start`) carries the binary's version, the ledger's version, the number of cursor keys, the connections and workers, the trusted `kid`s,
-and whether TLS, an object store, PDF, issuance and embedding are on, and (ADR 0016) `connections_sha256`, `bindings` and `bindings_sha256`: the digests of
+and whether TLS, an object store, PDF, issuance, embedding and the browser sign-in (`sign_in`) are on, and (ADR 0016) `connections_sha256`, `bindings` and `bindings_sha256`: the digests of
 what is in force, the same that `check-config` prints, so that a reviewed file can be matched to a running server.
 
 **Adding a product** (ADR 0016): add the connection to the configuration file and restart (rolled), then add the product to the bindings and reload. A
 binding that names a product no connection of its tenant serves is refused, at start and in `check-config` with the number of such products, at reload with
 `ISSUER_BINDING_UNSERVED`. `GET /session` lists only the products the server serves. Removing a product goes the other way: the bindings first, then the
 connection.
+
+## Browser sign-in (S15-A)
+
+With a `sign_in` section the console offers 「使用企业账号登录」: OpenID Connect's authorization code flow with PKCE (S256), the code exchanged by the
+server (ADR 0019, docs/S15A_SCOPE.md). The console reads `GET /api/reporting/v1/sign-in` (unauthenticated, `no-store`, nothing secret; `{"enabled": false}` without the section), sends the browser
+to `authorization_endpoint` with `response_type=code`, `client_id`, `redirect_uri`, `scope`, a random `state` and `nonce`, and `code_challenge` with
+`code_challenge_method=S256`; the provider sends it back to `redirect_uri` (the console's page) with `code` and `state`; the console checks `state`, removes
+the code from the address, and posts `{code, code_verifier, nonce}` to `POST /api/reporting/v1/sign-in/token`. The server sends `grant_type=authorization_code`,
+the code, the verifier and the configured `redirect_uri` (and `client_id` for a public client) to `token_endpoint` over HTTPS, and answers the access token
+only when its own verifier (`issuer`, docs/ACCESS_JWT.md) accepts it. From then on the token is used exactly like a pasted one.
+
+**Registering the client at the provider** (to be done with the real IdP, go-live item 16):
+
+- Client type: **public** (no secret; PKCE is the proof) is the recommended registration. A provider that insists on a confidential client gets its secret in
+  `REPORTING_SIGN_IN_CLIENT_SECRET`, sent as `client_secret_basic`; `private_key_jwt` and mTLS client authentication are not supported.
+- Grant: authorization code only; PKCE **required**, method `S256` only (no `plain`); no implicit or hybrid flow; refresh tokens are not used (the server drops one if the provider returns it).
+- Redirect URI: exactly `sign_in.redirect_uri`, `https://<the console's host>/console/`, registered as an exact string (no wildcard, no prefix match).
+- Access token: a JWT the platform's `issuer` section accepts: `iss`, `aud` (= `issuer.audience`), `scope` with `issuer.required_scope`, a lifetime within `max_token_lifetime`, signed by a key of `jwks_file`,
+  and a `sub` and client that a binding lists. A provider that issues opaque access tokens cannot be used as is (`SIGN_IN_TOKEN_REFUSED`).
+- Allowed origins / CORS: none needed: the browser never calls the token endpoint.
+
+The exchange is bounded: at most 16 at once in a process (beyond it `503 SIGN_IN_BUSY`), `timeout` seconds each, an answer of at most 64 KiB, no redirect
+followed. A code is redeemed once per process (`409 SIGN_IN_REPLAYED`); behind a balancer, a code replayed to another server is refused by the provider,
+which must refuse a second redemption (RFC 6749 §4.1.2). The routes are unauthenticated: rate-limit `POST /api/reporting/v1/sign-in/token` at the
+balancer like any login endpoint. The paste form stays hidden unless `paste_fallback` is `true`.
 
 ## Health and readiness, and the load balancer
 
@@ -174,7 +215,7 @@ who uses it. Counters start at zero with the process. Alert on `reporting_ready 
 ## Logging
 
 One JSON object per line on stderr (the journal): `ts`, `level`, `event` and counts and codes only. Events: `start`, `start_refused`, `reload` (outcome `ok` with the trusted `kid`s and the binding count, or `refused` with a code),
-`sweep` (counts) and `sweep_failed` (a code), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
+`sweep` (counts) and `sweep_failed` (a code), `sign_in` (one per code exchange, S15-A: `outcome` `ok` at info, else `replayed`, `busy`, `provider_refused`, `provider_client_refused`, `provider_status`, `timeout`, `unreachable`, `oversized`, `malformed` or `nonce_mismatch` at warn; never the code, the verifier, a token or the provider's text), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
 neither the panic's value nor the client's address), and one `access` line per request: `method`, `route` (the mux pattern, e.g. `GET /api/reporting/v1/jobs/{id}`, `unmatched` for a 404), `status`, `duration_ms` and a random
 `request_id` (also the `X-Request-Id` of the answer), and the request's `trace_id` and `span_id`. No query string, body, header, subject, tenant, path or error text is logged.
 
@@ -302,7 +343,7 @@ alone to do.
 | 13 | TLS certificate for the server, renewed before it expires (a restart) | Operator (no automatic renewal) | S05-A |
 | 14 | The unit, the user, the file modes, `TimeoutStopSec` above `shutdown_grace`, the balancer pointed at `/readyz` | Operator (the example above is untested) | S05-A |
 | 15 | Logs shipped and watched (`worker_failed`, `reload` refusals, `drain_end` with `clean:false`, `http_server_error`); metrics scraped from `metrics_listen` and alerts on `reporting_ready` and the failure counters | Done (the log events, the metrics listener, trace ids in the log and the `traceparent` header, S14-A) / Operator (shipping, scraping, the alerts) / Open (no span exporter; a job's trace is not the admitting request's) | S05-A, S14-A, "Metrics", "Logging" |
-| 16 | **The real issuer**: its JWKS, the real bindings (subject, client, tenant, integrations), its lifetime policy, discovery and emergency revocation | **Open** (waits for the real IdP contract; docs/ACCESS_JWT.md) | S02-A |
+| 16 | **The real issuer**: its JWKS, the real bindings (subject, client, tenant, integrations), its lifetime policy, discovery and emergency revocation; the console's client registered for the browser sign-in (public, PKCE S256, the exact redirect URI) and the `sign_in` section filled in | **Open** (waits for the real IdP contract; docs/ACCESS_JWT.md) / Done (the generic sign-in, tested against a fake provider, S15-A) | S02-A, S15-A, "Browser sign-in" |
 | 17 | **A real adapter** for each source product and its contract (catalog, prepared reads, current authorization, issue authority), registered in the host's `main` | **Open** (the integration slice) | docs/REAL_SOURCE_ONBOARDING.md |
 | 18 | **Data reconciliation** with the product: totals, the issue records against the product's numbers after a restore, the grants | **Open** (needs the real adapter) | S03-H, S04-F |
 | 19 | **The admission decision** itself: `production_approved` changes only by a code change after it | **Open** | docs/s00/MIGRATION.md |

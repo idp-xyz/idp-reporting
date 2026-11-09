@@ -167,6 +167,7 @@
   <div class="connection-card" role="dialog" aria-modal="true" aria-labelledby="connect-title">
     <div class="wordmark" aria-hidden="true"><span class="brand-icon"><svg class="ic" focusable="false"><use href="#s-layers"/></svg></span><span>IDP <b>REPORTING</b><small>DOCUMENT PLATFORM</small></span></div>
     <h1 id="connect-title">进入报表工作区</h1><p>连接当前独立服务，查看授权数据与私有任务。</p>
+    <div class="sso" id="sso" hidden><button type="button" id="sso-button" class="btn primary full">使用企业账号登录</button><p class="sso-or" id="sso-or" hidden>或粘贴访问令牌</p></div>
     <form id="connect-form" autocomplete="off"><label for="access-token">访问令牌</label><input type="password" id="access-token" autocomplete="off" placeholder="粘贴当前环境的访问令牌" required spellcheck="false"><p id="connect-error" class="connect-error" role="alert" hidden></p><button type="submit" id="connect-button" class="btn primary full">连接工作区</button></form>
     <div class="connection-hint"><span class="status-dot"></span><p>当前环境使用合同模拟器。令牌仅在内存中使用，退出后清除。</p><a class="connection-help" id="connect-help" href="manual/" target="_blank" rel="noopener" aria-label="用户手册（新窗口）" title="用户手册（新窗口）"><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-help"/></svg></a></div>
   </div>

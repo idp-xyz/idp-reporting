@@ -15,6 +15,7 @@ import (
 	"idp.local/reporting/embedding"
 	"idp.local/reporting/export/pdf"
 	"idp.local/reporting/export/xlsx"
+	"idp.local/reporting/identity/signin"
 	"idp.local/reporting/issuance"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
@@ -215,6 +216,14 @@ func run() error {
 	quotaQueries := flag.Int("quota-queries", 0, "quota per identity: POST /queries and snapshot row reads running at once in this process (S04-G); 0 is the default, 4; 1..64")
 	maxInFlight := flag.Int("max-in-flight", 0, "API requests worked on at once in this process (S04-G); beyond it a request is answered 503 OVERLOADED with Retry-After: 1; 0 is the default, 128; 1..4096")
 	objectStore := objects.Register(flag.CommandLine)
+	var signIn signin.Config
+	flag.StringVar(&signIn.AuthorizationEndpoint, "sign-in-authorization-endpoint", "", "optional browser sign-in (S15-A, ADR 0019) for a local fake provider: its authorization endpoint (http:// on a loopback IP or https://); with the four other -sign-in flags")
+	flag.StringVar(&signIn.TokenEndpoint, "sign-in-token-endpoint", "", "the fake provider's token endpoint; it must answer the demo's bearer secret as the access token, the only one the demo accepts")
+	flag.StringVar(&signIn.ClientID, "sign-in-client-id", "", "the console's client id at the fake provider")
+	flag.StringVar(&signIn.RedirectURI, "sign-in-redirect-uri", "", "the console's address as registered at the fake provider: http://127.0.0.1:port/console/")
+	flag.StringVar(&signIn.Scope, "sign-in-scope", "openid", "the scope the console asks for")
+	flag.BoolVar(&signIn.PasteFallback, "sign-in-paste-fallback", false, "keep the paste-a-token form under the sign-in button")
+	flag.StringVar(&signIn.CA, "sign-in-ca", "", "optional PEM file of the CA of an https:// fake provider")
 	flag.Func("embed-origin", "repeatable integration=origin: a page of that origin may show the embed pages of that integration in a frame (ADR 0006); an https origin as https://host[:port], or http://127.0.0.1:port for a local product page", func(value string) error {
 		embedOrigins = append(embedOrigins, value)
 		return nil
@@ -240,6 +249,15 @@ func run() error {
 	inFlight, e := maxInFlightConfig(*maxInFlight)
 	if e != nil {
 		return e
+	}
+	// The demo is loopback-only, so a fake provider on a loopback IP may speak plain HTTP; the client secret is the environment's.
+	var signInClient *signin.Client
+	if signIn.AuthorizationEndpoint != "" || signIn.TokenEndpoint != "" || signIn.ClientID != "" || signIn.RedirectURI != "" {
+		signIn.LoopbackHTTP = true
+		signIn.ClientSecret = os.Getenv(signin.ClientSecretEnv)
+		if signInClient, e = signin.New(signIn); e != nil {
+			return fmt.Errorf("the -sign-in flags are refused: %w", e)
+		}
 	}
 	// The object store (S04-E): read and refused before anything is opened, and reached before the server starts.
 	objectBucket, e := openObjectStore(objectStore, os.Getenv, *useMemory)
@@ -404,6 +422,11 @@ func run() error {
 	// S12-B: the demo records people's actions in its store too (memory, or the fixture database).
 	if log, ok := repo.(r.AuditLog); ok {
 		handler = httpapi.WithAudit(handler, log)
+	}
+	if signInClient != nil {
+		if handler, e = httpapi.WithSignIn(handler, signInClient, auth); e != nil {
+			return e
+		}
 	}
 	// The cap on requests in flight wraps the API alone, under the console, whose static pages are not what it protects (S04-G).
 	if handler, e = httpapi.WithMaxInFlight(handler, inFlight); e != nil {

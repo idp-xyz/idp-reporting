@@ -237,6 +237,15 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		return send(w, 200, events)
 	})
+	// S15-A (ADR 0019): before anyone signs in, the console asks whether a browser sign-in is configured; WithSignIn answers it when one is.
+	// Unauthenticated, and nothing in it: a deployment without a sign-in says so instead of a 404 on every page load.
+	mux.HandleFunc("GET "+base+"/sign-in", func(w http.ResponseWriter, req *http.Request) {
+		if len(req.URL.Query()) != 0 {
+			problem(w, r.ErrInvalid, 0)
+			return
+		}
+		_ = send(w, 200, map[string]bool{"enabled": false})
+	})
 	bind("GET "+base+"/session", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		// Only the products the service serves for the principal (ADR 0016): a binding's product without a connection is never offered.
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": service.Served(p), "roles": p.EffectiveRoles()})

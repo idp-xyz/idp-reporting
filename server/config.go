@@ -15,9 +15,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"idp.local/reporting/embedding"
+	"idp.local/reporting/identity/signin"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/postgres"
 	"idp.local/reporting/transport/httpapi"
@@ -88,6 +90,28 @@ type Config struct {
 	DesignStore  string              `json:"design_store"`
 	EmbedOrigins map[string][]string `json:"embed_origins"`
 	ProfileLabel string              `json:"profile_label"`
+	// SignIn, when set, is the console's browser sign-in (S15-A, ADR 0019); a confidential client's secret is the environment's.
+	SignIn *SignInConfig `json:"sign_in"`
+}
+
+// SignInConfig is the console's OpenID Connect sign-in (identity/signin): authorization code with PKCE (S256), the code exchanged by the
+// server. The client secret, for a confidential client, is the environment's (REPORTING_SIGN_IN_CLIENT_SECRET), never a field.
+type SignInConfig struct {
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	TokenEndpoint         string `json:"token_endpoint"`
+	ClientID              string `json:"client_id"`
+	RedirectURI           string `json:"redirect_uri"`
+	Scope                 string `json:"scope"`
+	PasteFallback         bool   `json:"paste_fallback"`
+	CAFile                string `json:"ca_file"`
+	LoopbackHTTP          bool   `json:"loopback_http"`
+	// Timeout bounds one exchange at the token endpoint, in seconds: 0 is the default, 10; at most 60.
+	Timeout int `json:"timeout"`
+}
+
+// Client is the identity/signin configuration of the section, with the secret given (from the environment).
+func (s *SignInConfig) Client(secret string) signin.Config {
+	return signin.Config{AuthorizationEndpoint: s.AuthorizationEndpoint, TokenEndpoint: s.TokenEndpoint, ClientID: s.ClientID, RedirectURI: s.RedirectURI, Scope: s.Scope, PasteFallback: s.PasteFallback, CA: s.CAFile, LoopbackHTTP: s.LoopbackHTTP, Timeout: seconds(s.Timeout), ClientSecret: secret}
 }
 
 // StoreConfig is the platform store's non-secret configuration; the connection string is the environment's (REPORTING_STORE_DSN).
@@ -520,6 +544,17 @@ func (c *Config) Validate() error {
 	if _, err := c.Embedding(); err != nil {
 		return err
 	}
+	if si := c.SignIn; si != nil {
+		if si.Timeout < 0 || si.Timeout > int(signin.MaxTimeout/time.Second) {
+			return configProblem("sign_in.timeout must be 0 (the default, 10 seconds) or between 1 and %d seconds", int(signin.MaxTimeout/time.Second))
+		}
+		if err := si.Client("").Check(); err != nil {
+			return configProblem("sign_in.%s", err.Error())
+		}
+		if si.CAFile != "" && strings.HasPrefix(si.TokenEndpoint, "http://") {
+			return configProblem("sign_in.ca_file is for an https:// token_endpoint")
+		}
+	}
 	// Every path the file names is absolute and clean: the working directory of a service is not a place to look for files.
 	for name, p := range c.paths() {
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
@@ -550,6 +585,9 @@ func (c *Config) paths() map[string]string {
 	if c.PDF != nil {
 		add("pdf.typst", c.PDF.Typst)
 		add("pdf.fonts", c.PDF.Fonts)
+	}
+	if c.SignIn != nil {
+		add("sign_in.ca_file", c.SignIn.CAFile)
 	}
 	add("layout_directory", c.LayoutDir)
 	add("dashboard_directory", c.DashboardDir)

@@ -31,6 +31,7 @@
 - 测试：`identity/accessjwt` 的 18 个测试，尤其 `TestRejectJOSEAndCompactTokenAttacks`、`TestRejectInvalidAccessTokenClaims`、`TestAnUntrustedKidIsRefusedWithoutNamingAKey`、`TestTokenWithoutReportingScopeIsDenied`、`TestOnlyAuthorizationHeaderProvidesCredentials`、`TestFailedReplaceLeavesThePreviousConfigurationInForce`、`TestAStolenTokenIsBoundedByItsLifetimeAndNotRevocable`；`server` 的 `TestReloadAppliesRotatedKeysAndBindingsAndKeepsTheOldOnesOnFailure`、`TestSessionOverTLSWithRealTokens`；`transport/httpapi` 的 `TestHTTPAuthenticationFailureChallengesWithoutLeakingCredentials`。
 - 审查时看：这是只用标准库手写的 JWT 校验，没有用现成的库，值得逐行看——每个解析都有上限、比较都是精确的、每条失败路径都走 `denied()`。
 - 已知不覆盖：没有吊销，被盗的令牌只受寿命限制；JWKS 不自动发现，靠文件与重载；真实发行方未接入（docs/ACCESS_JWT.md，上线清单第 11、16 项）。
+- 浏览器登录（S15-A，ADR 0019）：要成立的是“登录只是拿到令牌的另一种方式，不新增信任”。代码：`identity/signin/signin.go`（`Check`、`Exchange`）、`transport/httpapi/signin.go`（`WithSignIn`）、`console/assets/app.js` 的 `takeSignInReturn`、`setupSignIn`、`beginSignIn`。要点：两个路由不认证；授权码只在服务端向配置的令牌端点兑换（HTTPS、可配 CA、不跟随重定向、超时 10 秒、回答 ≤ 64 KiB、同时 ≤ 16 个）；换到的访问令牌先经 `Authenticate` 判过才交给页面，之后每个请求照旧验证；ID 令牌只比较 nonce，不用于授权，与刷新令牌一起丢弃；同一 code 在本进程内十分钟内只兑换一次；回调地址是唯一配置值（`…/console/`），服务端从不重定向；拒绝只回固定代码，日志只记结果词。浏览器端：PKCE 校验串、state 与 nonce 只在一次跳转期间存在本标签页 sessionStorage 的一项里，页面加载时先读出并删除，code 立即从地址去掉；state 不符、无记录或超时则不发请求。机密客户端的密钥只来自环境变量 `REPORTING_SIGN_IN_CLIENT_SECRET`，配置文件拒绝像密钥的字段名。测试：`identity/signin` 的 `TestAGoodCodeIsExchangedOnce`、`TestRefusalsOfTheProvider`、`TestAnswersThatAreNotATokenAnswer`、`TestTimeoutsAndUnreachableProviders`、`TestAConcurrentReplayAndTheBoundOnExchanges`、`TestConfigurationRules`；`transport/httpapi` 的 `TestSignInExchangeAnswersFixedCodes`、`TestSignInExchangeEndToEndWithAFakeProvider`；`server` 的 `TestServerSignInWithAFakeProvider`、`TestConfigSignInSection`；DOM 测试中以 `S15-A:` 开头的五个。审查时看：`Exchange` 的每条失败路径是否只回固定错误、`nonceMatches` 只做比较；控制台在发出兑换请求前的 state 检查；`WithSignIn` 判令牌时用的是部署自己的 `Authenticate`。
 
 ## 2. 演示服务
 
@@ -66,7 +67,7 @@
 
 - 响应头：`console/handler.go` 的 `policy` 是 `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'`，`frame-ancestors` 平时是 `'none'`，只有嵌入页对配置的来源放开；另有 `X-Frame-Options: DENY`、`nosniff` 与 `Referrer-Policy: no-referrer`。测试：`console` 包的 7 个测试。
 - 不写标记：控制台只用 DOM API 建节点（ADR 0008）；ESLint 拒绝 `innerHTML`、`outerHTML`、`insertAdjacentHTML`、`eval` 与 `new Function`（`eslint.config.mjs`，CI 执行）；DOM 测试用 `<img src=x onerror=…>` 这样的名称检查它们只显示为文本。
-- 令牌：只在内存，不进 URL、浏览器存储、日志或任务；退出或 401 清空页面数据（docs/CONSOLE.md）。下载的文件先在浏览器里用 Web Crypto 核对 SHA-256，再交给用户（`console/assets/app.js`）。
+- 令牌：只在内存，不进 URL、浏览器存储、日志或任务；退出或 401 清空页面数据（docs/CONSOLE.md）。浏览器登录（S15-A）只在跳转到身份提供方的那一次导航期间把 PKCE 校验串、state 与 nonce 存在 sessionStorage 的一项里，页面加载时先删除；登录后存储为空（DOM 测试断言）。下载的文件先在浏览器里用 Web Crypto 核对 SHA-256，再交给用户（`console/assets/app.js`）。
 - 嵌入：允许的来源是精确的序列化来源，http 只允许回环地址且要显式打开（`embedding/embedding.go`；`TestAcceptsOnlyExactSerializedOrigins`、`TestLoopbackHTTPOnlyWhenAskedAndOnlyForLoopbackAddresses`、`TestNilAndEmptyAllowNothing`）。嵌入页只处理来自父窗口、来源正确的消息（`console/assets/embed.js` 的 `onMessage`，65 行）；发给父窗口的消息是封闭列表、带精确的目标来源、不带值；不在框架里或地址不对时不通信（`console/embed.dom.test.mjs`）。
 - 审查时看：`console/assets/app.js` 里每一处把服务端回答写进页面的地方；`console/assets/embed.js` 的消息处理。
 
@@ -123,6 +124,7 @@
 
 - 真实发行方、真实适配器、数据对账与准入决定（上线清单第 16–19 项）。
 - 令牌吊销与 JWKS 自动发现；时钟偏差容忍为零。
+- 浏览器登录只对假的身份提供方测过；没有发现文档、提供方登出、静默续期与刷新令牌；`private_key_jwt`、mTLS 客户端认证与不透明访问令牌不支持；防重放记录只在单个进程内（跨服务器依赖提供方的一次性规则）；未认证的兑换路由没有按来源限速，靠 `max_in_flight`、16 个并发槽与负载均衡器（ADR 0019，docs/S15A_SCOPE.md）。
 - 追踪只到日志：请求按 W3C Trace Context 带 `trace_id`/`span_id`（S14-A），但没有 span 导出器；后台任务的追踪不是受理它的请求的追踪（存储里没有这个字段）。TLS 证书自动续期；systemd 单元示例未经测试（上线清单第 13–15 项）。
 - 容量数字是一台机器上的合成测量，不是生产规划（docs/CAPACITY.md）。
 - 演示只有一个可登录的身份；跨身份隔离只在 Go 测试里验证（docs/TEST_SCENARIOS.md）。

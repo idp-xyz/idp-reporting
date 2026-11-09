@@ -22,6 +22,7 @@ import (
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/embedding"
 	"idp.local/reporting/export/xlsx"
+	"idp.local/reporting/identity/signin"
 	"idp.local/reporting/layouts"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -51,8 +52,10 @@ func TestOpenAPIMatchesTheBoundRoutes(t *testing.T) {
 	probe := func(pattern string) bool {
 		method, path, _ := strings.Cut(pattern, " ")
 		*reached = ""
-		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, probePath(path), nil))
-		return *reached == pattern
+		req := httptest.NewRequest(method, probePath(path), nil)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		// An unauthenticated route (S15-A's sign-in) never reaches the authenticator; the mux that matched it wrote its pattern on the request.
+		return *reached == pattern || (*reached == "" && req.Pattern == pattern)
 	}
 	bound := map[string]bool{}
 	for _, pattern := range candidates {
@@ -157,12 +160,25 @@ func composedForProbing(t *testing.T) (http.Handler, *string) {
 		func(next http.Handler) (http.Handler, error) {
 			return httpapi.WithProfile(next, service, auth, "probe", config)
 		},
+		func(next http.Handler) (http.Handler, error) {
+			return httpapi.WithSignIn(next, probeSignIn(t), auth)
+		},
 	} {
 		if h, e = mount(h); e != nil {
 			t.Fatal(e)
 		}
 	}
 	return h, reached
+}
+
+// probeSignIn is a sign-in client that is never asked to exchange anything.
+func probeSignIn(t *testing.T) *signin.Client {
+	t.Helper()
+	c, e := signin.New(signin.Config{AuthorizationEndpoint: "https://idp.example/authorize", TokenEndpoint: "https://idp.example/token", ClientID: "reporting-console", RedirectURI: "https://reporting.example/console/", Scope: "openid"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return c
 }
 
 // openAPIOperations reads an OpenAPI description and answers its operations as ServeMux patterns ("GET /path/{id}"). It fails the test
