@@ -478,3 +478,32 @@ func TestTheColleagueTokenIsASecondPersonOfTheDemosTenant(t *testing.T) {
 		t.Fatal("an unknown token was accepted")
 	}
 }
+
+// S18-A/B: a scheduled run resolves to the demo person it belongs to (the colleague too) and to nobody else; the colleague keeps the default
+// roles when user_a is the administrator; the demo's administrator view lists its people and nothing of another tenant.
+func TestTheDemosPeopleResolveAndTheAdministratorsViewListsThem(t *testing.T) {
+	p := r.Principal{Identity: r.Identity{Tenant: "platform_demo", Issuer: "urn:idp:contract-demo", Subject: "user_a"}, Integrations: []string{"finance", "shipment"}, Roles: []string{"viewer", "administrator"}}
+	people := []r.Principal{p, colleaguePrincipal(p)}
+	if people[1].Roles != nil || people[1].Subject != colleagueSubject {
+		t.Fatalf("colleague: %+v", people[1])
+	}
+	for _, q := range people {
+		got, ok := resolvePerson(people, q.Identity)
+		if !ok || got.Subject != q.Subject {
+			t.Fatalf("%s resolved to %+v %v", q.Subject, got, ok)
+		}
+	}
+	other := p.Identity
+	other.Subject = "user_c"
+	if _, ok := resolvePerson(people, other); ok {
+		t.Fatal("an unknown identity resolved")
+	}
+	view := demoAdminView(p, people, nil, time.Unix(0, 0))
+	v, e := view(context.Background(), p.Tenant)
+	if e != nil || len(v.Connections) != 2 || len(v.Bindings) != 2 || v.Schedules.Enabled {
+		t.Fatalf("%+v %v", v, e)
+	}
+	if v, _ := view(context.Background(), "tenant_y"); len(v.Connections)+len(v.Bindings) != 0 {
+		t.Fatalf("another tenant: %+v", v)
+	}
+}

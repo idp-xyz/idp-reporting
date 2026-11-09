@@ -37,6 +37,28 @@ async function until(fn, label, limit = 6000) {
   throw new Error('DOM condition not reached: ' + label);
 }
 
+// The address a demo started with -listen 127.0.0.1:0 says it listens at (S18): the demo binds a free port itself, so that no other process
+// (the demo of another suite running at the same time) can take a port picked here before the demo binds it.
+function addressOf(demo) {
+  return new Promise((resolve, reject) => {
+    let seen = '';
+    const timer = setTimeout(() => reject(new Error('Go fixture startup timeout')), 60000);
+    demo.stderr.on('data', chunk => {
+      if (seen === null) return;
+      seen += chunk;
+      const m = /listening at (http:\/\/127\.0\.0\.1:\d+)/.exec(seen);
+      if (m) {
+        clearTimeout(timer);
+        seen = null;
+        resolve(m[1]);
+      } else if (seen.length > 65536) seen = seen.slice(-4096);
+    });
+    demo.once('exit', () => {
+      clearTimeout(timer);
+      if (seen !== null) reject(new Error('Go fixture did not start'));
+    });
+  });
+}
 before(async () => {
   temporary = await mkdtemp(join(tmpdir(), 'reporting-s03a-dom-'));
   const go = process.env.REPORTING_GO || 'go';
@@ -46,11 +68,6 @@ before(async () => {
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 120000,
   });
-  const listener = createServer();
-  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
-  const port = listener.address().port;
-  await new Promise(resolve => listener.close(resolve));
-  url = 'http://127.0.0.1:' + port;
   // PDF export runs when the pinned Typst binary and fonts are configured, as in CI.
   const pdf = pdfConfigured
     ? [
@@ -69,7 +86,7 @@ before(async () => {
       'contract-simulator',
       '-memory',
       '-listen',
-      '127.0.0.1:' + port,
+      '127.0.0.1:0',
       '-layout-directory',
       join(temporary, 'layouts'),
       '-dashboard-directory',
@@ -88,7 +105,7 @@ before(async () => {
     ],
     {cwd: root, env: {...process.env, REPORTING_DEMO_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe']}
   );
-  child.stderr.resume();
+  url = await addressOf(child);
   for (let i = 0; i < 100; i++) {
     try {
       const r = await fetch(url + '/console/');
@@ -10511,18 +10528,13 @@ test('a refusal that is not exactly the quota shape is an unverifiable response,
 
 test('a real server at its limit refuses with the quota notice', async () => {
   // A second demo that admits one job at a time and runs no worker: the first submission holds the only slot.
-  const listener = createServer();
-  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
-  const port = listener.address().port;
-  await new Promise(resolve => listener.close(resolve));
   const strict = spawn(
     join(temporary, 'reporting-demo'),
-    ['-profile', 'contract-simulator', '-memory', '-listen', '127.0.0.1:' + port, '-pause-workers', '-quota-jobs', '1'],
+    ['-profile', 'contract-simulator', '-memory', '-listen', '127.0.0.1:0', '-pause-workers', '-quota-jobs', '1'],
     {cwd: root, env: {...process.env, REPORTING_DEMO_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe']}
   );
-  strict.stderr.resume();
   const normal = url;
-  url = 'http://127.0.0.1:' + port;
+  url = await addressOf(strict);
   let held = false;
   const a = app(async (path, options) => {
     // The first job is admitted for real; the poll for it is answered "unavailable", so that the console moves on to the second submission.
@@ -12492,10 +12504,6 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
     mainUrl = url;
     const dir = join(temporary, 'centre');
     await mkdir(dir, {recursive: true});
-    const listener = createServer();
-    await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
-    const port = listener.address().port;
-    await new Promise(resolve => listener.close(resolve));
     const pdf = pdfConfigured
       ? [
           '-pdf-typst',
@@ -12513,7 +12521,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
         'contract-simulator',
         '-memory',
         '-listen',
-        '127.0.0.1:' + port,
+        '127.0.0.1:0',
         '-layout-directory',
         join(dir, 'layouts'),
         '-dashboard-directory',
@@ -12532,8 +12540,7 @@ describe('S06-B part 3: the template centre (a server of its own)', () => {
       ],
       {cwd: root, env: {...process.env, REPORTING_DEMO_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe']}
     );
-    second.stderr.resume();
-    const next = 'http://127.0.0.1:' + port;
+    const next = await addressOf(second);
     for (let i = 0; i < 100; i++) {
       try {
         const r = await fetch(next + '/console/');
@@ -13739,7 +13746,9 @@ test("S06-C C1/C2/C3/C4/C9: the shell is the prototype's header and navigation c
         ['BUTTON', 'library', '模板中心'],
         ['BUTTON', 'documents', '文档工作室'],
         ['BUTTON', 'panel:tasks', '任务工作区'],
+        ['BUTTON', 'schedules', '定时报表'],
         ['BUTTON', 'audit', '操作记录'],
+        ['BUTTON', 'admin', '管理：数据源与绑定'],
         ['BUTTON', 'system', '能力与环境'],
       ]
     );
@@ -14144,7 +14153,9 @@ test("S07-A A1–A3: the rail stays on every shell; the chip names the data cont
         ['library', '模板中心', '模板'],
         ['documents', '文档工作室', '文档'],
         ['panel:tasks', '任务工作区', '任务'],
+        ['schedules', '定时报表', '定时'],
         ['audit', '操作记录', '记录'],
+        ['admin', '管理：数据源与绑定', '管理'],
         ['system', '能力与环境', '能力'],
       ]
     );
@@ -15255,5 +15266,160 @@ test('S12-C: the template centre switches between 我的模板 and 团队模板;
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
     a.close();
+  }
+});
+
+// ---- S18-A: the scheduled reports page (docs/S18_SCOPE.md) ----
+test('S18-A: 设为定时 makes a schedule of the current query; the page lists it, pauses, resumes, shows its runs and deletes it; the audit reads its events', async () => {
+  const runs = [];
+  const a = app(async path => {
+    if (/\/schedules\/[0-9a-f]{32}\/runs\?/.test(path) && runs.length) return json(runs);
+  });
+  try {
+    await a.login();
+    assert.equal(a.$('schedule-from-result').hidden, false, 'offered once signed in');
+    assert.equal(a.$('schedule-from-result').disabled, true, 'not before a result');
+    a.configure();
+    a.click('preview');
+    await until(
+      () => a.$('result-kind').textContent === '查询预览' && !a.$('schedule-from-result').disabled,
+      'a preview'
+    );
+    a.click('schedule-from-result');
+    assert.equal(a.$('sc-d-new').hidden, false);
+    assert.match(a.$('sc-query').textContent, /company_demo/);
+    assert.ok(a.$('sc-name').value.length > 0, 'named after the dataset');
+    a.$('sc-frequency').value = 'weekly';
+    a.$('sc-frequency').dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    assert.equal(a.$('sc-weekday-field').hidden, false);
+    assert.equal(a.$('sc-day-field').hidden, true);
+    a.$('sc-timezone').value = 'Not a zone';
+    a.click('sc-create');
+    await until(() => !a.$('sc-error').hidden, 'a refused zone');
+    assert.match(a.$('sc-error').textContent, /IANA/);
+    a.$('sc-timezone').value = 'Asia/Shanghai';
+    a.$('sc-name').value = '周报 应收';
+    a.click('sc-create');
+    await until(() => !a.$('page-schedules').hidden && a.$('schedules-body').rows.length === 1, 'the schedule listed');
+    assert.equal(a.$('sc-d-new').hidden, true);
+    const row = () => [...a.$('schedules-body').rows[0].cells].map(c => c.textContent);
+    assert.match(row()[0], /^周报 应收/);
+    assert.equal(row()[2], '每周 星期一 08:00 · Asia/Shanghai');
+    assert.equal(row()[4], '运行中');
+    assert.notEqual(row()[3], '—', 'a next run');
+    const press = text =>
+      [...a.$('schedules-body').rows[0].querySelectorAll('button')].find(b => b.textContent === text).click();
+    press('暂停');
+    await until(() => row()[4] === '已暂停' && row()[3] === '—', 'paused');
+    press('恢复');
+    await until(() => row()[4] === '运行中', 'resumed');
+    press('运行记录');
+    await until(() => !a.$('schedule-runs-panel').hidden, 'the runs');
+    assert.equal(a.$('schedule-runs-empty').hidden, false);
+    runs.push({
+      run_id: 'c'.repeat(32),
+      schedule_id: 'd'.repeat(32),
+      due_at: '2026-11-09T00:00:00Z',
+      state: 'refused',
+      as_of: '2026-11-08',
+      error_code: 'AUTH_SCOPE_DENIED',
+      delivery: 'failed',
+      finished_at: '2026-11-09T00:00:01Z',
+    });
+    press('运行记录');
+    await until(() => a.$('schedule-runs-body').rows.length === 1, 'a run');
+    assert.deepEqual([...a.$('schedule-runs-body').rows[0].cells].map(c => c.textContent).slice(1, 4), [
+      '2026-11-08',
+      '被拒绝 AUTH_SCOPE_DENIED',
+      '推送失败',
+    ]);
+    a.w.confirm = () => true;
+    press('删除');
+    await until(() => a.$('schedules-body').rows.length === 0 && !a.$('schedules-empty').hidden, 'deleted');
+    assert.equal(a.$('schedule-runs-panel').hidden, true);
+    a.w.document.querySelector('[data-page="audit"]').click();
+    await until(() => [...a.$('audit-body').rows].some(r => r.cells[1].textContent === '更改定时报表'), 'the audit');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+    a.click('logout');
+    assert.equal(a.$('schedules-body').rows.length, 0);
+    assert.equal(a.$('schedule-from-result').hidden, true);
+  } finally {
+    a.close();
+  }
+  // A deployment without schedules: the page says so and the button goes away.
+  const off = app(async path => {
+    if (path.startsWith('/api/reporting/v1/schedules')) return problem(404, 'NOT_FOUND');
+  });
+  try {
+    await off.login();
+    off.w.document.querySelector('[data-page="schedules"]').click();
+    await until(() => !off.$('schedules-off').hidden, 'the notice');
+    assert.equal(off.$('schedules-panel').hidden, true);
+    assert.equal(off.$('schedules-new').disabled, true);
+    assert.equal(off.$('schedule-from-result').hidden, true);
+    assert.equal(off.errors.length, 0, off.errors.join('|'));
+  } finally {
+    off.close();
+  }
+});
+
+// ---- S18-B: the administrator's data sources and bindings (docs/S18_SCOPE.md) ----
+test('S18-B: 管理 is offered to an administrator alone and shows the configuration in force, read-only, with each connection checked through the own binding', async () => {
+  const a = app();
+  try {
+    await a.login();
+    assert.equal(a.w.document.body.classList.contains('no-administrator'), true, 'not an administrator');
+  } finally {
+    a.close();
+  }
+  const view = {
+    tenant: 'platform_demo',
+    version: 'v1.2.3',
+    started_at: '2026-11-09T08:00:00Z',
+    connections: [
+      {integration_id: 'brant-contract-demo', source_tenant: 'tenant_a', adapter: 'contract-simulator'},
+      {integration_id: 'other-product', source_tenant: 'tenant_b', adapter: 'erp'},
+    ],
+    connections_sha256: 'a'.repeat(64),
+    bindings: [
+      {
+        subject: 'user_a',
+        client_id: 'console',
+        integrations: ['brant-contract-demo'],
+        roles: ['viewer', 'administrator'],
+      },
+      {subject: 'user_b', client_id: 'console', integrations: ['brant-contract-demo'], roles: null},
+    ],
+    bindings_sha256: 'b'.repeat(64),
+    bindings_loaded_at: '2026-11-09T09:00:00Z',
+    schedules: {enabled: true, per_identity: 20, webhook: true, webhook_host: 'hooks.example.com'},
+    sign_in: false,
+  };
+  const admin = app(async (path, options) => {
+    if (path.endsWith('/session')) {
+      const session = await (await fetch(url + path, options)).json();
+      return json({...session, roles: ['viewer', 'administrator']});
+    }
+    if (path.endsWith('/admin/configuration')) return json(view);
+  });
+  try {
+    await admin.login();
+    const rail = admin.w.document.querySelector('[data-page="admin"]');
+    assert.equal(admin.w.document.body.classList.contains('no-administrator'), false);
+    rail.click();
+    assert.equal(admin.$('page-admin').hidden, false);
+    await until(() => admin.$('admin-bindings').rows.length === 2, 'the view');
+    const cells = (id, n) => [...admin.$(id).rows[n].cells].map(c => c.textContent);
+    assert.deepEqual(cells('admin-bindings', 0), ['user_a', 'console', 'brant-contract-demo', '查看、审计管理']);
+    assert.equal(cells('admin-bindings', 1)[3], '默认（查看、设计、发布、出具）');
+    assert.equal(cells('admin-connections', 1)[3], '未检查（不在您的绑定中）');
+    assert.match(admin.$('admin-summary').textContent, /aaaaaaaaaaaa/);
+    assert.match(admin.$('admin-delivery').textContent, /已配置 · 接收方 hooks\.example\.com/);
+    assert.doesNotMatch(admin.$('page-admin').textContent, /secret/i);
+    admin.click('admin-check');
+    await until(() => cells('admin-connections', 0)[3].startsWith('可用'), 'the own product checked');
+    assert.equal(admin.errors.length, 0, admin.errors.join('|'));
+  } finally {
+    admin.close();
   }
 });

@@ -138,14 +138,18 @@ type Server struct {
 	metricsListener net.Listener
 	tls             bool
 
-	draining      atomic.Bool
-	requests      tracker
-	inflight      func() int64
-	reloadMu      sync.Mutex
-	busy          atomic.Int64 // workers and sweeps inside a call
-	stored        verdict
-	objectVerdict verdict
-	metrics       *metrics
+	draining atomic.Bool
+	requests tracker
+	inflight func() int64
+	reloadMu sync.Mutex
+	// startedAt and bindingsLoadedAt are what the administrator's view says of the configuration in force (S18-B); the second changes with a
+	// successful reload, under reloadMu.
+	startedAt        time.Time
+	bindingsLoadedAt time.Time
+	busy             atomic.Int64 // workers and sweeps inside a call
+	stored           verdict
+	objectVerdict    verdict
+	metrics          *metrics
 
 	// The workers' loops stop with loopCtx (the drain's first act); the jobs they hold run on workCtx, which nothing but the end of the
 	// process cancels, so that a claimed job finishes within the grace instead of being cut off and failed.
@@ -295,6 +299,8 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		return refuse(StepIssuer, err.Error())
 	}
 	s.verifier, s.issuer = verifier, files
+	s.startedAt = s.now().UTC()
+	s.bindingsLoadedAt = s.startedAt
 	// The console's browser sign-in (S15-A): the client's secret, when the client is confidential, is the environment's alone.
 	var signIn *signin.Client
 	if si := cfg.SignIn; si != nil {
@@ -496,6 +502,10 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 	if err := compose(httpapi.WithProfile(handler, svc, authenticate, label, embed)); err != nil {
 		return err
 	}
+	// S18-B: the administrator's read-only view of the configuration in force, inside the audit so that a refusal is recorded.
+	if err := compose(httpapi.WithAdministration(handler, authenticate, s.adminView)); err != nil {
+		return err
+	}
 	// S12-B: people's actions are recorded in the store (audit_events), and GET /audit reads them.
 	handler = httpapi.WithAudit(handler, s.store)
 	if signIn != nil {
@@ -675,6 +685,7 @@ func (s *Server) Reload() error {
 	}
 	added, removed, changed := bindingChanges(s.issuer.bindings, files.bindings)
 	s.issuer = files
+	s.bindingsLoadedAt = s.now().UTC()
 	s.log.info("reload", map[string]any{"outcome": "ok", "trusted_kids": s.verifier.KeyIDs(), "bindings": len(files.bindings), "bindings_sha256": files.digest,
 		"bindings_added": added, "bindings_removed": removed, "bindings_changed": changed})
 	s.metrics.reloaded("ok")

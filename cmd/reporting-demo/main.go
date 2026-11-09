@@ -192,7 +192,41 @@ func colleaguePrincipal(p r.Principal) r.Principal {
 	c := p
 	c.Identity.Subject = colleagueSubject
 	c.Integrations = slices.Clone(p.Integrations)
+	c.Roles = nil // the default roles, whatever -administrator gives user_a
 	return c
+}
+
+// resolvePerson is the demo person an identity is (S18-A): what a scheduled run of theirs acts as.
+func resolvePerson(people []r.Principal, i r.Identity) (r.Principal, bool) {
+	for _, q := range people {
+		if q.Identity == i {
+			q.Integrations = slices.Clone(q.Integrations)
+			q.Roles = slices.Clone(q.Roles)
+			return q, true
+		}
+	}
+	return r.Principal{}, false
+}
+
+// demoAdminView is the demo's answer to the administrator's view (S18-B): its connections (the contract simulators of its tenant), its people
+// as bindings of the demo token's client, and the scheduled reports' state. The demo has no webhook and no browser sign-in of its own.
+func demoAdminView(p r.Principal, people []r.Principal, schedules *r.Schedules, started time.Time) httpapi.AdminView {
+	return func(_ context.Context, tenant string) (httpapi.AdminConfiguration, error) {
+		v := httpapi.AdminConfiguration{Tenant: tenant, Version: "demo", StartedAt: started.Format(time.RFC3339), BindingsLoadedAt: started.Format(time.RFC3339)}
+		if tenant != p.Tenant {
+			return v, nil
+		}
+		for _, id := range p.Integrations {
+			v.Connections = append(v.Connections, httpapi.AdminConnection{Integration: id, SourceTenant: "tenant_a", Adapter: "contract-simulator"})
+		}
+		for _, q := range people {
+			v.Bindings = append(v.Bindings, httpapi.AdminBinding{Subject: q.Subject, ClientID: "reporting-demo", Integrations: slices.Clone(q.Integrations), Roles: slices.Clone(q.Roles)})
+		}
+		if schedules != nil {
+			v.Schedules = httpapi.AdminSchedules{Enabled: true, PerIdentity: schedules.Limit()}
+		}
+		return v, nil
+	}
 }
 
 // maxPreviousTokens is the ring's size, 4, less the current key.
@@ -239,6 +273,7 @@ func run() error {
 	initialize := flag.Bool("initialize-fixture", false, "initialize guarded reporting_test_s01 PostgreSQL fixture")
 	pauseWorkers := flag.Bool("pause-workers", false, "explicit recovery fixture: admit jobs without worker execution")
 	sweepInterval := flag.Duration("sweep-interval", 10*time.Minute, "retention sweep (S04-B) every interval in the worker loop: expired artifacts and snapshots are deleted once 24 hours past their expiry; 0 disables it")
+	administrator := flag.Bool("administrator", false, "S18-B: the demo token's person (user_a) also holds the administrator role (the tenant's audit, the 管理 page); the colleague keeps the default roles")
 	scheduleInterval := flag.Duration("schedule-interval", 30*time.Second, "scheduled reports (S16-A): a pass of the scheduler every interval; 0 turns the schedules (routes and scheduler) off")
 	layoutDir := flag.String("layout-directory", "", "optional private single-process layout directory (0700)")
 	dashboardDir := flag.String("dashboard-directory", "", "optional private single-process dashboard directory (0700)")
@@ -316,6 +351,10 @@ func run() error {
 	var repo r.Repository
 	p := contractsim.DemoPrincipal()
 	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
+	if *administrator {
+		p.Roles = slices.Clone(r.AllRoles)
+	}
+	started := time.Now().UTC()
 	// Read before anything is opened: a malformed origin, or an integration this demo does not have, stops the start.
 	people := []r.Principal{p}
 	if colleague != "" {
@@ -469,10 +508,11 @@ func run() error {
 			return e
 		}
 	}
-	// S16-A: the scheduled reports, in the demo's store; a run acts as the demo's one principal (its bindings are this process's).
+	// S16-A: the scheduled reports, in the demo's store; a run acts as the demo person it belongs to (S18-A: the colleague's too), as this
+	// process binds them.
 	var schedules *r.Schedules
 	if store, ok := repo.(r.ScheduleStore); ok && *scheduleInterval > 0 {
-		o := r.ScheduleOptions{Store: store, Resolve: func(i r.Identity) (r.Principal, bool) { return p, i == p.Identity }}
+		o := r.ScheduleOptions{Store: store, Resolve: func(i r.Identity) (r.Principal, bool) { return resolvePerson(people, i) }}
 		if log, ok := repo.(r.AuditLog); ok {
 			o.Audit = log
 		}
@@ -482,6 +522,10 @@ func run() error {
 		if handler, e = httpapi.WithSchedules(handler, s, auth, schedules); e != nil {
 			return e
 		}
+	}
+	// S18-B: the administrator's read-only view of the demo's configuration (its two connections and its people).
+	if handler, e = httpapi.WithAdministration(handler, auth, demoAdminView(p, people, schedules, started)); e != nil {
+		return e
 	}
 	// S12-B: the demo records people's actions in its store too (memory, or the fixture database).
 	if log, ok := repo.(r.AuditLog); ok {

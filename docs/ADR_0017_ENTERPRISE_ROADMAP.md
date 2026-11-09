@@ -1,7 +1,7 @@
 # ADR 0017 · From a qualified single server to an enterprise reporting platform: the order of the work
 
 Date: 2026-11-09. Status: accepted. A plan of slices, each with its own scope document and pull request; this ADR is updated as they land.
-Progress: S11-A, S11-B, S11-C, S12-A, S12-A2, S12-B, S12-C, S13-A, S14-A, S15-A merged (S15-A: ADR 0019); S16-A written (docs/S16A_SCOPE.md, ADR 0020).
+Progress: S11-A, S11-B, S11-C, S12-A, S12-A2, S12-B, S12-C, S12-D, S13-A, S14-A, S15-A, S16-A, S17-A merged (S15-A: ADR 0019; S16-A: ADR 0020); S18 written (docs/S18_SCOPE.md: the schedules page, the administrator's read-only view of data sources and bindings; ADR 0021 proposed).
 
 ## Context
 

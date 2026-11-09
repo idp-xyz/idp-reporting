@@ -7,7 +7,6 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawn, execFileSync} from 'node:child_process';
-import {createServer} from 'node:net';
 import {randomBytes, webcrypto} from 'node:crypto';
 import {JSDOM, VirtualConsole} from 'jsdom';
 
@@ -72,11 +71,6 @@ before(async () => {
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 120000,
   });
-  const listener = createServer();
-  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
-  const port = listener.address().port;
-  await new Promise(resolve => listener.close(resolve));
-  url = 'http://127.0.0.1:' + port;
   const pdf = pdfConfigured
     ? [
         '-pdf-typst',
@@ -94,7 +88,7 @@ before(async () => {
       'contract-simulator',
       '-memory',
       '-listen',
-      '127.0.0.1:' + port,
+      '127.0.0.1:0',
       '-layout-directory',
       join(temporary, 'layouts'),
       '-dashboard-directory',
@@ -119,7 +113,26 @@ before(async () => {
     ],
     {cwd: root, env: {...process.env, REPORTING_DEMO_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe']}
   );
-  child.stderr.resume();
+  // The demo binds a free port itself and says which (S18): a port picked here and handed over could be taken in between by the demo of
+  // another suite running at the same time, which then answers this suite's requests.
+  url = await new Promise((resolve, reject) => {
+    let seen = '';
+    const timer = setTimeout(() => reject(new Error('Go fixture startup timeout')), 60000);
+    child.stderr.on('data', chunk => {
+      if (seen === null) return;
+      seen += chunk;
+      const m = /listening at (http:\/\/127\.0\.0\.1:\d+)/.exec(seen);
+      if (m) {
+        clearTimeout(timer);
+        seen = null;
+        resolve(m[1]);
+      } else if (seen.length > 65536) seen = seen.slice(-4096);
+    });
+    child.once('exit', () => {
+      clearTimeout(timer);
+      if (seen !== null) reject(new Error('Go fixture did not start'));
+    });
+  });
   for (let i = 0; i < 100; i++) {
     try {
       const r = await fetch(url + '/console/');
@@ -1173,6 +1186,45 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     'page-library',
     'page-tasks',
     'page-system',
+    'page-schedules',
+    'schedules-refresh',
+    'schedules-new',
+    'schedules-off',
+    'schedules-panel',
+    'schedules-lead',
+    'schedules-empty',
+    'schedules-table-wrap',
+    'schedules-body',
+    'schedule-runs-panel',
+    'schedule-runs-title',
+    'schedule-runs-lead',
+    'schedule-runs-close',
+    'schedule-runs-empty',
+    'schedule-runs-wrap',
+    'schedule-runs-body',
+    'page-admin',
+    'admin-refresh',
+    'admin-summary',
+    'admin-check',
+    'admin-connections',
+    'admin-bindings',
+    'admin-delivery',
+    'sc-d-new',
+    'sc-d-new-title',
+    'sc-form',
+    'sc-query',
+    'sc-name',
+    'sc-frequency',
+    'sc-weekday-field',
+    'sc-weekday',
+    'sc-day-field',
+    'sc-day',
+    'sc-at',
+    'sc-timezone',
+    'sc-asof',
+    'sc-format',
+    'sc-error',
+    'sc-create',
     'sh-data-chip',
     'sh-data-text',
     'sh-data-kind',
