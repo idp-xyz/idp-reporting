@@ -31,13 +31,15 @@ type Report struct {
 	CertExpiresIn  time.Duration
 	SweepSeconds   int
 	AllowSimulator bool
+	// ADR 0016: the digests the start line and every reload log, so that a reviewed file can be matched to a running server.
+	BindingsDigest, ConnectionsDigest string
 }
 
 // Print writes the report as lines of `name: value`.
 func (p Report) Print(w io.Writer) {
 	fmt.Fprintln(w, "configuration: ok")
 	fmt.Fprintf(w, "listen: %s (tls %t)\n", p.Listen, p.TLS)
-	fmt.Fprintf(w, "connections: %d\n", p.Connections)
+	fmt.Fprintf(w, "connections: %d (sha256 %s)\n", p.Connections, p.ConnectionsDigest)
 	if p.Adapters > 0 {
 		fmt.Fprintf(w, "adapters: %d registered, every connection's adapter name found\n", p.Adapters)
 	} else {
@@ -45,7 +47,7 @@ func (p Report) Print(w io.Writer) {
 	}
 	fmt.Fprintf(w, "cursor keys: %d\n", p.CursorKeys)
 	fmt.Fprintf(w, "trusted kids: %d\n", len(p.TrustedKIDs))
-	fmt.Fprintf(w, "bindings: %d\n", p.Bindings)
+	fmt.Fprintf(w, "bindings: %d (sha256 %s), every product served by a connection of its tenant\n", p.Bindings, p.BindingsDigest)
 	fmt.Fprintf(w, "workers: %d\n", p.Workers)
 	fmt.Fprintf(w, "quotas: jobs_in_flight %d, stored_results %d, admissions_per_hour %d, queries_in_flight %d\n", p.Quotas[0], p.Quotas[1], p.Quotas[2], p.Quotas[3])
 	fmt.Fprintf(w, "object store: %t, pdf: %t, private directories: %d, embedding integrations: %d, sweep seconds: %d, simulators allowed: %t\n", p.ObjectStore, p.PDF, p.Directories, p.EmbedIntegr, p.SweepSeconds, p.AllowSimulator)
@@ -81,11 +83,12 @@ func Check(cfg Config, reg Registry, getenv func(string) string) (Report, error)
 		return rep, err
 	}
 	rep.CursorKeys = len(keys)
-	verifier, files, err := newVerifier(cfg.Issuer)
+	verifier, files, err := newVerifier(cfg.Issuer, cfg.Connections)
 	if err != nil {
 		return rep, err
 	}
 	rep.TrustedKIDs, rep.Bindings = verifier.KeyIDs(), len(files.bindings)
+	rep.BindingsDigest, rep.ConnectionsDigest = files.digest, connectionsDigest(cfg.Connections)
 	if cfg.TLSCertFile != "" {
 		tc, err := loadTLS(cfg.TLSCertFile, cfg.TLSKeyFile, time.Now())
 		if err != nil {

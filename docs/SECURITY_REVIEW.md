@@ -27,6 +27,7 @@
   - 身份 = 绑定表里 (`sub`, `client_id`) 对应的那一项；scope 不够时回答 `insufficient_scope`，不当作未认证。
   - JWKS 只认 RSA，模长 2048–4096 位，指数只认 65537，最多 16 把，未知字段拒绝。
   - 重载（SIGHUP）原子替换整套配置，失败时旧配置继续生效，进行中的认证按旧配置完成。
+  - 绑定里的每个产品必须有该租户的连接（ADR 0016）：启动与 `check-config` 拒绝，重载以 `ISSUER_BINDING_UNSERVED` 拒绝；`GET /session` 只列出有连接的产品。启动行与重载行记录绑定文件与连接的 SHA-256 和增删改数目，不记任何标识（`server/connections_test.go`）。
 - 测试：`identity/accessjwt` 的 18 个测试，尤其 `TestRejectJOSEAndCompactTokenAttacks`、`TestRejectInvalidAccessTokenClaims`、`TestAnUntrustedKidIsRefusedWithoutNamingAKey`、`TestTokenWithoutReportingScopeIsDenied`、`TestOnlyAuthorizationHeaderProvidesCredentials`、`TestFailedReplaceLeavesThePreviousConfigurationInForce`、`TestAStolenTokenIsBoundedByItsLifetimeAndNotRevocable`；`server` 的 `TestReloadAppliesRotatedKeysAndBindingsAndKeepsTheOldOnesOnFailure`、`TestSessionOverTLSWithRealTokens`；`transport/httpapi` 的 `TestHTTPAuthenticationFailureChallengesWithoutLeakingCredentials`。
 - 审查时看：这是只用标准库手写的 JWT 校验，没有用现成的库，值得逐行看——每个解析都有上限、比较都是精确的、每条失败路径都走 `denied()`。
 - 已知不覆盖：没有吊销，被盗的令牌只受寿命限制；JWKS 不自动发现，靠文件与重载；真实发行方未接入（docs/ACCESS_JWT.md，上线清单第 11、16 项）。

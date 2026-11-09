@@ -108,6 +108,14 @@ func TestStartRefusalsNameTheStepAndCarryNoSecret(t *testing.T) {
 			w.cfg.Issuer.Issuer = "http://issuer.example.test"
 			return w.registry(), w.getenv, []Option{memoryOnly()}
 		}},
+		{"a binding that names a product no connection serves", StepIssuer, "not served by a connection", func(w *world) (Registry, func(string) string, []Option) {
+			writeFile(t, w.binds, bindingsJSON(bindingJSON{testSubject, testClient, testTenant, []string{w.finance, "unserved-product"}}), 0o644)
+			return w.registry(), w.getenv, []Option{memoryOnly()}
+		}},
+		{"a binding of a tenant that has no such connection", StepIssuer, "not served by a connection", func(w *world) (Registry, func(string) string, []Option) {
+			writeFile(t, w.binds, bindingsJSON(bindingJSON{testSubject, testClient, "another-tenant", []string{w.finance}}), 0o644)
+			return w.registry(), w.getenv, []Option{memoryOnly()}
+		}},
 		{"a ring of five", StepConfig, "cursor_key_files", func(w *world) (Registry, func(string) string, []Option) {
 			w.cfg.CursorKeyFiles = []string{"/1", "/2", "/3", "/4", "/5"}
 			return w.registry(), w.getenv, []Option{memoryOnly()}

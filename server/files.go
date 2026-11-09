@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -139,17 +141,19 @@ type bindingEntry struct {
 	Integrations []string `json:"integrations"`
 }
 
-// issuerFiles are the two files a reload re-reads.
+// issuerFiles are the two files a reload re-reads. digest is the SHA-256 of the bindings file as read (ADR 0016: what is in force).
 type issuerFiles struct {
 	jwks     []byte
 	bindings []accessjwt.Binding
+	digest   string
 }
 
 // Codes of a failed read of the issuer files: what a log line says, in place of the file's path or content.
 const (
-	CodeIssuerFileUnreadable = "ISSUER_FILE_UNREADABLE" // missing, a symlink, not regular, too large, of another user, writable by others
-	CodeIssuerFileInvalid    = "ISSUER_FILE_INVALID"    // the bindings file is not the strict list of bindings
-	CodeIssuerConfigRefused  = "ISSUER_CONFIG_REFUSED"  // accessjwt refused the whole configuration (the JWKS, a binding, a duplicate)
+	CodeIssuerFileUnreadable  = "ISSUER_FILE_UNREADABLE"  // missing, a symlink, not regular, too large, of another user, writable by others
+	CodeIssuerFileInvalid     = "ISSUER_FILE_INVALID"     // the bindings file is not the strict list of bindings
+	CodeIssuerConfigRefused   = "ISSUER_CONFIG_REFUSED"   // accessjwt refused the whole configuration (the JWKS, a binding, a duplicate)
+	CodeIssuerBindingUnserved = "ISSUER_BINDING_UNSERVED" // a binding names a product no connection of its tenant serves (ADR 0016)
 )
 
 // readIssuerFiles reads the keys and the bindings. The returned error is a *fileProblem or a *reloadError carrying a code.
@@ -166,7 +170,85 @@ func readIssuerFiles(c IssuerConfig) (issuerFiles, string, error) {
 	if err != nil {
 		return issuerFiles{}, CodeIssuerFileInvalid, err
 	}
-	return issuerFiles{jwks: jwks, bindings: list}, "", nil
+	sum := sha256.Sum256(raw)
+	return issuerFiles{jwks: jwks, bindings: list, digest: hex.EncodeToString(sum[:])}, "", nil
+}
+
+// unservedBindings counts the products of the bindings that no connection of the binding's tenant serves (ADR 0016): such a product would be
+// listed by GET /session and refused on every request.
+func unservedBindings(list []accessjwt.Binding, conns []ConnectionConfig) int {
+	served := map[[2]string]bool{}
+	for _, c := range conns {
+		served[[2]string{c.Tenant, c.Integration}] = true
+	}
+	n := 0
+	for _, b := range list {
+		for _, integration := range b.Integrations {
+			if !served[[2]string{b.Tenant, integration}] {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// unservedProblem is the start's and check-config's refusal of unserved bindings: a count and the rule, no identifier.
+func unservedProblem(n int) error {
+	return &fileProblem{"issuer.bindings_file", fmt.Sprintf("%d product(s) of the bindings are not served by a connection of the binding's tenant; add the connection (a restart) before the binding (a reload)", n)}
+}
+
+// connectionsDigest is the SHA-256 of the connections in a canonical order (tenant, integration), each as tenant, integration, source
+// tenant, adapter and options, separated by NUL: what a start serves, comparable with check-config's (ADR 0016).
+func connectionsDigest(conns []ConnectionConfig) string {
+	sorted := slices.Clone(conns)
+	slices.SortFunc(sorted, func(a, b ConnectionConfig) int {
+		if c := strings.Compare(a.Tenant, b.Tenant); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Integration, b.Integration)
+	})
+	h := sha256.New()
+	for _, c := range sorted {
+		for _, part := range []string{c.Tenant, c.Integration, c.SourceTenant, c.Adapter, string(c.Options)} {
+			h.Write([]byte(part))
+			h.Write([]byte{0})
+		}
+		h.Write([]byte{'\n'})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// bindingChanges compares two binding lists: a binding is its subject, client and tenant; changed is the same binding with another list of
+// products (in any order). Counts only: the lists are personal data.
+func bindingChanges(before, after []accessjwt.Binding) (added, removed, changed int) {
+	key := func(b accessjwt.Binding) string { return b.Subject + "\x00" + b.ClientID + "\x00" + b.Tenant }
+	set := func(b accessjwt.Binding) string {
+		s := slices.Clone(b.Integrations)
+		slices.Sort(s)
+		return strings.Join(s, "\x00")
+	}
+	old := map[string]string{}
+	for _, b := range before {
+		old[key(b)] = set(b)
+	}
+	seen := map[string]bool{}
+	for _, b := range after {
+		k := key(b)
+		seen[k] = true
+		prev, ok := old[k]
+		switch {
+		case !ok:
+			added++
+		case prev != set(b):
+			changed++
+		}
+	}
+	for k := range old {
+		if !seen[k] {
+			removed++
+		}
+	}
+	return
 }
 
 // parseBindings reads the bindings file strictly: a JSON list of {subject, client_id, tenant, integrations}, no unknown or repeated field,
@@ -226,7 +308,10 @@ func issuerConfig(c IssuerConfig, f issuerFiles) accessjwt.Config {
 
 // newVerifier builds the verifier from the files. The error is fixed text: accessjwt's is already free of key and subject data, and says only
 // that the configuration is invalid.
-func newVerifier(c IssuerConfig) (*accessjwt.Verifier, issuerFiles, error) {
+//
+// conns are the configuration's connections: a binding that names a product none of its tenant's connections serves is refused (ADR 0016),
+// after the access-token profile has accepted the files.
+func newVerifier(c IssuerConfig, conns []ConnectionConfig) (*accessjwt.Verifier, issuerFiles, error) {
 	files, _, err := readIssuerFiles(c)
 	if err != nil {
 		return nil, issuerFiles{}, err
@@ -234,6 +319,9 @@ func newVerifier(c IssuerConfig) (*accessjwt.Verifier, issuerFiles, error) {
 	v, err := accessjwt.New(issuerConfig(c, files))
 	if err != nil {
 		return nil, issuerFiles{}, &fileProblem{"issuer", "the issuer, the audience, the scope, the lifetime, the keys or the bindings are refused by the access-token profile (https issuer; RSA 2048-4096 keys with e=65537, at most 16; unique kids; bindings with unique subject and client, at most 32 integrations each)"}
+	}
+	if n := unservedBindings(files.bindings, conns); n > 0 {
+		return nil, issuerFiles{}, unservedProblem(n)
 	}
 	return v, files, nil
 }

@@ -196,7 +196,8 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		})
 	}
 	bind("GET "+base+"/session", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": slices.Clone(p.Integrations)})
+		// Only the products the service serves for the principal (ADR 0016): a binding's product without a connection is never offered.
+		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": service.Served(p)})
 	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		return send(w, 200, capabilities(service, false))
