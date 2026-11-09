@@ -108,9 +108,7 @@ func validateAsset(a backgroundAsset) error {
 	return nil
 }
 func OpenAssets(dir string) (*Assets, error) {
-	store, e := privatedocs.Open(dir, validateAsset, func(a backgroundAsset) string {
-		return a.Binding.Integration + "\x00" + a.Binding.Dataset.ID + "\x00" + a.Binding.Dataset.Version
-	})
+	store, e := privatedocs.Open(dir, validateAsset, backgroundKey)
 	if e != nil {
 		return nil, e
 	}
@@ -121,6 +119,25 @@ func OpenAssets(dir string) (*Assets, error) {
 	}
 	return &Assets{store: store, Images: images}, nil
 }
+
+// OpenAssetsBackend opens the backgrounds and the images over two backends (S11-B: the platform's database, shared by every server).
+func OpenAssetsBackend(backgrounds, images privatedocs.Backend) (*Assets, error) {
+	store, e := privatedocs.OpenBackend(backgrounds, privatedocs.DefaultCap, validateAsset, backgroundKey)
+	if e != nil {
+		return nil, e
+	}
+	img, e := privatedocs.OpenBackend(images, privatedocs.DefaultCap, validateImage, imageKey)
+	if e != nil {
+		store.Close()
+		return nil, e
+	}
+	return &Assets{store: store, Images: &Images{store: img}}, nil
+}
+
+func backgroundKey(a backgroundAsset) string {
+	return a.Binding.Integration + "\x00" + a.Binding.Dataset.ID + "\x00" + a.Binding.Dataset.Version
+}
+
 func (a *Assets) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

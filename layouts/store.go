@@ -46,5 +46,12 @@ type ReleaseState = privatedocs.ReleaseState
 type Store = privatedocs.Store[Document]
 
 func Open(dir string) (*Store, error) {
-	return privatedocs.Open(dir, Validate, func(d Document) string { b, _ := json.Marshal(d.Binding); return string(b) })
+	return privatedocs.Open(dir, Validate, bindingKey)
 }
+
+// OpenBackend opens the layouts over a backend (S11-B: the platform's database, shared by every server).
+func OpenBackend(b privatedocs.Backend) (*Store, error) {
+	return privatedocs.OpenBackend(b, privatedocs.DefaultCap, Validate, bindingKey)
+}
+
+func bindingKey(d Document) string { b, _ := json.Marshal(d.Binding); return string(b) }

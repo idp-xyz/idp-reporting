@@ -33,6 +33,7 @@ type Report struct {
 	AllowSimulator bool
 	// ADR 0016: the digests the start line and every reload log, so that a reviewed file can be matched to a running server.
 	BindingsDigest, ConnectionsDigest string
+	DesignStore                       string
 }
 
 // Print writes the report as lines of `name: value`.
@@ -48,6 +49,11 @@ func (p Report) Print(w io.Writer) {
 	fmt.Fprintf(w, "cursor keys: %d\n", p.CursorKeys)
 	fmt.Fprintf(w, "trusted kids: %d\n", len(p.TrustedKIDs))
 	fmt.Fprintf(w, "bindings: %d (sha256 %s), every product served by a connection of its tenant\n", p.Bindings, p.BindingsDigest)
+	if p.DesignStore == "database" {
+		fmt.Fprintln(w, "designs: in the store (shared by every server on it)")
+	} else {
+		fmt.Fprintln(w, "designs: in the private directories (one server each)")
+	}
 	fmt.Fprintf(w, "workers: %d\n", p.Workers)
 	fmt.Fprintf(w, "quotas: jobs_in_flight %d, stored_results %d, admissions_per_hour %d, queries_in_flight %d\n", p.Quotas[0], p.Quotas[1], p.Quotas[2], p.Quotas[3])
 	fmt.Fprintf(w, "object store: %t, pdf: %t, private directories: %d, embedding integrations: %d, sweep seconds: %d, simulators allowed: %t\n", p.ObjectStore, p.PDF, p.Directories, p.EmbedIntegr, p.SweepSeconds, p.AllowSimulator)
@@ -89,6 +95,7 @@ func Check(cfg Config, reg Registry, getenv func(string) string) (Report, error)
 	}
 	rep.TrustedKIDs, rep.Bindings = verifier.KeyIDs(), len(files.bindings)
 	rep.BindingsDigest, rep.ConnectionsDigest = files.digest, connectionsDigest(cfg.Connections)
+	rep.DesignStore = cfg.DesignStore
 	if cfg.TLSCertFile != "" {
 		tc, err := loadTLS(cfg.TLSCertFile, cfg.TLSKeyFile, time.Now())
 		if err != nil {

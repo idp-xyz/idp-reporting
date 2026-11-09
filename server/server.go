@@ -22,6 +22,7 @@ import (
 	"idp.local/reporting/identity/accessjwt"
 	"idp.local/reporting/issuance"
 	"idp.local/reporting/layouts"
+	"idp.local/reporting/privatedocs"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/objects"
 	"idp.local/reporting/storage/postgres"
@@ -35,6 +36,8 @@ type Store interface {
 	// Ready is "" when the store answers, its ledger is at the binary's version and the role check is clean, else "store", "schema" or "roles".
 	Ready(context.Context) string
 	LedgerVersion(context.Context) (int, error)
+	// Designs answers the backend of one of the private stores in this store (S11-B: design_store database).
+	Designs(store string) (privatedocs.Backend, error)
 	Close()
 }
 
@@ -311,6 +314,42 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 	dirFail := func(field string) error {
 		return refuse(StepDirectories, field+" cannot be opened (it must be a private directory, mode 0700, owned by the user the server runs as)")
 	}
+	if cfg.DesignStore == "database" {
+		// S11-B: every design in the store, shared by every server on it; the four features are on (each needs nothing but the store).
+		backend := func(name string) privatedocs.Backend {
+			b, e := s.store.Designs(name)
+			if e != nil {
+				err = e
+			}
+			return b
+		}
+		layoutsB, dashboardsB, templatesB, backgroundsB, imagesB := backend("layouts"), backend("dashboards"), backend("templates"), backend("backgrounds"), backend("images")
+		if err != nil {
+			return refuse(StepDirectories, "the store does not keep designs")
+		}
+		if assets, err = doctemplates.OpenAssetsBackend(backgroundsB, imagesB); err != nil {
+			return refuse(StepDirectories, "the backgrounds and images could not be opened in the store")
+		}
+		s.defer_(func() { assets.Close() })
+		if renderer != nil {
+			assets.Fits = renderer.BackgroundFits
+			assets.Images.Fits = renderer.ImageFits
+		}
+		if templates, err = doctemplates.OpenBackend(templatesB); err != nil {
+			return refuse(StepDirectories, "the templates could not be opened in the store")
+		}
+		s.defer_(func() { templates.Close() })
+		st, err := layouts.OpenBackend(layoutsB)
+		if err != nil {
+			return refuse(StepDirectories, "the layouts could not be opened in the store")
+		}
+		s.defer_(func() { st.Close() })
+		layoutStores = append(layoutStores, st)
+		if dashboardStore, err = dashboards.OpenBackend(dashboardsB); err != nil {
+			return refuse(StepDirectories, "the dashboards could not be opened in the store")
+		}
+		s.defer_(func() { dashboardStore.Close() })
+	}
 	if cfg.BackgroundDir != "" {
 		if assets, err = doctemplates.OpenAssets(cfg.BackgroundDir); err != nil {
 			return dirFail("background_directory")
@@ -510,6 +549,7 @@ func (s *Server) logStart(ledger, ring, connections int, embed bool) {
 		"pdf":                c.PDF != nil,
 		"issuance":           s.svc.CanIssue(),
 		"embedding":          embed,
+		"design_store":       map[bool]string{true: "database", false: "directories"}[c.DesignStore == "database"],
 		"sweep_seconds":      c.Retention.SweepInterval,
 		"simulators":         c.AllowSimulator,
 		"listen_port":        s.listener.Addr().(*net.TCPAddr).Port,
