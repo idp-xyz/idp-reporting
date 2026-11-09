@@ -1321,7 +1321,7 @@
   // ---- S15-A (ADR 0019): the browser sign-in, OpenID Connect's authorization code with PKCE (S256), the code exchanged by the server ----
   // The provider cannot be called from this page (connect-src 'self'): the browser goes to its authorization endpoint by a top-level
   // navigation and comes back to /console/?code=…&state=…; the server exchanges the code (POST /sign-in/token). What must outlive that one
-  // navigation, the state, the nonce and the PKCE verifier, is one sessionStorage entry of this tab, written just before leaving and removed
+  // navigation, the state, the nonce and the PKCE verifier, is one session-storage entry of this tab, written just before leaving and removed
   // as the page loads again, before anything else and whether it is used or not; sign-out and a page restored from the back-forward cache remove
   // it too. Once the page runs nothing is stored: the token, like a pasted one, lives in state.token only.
   const signInKey = 'reporting-sign-in',
@@ -1465,6 +1465,7 @@
       $('sso').hidden = false;
       showPaste(config.paste_fallback);
       // The sign-in works only at the address the provider knows: the console says so instead of starting a sign-in that must fail.
+      if (!back) $('sso-button').disabled = !signInUsable();
       if (!signInUsable()) {
         $('sso-button').disabled = true;
         signInError('单点登录只能从登记的地址使用，请改用此地址打开控制台：' + config.redirect_uri);

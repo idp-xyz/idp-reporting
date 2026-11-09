@@ -1115,7 +1115,8 @@ test('the console page loads none of the embed code, and answers no message', as
     new w.MessageEvent('message', {data: {type: 'reporting:token', v: 1, token}, origin: HOST, source: other})
   );
   await sleep(40);
-  assert.equal(calls.length, 0);
+  // The one request is the console's question before sign-in (S15-A, unauthenticated): the message answered nothing.
+  assert.deepEqual(calls, ['/api/reporting/v1/sign-in']);
   assert.equal(w.document.getElementById('connection-overlay').hidden, false);
   assert.equal(w.createReportingEmbed, undefined);
   assert.equal(errors.length, 0, errors.join('|'));
@@ -1243,8 +1244,11 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
   ]) {
     assert.equal(/postMessage\(/.test(code) && name !== 'embed.js', false, name + ' posts a message');
     assert.equal(/['"`]\*['"`]\s*\)/.test(code.replace(/\/\*[\s\S]*?\*\//g, '')), false, name + ' has a "*" argument');
+    // S15-A (ADR 0019): the one exception is app.js's sign-in entry, under its one key, for one navigation to the provider.
+    const own =
+      name === 'app.js' ? code.replace(/sessionStorage\.(getItem|setItem|removeItem)\(signInKey\b/g, '') : code;
     assert.equal(
-      /localStorage|sessionStorage|indexedDB|document\.cookie|caches\./.test(code),
+      /localStorage|sessionStorage|indexedDB|document\.cookie|caches\./.test(own),
       false,
       name + ' uses storage'
     );
