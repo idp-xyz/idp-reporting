@@ -562,6 +562,9 @@ func (s *Service) Jobs(ctx context.Context, p Principal, f JobListing) ([]JobVie
 	return out, nil
 }
 
+// Served is the principal's products that the service has a connection for (ADR 0016): what GET /session lists.
+func (s *Service) Served(p Principal) []string { return s.held(p) }
+
 // held is the integrations of the principal that the service connects: the ones its listings are filtered by, in the repository.
 func (s *Service) held(p Principal) []string {
 	integrations := []string{}

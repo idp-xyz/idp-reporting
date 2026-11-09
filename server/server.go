@@ -112,6 +112,7 @@ type Server struct {
 	version string
 
 	verifier *accessjwt.Verifier
+	issuer   issuerFiles // the bindings in force and their digest (ADR 0016); replaced by a successful reload under reloadMu
 	store    Store
 	svc      *r.Service
 	objects  *objects.S3
@@ -255,11 +256,11 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		s.tls = true
 	}
 	// 3. The cursor ring, the issuer verifier, the adapters.
-	verifier, _, err := newVerifier(cfg.Issuer)
+	verifier, files, err := newVerifier(cfg.Issuer, cfg.Connections)
 	if err != nil {
 		return refuse(StepIssuer, err.Error())
 	}
-	s.verifier = verifier
+	s.verifier, s.issuer = verifier, files
 	connections, closers, err := buildAdapters(cfg, reg, getenv)
 	if err != nil {
 		return refuse(StepAdapters, err.Error())
@@ -495,21 +496,24 @@ func storeFailure(err error) string {
 func (s *Server) logStart(ledger, ring, connections int, embed bool) {
 	c := &s.cfg
 	s.log.info("start", map[string]any{
-		"version":       s.version,
-		"ledger":        ledger,
-		"cursor_keys":   ring,
-		"connections":   connections,
-		"trusted_kids":  s.verifier.KeyIDs(),
-		"workers":       c.WorkerCount(),
-		"tls":           s.tls,
-		"object_store":  s.objects != nil,
-		"pdf":           c.PDF != nil,
-		"issuance":      s.svc.CanIssue(),
-		"embedding":     embed,
-		"sweep_seconds": c.Retention.SweepInterval,
-		"simulators":    c.AllowSimulator,
-		"listen_port":   s.listener.Addr().(*net.TCPAddr).Port,
-		"metrics":       s.metricsListener != nil,
+		"version":            s.version,
+		"ledger":             ledger,
+		"cursor_keys":        ring,
+		"connections":        connections,
+		"connections_sha256": connectionsDigest(c.Connections),
+		"bindings":           len(s.issuer.bindings),
+		"bindings_sha256":    s.issuer.digest,
+		"trusted_kids":       s.verifier.KeyIDs(),
+		"workers":            c.WorkerCount(),
+		"tls":                s.tls,
+		"object_store":       s.objects != nil,
+		"pdf":                c.PDF != nil,
+		"issuance":           s.svc.CanIssue(),
+		"embedding":          embed,
+		"sweep_seconds":      c.Retention.SweepInterval,
+		"simulators":         c.AllowSimulator,
+		"listen_port":        s.listener.Addr().(*net.TCPAddr).Port,
+		"metrics":            s.metricsListener != nil,
 	})
 }
 
@@ -545,12 +549,26 @@ func (s *Server) Reload() error {
 		s.metrics.reloaded(code)
 		return &ReloadError{Code: code}
 	}
+	// The profile judges the files first (its refusals keep their code), then the bindings are held to the connections (ADR 0016).
+	if _, err := accessjwt.New(issuerConfig(s.cfg.Issuer, files)); err != nil {
+		s.log.warn("reload", map[string]any{"outcome": "refused", "code": CodeIssuerConfigRefused})
+		s.metrics.reloaded(CodeIssuerConfigRefused)
+		return &ReloadError{Code: CodeIssuerConfigRefused}
+	}
+	if unservedBindings(files.bindings, s.cfg.Connections) > 0 {
+		s.log.warn("reload", map[string]any{"outcome": "refused", "code": CodeIssuerBindingUnserved})
+		s.metrics.reloaded(CodeIssuerBindingUnserved)
+		return &ReloadError{Code: CodeIssuerBindingUnserved}
+	}
 	if err := s.verifier.Replace(issuerConfig(s.cfg.Issuer, files)); err != nil {
 		s.log.warn("reload", map[string]any{"outcome": "refused", "code": CodeIssuerConfigRefused})
 		s.metrics.reloaded(CodeIssuerConfigRefused)
 		return &ReloadError{Code: CodeIssuerConfigRefused}
 	}
-	s.log.info("reload", map[string]any{"outcome": "ok", "trusted_kids": s.verifier.KeyIDs(), "bindings": len(files.bindings)})
+	added, removed, changed := bindingChanges(s.issuer.bindings, files.bindings)
+	s.issuer = files
+	s.log.info("reload", map[string]any{"outcome": "ok", "trusted_kids": s.verifier.KeyIDs(), "bindings": len(files.bindings), "bindings_sha256": files.digest,
+		"bindings_added": added, "bindings_removed": removed, "bindings_changed": changed})
 	s.metrics.reloaded("ok")
 	return nil
 }

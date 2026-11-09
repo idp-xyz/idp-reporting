@@ -126,11 +126,17 @@ A symbolic link is refused for the file itself (it is opened with `O_NOFOLLOW`);
 
 Each failure is a refusal whose text is fixed and names the step (`reporting-server: start refused at step "store": …`) and is logged as `start_refused` with the step only:
 **configuration** (the file's own rules, including a ring of five, plain HTTP on a public address) → **secrets** (cursor keys, the connection string's presence, the object store keys, the
-TLS pair) → **issuer** (the access-token profile) → **adapters** (an unregistered or unknown adapter name, a factory that fails, a simulator without the allowance) → **store**
+TLS pair) → **issuer** (the access-token profile; then every product of every binding must be a connection of the binding's tenant, ADR 0016) → **adapters** (an unregistered or unknown adapter name, a factory that fails, a simulator without the allowance) → **store**
 (`OpenProduction`; its own refusals keep their text, any other error, a connection failure, is reduced to a fixed text because it may name the host or the user) → **object store**
 (`HEAD bucket`) → **pdf**, **private directories** → **service** → workers and sweep → **listen** (`the listen address cannot be bound`). A refused start releases everything it
 opened and stops the workers it started. The start line (`start`) carries the binary's version, the ledger's version, the number of cursor keys, the connections and workers, the trusted `kid`s,
-and whether TLS, an object store, PDF, issuance and embedding are on.
+and whether TLS, an object store, PDF, issuance and embedding are on, and (ADR 0016) `connections_sha256`, `bindings` and `bindings_sha256`: the digests of
+what is in force, the same that `check-config` prints, so that a reviewed file can be matched to a running server.
+
+**Adding a product** (ADR 0016): add the connection to the configuration file and restart (rolled), then add the product to the bindings and reload. A
+binding that names a product no connection of its tenant serves is refused, at start and in `check-config` with the number of such products, at reload with
+`ISSUER_BINDING_UNSERVED`. `GET /session` lists only the products the server serves. Removing a product goes the other way: the bindings first, then the
+connection.
 
 ## Health and readiness, and the load balancer
 
@@ -175,7 +181,9 @@ neither the panic's value nor the client's address), and one `access` line per r
 
 `kill -HUP` (or `systemctl reload`) re-reads `jwks_file` and `bindings_file` and calls `Verifier.Replace`: a valid change takes effect from the next authentication (a removed signing key is refused from then on, an added one
 accepted; see docs/ACCESS_JWT.md for the two exposure windows); a failing one leaves the previous configuration in force and is logged by its code: `ISSUER_FILE_UNREADABLE` (missing, a symlink, not regular, too large, wrong
-owner or mode), `ISSUER_FILE_INVALID` (the bindings file is not the strict list) or `ISSUER_CONFIG_REFUSED` (the access-token profile refused the whole configuration, which changes nothing). **Nothing else is reloaded**:
+owner or mode), `ISSUER_FILE_INVALID` (the bindings file is not the strict list) or `ISSUER_CONFIG_REFUSED` (the access-token profile refused the whole configuration, which changes nothing), or `ISSUER_BINDING_UNSERVED` (a binding names a product that no connection of its
+tenant serves; checked after the profile, ADR 0016). A successful reload logs `bindings`, `bindings_sha256` and how many bindings it added, removed and changed (`bindings_added`,
+`bindings_removed`, `bindings_changed`; a binding is its subject, client and tenant, a change is another list of products); never an identifier. **Nothing else is reloaded**:
 the cursor ring, the quotas, the connections, TLS (certificate renewal is manual and needs a restart), the object store, the store's connection string and every other field need a restart, rolled one server at a time.
 Install a changed issuer file by writing a new file and renaming it over the old one, so that a reload never reads half a file.
 

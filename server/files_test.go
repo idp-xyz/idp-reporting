@@ -120,14 +120,14 @@ func asFileProblem(err error, target **fileProblem) bool {
 
 func TestPublicFilesMustNotBeWritableByOthers(t *testing.T) {
 	w := newWorld(t)
-	if _, _, err := newVerifier(w.cfg.Issuer); err != nil {
+	if _, _, err := newVerifier(w.cfg.Issuer, w.cfg.Connections); err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []os.FileMode{0o666, 0o664, 0o646, 0o622} {
 		for _, f := range []string{w.jwks, w.binds} {
 			orig, _ := os.ReadFile(f)
 			writeFile(t, f, orig, mode)
-			_, _, err := newVerifier(w.cfg.Issuer)
+			_, _, err := newVerifier(w.cfg.Issuer, w.cfg.Connections)
 			if err == nil || !strings.Contains(err.Error(), "writable") {
 				t.Errorf("%o %s: %v", mode, filepath.Base(f), err)
 			}
@@ -141,7 +141,7 @@ func TestPublicFilesMustNotBeWritableByOthers(t *testing.T) {
 	}
 	c := w.cfg.Issuer
 	c.JWKSFile = link
-	if _, _, err := newVerifier(c); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+	if _, _, err := newVerifier(c, w.cfg.Connections); err == nil || !strings.Contains(err.Error(), "symbolic link") {
 		t.Errorf("a linked jwks: %v", err)
 	}
 	// And the TLS key is a secret file; the certificate a public one.
@@ -181,7 +181,7 @@ func TestIssuerFilesRefusedByTheProfileAreNamedByAFixedText(t *testing.T) {
 	w := newWorld(t)
 	secret := "N-MODULUS-SECRET-LOOKING-Zq7"
 	writeFile(t, w.jwks, []byte(`{"keys":[{"kty":"RSA","kid":"`+secret+`","n":"`+secret+`","e":"AQAB"}]}`), 0o644)
-	_, _, err := newVerifier(w.cfg.Issuer)
+	_, _, err := newVerifier(w.cfg.Issuer, w.cfg.Connections)
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("%v", err)
 	}
