@@ -1,0 +1,4777 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "info": {
+    "title": "Reporting platform API",
+    "version": "1",
+    "summary": "The HTTP API of the reporting platform under /api/reporting/v1, and the production server's health and readiness.",
+    "description": "Written from the handlers in transport/httpapi and server/http.go; docs/API.md is the prose reference and wins where they differ, which TestOpenAPIMatchesTheBoundRoutes (transport/httpapi/openapi_test.go) and TestOpenAPIMatchesTheHealthRoutes (server/openapi_test.go) keep from happening for the routes themselves. `x-reporting-mount` names the handler that binds an operation: `core` is httpapi.Handler, `layouts` its optional layout store, the others the With* mounts, `server` the production server only. A deployment serves only the mounts it composes; a route it does not compose is 404.\n\nEvery answer carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` (or a policy of the route's own that includes it) and exactly one `X-Reporting-Data-Class` (`contract-simulator`, or `business-data` on a production server that allows no simulator). JSON answers are `application/json; charset=utf-8`. An unknown path or method is the Go mux's plain-text 404 or 405."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "The API listener: the console, the API under /api/reporting/v1 and, on the production server, /healthz and /readyz."
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "core",
+      "description": "Session, catalog, queries, snapshots, exports and jobs."
+    },
+    {
+      "name": "issues",
+      "description": "Official issue under the source product's authority (S03-G, S03-H)."
+    },
+    {
+      "name": "layouts",
+      "description": "Owner-private report layouts; mounted when a layout directory is configured."
+    },
+    {
+      "name": "dashboards",
+      "description": "Owner-private dashboards (WithDashboards)."
+    },
+    {
+      "name": "document-templates",
+      "description": "Owner-private document templates (WithDocumentTemplates)."
+    },
+    {
+      "name": "samples",
+      "description": "The embedded sample pack (S06-B), mounted with the templates. `/document-templates/samples/{kind}` and `/document-templates/{id}/...` overlap as templates; they do not as requests: a template id is 32 hexadecimal digits, never `samples`, and every path under `/document-templates/samples` goes to the sample pack."
+    },
+    {
+      "name": "document-assets",
+      "description": "Private backgrounds and images (WithDocumentAssets)."
+    },
+    {
+      "name": "document-previews",
+      "description": "Ephemeral previews and layout checks (WithDocumentPreviews)."
+    },
+    {
+      "name": "health",
+      "description": "The production server's health and readiness, outside the API's authentication."
+    }
+  ],
+  "paths": {
+    "/api/reporting/v1/artifacts/{id}/content": {
+      "get": {
+        "operationId": "getArtifactContent",
+        "tags": [
+          "core"
+        ],
+        "summary": "Download an artifact",
+        "description": "Re-authorizes the whole scope and checks the expiry. An issued PDF is named `issued-<issue id>.pdf`.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file, with its exact length and digest.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"report-<id>.xlsx\"`, `report-<id>.pdf` or `issued-<issue id>.pdf`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Content-SHA256": {
+                "$ref": "#/components/headers/XContentSHA256"
+              }
+            },
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "tags": [
+          "core"
+        ],
+        "summary": "The capability profile",
+        "description": "`production_approved` is always false. WithEmbedding and WithProfile answer the same route with `embedding` computed for the caller and, for the production server, its profile label.",
+        "x-reporting-mount": "core",
+        "responses": {
+          "200": {
+            "description": "The capabilities.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/catalog": {
+      "get": {
+        "operationId": "getCatalog",
+        "tags": [
+          "core"
+        ],
+        "summary": "The published datasets of one integration",
+        "description": "Only a product explicitly allowed for the principal.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "name": "integration_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The only query parameter, exactly once."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dataset"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/dashboards": {
+      "get": {
+        "operationId": "listDashboards",
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "The caller's dashboards the caller may still read",
+        "description": "The latest version of each; one whose binding or fields are no longer authorized is left out.",
+        "x-reporting-mount": "dashboards",
+        "responses": {
+          "200": {
+            "description": "The listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveDashboards",
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "Save a new immutable version of a dashboard",
+        "description": "A new dashboard with an empty `id` and `expected_version` 0; else the next version of the given one, against the latest version read (stale is 409).",
+        "x-reporting-mount": "dashboards",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/dashboards/{id}": {
+      "get": {
+        "operationId": "getDashboards",
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "One saved version",
+        "description": "After the current authorization of its binding and fields.",
+        "x-reporting-mount": "dashboards",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "$ref": "#/components/parameters/Version"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/dashboards/{id}/published": {
+      "get": {
+        "operationId": "getPublishedDashboards",
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "The published version",
+        "description": "404 when none is published.",
+        "x-reporting-mount": "dashboards",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardEntry"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/dashboards/{id}/release": {
+      "get": {
+        "operationId": "getDashboardsRelease",
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "The release history",
+        "x-reporting-mount": "dashboards",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The release state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "releaseDashboards",
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "Publish a version or withdraw the published one",
+        "x-reporting-mount": "dashboards",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The release state after the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-backgrounds": {
+      "get": {
+        "operationId": "listBackgrounds",
+        "tags": [
+          "document-assets"
+        ],
+        "summary": "The caller's backgrounds of datasets the caller may read",
+        "x-reporting-mount": "document-assets",
+        "responses": {
+          "200": {
+            "description": "The backgrounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackgroundSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "uploadBackground",
+        "tags": [
+          "document-assets"
+        ],
+        "summary": "Upload a PNG background",
+        "description": "A ninth background of one identity is 413 BUDGET_EXCEEDED.",
+        "x-reporting-mount": "document-assets",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackgroundUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored background.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRef"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-checks": {
+      "post": {
+        "operationId": "checkDocument",
+        "tags": [
+          "document-previews"
+        ],
+        "summary": "Check rows of a frozen snapshot against a template without rendering",
+        "description": "Rows are answered in row order; a refused row carries the code and detail a preview of it would answer.",
+        "x-reporting-mount": "document-previews (with a renderer that can check)",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The checked rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCheckResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-images": {
+      "get": {
+        "operationId": "listImages",
+        "tags": [
+          "document-assets"
+        ],
+        "summary": "The caller's images of datasets the caller may read",
+        "description": "Private images of schema 2.1 templates (ADR 0005).",
+        "x-reporting-mount": "document-assets (with an image store)",
+        "responses": {
+          "200": {
+            "description": "The images.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImageSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "uploadImage",
+        "tags": [
+          "document-assets"
+        ],
+        "summary": "Upload a PNG or JPEG image",
+        "description": "An image over the per-dataset count of one identity is 413 BUDGET_EXCEEDED.",
+        "x-reporting-mount": "document-assets (with an image store)",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored image.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-images/{id}/content": {
+      "get": {
+        "operationId": "getImageContent",
+        "tags": [
+          "document-assets"
+        ],
+        "summary": "The bytes of one image, to its owner",
+        "description": "Another identity's id is 404; a dataset the caller may no longer read is 403.",
+        "x-reporting-mount": "document-assets (with an image store)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The image.",
+            "headers": {
+              "Content-Length": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "Content-Disposition": {
+                "description": "`inline; filename=\"image.png\"` or `image.jpg`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "description": "`default-src 'none'; sandbox; frame-ancestors 'none'`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-SHA256": {
+                "$ref": "#/components/headers/XContentSHA256"
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-previews": {
+      "post": {
+        "operationId": "previewDocument",
+        "tags": [
+          "document-previews"
+        ],
+        "summary": "Preview a template configuration bound to a frozen row",
+        "description": "Ephemeral: no issuance and no artifact history.",
+        "x-reporting-mount": "document-previews",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A PDF/A-2b preview.",
+            "headers": {
+              "X-Content-SHA256": {
+                "$ref": "#/components/headers/XContentSHA256"
+              },
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"document-preview.pdf\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates": {
+      "get": {
+        "operationId": "listDocumentTemplates",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The caller's templates the caller may still read",
+        "description": "The latest version of each; one whose binding or fields are no longer authorized is left out.",
+        "x-reporting-mount": "document-templates",
+        "responses": {
+          "200": {
+            "description": "The listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveDocumentTemplates",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Save a new immutable version of a template",
+        "description": "A new template with an empty `id` and `expected_version` 0; else the next version of the given one, against the latest version read (stale is 409).",
+        "x-reporting-mount": "document-templates",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/samples": {
+      "get": {
+        "operationId": "listSamples",
+        "tags": [
+          "samples"
+        ],
+        "summary": "The sample pack",
+        "description": "The same for every signed-in identity.",
+        "x-reporting-mount": "document-templates",
+        "responses": {
+          "200": {
+            "description": "The samples.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SampleSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/samples/{kind}": {
+      "get": {
+        "operationId": "getSample",
+        "tags": [
+          "samples"
+        ],
+        "summary": "One sample in full",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Kind"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sample.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sample"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/samples/{kind}/copy": {
+      "post": {
+        "operationId": "copySample",
+        "tags": [
+          "samples"
+        ],
+        "summary": "Bind a sample to the caller's dataset and save it",
+        "description": "Saved as version 1 of a new template and authorized as a save is.",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Kind"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SampleCopy"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved template.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/samples/{kind}/previews": {
+      "post": {
+        "operationId": "previewSample",
+        "tags": [
+          "samples"
+        ],
+        "summary": "Preview a sample from its own rows",
+        "description": "No body, or `{}`. PREVIEW-marked; no dataset and no authorization beyond a signed-in identity.",
+        "x-reporting-mount": "document-templates (with a PDF renderer)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Kind"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A PDF/A-2b preview.",
+            "headers": {
+              "X-Content-SHA256": {
+                "$ref": "#/components/headers/XContentSHA256"
+              },
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"document-preview.pdf\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Sample-Kind": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/{id}": {
+      "get": {
+        "operationId": "getDocumentTemplates",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "One saved version",
+        "description": "After the current authorization of its binding and fields. Reading a version records the time as the template's `last_opened`.",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "$ref": "#/components/parameters/Version"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/{id}/catalog": {
+      "get": {
+        "operationId": "getTemplateCatalog",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The template centre's metadata of one template",
+        "description": "A template that never had any answers the empty one (`revision` 0).",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putTemplateCatalog",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Replace the template centre's metadata",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCatalogUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The metadata after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/{id}/previews": {
+      "post": {
+        "operationId": "previewTemplate",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Preview a stored version bound to a frozen row",
+        "description": "Never caller configuration: the stored version is rendered.",
+        "x-reporting-mount": "document-templates (with a PDF renderer)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplatePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A PDF/A-2b preview.",
+            "headers": {
+              "X-Content-SHA256": {
+                "$ref": "#/components/headers/XContentSHA256"
+              },
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"document-preview.pdf\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Template-ID": {
+                "schema": {
+                  "$ref": "#/components/schemas/Id"
+                }
+              },
+              "X-Template-Version": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/{id}/published": {
+      "get": {
+        "operationId": "getPublishedDocumentTemplates",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The published version",
+        "description": "404 when none is published.",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateEntry"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/document-templates/{id}/release": {
+      "get": {
+        "operationId": "getDocumentTemplatesRelease",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "The release history",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The release state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "releaseDocumentTemplates",
+        "tags": [
+          "document-templates"
+        ],
+        "summary": "Publish a version or withdraw the published one",
+        "x-reporting-mount": "document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The release state after the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/exports": {
+      "post": {
+        "operationId": "submitExport",
+        "tags": [
+          "core"
+        ],
+        "summary": "Admit an export job of a snapshot",
+        "description": "`format` absent or `xlsx` is the workbook; `pdf` needs a server started with PDF (listed in `formats`); other values are 422.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "snapshot_id": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "format": {
+                    "type": "string",
+                    "description": "Absent means xlsx."
+                  }
+                },
+                "required": [
+                  "snapshot_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Admitted: the job is queued.",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/issues": {
+      "get": {
+        "operationId": "listIssues",
+        "tags": [
+          "issues"
+        ],
+        "summary": "The caller's issue jobs, newest first",
+        "description": "A record that cannot be read as published is 409 INTEGRITY_FAILURE for the whole page.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "The only query parameter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of issues.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IssueView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "submitIssue",
+        "tags": [
+          "issues"
+        ],
+        "summary": "Admit an official issue job",
+        "description": "The core API answers 422 UNSUPPORTED_COMBINATION; WithDocumentTemplates replaces the route. It answers 422 too when the deployment or the integration's adapter cannot issue. The version must be the published one, the row or group must exist in the snapshot and the template's fields must be authorized. See docs/API.md and docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md.",
+        "x-reporting-mount": "core; document-templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Admitted: the job is queued.",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/issues/{id}": {
+      "get": {
+        "operationId": "getIssue",
+        "tags": [
+          "issues"
+        ],
+        "summary": "One issue job with its record",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The issue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "tags": [
+          "core"
+        ],
+        "summary": "The caller's jobs, newest first",
+        "description": "Every kind, under the integrations the caller holds; each key at most once and not empty, any other key is 400. A page shorter than `limit` is the last. The listing authorizes no result: the reads do. A record that cannot be read as published is 409 for the whole page.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "snapshot",
+                "export",
+                "issue"
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "succeeded",
+                "failed",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "The last `job_id` of the previous page; a job that is not the caller's gives `[]`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of jobs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/jobs/{id}": {
+      "get": {
+        "operationId": "getJob",
+        "tags": [
+          "core"
+        ],
+        "summary": "One job of the caller",
+        "description": "Re-authorizes the source while the result is served; a succeeded job whose source read has expired answers `expired: true` without asking the source.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/jobs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelJob",
+        "tags": [
+          "core"
+        ],
+        "summary": "Cancel a job",
+        "description": "No body (a body is 400). Idempotent; a running issue job is returned unchanged.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job after the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/layouts": {
+      "get": {
+        "operationId": "listLayouts",
+        "tags": [
+          "layouts"
+        ],
+        "summary": "The caller's layouts the caller may still read",
+        "description": "The latest version of each; one whose binding or fields are no longer authorized is left out.",
+        "x-reporting-mount": "layouts",
+        "responses": {
+          "200": {
+            "description": "The listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LayoutSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveLayouts",
+        "tags": [
+          "layouts"
+        ],
+        "summary": "Save a new immutable version of a layout",
+        "description": "A new layout with an empty `id` and `expected_version` 0; else the next version of the given one, against the latest version read (stale is 409).",
+        "x-reporting-mount": "layouts",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 1 MiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/layouts/{id}": {
+      "get": {
+        "operationId": "getLayouts",
+        "tags": [
+          "layouts"
+        ],
+        "summary": "One saved version",
+        "description": "After the current authorization of its binding and fields.",
+        "x-reporting-mount": "layouts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "$ref": "#/components/parameters/Version"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/layouts/{id}/published": {
+      "get": {
+        "operationId": "getPublishedLayouts",
+        "tags": [
+          "layouts"
+        ],
+        "summary": "The published version",
+        "description": "404 when none is published.",
+        "x-reporting-mount": "layouts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutEntry"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/layouts/{id}/release": {
+      "get": {
+        "operationId": "getLayoutsRelease",
+        "tags": [
+          "layouts"
+        ],
+        "summary": "The release history",
+        "x-reporting-mount": "layouts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The release state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "releaseLayouts",
+        "tags": [
+          "layouts"
+        ],
+        "summary": "Publish a version or withdraw the published one",
+        "x-reporting-mount": "layouts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The release state after the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseState"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/queries": {
+      "post": {
+        "operationId": "runQuery",
+        "tags": [
+          "core"
+        ],
+        "summary": "Run a query of a published dataset",
+        "description": "A truncated preview says `completeness: preview`. Counts against `queries_in_flight`.",
+        "x-reporting-mount": "core",
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 64 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuerySpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/session": {
+      "get": {
+        "operationId": "getSession",
+        "tags": [
+          "core"
+        ],
+        "summary": "The authenticated identity and its served integrations",
+        "description": "No token, business data or service credential is answered.",
+        "x-reporting-mount": "core",
+        "responses": {
+          "200": {
+            "description": "The session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/snapshot-jobs": {
+      "post": {
+        "operationId": "submitSnapshot",
+        "tags": [
+          "core"
+        ],
+        "summary": "Admit a snapshot job",
+        "description": "No row is read during admission.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 64 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuerySpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Admitted: the job is queued.",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/snapshots/{id}/rows": {
+      "get": {
+        "operationId": "getSnapshotRows",
+        "tags": [
+          "core"
+        ],
+        "summary": "A page of a snapshot's frozen rows",
+        "description": "Counts against `queries_in_flight`. `limit` and `cursor` each at most once; any other key is 400.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "`next_cursor` of the previous page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "health"
+        ],
+        "summary": "Liveness",
+        "description": "No authentication and no dependency touched; not served by the demo.",
+        "x-reporting-mount": "server",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process answers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "getReadiness",
+        "tags": [
+          "health"
+        ],
+        "summary": "Readiness",
+        "description": "No authentication; not served by the demo. The object store's last answer is cached for 10 seconds.",
+        "x-reporting-mount": "server",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready (`{\"status\":\"ready\"}`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "503": {
+            "description": "Not ready, with the reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "The production server verifies an access JWT against its configured issuers and bindings (docs/ACCESS_JWT.md). Demo only: reporting-demo accepts one random shared secret as the bearer token (httpapi.DemoBearer), a synthetic identity that is not SSO."
+      }
+    },
+    "parameters": {
+      "Id": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Id"
+        }
+      },
+      "Kind": {
+        "name": "kind",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "A sample kind of the pack (GET /document-templates/samples)."
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Exactly one, with no surrounding space. The same key and request give the same job; the same key with another request is 409 IDEMPOTENCY_CONFLICT."
+      },
+      "Version": {
+        "name": "version",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "The version to read; the only query parameter."
+      }
+    },
+    "headers": {
+      "Location": {
+        "description": "`/api/reporting/v1/jobs/{id}` of the admitted job.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RetryAfter": {
+        "description": "Seconds to wait before trying again.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "XContentSHA256": {
+        "description": "The SHA-256 of the body, in lowercase hexadecimal.",
+        "schema": {
+          "$ref": "#/components/schemas/Sha256"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "INVALID_REQUEST: a malformed body, query or header.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No bearer token, or one that does not verify: `{\"error\":\"AUTH_SCOPE_DENIED\"}` with `WWW-Authenticate: Bearer realm=\"reporting\"` (with `error=\"invalid_token\"` when a bearer token was sent).",
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "AUTH_SCOPE_DENIED: the caller may not read this product, dataset or field, or the token lacks the scope (`WWW-Authenticate: Bearer realm=\"reporting\", error=\"insufficient_scope\"`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "NOT_FOUND: nothing of the caller's has this id. Another identity's object is not found, not denied.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "IDEMPOTENCY_CONFLICT (a key reused for another request), INTEGRITY_FAILURE, LEASE_LOST or TEMPLATE_NOT_PUBLISHED; a stale `expected_version` or `expected_revision`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooLarge": {
+        "description": "REQUEST_TOO_LARGE (the body is over its route's bound) or BUDGET_EXCEEDED (a result or an upload over its budget).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unsupported": {
+        "description": "UNSUPPORTED_COMBINATION: a shape, format or capability this deployment or integration does not offer. A template refusal carries `detail`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "QuotaExceeded": {
+        "description": "QUOTA_EXCEEDED with the quota's name; `Retry-After: 60` (`1` for queries_in_flight).",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ExecutionFailed": {
+        "description": "EXECUTION_FAILED: an error the server does not classify.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "AUTHORITY_UNAVAILABLE (the source's authority or the object store did not answer; the object store's has `Retry-After: 10`) or OVERLOADED (the process's in-flight bound, refused before authentication; `Retry-After: 1`).",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "`{\"error\":\"METHOD_NOT_ALLOWED\"}` with `Allow: GET, HEAD`.",
+        "headers": {
+          "Allow": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{32}$",
+        "description": "An identifier the server assigns: 32 lowercase hexadecimal digits."
+      },
+      "Sha256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$",
+        "description": "A SHA-256 digest in lowercase hexadecimal."
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_REQUEST",
+          "AUTH_SCOPE_DENIED",
+          "NOT_FOUND",
+          "IDEMPOTENCY_CONFLICT",
+          "INTEGRITY_FAILURE",
+          "LEASE_LOST",
+          "TEMPLATE_NOT_PUBLISHED",
+          "UNSUPPORTED_COMBINATION",
+          "BUDGET_EXCEEDED",
+          "REQUEST_TOO_LARGE",
+          "QUOTA_EXCEEDED",
+          "AUTHORITY_UNAVAILABLE",
+          "OVERLOADED",
+          "EXECUTION_FAILED",
+          "METHOD_NOT_ALLOWED"
+        ],
+        "description": "The code of a refusal (`classify` in transport/httpapi/api.go). OVERLOADED is the in-flight bound's 503 (WithMaxInFlight); METHOD_NOT_ALLOWED is only answered by /healthz and /readyz."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/Detail"
+          },
+          "quota": {
+            "type": "string",
+            "enum": [
+              "jobs_in_flight",
+              "stored_results",
+              "admissions_per_hour",
+              "queries_in_flight"
+            ],
+            "description": "Present only with QUOTA_EXCEEDED: the quota that was reached."
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "description": "The body of every refusal: the code, and nothing of the request's values."
+      },
+      "Detail": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why the layout or binding was refused, for example DOES_NOT_FIT, NOT_COVERED, INCONSISTENT_GROUP, TOO_MANY_PAGES or BAND_OVERFLOW."
+          },
+          "band": {
+            "type": "string"
+          },
+          "element": {
+            "type": "string"
+          },
+          "row": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "column": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "Where a template refusal happened (S03-J): a reason and names and indices, never a value (doctemplates.Detail)."
+      },
+      "Ref": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "A versioned reference (reporting.Ref)."
+      },
+      "Binding": {
+        "type": "object",
+        "properties": {
+          "integration_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "integration_id",
+          "dataset"
+        ],
+        "additionalProperties": false,
+        "description": "The integration and dataset a saved document reads."
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "object",
+            "properties": {
+              "tenant": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenant",
+              "issuer",
+              "subject"
+            ],
+            "additionalProperties": false
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The principal's integrations that the server has a connection for (ADR 0016), in the principal's order."
+          }
+        },
+        "required": [
+          "identity",
+          "integrations"
+        ],
+        "additionalProperties": false
+      },
+      "Capabilities": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "description": "`S01-B-contract-simulators` for the core API and the demo; the production server's `profile_label`, or `simulated:<label>` when it allows a simulator."
+          },
+          "production_approved": {
+            "type": "boolean",
+            "const": false
+          },
+          "query_shapes": {
+            "type": "string",
+            "const": "published catalog only"
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The export formats: `xlsx` first when the workbook writer is configured, then the others sorted (for example `pdf`)."
+          },
+          "source_interfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "issuance": {
+            "type": "boolean",
+            "description": "Whether the server has an issuer; whether an integration can issue is its adapter's capability."
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "template_routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "embedding": {
+            "type": "boolean",
+            "description": "True when embedding is configured for at least one of the caller's integrations. The origins are never listed."
+          },
+          "quotas": {
+            "type": "object",
+            "properties": {
+              "jobs_in_flight": {
+                "type": "integer"
+              },
+              "stored_results": {
+                "type": "integer"
+              },
+              "admissions_per_hour": {
+                "type": "integer"
+              },
+              "queries_in_flight": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "jobs_in_flight",
+              "stored_results",
+              "admissions_per_hour",
+              "queries_in_flight"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "profile",
+          "production_approved",
+          "query_shapes",
+          "formats",
+          "source_interfaces",
+          "issuance",
+          "routes",
+          "template_routes",
+          "embedding",
+          "quotas"
+        ],
+        "additionalProperties": false
+      },
+      "Column": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "date",
+              "boolean",
+              "integer",
+              "decimal"
+            ]
+          },
+          "scale": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "type"
+        ],
+        "additionalProperties": false,
+        "description": "A typed column. `scale`, `currency` and `unit` are omitted when empty."
+      },
+      "Dataset": {
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "currency_policy": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset",
+          "columns",
+          "metrics",
+          "dimensions",
+          "timezone"
+        ],
+        "additionalProperties": false,
+        "description": "A published catalog entry (reporting.Dataset)."
+      },
+      "QuerySpec": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "1.0"
+          },
+          "integration_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "company_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            },
+            "description": "Exactly the dataset's metrics."
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exactly the dataset's dimensions."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "maxItems": 0,
+            "description": "Unsupported in this slice: must be empty (else 422)."
+          },
+          "sort": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "direction": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "maxItems": 0,
+            "description": "Unsupported in this slice: must be empty (else 422)."
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "An IANA zone; must be the dataset's."
+          },
+          "currency_policy": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "limit"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "schema_version",
+          "integration_id",
+          "dataset",
+          "company_ids",
+          "metrics",
+          "dimensions",
+          "as_of",
+          "timezone",
+          "page"
+        ],
+        "additionalProperties": false,
+        "description": "A query of one published catalog entry (reporting.QuerySpec; examples in docs/s00/contracts/query-examples.json). A shape the entry does not declare is 422 UNSUPPORTED_COMBINATION."
+      },
+      "QueryResult": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Cells are strings in the declared type; no number is converted through a float."
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The metric totals of the full authorized result, by column id."
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "preview",
+              "page"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "query_hash": {
+                "type": "string"
+              },
+              "source_snapshot_ref": {
+                "type": "string"
+              },
+              "source_watermark": {
+                "type": "string"
+              },
+              "data_class": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query_hash",
+              "source_snapshot_ref",
+              "source_watermark",
+              "data_class"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "totals",
+          "completeness",
+          "issues",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "description": "The answer of POST /queries (reporting.Result)."
+      },
+      "RowsPage": {
+        "type": "object",
+        "properties": {
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "total_row_count": {
+            "type": "integer"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Cells are strings in the declared type; no number is converted through a float."
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The metric totals of the full authorized result, by column id."
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "preview",
+              "page"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "query_hash": {
+                "type": "string"
+              },
+              "source_snapshot_ref": {
+                "type": "string"
+              },
+              "source_watermark": {
+                "type": "string"
+              },
+              "data_class": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query_hash",
+              "source_snapshot_ref",
+              "source_watermark",
+              "data_class"
+            ],
+            "additionalProperties": false
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Absent on the last page. An HMAC cursor bound to the owner, product, query and snapshot; it confers no access by itself."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "total_row_count",
+          "columns",
+          "rows",
+          "totals",
+          "completeness",
+          "issues",
+          "evidence",
+          "expires_at"
+        ],
+        "additionalProperties": false,
+        "description": "A page of frozen snapshot rows (reporting.RowsPage). The source is not read again."
+      },
+      "IssueGroup": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "key": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "row_count": {
+            "type": "integer"
+          },
+          "rows_sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          }
+        },
+        "required": [
+          "fields",
+          "key",
+          "row_count",
+          "rows_sha256"
+        ],
+        "additionalProperties": false,
+        "description": "The row group of a schema 2.0 issue (reporting.IssueGroupView)."
+      },
+      "IssueSummary": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string",
+            "description": "The source product's number, once the job succeeded."
+          },
+          "template_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "template_version": {
+            "type": "integer"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "A row issue; absent for a group issue."
+          },
+          "group": {
+            "$ref": "#/components/schemas/IssueGroup"
+          }
+        },
+        "required": [
+          "template_id",
+          "template_version",
+          "template_sha256"
+        ],
+        "additionalProperties": false,
+        "description": "What an issue job says about itself (reporting.IssueSummary)."
+      },
+      "JobView": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "snapshot",
+              "export",
+              "issue"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "format": {
+            "type": "string",
+            "description": "Present for a non-workbook export and for an issue (`pdf`)."
+          },
+          "artifact_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "issue": {
+            "$ref": "#/components/schemas/IssueSummary"
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "Present (true) for a succeeded job whose results are no longer served (S04-B)."
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "state"
+        ],
+        "additionalProperties": false,
+        "description": "A job as its owner sees it (reporting.JobView). Empty fields are omitted."
+      },
+      "IssueView": {
+        "type": "object",
+        "properties": {
+          "issue_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "number": {
+            "type": "string",
+            "description": "The source product's number, once the job succeeded."
+          },
+          "template_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "template_version": {
+            "type": "integer"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "A row issue; absent for a group issue."
+          },
+          "group": {
+            "$ref": "#/components/schemas/IssueGroup"
+          },
+          "artifact_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "snapshot_sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "stamp": {
+            "type": "string"
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reservation_ref": {
+            "type": "string"
+          },
+          "confirmation_ref": {
+            "type": "string"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "issue_id",
+          "state",
+          "snapshot_id",
+          "template_id",
+          "template_version",
+          "template_sha256"
+        ],
+        "additionalProperties": false,
+        "description": "An issue job and, once it succeeded, its permanent record (reporting.IssueView). The record fields are absent before then."
+      },
+      "ReleaseEvent": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "withdraw"
+            ]
+          },
+          "version": {
+            "type": "integer"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "revision",
+          "action",
+          "version",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "ReleaseState": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "published_version": {
+            "type": "integer",
+            "description": "0 when nothing is published."
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseEvent"
+            }
+          }
+        },
+        "required": [
+          "revision",
+          "published_version",
+          "history"
+        ],
+        "additionalProperties": false,
+        "description": "The release history of a saved document (privatedocs.ReleaseState)."
+      },
+      "ReleaseAction": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "withdraw"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "description": "The version to publish; ignored by withdraw."
+          },
+          "expected_revision": {
+            "type": "integer",
+            "description": "The revision read; a stale one is 409."
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "LayoutDocument": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "1.0"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "align": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "right"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "align"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "schema_version",
+          "binding",
+          "columns"
+        ],
+        "additionalProperties": false,
+        "description": "A report layout (layouts.Document): at most 64 KiB as JSON; distinct column ids of the bound dataset."
+      },
+      "LayoutSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "binding"
+        ],
+        "additionalProperties": false
+      },
+      "LayoutEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "layout": {
+            "$ref": "#/components/schemas/LayoutDocument"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "layout"
+        ],
+        "additionalProperties": false,
+        "description": "A saved layout version. Note the key `layout`, where dashboards and templates say `config`."
+      },
+      "LayoutSave": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Empty for a new layout, else its id."
+          },
+          "expected_version": {
+            "type": "integer",
+            "description": "0 for a new layout, else the latest version read."
+          },
+          "layout": {
+            "$ref": "#/components/schemas/LayoutDocument"
+          }
+        },
+        "required": [
+          "layout"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardWidget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "metric"
+              },
+              "field": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "required": [
+              "type",
+              "field"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "bar"
+              },
+              "field": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "required": [
+              "type",
+              "field",
+              "category"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "table"
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "minItems": 1,
+                "maxItems": 100,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "type",
+              "columns"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "One widget, in the exact field set of its type (dashboards.Widget)."
+      },
+      "DashboardDocument": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "1.0"
+          },
+          "kind": {
+            "type": "string",
+            "const": "dashboard"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "widgets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidget"
+            },
+            "maxItems": 12
+          }
+        },
+        "required": [
+          "schema_version",
+          "kind",
+          "binding",
+          "widgets"
+        ],
+        "additionalProperties": false,
+        "description": "A dashboard (dashboards.Document): at most 64 KiB as JSON."
+      },
+      "DocumentSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "binding"
+        ],
+        "additionalProperties": false,
+        "description": "A saved dashboard in the listing: the latest version."
+      },
+      "DashboardEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "config": {
+            "$ref": "#/components/schemas/DashboardDocument"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardSave": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "expected_version": {
+            "type": "integer"
+          },
+          "config": {
+            "$ref": "#/components/schemas/DashboardDocument"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "TemplateDocument": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "enum": [
+              "1.0",
+              "1.1",
+              "1.2",
+              "1.3",
+              "2.0",
+              "2.1"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "const": "document"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "elements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A 1.x box (doctemplates.Element)."
+            },
+            "minItems": 1,
+            "maxItems": 24,
+            "description": "1.x only."
+          },
+          "print": {
+            "type": "object",
+            "description": "1.1 and later 1.x: the print profile."
+          },
+          "background": {
+            "type": "object",
+            "description": "1.2 and 1.3: the background reference `{id, sha256}`."
+          },
+          "table": {
+            "type": "object",
+            "description": "1.3: the detail table."
+          },
+          "page": {
+            "type": "object",
+            "description": "2.x: the page preset and overprint profile."
+          },
+          "group": {
+            "type": "object",
+            "description": "2.x: the group fields."
+          },
+          "bands": {
+            "type": "object",
+            "description": "2.x: the bands and their items."
+          }
+        },
+        "required": [
+          "schema_version",
+          "kind",
+          "binding"
+        ],
+        "additionalProperties": false,
+        "description": "A document template (doctemplates.Document). The server validates the exact closed form of each schema version; the nested shapes are documented in docs/ADR_0004_TEMPLATE_SCHEMA_2.md, docs/ADR_0005_BARCODES_IMAGES.md and docs/STUDIO.md and are not repeated here."
+      },
+      "TemplateCatalog": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "flow": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "favourite": {
+            "type": "boolean"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 16,
+            "uniqueItems": true
+          },
+          "last_opened": {
+            "type": "string",
+            "description": "RFC 3339 time of the last read of a version; empty until then."
+          },
+          "revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "flow",
+          "favourite",
+          "archived",
+          "collections",
+          "last_opened",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "The template centre's metadata of one template (S06-B)."
+      },
+      "TemplateCatalogUpdate": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "flow": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "favourite": {
+            "type": "boolean"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 16,
+            "uniqueItems": true
+          },
+          "expected_revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "flow",
+          "favourite",
+          "archived",
+          "collections",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "The whole metadata, without `last_opened`; a name is one line without surrounding spaces."
+      },
+      "TemplateSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "name": {
+            "type": "string",
+            "description": "Empty when the latest version has none."
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "preset": {
+            "type": "string",
+            "description": "The page preset of a 2.x template; empty for 1.x."
+          },
+          "published_version": {
+            "type": "integer",
+            "description": "0 when none is published."
+          },
+          "catalog": {
+            "$ref": "#/components/schemas/TemplateCatalog"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "binding",
+          "name",
+          "schema_version",
+          "preset",
+          "catalog"
+        ],
+        "additionalProperties": false,
+        "description": "A template in the listing: the latest version, without opening it."
+      },
+      "TemplateEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "config": {
+            "$ref": "#/components/schemas/TemplateDocument"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "TemplateSave": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "expected_version": {
+            "type": "integer"
+          },
+          "config": {
+            "$ref": "#/components/schemas/TemplateDocument"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "TemplatePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "version",
+          "snapshot_id",
+          "row_index"
+        ],
+        "additionalProperties": false
+      },
+      "IssueRequest": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer",
+            "description": "Must be the published version (else 409 TEMPLATE_NOT_PUBLISHED)."
+          },
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "group": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A schema 2.0 template's group by its key values, in the order of the template's group fields."
+          }
+        },
+        "required": [
+          "template_id",
+          "version",
+          "snapshot_id"
+        ],
+        "additionalProperties": false,
+        "description": "Exactly one of `row_index` and `group`; a 1.x template takes `row_index` only."
+      },
+      "SampleField": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "integer",
+              "decimal",
+              "date"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "document",
+              "row"
+            ]
+          },
+          "metric": {
+            "type": "boolean"
+          },
+          "scale": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "type",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "SampleSummary": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "flow": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "preset": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "elements": {
+            "type": "integer"
+          },
+          "fields": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "domain",
+          "flow",
+          "description",
+          "preset",
+          "schema_version",
+          "elements",
+          "fields"
+        ],
+        "additionalProperties": false,
+        "description": "A sample of the pack as a card shows it: no rows and no document."
+      },
+      "Sample": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "flow": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "preset": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "elements": {
+            "type": "integer"
+          },
+          "fields": {
+            "type": "integer"
+          },
+          "field_slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SampleField"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "description": "The sample's own rows, by slot id."
+          },
+          "document": {
+            "$ref": "#/components/schemas/TemplateDocument"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "domain",
+          "flow",
+          "description",
+          "preset",
+          "schema_version",
+          "elements",
+          "fields",
+          "field_slots",
+          "rows",
+          "document"
+        ],
+        "additionalProperties": false,
+        "description": "One sample in full; its document is bound to no dataset and names slots in place of columns."
+      },
+      "SampleCopy": {
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "integration_id": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "integration_id",
+              "id",
+              "version"
+            ],
+            "additionalProperties": false
+          },
+          "name": {
+            "type": "string",
+            "description": "Empty or absent: the sample's name."
+          },
+          "mapping": {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "column"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "literal": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "literal"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "By slot id; a slot not mapped is the literal `[<label>]`."
+          }
+        },
+        "required": [
+          "dataset",
+          "mapping"
+        ],
+        "additionalProperties": false
+      },
+      "BackgroundRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          }
+        },
+        "required": [
+          "id",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "BackgroundSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "binding",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      },
+      "BackgroundUpload": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "png": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "A PNG of at most 512 KiB, in standard base64."
+          }
+        },
+        "required": [
+          "binding",
+          "png"
+        ],
+        "additionalProperties": false
+      },
+      "ImageSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/Sha256"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "png",
+              "jpeg"
+            ]
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "binding",
+          "format",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      },
+      "ImageUpload": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "image": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "A PNG or JPEG of at most 512 KiB and 2000 x 2000 pixels, in standard base64; the format is read from the content."
+          }
+        },
+        "required": [
+          "binding",
+          "image"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/TemplateDocument"
+          },
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "config",
+          "snapshot_id",
+          "row_index"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentCheckRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/TemplateDocument"
+          },
+          "snapshot_id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true
+          },
+          "samples": {
+            "type": "string",
+            "const": "boundary"
+          }
+        },
+        "required": [
+          "config",
+          "snapshot_id"
+        ],
+        "additionalProperties": false,
+        "description": "Exactly one of `rows` and `samples`."
+      },
+      "DocumentCheckRow": {
+        "type": "object",
+        "properties": {
+          "row_index": {
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/Detail"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why a boundary sample picked the row."
+          }
+        },
+        "required": [
+          "row_index",
+          "ok"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentCheckResult": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentCheckRow"
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "Readiness": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_ready"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "store",
+              "schema",
+              "roles",
+              "object_store",
+              "draining"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}
