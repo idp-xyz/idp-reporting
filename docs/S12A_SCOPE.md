@@ -13,8 +13,11 @@ document-templates, document-backgrounds, document-images) a designer's; the res
 previews and checks) a viewer's. `authenticated` refuses before the route runs: 403 `{"error":"AUTH_ROLE_DENIED"}`. A route added later falls
 under the same rules. `GET /session` lists the effective roles.
 
-A3 · The console says what a role refusal means (当前身份没有执行此操作的角色…请联系平台运营方在身份绑定中授予). Hiding the controls a role does not
-allow is S12-A2.
+A3 · The console says what a role refusal means (当前身份没有执行此操作的角色…请联系平台运营方在身份绑定中授予). S12-A2 hides what a role does not allow:
+the console sets `no-designer`, `no-publisher`, `no-issuer` on the body from `session.roles` (a session without the field is a server before
+roles: the default four), and one stylesheet rule hides the save, new, import, upload and copy controls, the publish and withdraw controls, and
+the official issue (the library's own buttons carry `needs-designer`). 能力与环境 lists the roles (查看、设计、发布、正式出具、审计管理). A session with an
+unknown role name is not believed. The server's refusal stays the authority.
 
 Tests: `TestRequiredRoleOfEachRouteClass` (every route class), `TestRolesAreEnforcedOnTheRoutes` (a viewer, a designer, a publisher, no issuer,
 an administrator alone, no roles named; the session's roles), `TestBindingsCarryRoles` (the file, the default, a reload to a role, an unknown
