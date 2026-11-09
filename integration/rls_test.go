@@ -257,6 +257,7 @@ func rowLevelSecurity(t *testing.T, admin *pgxpool.Pool) {
 	t.Run("worker_scope", func(t *testing.T) { w.workerScope(t) })
 	t.Run("a_store_without_its_policies_is_refused", func(t *testing.T) { w.policiesAreChecked(t) })
 	t.Run("the_sweep_deletes_across_identities_only_in_the_worker_scope", func(t *testing.T) { w.sweepAcrossIdentities(t) })
+	t.Run("designs_are_seen_and_written_only_by_their_identity", func(t *testing.T) { w.designs(t) })
 	t.Run("a_restore_leaves_the_roles_the_policies_and_the_isolation_in_place", func(t *testing.T) { w.afterARestore(t) })
 	t.Run("migration_007_round_trip_and_upgrade_from_version_6", func(t *testing.T) { migration007(t, admin) })
 }
@@ -981,4 +982,49 @@ func migration007(t *testing.T, admin *pgxpool.Pool) {
 	if e := postgres.InitProfile(ctx, admin, postgres.ProfileFixture); e != nil {
 		t.Fatal(e)
 	}
+}
+
+// designs (011, S11-A): as the application role, an identity's context sees and writes only its own designs; without a context nothing at
+// all; a row of another identity is refused on insert. The rows are written in transactions that are rolled back.
+func (w *rlsWorld) designs(t *testing.T) {
+	ctx := context.Background()
+	ids := w.who
+	if len(ids) < 2 {
+		t.Fatal("two identities are needed")
+	}
+	a, b := w.identity(ids[0]), w.identity(ids[1])
+	insert := `INSERT INTO reporting_s01.designs (store, tenant, issuer, subject, data) VALUES ('templates',$1,$2,$3,'\x7b7d')`
+	// One committed row per identity, written as the admin (the owner bypasses row-level security).
+	for _, i := range []r.Identity{a, b} {
+		if _, e := w.admin.Exec(ctx, insert+" ON CONFLICT DO NOTHING", i.Tenant, i.Issuer, i.Subject); e != nil {
+			t.Fatal(e)
+		}
+	}
+	t.Cleanup(func() { _, _ = w.admin.Exec(context.Background(), "DELETE FROM reporting_s01.designs") })
+	if n := count(t, w.app, "SELECT count(*) FROM reporting_s01.designs"); n != 0 {
+		t.Fatalf("without a context the application role sees %d designs", n)
+	}
+	inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+		if n := count(t, tx, "SELECT count(*) FROM reporting_s01.designs"); n != 1 {
+			t.Fatalf("an identity sees %d designs", n)
+		}
+		if n, e := affected(t, tx, "UPDATE reporting_s01.designs SET data='\\x5b5d' WHERE subject=$1", b.Subject); e != nil || n != 0 {
+			t.Fatalf("another identity's design was updated: %d %v", n, e)
+		}
+		if n, e := affected(t, tx, "UPDATE reporting_s01.designs SET data='\\x5b5d' WHERE subject=$1", a.Subject); e != nil || n != 1 {
+			t.Fatalf("its own design: %d %v", n, e)
+		}
+	})
+	inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+		_, e := tx.Exec(ctx, `INSERT INTO reporting_s01.designs (store, tenant, issuer, subject, data) VALUES ('layouts',$1,$2,$3,'\x')`, b.Tenant, b.Issuer, b.Subject)
+		if !isRLS(e) {
+			t.Fatalf("a row of another identity was inserted: %v", e)
+		}
+	})
+	// The application role never deletes a design.
+	inTx(t, w.app, settingsOf(a), func(tx pgx.Tx) {
+		if _, e := tx.Exec(ctx, "DELETE FROM reporting_s01.designs"); e == nil {
+			t.Fatal("the application role deleted a design")
+		}
+	})
 }

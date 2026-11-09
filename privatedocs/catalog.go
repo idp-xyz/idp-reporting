@@ -130,10 +130,11 @@ func (s *Store[T]) SetCatalog(owner r.Identity, id string, expected int, c Catal
 	if e := ValidCatalog(c); e != nil {
 		return Catalog{}, e
 	}
-	all, e := s.read(owner)
+	tx, all, e := s.begin(owner)
 	if e != nil {
 		return Catalog{}, e
 	}
+	defer tx.Rollback()
 	i := s.find(all, id)
 	if i < 0 {
 		return Catalog{}, r.ErrNotFound
@@ -147,7 +148,7 @@ func (s *Store[T]) SetCatalog(owner r.Identity, id string, expected int, c Catal
 	}
 	next := Catalog{Domain: c.Domain, Flow: c.Flow, Favourite: c.Favourite, Archived: c.Archived, Collections: append([]string{}, c.Collections...), LastOpened: cur.LastOpened, Revision: cur.Revision + 1}
 	all[i].Catalog = &next
-	if e = s.write(owner, all); e != nil {
+	if e = s.commit(tx, all); e != nil {
 		return Catalog{}, e
 	}
 	return next, nil
@@ -162,10 +163,11 @@ func (s *Store[T]) Opened(owner r.Identity, id string, version int, at time.Time
 	if !ValidID(id) || version < 1 {
 		return Entry[T]{}, false, r.ErrInvalid
 	}
-	all, e := s.read(owner)
+	tx, all, e := s.begin(owner)
 	if e != nil {
 		return Entry[T]{}, false, e
 	}
+	defer tx.Rollback()
 	i := s.find(all, id)
 	if i < 0 || version > len(all[i].Versions) {
 		return Entry[T]{}, false, r.ErrNotFound
@@ -174,7 +176,7 @@ func (s *Store[T]) Opened(owner r.Identity, id string, version int, at time.Time
 	c := all[i].catalog()
 	c.LastOpened = at.UTC().Format(time.RFC3339Nano)
 	all[i].Catalog = &c
-	return entry, s.write(owner, all) == nil, nil
+	return entry, s.commit(tx, all) == nil, nil
 }
 
 func (s *Store[T]) find(all []record[T], id string) int {
