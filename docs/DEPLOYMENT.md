@@ -104,6 +104,7 @@ the rule and never repeats a value of the file.
 | `retention.grace`, `.batch` | 24 h, 500 | `grace` 0 (default) up to 10 years in seconds; `batch` 0 (default) up to 10000. |
 | `pdf.typst`, `.sha256`, `.fonts` | none | All three or none (the pinned Typst and the only fonts PDF export may use). |
 | `layout_directory`, `dashboard_directory`, `template_directory`, `background_directory` | none | Private single-process directories (mode 0700, owned by the user the server runs as), as in the demo. They are **per process**: two servers do not share them. |
+| `design_store` | `directories` | `directories` (the four private directories above, one server each) or `database`: every design (layouts, dashboards, templates, backgrounds, images) in the platform's store, table `designs` (migration 011), shared by every server on it; the four directory fields must then be absent, and the four features are on. See "Several servers" below (S11-B, ADR 0017). |
 | `embed_origins` | none | `{integration: [origin]}`, validated as `embedding.New` does (https origins only here); every integration must be served by a connection. |
 | `profile_label` | `unqualified` | 1..64 printable ASCII characters, shown in `/capabilities`. |
 
@@ -244,10 +245,20 @@ WantedBy=multi-user.target
 `Restart=on-failure` restarts after exit codes 1 and 2 and after a crash, not after a clean stop. The unit is an example: it is not tested here (no systemd in the qualification), only the properties it relies on are
 (exit codes, SIGHUP, SIGTERM, file modes).
 
+## Several servers (S11-B)
+
+With `"design_store": "database"` the designs live in the store, so any number of servers on the same database serve the same layouts, dashboards,
+templates, backgrounds and images; a change of one owner's designs is one transaction that locks that owner's row, so two servers never interleave
+their changes. Jobs, snapshots, artifacts and issue records were already shared (the store, the object store). What stays per process: the
+requests-in-flight cap (`max_in_flight`) and the queries-in-flight quota (docs/API.md "Limits"). The start line says `design_store`.
+
+Moving an existing deployment from the directories to the database needs its designs imported (S11-C, docs/ADR_0017_ENTERPRISE_ROADMAP.md);
+until then keep `directories` on one server.
+
 ## Upgrade procedure
 
 1. Build or install the new binary beside the old one. Run `reporting-server check-config -config …` with it (offline).
-2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (docs/OPERATIONS.md "Schema lifecycle").
+2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs` does: without `roles` the server refuses to start at step store, "no INSERT and UPDATE on designs") (docs/OPERATIONS.md "Schema lifecycle").
    The ledger check goes both ways: an **older binary refuses to start against a newer ledger, and a running older server turns `/readyz` 503 `schema`** the moment `up` has been applied. That is the check doing its work, so
    roll the servers right after the migration; a migration is not a thing to apply and then leave for a day.
 3. Roll the servers **one at a time**: take one out of the balancer (`kill -TERM`; `/readyz` says `draining`), wait for it to exit (0), start the new binary, wait for `/readyz` 200, put it back, next. Binaries that read the jobs of a newer version may destroy them (docs/OPERATIONS.md "Workers and issue jobs"): never run an older worker against a store that holds newer jobs.

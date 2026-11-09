@@ -14,5 +14,12 @@ type Catalog = privatedocs.Catalog
 const MaxTemplates = 64
 
 func Open(dir string) (*Store, error) {
-	return privatedocs.OpenCap(dir, MaxTemplates, Validate, func(d Document) string { b, _ := json.Marshal(d.Binding); return string(b) })
+	return privatedocs.OpenCap(dir, MaxTemplates, Validate, bindingKey)
 }
+
+// OpenBackend opens the templates over a backend (S11-B: the platform's database, shared by every server).
+func OpenBackend(b privatedocs.Backend) (*Store, error) {
+	return privatedocs.OpenBackend(b, MaxTemplates, Validate, bindingKey)
+}
+
+func bindingKey(d Document) string { b, _ := json.Marshal(d.Binding); return string(b) }

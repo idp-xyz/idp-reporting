@@ -71,20 +71,23 @@ type Config struct {
 	Workers           int  `json:"workers"`
 	ShutdownGrace     int  `json:"shutdown_grace"`
 
-	Store          StoreConfig         `json:"store"`
-	ObjectStore    *ObjectStoreConfig  `json:"object_store"`
-	Issuer         IssuerConfig        `json:"issuer"`
-	CursorKeyFiles []string            `json:"cursor_key_files"`
-	Connections    []ConnectionConfig  `json:"connections"`
-	Quotas         QuotasConfig        `json:"quotas"`
-	Retention      RetentionConfig     `json:"retention"`
-	PDF            *PDFConfig          `json:"pdf"`
-	LayoutDir      string              `json:"layout_directory"`
-	DashboardDir   string              `json:"dashboard_directory"`
-	TemplateDir    string              `json:"template_directory"`
-	BackgroundDir  string              `json:"background_directory"`
-	EmbedOrigins   map[string][]string `json:"embed_origins"`
-	ProfileLabel   string              `json:"profile_label"`
+	Store          StoreConfig        `json:"store"`
+	ObjectStore    *ObjectStoreConfig `json:"object_store"`
+	Issuer         IssuerConfig       `json:"issuer"`
+	CursorKeyFiles []string           `json:"cursor_key_files"`
+	Connections    []ConnectionConfig `json:"connections"`
+	Quotas         QuotasConfig       `json:"quotas"`
+	Retention      RetentionConfig    `json:"retention"`
+	PDF            *PDFConfig         `json:"pdf"`
+	LayoutDir      string             `json:"layout_directory"`
+	DashboardDir   string             `json:"dashboard_directory"`
+	TemplateDir    string             `json:"template_directory"`
+	BackgroundDir  string             `json:"background_directory"`
+	// DesignStore is where the designs are kept (S11-B, ADR 0017): "" or "directories" (the four private directories, one process each),
+	// or "database" (the platform's store, shared by every server on it; the four directory fields must then be absent).
+	DesignStore  string              `json:"design_store"`
+	EmbedOrigins map[string][]string `json:"embed_origins"`
+	ProfileLabel string              `json:"profile_label"`
 }
 
 // StoreConfig is the platform store's non-secret configuration; the connection string is the environment's (REPORTING_STORE_DSN).
@@ -469,6 +472,16 @@ func (c *Config) Validate() error {
 			return configProblem("cursor_key_files names a file twice")
 		}
 		seen[f] = true
+	}
+	// Designs (S11-B).
+	switch c.DesignStore {
+	case "", "directories":
+	case "database":
+		if c.LayoutDir != "" || c.DashboardDir != "" || c.TemplateDir != "" || c.BackgroundDir != "" {
+			return configProblem("design_store database keeps every design in the store: layout_directory, dashboard_directory, template_directory and background_directory must be absent")
+		}
+	default:
+		return configProblem("design_store is directories or database")
 	}
 	// Connections.
 	if len(c.Connections) == 0 || len(c.Connections) > MaxConnections {

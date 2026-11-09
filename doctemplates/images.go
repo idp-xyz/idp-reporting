@@ -211,13 +211,15 @@ func stripJPEG(data []byte) ([]byte, error) {
 }
 
 func OpenImages(dir string) (*Images, error) {
-	store, e := privatedocs.Open(dir, validateImage, func(a imageAsset) string {
-		return a.Binding.Integration + "\x00" + a.Binding.Dataset.ID + "\x00" + a.Binding.Dataset.Version
-	})
+	store, e := privatedocs.Open(dir, validateImage, imageKey)
 	if e != nil {
 		return nil, e
 	}
 	return &Images{store: store}, nil
+}
+
+func imageKey(a imageAsset) string {
+	return a.Binding.Integration + "\x00" + a.Binding.Dataset.ID + "\x00" + a.Binding.Dataset.Version
 }
 
 func validateImage(a imageAsset) error {

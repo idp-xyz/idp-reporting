@@ -71,6 +71,11 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 		"a secret in a list in options": with(func(d map[string]any) {
 			conn(d)["options"] = map[string]any{"list": []any{map[string]any{"Token": secret}}}
 		}),
+		"a design store of another name": with(func(d map[string]any) { d["design_store"] = secret }),
+		"designs in the store and a directory": with(func(d map[string]any) {
+			d["design_store"] = "database"
+			d["template_directory"] = "/var/lib/reporting/" + secret
+		}),
 		"a wrong type":                       with(func(d map[string]any) { issuer(d)["max_token_lifetime"] = secret }),
 		"a fraction":                         with(func(d map[string]any) { issuer(d)["max_token_lifetime"] = 12.5 }),
 		"a null":                             []byte(`{"listen":null}`),

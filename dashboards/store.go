@@ -63,8 +63,15 @@ func Validate(d Document) error {
 	return nil
 }
 func Open(dir string) (*Store, error) {
-	return privatedocs.Open(dir, Validate, func(d Document) string { b, _ := json.Marshal(d.Binding); return string(b) })
+	return privatedocs.Open(dir, Validate, bindingKey)
 }
+
+// OpenBackend opens the dashboards over a backend (S11-B: the platform's database, shared by every server).
+func OpenBackend(b privatedocs.Backend) (*Store, error) {
+	return privatedocs.OpenBackend(b, privatedocs.DefaultCap, Validate, bindingKey)
+}
+
+func bindingKey(d Document) string { b, _ := json.Marshal(d.Binding); return string(b) }
 
 // UnmarshalJSON enforces the exact field set for each widget variant.
 func (w *Widget) UnmarshalJSON(data []byte) error {

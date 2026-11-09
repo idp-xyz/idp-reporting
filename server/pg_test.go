@@ -199,6 +199,7 @@ func TestServerAgainstPostgres(t *testing.T) {
 	t.Run("a_session_with_the_object_store", func(t *testing.T) { pgSession(t, true) })
 	t.Run("readiness_follows_the_database", func(t *testing.T) { pgReadiness(t) })
 	t.Run("two_servers_on_one_database", func(t *testing.T) { pgTwoServers(t) })
+	t.Run("two_servers_share_the_designs_of_the_database", func(t *testing.T) { pgSharedDesigns(t) })
 }
 
 func pgRefusals(t *testing.T) {
@@ -486,4 +487,15 @@ func pgTwoServers(t *testing.T) {
 	}
 	sb.client.CloseIdleConnections()
 	noNewGoroutines(t, snap)
+}
+
+// pgSharedDesigns: design_store database through the production store as the application role (S11-B): two servers on one database serve the
+// same designs, under row-level security.
+func pgSharedDesigns(t *testing.T) {
+	p := newPGWorld(t)
+	w := newWorld(t)
+	w.cfg.DesignStore = "database"
+	one := startPG(t, w, p.getenv(w, p.dsn, nil))
+	two := startPG(t, w, p.getenv(w, p.dsn, nil))
+	sharedDesigns(t, w, one, two)
 }

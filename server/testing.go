@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"idp.local/reporting/privatedocs"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
 )
@@ -42,15 +43,34 @@ func WithHooksForTests(h *Hooks) Option { return func(o *options) { o.hooks = h 
 // MemoryStore is the memory store with the readiness of a Store, for tests that need no database: SetNotReady makes Ready answer a reason.
 type MemoryStore struct {
 	*memory.Store
-	mu     sync.Mutex
-	reason string
-	closed bool
-	sweep  error
+	designs map[string]*privatedocs.MemoryBackend
+	mu      sync.Mutex
+	reason  string
+	closed  bool
+	sweep   error
 }
 
 // NewMemoryStoreForTests makes one; now is the store's clock (leases and expiries).
 func NewMemoryStoreForTests(now func() time.Time) *MemoryStore {
 	return &MemoryStore{Store: memory.New(now)}
+}
+
+// Designs implements Store: one memory backend per private store, shared by every server started on this MemoryStore (S11-B).
+func (m *MemoryStore) Designs(store string) (privatedocs.Backend, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.designs == nil {
+		m.designs = map[string]*privatedocs.MemoryBackend{}
+	}
+	switch store {
+	case "layouts", "dashboards", "templates", "backgrounds", "images":
+	default:
+		return nil, r.ErrInvalid
+	}
+	if m.designs[store] == nil {
+		m.designs[store] = privatedocs.NewMemoryBackend()
+	}
+	return m.designs[store], nil
 }
 
 // SetNotReady makes Ready answer reason ("store", "schema", "roles"); "" makes it ready again.
