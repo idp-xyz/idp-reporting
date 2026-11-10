@@ -19,6 +19,7 @@ IDP 产品的独立报表平台：一个 Go 服务端和它自带的网页控制
 |---|---|
 | `reporting/` | 领域中立的核心：查询、任务、快照与私有资产；只依赖标准库（CI 检查） |
 | `adapters/contractsim/` | 合同模拟器，即合成的来源产品；`pgsource` 在单独的数据库里持久保存来源版本与授权 |
+| `adapters/httpsource/` | 通用来源适配器 `http`（S19-A）：来源产品实现固定的 HTTPS 协议（docs/SOURCE_HTTP_PROTOCOL.md）即可接入；`sourcetest` 是协议的参考实现，`conformance` 与 `cmd/reporting-source-check` 是产品方自检工具 |
 | `server/`、`cmd/reporting-server/` | 生产组合：配置文件、密钥、健康与就绪、日志、重载、停机、指标（docs/DEPLOYMENT.md） |
 | `cmd/reporting-demo/` | 本机演示：合同模拟器、回环地址、随机令牌 |
 | `cmd/reporting-migrate/` | 运维的存储工具：迁移、角色、profile、保留期清理、`verify-objects`（docs/OPERATIONS.md） |
@@ -50,7 +51,7 @@ export REPORTING_DEMO_TOKEN="$(openssl rand -hex 32)"
 
 演示也可以用两个受保护的 PostgreSQL 测试库代替 `-memory`（`REPORTING_S01_TEST_DSN`、`REPORTING_S01_SOURCE_DSN`，首次加 `-initialize-fixture`）；它只接受固定的夹具库名与回环地址，拒绝生产库。
 
-生产用 `reporting-server`（docs/DEPLOYMENT.md）与 `reporting-migrate`（docs/OPERATIONS.md）。发行的命令不注册任何适配器，宿主用三行 `main` 注册自己的适配器。
+生产用 `reporting-server`（docs/DEPLOYMENT.md）与 `reporting-migrate`（docs/OPERATIONS.md）。发行的命令只注册通用来源适配器 `http`（S19-A）：来源产品实现 docs/SOURCE_HTTP_PROTOCOL.md 并通过 `reporting-source-check`；有自己 Go 适配器的宿主仍可用三行 `main` 注册。
 
 ## 测试
 
@@ -90,7 +91,7 @@ npm run format:check                                           # Prettier（ADR 
 | 容量 | docs/CAPACITY.md |
 | 访问令牌 | docs/ACCESS_JWT.md |
 | 安全审查：每条信任边界的代码、测试与已知缺口 | docs/SECURITY_REVIEW.md |
-| 接入真实来源产品 | docs/REAL_SOURCE_ONBOARDING.md |
+| 接入真实来源产品 | docs/REAL_SOURCE_ONBOARDING.md，协议 docs/SOURCE_HTTP_PROTOCOL.md（docs/source-openapi.json） |
 | 本机测试场景与造数 | docs/TEST_SCENARIOS.md |
 | 任务基线 | docs/UX_BASELINE_S07.md |
 | 样例包 | docs/SAMPLES.md |

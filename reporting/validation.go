@@ -267,6 +267,20 @@ func validateTotals(t map[string]string, q QuerySpec, cols []Column) error {
 	}
 	return nil
 }
+
+// ValidateSourcePage holds one page a remote source answered to the dataset it was read from: every row of the dataset's width, every cell
+// of its column's type, and a total for each metric and nothing else (ErrIntegrity otherwise). An adapter that reaches its product over a
+// network (adapters/httpsource, S19-A) calls it before it passes a page on, with the dataset of the product's own catalog; the service
+// applies the same checks again to the columns the job froze. The dataset must be one ValidateQuery accepts.
+func ValidateSourcePage(rows [][]string, totals map[string]string, d Dataset) error {
+	if len(d.Columns) != len(d.Dimensions)+len(d.Metrics) {
+		return ErrIntegrity
+	}
+	if e := validateRows(rows, d.Columns); e != nil {
+		return e
+	}
+	return validateTotals(totals, QuerySpec{Metrics: d.Metrics, Dimensions: d.Dimensions}, d.Columns)
+}
 func validKey(key string) bool {
 	return len(key) > 0 && len(key) <= 128 && !strings.ContainsAny(key, "\r\n\x00")
 }
