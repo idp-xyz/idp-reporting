@@ -179,6 +179,7 @@ type world struct {
 	finance     string
 	tenant      string
 	env         map[string]string // further environment variables the server reads (S16-A: the webhook's secret)
+	reg         Registry          // the registry the server starts with; nil is the simulator's
 }
 
 type bindingJSON struct {
@@ -219,6 +220,9 @@ func newWorld(t testing.TB) *world {
 }
 
 func (w *world) registry() Registry {
+	if w.reg != nil {
+		return w.reg
+	}
 	return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) { return w.sim, nil }}
 }
 

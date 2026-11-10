@@ -184,13 +184,21 @@ func TestCommandUsageAndVersion(t *testing.T) {
 	}
 }
 
-func TestShippedCommandRegistersNoAdapter(t *testing.T) {
+// The shipped command registers the platform's generic source adapter and nothing else (S19-A): no simulator, no product's code.
+func TestShippedCommandRegistersOnlyTheHTTPAdapter(t *testing.T) {
 	src, err := os.ReadFile("../cmd/reporting-server/main.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(src)
-	if !strings.Contains(text, "server.Main(os.Args, server.Registry{})") || strings.Contains(text, "adapters/") || strings.Contains(text, "contractsim") {
-		t.Errorf("the shipped command registers something:\n%s", text)
+	if !strings.Contains(text, "server.Main(os.Args, server.DefaultRegistry())") || strings.Contains(text, "adapters/") || strings.Contains(text, "contractsim") {
+		t.Errorf("the shipped command registers something else:\n%s", text)
+	}
+	reg, err := os.ReadFile("registry.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(reg), "contractsim") || len(DefaultRegistry()) != 1 || DefaultRegistry()[HTTPAdapter] == nil {
+		t.Error("the shipped registry is not the http adapter alone")
 	}
 }

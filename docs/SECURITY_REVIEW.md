@@ -136,9 +136,18 @@
   适配器选项都不出现）、DOM S18-B。
 - 已知不覆盖：没有写入（ADR 0021 提议，未决定）；管理员看得到本租户每条绑定的主体与客户端标识，这是有意的。
 
+## 通用来源适配器与来源协议（S19-A，docs/SOURCE_HTTP_PROTOCOL.md）
+
+- 要成立的：来源产品通过固定协议接入后，平台的任何保证都不变——来源决定每次读取；来源的回答在验证通过之前不进入平台；来源不可用、超时或越出协议都关闭披露；凭据、来源地址与回答内容不进日志、错误与响应。
+- 做法：只用 HTTPS（TLS ≥ 1.2；`ca_file` 替换系统根证书即固定 CA；可选 mTLS），`http://` 只允许回环 IP 且需 `loopback_http`；不跟随重定向，不读环境代理；每个请求有超时（默认 10 秒，至多 60 秒）、请求 1 MiB、回答至多 1 MiB 的上限；回答用 `reporting.DecodeStrict` 严格解码（未知字段、大小写不同、`null`、重复键、尾随数据都拒绝）。每个回答都对照所问逐项验证：目录形状（`ValidateQuery`）、读取的查询摘要、数据集、公司、时区、币种政策、水位与 15 分钟内的到期、页的引用/摘要/水位、行宽与每格类型、合计（`ValidateSourcePage`）、游标长度与前进、授权与作废只认 `true`、预留号码与时间。验证不过即 `INTEGRITY_FAILURE`，不转交；超时、5xx、401、重定向即 `AUTHORITY_UNAVAILABLE`；错误码是封闭集合，码与状态不符即完整性失败。请求总带完整来源上下文，别人上下文的读取在本地就拒绝、不发出。错误文本固定，只含操作、原因与请求编号。凭据只来自 `auth_env` 指名的环境变量，选项里不能出现密钥字段（配置的密钥名检查覆盖 `options`）。
+- 代码：`adapters/httpsource/httpsource.go`（`call`、`refusal`、`validDataset`、`PrepareRead`、`ReadPage`、`Authority`）、`adapters/httpsource/protocol`、`reporting/validation.go`（`ValidateSourcePage`）、`server/registry.go`（`DefaultRegistry`，`http` 不是模拟器）。
+- 测试：`TestEveryStatusMapsToItsPlatformError`、`TestAnswersThatDoNotVerifyAreIntegrityFailures`、`TestARedirectIsNeverFollowed`、`TestAnAnswerOverTheBoundIsRefused`、`TestASlowSourceIsUnavailableWithinTheTimeout`、`TestMutualTLSAndAPinnedCA`（含 TLS 1.1 被拒）、`TestTheConfigurationIsCheckedAndNeverShown`、`TestAReadOfAnotherContextIsNeverSent`、`TestTheRequestCarriesTheContextTheCredentialAndARequestID`、`TestMemoryContractOverHTTP` 与 `TestPostgresContract/over_http`（整套合同经协议运行）、`TestDocumentAuthorityOverHTTP`（出具授权一致性套件经协议运行）、`TestTheShippedRegistryServesAnHTTPSourceEndToEnd` 与 `TestABadHTTPConnectionRefusesTheStartAndIsNeverShown`（日志与拒绝中不出现凭据与地址）、`cmd/reporting-source-check` 的测试。
+- 审查时看：协议只证明“这是平台”，代表谁看 context——来源产品必须在服务端映射 subject 并以自己的当前授权判断（`reporting-source-check` 的 C3、C4、R7–R10 检查，但只能抽查）；服务凭据泄露等于可以以平台身份为任意 context 发请求，所以凭据只给这一个产品、按产品分开、经 mTLS 更好。
+- 已知不覆盖：没有对真实产品端点测过；没有请求签名或防重放（依赖 TLS 与短时读取）；公司目录（ADR 0015）不在第 1 版（S19-B）；来源侧的限速与配额是产品自己的；`Evidence.DataClass` 仍是 `contract-simulator`（核心固定值，与适配器无关，另行处理）。
+
 ## 已知没有覆盖的
 
-- 真实发行方、真实适配器、数据对账与准入决定（上线清单第 16–19 项）。
+- 真实发行方、各产品对来源协议的实现与自检、数据对账与准入决定（上线清单第 16–19 项）。
 - 令牌吊销与 JWKS 自动发现；时钟偏差容忍为零。
 - 浏览器登录只对假的身份提供方测过；没有发现文档、提供方登出、静默续期与刷新令牌；`private_key_jwt`、mTLS 客户端认证与不透明访问令牌不支持；防重放记录只在单个进程内（跨服务器依赖提供方的一次性规则）；未认证的兑换路由没有按来源限速，靠 `max_in_flight`、16 个并发槽与负载均衡器（ADR 0019，docs/S15A_SCOPE.md）。
 - 追踪只到日志：请求按 W3C Trace Context 带 `trace_id`/`span_id`（S14-A），但没有 span 导出器；后台任务的追踪不是受理它的请求的追踪（存储里没有这个字段）。TLS 证书自动续期；systemd 单元示例未经测试（上线清单第 13–15 项）。

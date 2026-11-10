@@ -144,10 +144,10 @@ func TestTheServerAsASeparateProcess(t *testing.T) {
 	write(t, config, []byte(doc), 0o644)
 	tr.say("$ cat config.json   (no secret in it: files and the environment carry them)\n%s\n", doc)
 
-	// The shipped command registers no adapter.
+	// The shipped command registers the generic source adapter `http` only (S19-A): it does not run the simulator.
 	_, errs, code := run(shipped, []string{"REPORTING_STORE_DSN=postgresql://app:hostpw-Zq7@db.example/reporting?sslmode=verify-full"}, "run", "-config", config)
 	tr.say("$ REPORTING_STORE_DSN=... reporting-server run -config config.json   # the shipped command\nexit %d\n%s", code, errs)
-	if code != 1 || !strings.Contains(errs, `no adapter is registered for integration "brant-contract-demo"`) || strings.Contains(errs, "hostpw-Zq7") {
+	if code != 1 || !strings.Contains(errs, `the adapter "contract-simulator" of integration "brant-contract-demo" is not registered`) || strings.Contains(errs, "hostpw-Zq7") {
 		t.Fatalf("the shipped command: %d %s", code, errs)
 	}
 	out, errs, code := run(shipped, nil, "version")

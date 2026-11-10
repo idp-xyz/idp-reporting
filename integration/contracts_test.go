@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/adapters/httpsource/sourcetest"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -26,7 +27,21 @@ type environment struct {
 	a, b *contractsim.Simulator
 }
 
+// via is how the service reaches a contract simulator: in process (direct), or through the reporting source protocol (overHTTP: the
+// reference source in front of the simulator and the platform's adapter httpsource in front of that, S19-A). The contract runs both ways
+// and must not tell them apart.
+type via func(testing.TB, *contractsim.Simulator) r.Adapter
+
+func direct(_ testing.TB, s *contractsim.Simulator) r.Adapter { return s }
+func overHTTP(tb testing.TB, s *contractsim.Simulator) r.Adapter {
+	return sourcetest.Remote(tb, s)
+}
+
 func env(t *testing.T, repo r.Repository, extra ...r.Connection) environment {
+	t.Helper()
+	return envVia(t, direct, repo, extra...)
+}
+func envVia(t *testing.T, through via, repo r.Repository, extra ...r.Connection) environment {
 	t.Helper()
 	p := contractsim.DemoPrincipal()
 	p.Integrations = append(p.Integrations, contractsim.ShipmentIntegration)
@@ -35,7 +50,7 @@ func env(t *testing.T, repo r.Repository, extra ...r.Connection) environment {
 	g := contractsim.DefaultGrant()
 	g.CurrencyPolicy = nil
 	b.Grant(contractsim.DemoOwner(p, contractsim.ShipmentIntegration), g)
-	connections := []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: a}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: b}}
+	connections := []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: through(t, a)}, {Tenant: p.Tenant, Integration: contractsim.ShipmentIntegration, SourceTenant: "tenant_a", Adapter: through(t, b)}}
 	connections = append(connections, extra...)
 	s, e := r.NewService(r.Config{Repository: repo, Connections: connections, CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}})
 	if e != nil {
@@ -82,10 +97,10 @@ func mustError(t *testing.T, e, want error) {
 	}
 }
 
-func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
+func runContract(t *testing.T, through via, factory func(*testing.T) r.Repository) {
 	ctx := context.Background()
 	t.Run("two_domains_full_chain", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		for i, q := range []r.QuerySpec{contractsim.FinancialQuery(), contractsim.ShipmentQuery()} {
 			j := freeze(t, v, q, fmt.Sprint(i))
 			ex := export(t, v, j.SnapshotID, fmt.Sprint(i))
@@ -101,14 +116,14 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("admission_does_not_read", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "same")
 		if e != nil || j.State != "queued" || v.a.ReadCalls() != 0 {
 			t.Fatal(j, e, v.a.ReadCalls())
 		}
 	})
 	t.Run("idempotency_conflict_and_owner_axes", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		q := contractsim.FinancialQuery()
 		j, e := v.s.SubmitSnapshot(ctx, v.p, q, "same")
 		if e != nil {
@@ -127,7 +142,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("same_user_id_different_issuer", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j := freeze(t, v, contractsim.FinancialQuery(), "one")
 		ex := export(t, v, j.SnapshotID, "one")
 		p := v.p
@@ -145,7 +160,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		p := contractsim.DemoPrincipal()
 		p.Tenant = "other_platform_tenant"
 		a.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
-		v := env(t, repo, r.Connection{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: a})
+		v := envVia(t, through, repo, r.Connection{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: through(t, a)})
 		j := freeze(t, v, contractsim.FinancialQuery(), "same")
 		other, e := v.s.SubmitSnapshot(ctx, p, contractsim.FinancialQuery(), "same")
 		if e != nil || other.ID == j.ID {
@@ -157,7 +172,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		mustError(t, e, r.ErrNotFound)
 	})
 	t.Run("cross_product_requires_explicit_grant", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j := freeze(t, v, contractsim.ShipmentQuery(), "one")
 		ex := export(t, v, j.SnapshotID, "one")
 		p := v.p
@@ -174,14 +189,14 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		mustError(t, e, r.ErrDenied)
 	})
 	t.Run("company_selector_is_not_authority", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		q := contractsim.FinancialQuery()
 		q.Companies = []string{"company_other"}
 		_, e := v.s.Query(ctx, v.p, q)
 		mustError(t, e, r.ErrDenied)
 	})
 	t.Run("frozen_source_not_live_refresh", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
 		if e != nil {
 			t.Fatal(e)
@@ -206,7 +221,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		mustError(t, e, r.ErrInvalid)
 	})
 	t.Run("scope_expansion_does_not_widen", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
 		if e != nil {
 			t.Fatal(e)
@@ -228,7 +243,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("queued_revocation_and_cleanup", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
 		if e != nil {
 			t.Fatal(e)
@@ -246,7 +261,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("completed_revocation_all_disclosures", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j := freeze(t, v, contractsim.FinancialQuery(), "one")
 		ex := export(t, v, j.SnapshotID, "one")
 		g := contractsim.DefaultGrant()
@@ -269,7 +284,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 	})
 	for _, policy := range []string{"currency", "timezone"} {
 		t.Run("completed_"+policy+"_change", func(t *testing.T) {
-			v := env(t, factory(t))
+			v := envVia(t, through, factory(t))
 			j := freeze(t, v, contractsim.FinancialQuery(), "one")
 			ex := export(t, v, j.SnapshotID, "one")
 			g := contractsim.DefaultGrant()
@@ -288,7 +303,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		})
 	}
 	t.Run("authority_outage_is_distinct_and_closed", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j := freeze(t, v, contractsim.FinancialQuery(), "one")
 		ex := export(t, v, j.SnapshotID, "one")
 		v.a.SetUnavailable(true)
@@ -300,7 +315,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		mustError(t, e, r.ErrUnavailable)
 	})
 	t.Run("cancelled_claim_cannot_publish", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
 		if e != nil {
 			t.Fatal(e)
@@ -319,7 +334,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("concurrent_admission_and_claim", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		var wg sync.WaitGroup
 		ids := make(chan string, 8)
 		errs := make(chan error, 8)
@@ -373,7 +388,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("lease_expiry_generation_and_atomicity", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
 		if e != nil {
 			t.Fatal(e)
@@ -406,7 +421,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 	// Fail is fenced by the claim: the job must be running, at the claim's generation, with a lease that has
 	// not run out by the store's clock. Whatever else is ErrLease and changes nothing.
 	t.Run("fail_is_fenced_by_the_claim_and_the_lease", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")
 		if e != nil {
 			t.Fatal(e)
@@ -445,7 +460,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 	// ResolveFailure replaces ISSUE_UNRECONCILED, and nothing else, with the job's own code (S03-H): only for
 	// an issue job that is failed, at the claim's generation, with that code; no lease is needed.
 	t.Run("resolve_failure_is_fenced_by_the_claim_the_state_and_the_code", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		snap := freeze(t, v, contractsim.FinancialQuery(), "snap")
 		claimed := func(key string) r.Claim {
 			t.Helper()
@@ -537,7 +552,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 	// stores hand back the group they were given, and refuse a record whose group is not the job's.
 	t.Run("jobs_listing_newest_first_under_the_identity_and_its_integrations", func(t *testing.T) {
 		// S07-C: Jobs is Issues for every kind: the identity's jobs under the given integrations, newest first, at most limit of them.
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		first := freeze(t, v, contractsim.FinancialQuery(), "a")
 		second := freeze(t, v, contractsim.ShipmentQuery(), "b")
 		third := export(t, v, first.SnapshotID, "c")
@@ -647,7 +662,7 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 		}
 	})
 	t.Run("a_group_issue_job_and_its_record_round_trip", func(t *testing.T) {
-		v := env(t, factory(t))
+		v := envVia(t, through, factory(t))
 		snap := freeze(t, v, contractsim.FinancialQuery(), "snap")
 		stored, e := v.repo.Snapshot(ctx, v.p.Identity, snap.SnapshotID)
 		if e != nil {
@@ -718,7 +733,12 @@ func runContract(t *testing.T, factory func(*testing.T) r.Repository) {
 	})
 }
 func TestMemoryContract(t *testing.T) {
-	runContract(t, func(*testing.T) r.Repository { return memory.New(time.Now) })
+	runContract(t, direct, func(*testing.T) r.Repository { return memory.New(time.Now) })
+}
+
+// TestMemoryContractOverHTTP is the same contract with every simulator reached through the reporting source protocol (S19-A).
+func TestMemoryContractOverHTTP(t *testing.T) {
+	runContract(t, overHTTP, func(*testing.T) r.Repository { return memory.New(time.Now) })
 }
 func TestPostgresContract(t *testing.T) {
 	dsn := os.Getenv("REPORTING_S01_TEST_DSN")
@@ -735,10 +755,12 @@ func TestPostgresContract(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	runContract(t, func(t *testing.T) r.Repository {
+	reset := func(t *testing.T) r.Repository {
 		if e := store.ResetFixture(ctx); e != nil {
 			t.Fatal(e)
 		}
 		return store
-	})
+	}
+	t.Run("direct", func(t *testing.T) { runContract(t, direct, reset) })
+	t.Run("over_http", func(t *testing.T) { runContract(t, overHTTP, reset) })
 }

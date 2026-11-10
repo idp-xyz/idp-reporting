@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"idp.local/reporting/adapters/httpsource"
 	r "idp.local/reporting/reporting"
 )
 
@@ -13,16 +14,26 @@ import (
 // shown, so that a factory cannot leak a connection string through it; the start line says which connection failed.
 type AdapterFactory func(options json.RawMessage, getenv func(string) string) (r.Adapter, error)
 
-// Registry maps the adapter names a configuration may use to their factories. The shipped command's registry is empty: a host that has an
-// adapter writes a three-line main (docs/DEPLOYMENT.md).
+// Registry maps the adapter names a configuration may use to their factories. The shipped command's registry is DefaultRegistry; a host
+// with an adapter of its own writes a three-line main around a registry of its own (docs/DEPLOYMENT.md).
 type Registry map[string]AdapterFactory
+
+// HTTPAdapter is the name of the generic source adapter (S19-A, adapters/httpsource, docs/SOURCE_HTTP_PROTOCOL.md): a connection with
+// `"adapter": "http"` reaches a source product that implements the reporting source protocol.
+const HTTPAdapter = "http"
+
+// DefaultRegistry is the shipped command's registry: the generic source adapter and nothing else. It is the platform's own reviewed code
+// and is not a simulator.
+func DefaultRegistry() Registry {
+	return Registry{HTTPAdapter: httpsource.Factory}
+}
 
 // simulated is implemented by an adapter that is a test fixture. The contract simulators implement it; an adapter of a real product does not.
 type simulated interface{ IsSimulator() bool }
 
 // isSimulator says whether an adapter reports itself as a contract simulator. It is the adapter's own word: a wrapper that hides the method
-// (embedding the Adapter interface rather than the simulator) is not found, which is why the shipped command registers nothing and a host's
-// registry is its own code to review.
+// (embedding the Adapter interface rather than the simulator) is not found, which is why the shipped command registers only the platform's
+// own generic adapter and a host's registry is its own code to review.
 func isSimulator(a r.Adapter) bool {
 	s, ok := a.(simulated)
 	return ok && s.IsSimulator()

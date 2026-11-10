@@ -4,7 +4,8 @@
 and the environment, and the adapters a host registers, turned into a running server with health and readiness endpoints, JSON logs that carry counts and codes
 only, an atomic reload of the issuer files and a graceful shutdown. It is a mechanism with its qualification, **not a production admission**: `GET /capabilities`
 says `production_approved: false` whatever the configuration says (there is no configuration field for it; changing it is a code change after the admission
-decision), and the repository contains no adapter for any real source product. The go-live checklist at the end says what is done, what the operator does and what is open.
+decision), and the repository contains no adapter written for any one source product: since S19-A a product connects through the generic adapter `http`
+(docs/SOURCE_HTTP_PROTOCOL.md). The go-live checklist at the end says what is done, what the operator does and what is open.
 
 ## The command and the host's `main`
 
@@ -14,8 +15,10 @@ reporting-server run -config FILE            # start, serve, drain
 reporting-server version                     # the binary's version and the schema version it needs
 ```
 
-The shipped command registers **no adapter**, so `run` stops at the adapters step with `no adapter is registered for integration "X"`. A host that has an adapter
-(the integration slice's) builds its own command; the whole of its `main` is:
+The shipped command registers **one adapter, `http`** (S19-A, `adapters/httpsource`): the platform's generic source adapter, which speaks the reporting source
+protocol (docs/SOURCE_HTTP_PROTOCOL.md) to a product that implements it. It is the platform's own reviewed code and not a simulator; any other adapter name in
+the file stops `run` at the adapters step with `the adapter "X" of integration "Y" is not registered`. A host that has an adapter of its own (Go code of
+its own review) builds its own command; the whole of its `main` is:
 
 ```go
 package main
@@ -27,7 +30,9 @@ import (
 )
 
 func main() {
-	server.Main(os.Args, server.Registry{"my-product": myProductFactory}) // func(options json.RawMessage, getenv func(string) string) (reporting.Adapter, error)
+	reg := server.DefaultRegistry()  // the http adapter
+	reg["my-product"] = myProductFactory // func(options json.RawMessage, getenv func(string) string) (reporting.Adapter, error)
+	server.Main(os.Args, reg)
 }
 ```
 
@@ -66,7 +71,8 @@ the rule and never repeats a value of the file.
   },
   "cursor_key_files": ["/etc/reporting/keys/cursor-2026-11.key", "/etc/reporting/keys/cursor-2026-08.key"],
   "connections": [
-    { "tenant": "acme", "integration": "my-product", "source_tenant": "acme-prod", "adapter": "my-product", "options": { "base_url": "https://product.internal" } }
+    { "tenant": "acme", "integration": "erp-finance", "source_tenant": "acme-prod", "adapter": "http",
+      "options": { "base_url": "https://erp.internal/reporting", "ca_file": "/etc/reporting/tls/erp-ca.pem", "auth_env": "REPORTING_SOURCE_ERP_AUTH", "issuance": "rows" } }
   ],
   "quotas": { "jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120, "queries_in_flight": 4 },
   "retention": { "sweep_interval": 0 },
@@ -105,7 +111,7 @@ the rule and never repeats a value of the file.
 | `issuer.max_token_lifetime` | required | 1..3600 seconds. |
 | `issuer.jwks_file`, `.bindings_file` | required | The public keys (at most 64 KiB, 16 RSA keys of 2048..4096 bits, e=65537) and the list of `{subject, client_id, tenant, integrations[, roles]}` (`roles`, S12-A, ADR 0018: 1..5 of `viewer`, `designer`, `publisher`, `issuer`, `administrator`; absent: `viewer, designer, publisher, issuer`, the rights before roles) (strict, at most 4096). Re-read by a reload. |
 | `cursor_key_files` | required | 1..4 files, newest first; each holds one key, hex or base64 (a text valid as both is read as hex), 32..64 bytes; two files may not hold the same key. |
-| `connections` | required | 1..256 entries `{tenant, integration, source_tenant, adapter, options}`; `(tenant, integration)` unique; `adapter` names a registry entry. |
+| `connections` | required | 1..256 entries `{tenant, integration, source_tenant, adapter, options}`; `(tenant, integration)` unique; `adapter` names a registry entry (`http` in the shipped command; "Connecting a source product over HTTP" below for its `options`). |
 | `quotas.*` | 8, 64, 120, 4 | `jobs_in_flight` 1..1000, `stored_results` 1..100000, `admissions_per_hour` 1..100000, `queries_in_flight` 1..64; 0 is the default of each. |
 | `retention.sweep_interval` | 0 (off) | 0 or 60..604800 seconds. See "The sweep" below. |
 | `retention.grace`, `.batch` | 24 h, 500 | `grace` 0 (default) up to 10 years in seconds; `batch` 0 (default) up to 10000. |
@@ -139,9 +145,33 @@ tenant, cursor key, connection-string password and object store keys and looks f
 | TLS private key | file named by `tls_key_file` | The same rules as a cursor key; the certificate file must not be writable by group or others. |
 | Issuer JWKS and bindings | files named by `jwks_file`, `bindings_file` (public data, personal identifiers) | Regular file, not a symbolic link, owned by the server's user or root, not writable by group or others. |
 | Sign-in client secret | environment `REPORTING_SIGN_IN_CLIENT_SECRET`, only for a confidential client; absent for a public client (the recommended registration, PKCE alone) | 1..512 printable ASCII characters without a space; sent as HTTP Basic (`client_secret_basic`) to the token endpoint only. |
+| Source credential (S19-A) | environment variable named by a connection's `options.auth_env` (one per product, e.g. `REPORTING_SOURCE_ERP_AUTH`), and/or the client key file `options.client_key_file` | Set and 1..4096 printable characters without a space; sent only as `Authorization: Bearer` to that connection's `base_url`. The key file: regular, not a link, mode 0600 or 0400, at most 64 KiB. |
 | Webhook signing secret (S16-A) | environment `REPORTING_WEBHOOK_SECRET`, required when `schedules.webhook` is configured | 32..1024 bytes (generate with `openssl rand -hex 32`); give the receiver the same value. Never shown; rotating it is a restart, rolled, with the receiver accepting both for the while. |
 
 A symbolic link is refused for the file itself (it is opened with `O_NOFOLLOW`); a link in a directory above it is the operator's layout and is not checked.
+
+## Connecting a source product over HTTP (S19-A)
+
+A connection with `"adapter": "http"` reaches a product that implements the reporting source protocol (docs/SOURCE_HTTP_PROTOCOL.md). Its `options`, read
+strictly (an unknown field, `null` or a repeated key refuses the start; the error names the field, never the value):
+
+| Option | Default | Rules |
+|---|---|---|
+| `base_url` | required | `https://host[:port][/path]`, no user, query or fragment, a clean path; `http://` only to a loopback IP address with `loopback_http`. |
+| `loopback_http` | `false` | Allows `http://` to a loopback IP address, for qualification only. |
+| `timeout` | 10 | 0 (default) or 1..60 seconds for one request, connection to the last byte. |
+| `ca_file` | none (the system's roots) | Absolute path of a PEM file of the CA that vouches for the product; it **replaces** the system's roots for this connection (a pin). |
+| `client_cert_file`, `client_key_file` | none | Both or neither: the platform's client certificate for mTLS and its key (mode 0600 or 0400). |
+| `auth_env` | none | The **name** of the environment variable that holds the bearer credential (`A-Z 0-9 _`); the variable must be set. |
+| `max_response_bytes` | 1048576 | 0 (default) or 4096..1048576. |
+| `issuance` | `none` | `none` (issuing through the connection is unsupported), `rows` (the document authority of ADR 0003, one row per document) or `groups` (contract version 2, a row group per document, S03-K). |
+
+A connection needs a credential: `auth_env`, a client certificate, or both (`loopback_http` alone is accepted for tests). The adapter follows no redirect,
+uses TLS 1.2 or later and no proxy from the environment, and verifies every answer before it is used (an answer that does not verify is
+`INTEGRITY_FAILURE`, a product that cannot be reached, is too slow or answers 5xx is `AUTHORITY_UNAVAILABLE`, 503 to the caller). Each request carries a
+random `X-Request-Id` and the request's `traceparent`; the product logs them. **Before** a connection is added the product passes `reporting-source-check`
+(docs/SOURCE_HTTP_PROTOCOL.md section 7) against the endpoint the platform will use, with the credential and CA the connection will use. Rotating the credential
+is a restart, rolled one server at a time, with the product accepting the old and the new credential for the while.
 
 ## What a start does, in order
 
@@ -324,7 +354,9 @@ Moving an existing deployment from the directories to the database: stop the ser
 Tested here, against real TLS and real RS256 tokens: every refusal of the file and of a start; the whole session (no token 401, wrong audience or scope refused, `/session`, `/capabilities`, a query, a snapshot job, an export in the
 object store, the download, a quota refusal); the rotation overlap and removal by reload, changed bindings, a broken file keeping the old configuration; readiness for each reason and its recovery, on PostgreSQL too (the database unreachable through a proxy, the schema rolled back, a privilege granted,
 row-level security disabled); a drain with a request in flight, with a job in hand, out of grace (the job left claimable), the exit codes; TLS 1.2 refused; two servers on one database sharing a queue and one identity's quota; a real second process (`internal/servertesthost`).
-Not tested: systemd, a real load balancer, a PostgreSQL that enforces TLS and passwords (the throwaway server is `trust` and plain), certificate renewal, a drain of a PostgreSQL-backed worker out of grace, file systems where `O_NOFOLLOW` or owner checks differ,
+The `http` adapter (S19-A) is tested against the reference source over loopback TLS with a pinned CA and with mTLS, against hostile sources (redirects,
+oversize, slow and malformed answers, every status, answers that do not verify) and through a whole server session (`TestTheShippedRegistryServesAnHTTPSourceEndToEnd`).
+Not tested: a real product's endpoint, a product behind a TLS-terminating proxy, systemd, a real load balancer, a PostgreSQL that enforces TLS and passwords (the throwaway server is `trust` and plain), certificate renewal, a drain of a PostgreSQL-backed worker out of grace, file systems where `O_NOFOLLOW` or owner checks differ,
 a non-Linux host.
 
 ## Go-live checklist
@@ -350,6 +382,6 @@ alone to do.
 | 14 | The unit, the user, the file modes, `TimeoutStopSec` above `shutdown_grace`, the balancer pointed at `/readyz` | Operator (the example above is untested) | S05-A |
 | 15 | Logs shipped and watched (`worker_failed`, `reload` refusals, `drain_end` with `clean:false`, `http_server_error`); metrics scraped from `metrics_listen` and alerts on `reporting_ready` and the failure counters | Done (the log events, the metrics listener, trace ids in the log and the `traceparent` header, S14-A) / Operator (shipping, scraping, the alerts) / Open (no span exporter; a job's trace is not the admitting request's) | S05-A, S14-A, "Metrics", "Logging" |
 | 16 | **The real issuer**: its JWKS, the real bindings (subject, client, tenant, integrations), its lifetime policy, discovery and emergency revocation; the console's client registered for the browser sign-in (public, PKCE S256, the exact redirect URI) and the `sign_in` section filled in | **Open** (waits for the real IdP contract; docs/ACCESS_JWT.md) / Done (the generic sign-in, tested against a fake provider, S15-A) | S02-A, S15-A, "Browser sign-in" |
-| 17 | **A real adapter** for each source product and its contract (catalog, prepared reads, current authorization, issue authority), registered in the host's `main` | **Open** (the integration slice) | docs/REAL_SOURCE_ONBOARDING.md |
+| 17 | **Each source product implements the reporting source protocol** (catalog, prepared reads, current authorization, and the issue authority when it issues) and **passes `reporting-source-check`** against the endpoint, credential and CA its `http` connection will use | Done (the protocol, the adapter `http` in the shipped command, the reference source and the checker, S19-A) / **Open** (each product's implementation and its passing run, with the product team) | docs/SOURCE_HTTP_PROTOCOL.md, docs/REAL_SOURCE_ONBOARDING.md |
 | 18 | **Data reconciliation** with the product: totals, the issue records against the product's numbers after a restore, the grants | **Open** (needs the real adapter) | S03-H, S04-F |
 | 19 | **The admission decision** itself: `production_approved` changes only by a code change after it | **Open** | docs/s00/MIGRATION.md |

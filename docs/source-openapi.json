@@ -1,0 +1,1631 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "info": {
+    "title": "Reporting source protocol",
+    "version": "1",
+    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A).",
+    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups."
+  },
+  "servers": [
+    {
+      "url": "{base_url}",
+      "description": "The connection's base_url (https://, a path prefix allowed).",
+      "variables": {
+        "base_url": {
+          "default": "https://product.internal"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "bearer": []
+    },
+    {
+      "mutualTLS": []
+    },
+    {
+      "bearer": [],
+      "mutualTLS": []
+    }
+  ],
+  "paths": {
+    "/reporting-source/v1/catalog": {
+      "post": {
+        "operationId": "catalog",
+        "summary": "The published datasets the context may read now.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/reads": {
+      "post": {
+        "operationId": "prepareRead",
+        "summary": "Prepare a stable read of the query under the context's current rights.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrepareResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/reads/{ref}/pages": {
+      "post": {
+        "operationId": "readPage",
+        "summary": "One page of the frozen read.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._~-]{1,128}$"
+            },
+            "description": "The read's ref, the same as read.ref in the body."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/reads/{ref}/authorize": {
+      "post": {
+        "operationId": "authorizeCurrent",
+        "summary": "Whether the context's current rights still cover the whole frozen read.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._~-]{1,128}$"
+            },
+            "description": "The read's ref, the same as read.ref in the body."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/issues/{job_id}/prepare": {
+      "post": {
+        "operationId": "prepareDocument",
+        "summary": "Authorize one document and reserve its number (idempotent by job id and intent).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "description": "The platform's job id, the same as the body's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareIssueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrepareIssueResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error code not_found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error code conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/issues/{job_id}/confirm": {
+      "post": {
+        "operationId": "confirmIssue",
+        "summary": "Record the issued file under the reserved number (idempotent by digest).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "description": "The platform's job id, the same as the body's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error code not_found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error code conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/issues/{job_id}/void": {
+      "post": {
+        "operationId": "voidIssue",
+        "summary": "Void whatever is held for the job; final for the job id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "description": "The platform's job id, the same as the body's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error code not_found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error code conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The platform's service credential, from the environment variable the connection's auth_env names."
+      },
+      "mutualTLS": {
+        "type": "mutualTLS",
+        "description": "The platform's client certificate (client_cert_file)."
+      }
+    },
+    "parameters": {
+      "RequestID": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "description": "The platform's random id of this request. Log it."
+      }
+    },
+    "schemas": {
+      "Context": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "platform_tenant",
+          "issuer",
+          "subject",
+          "integration",
+          "source_tenant"
+        ],
+        "properties": {
+          "platform_tenant": {
+            "type": "string",
+            "description": "The platform tenant of the verified access token.",
+            "minLength": 1
+          },
+          "issuer": {
+            "type": "string",
+            "description": "The access token's issuer.",
+            "minLength": 1
+          },
+          "subject": {
+            "type": "string",
+            "description": "The access token's subject. The source maps (platform_tenant, issuer, subject) to its own actor; nothing else of a request is an authority.",
+            "minLength": 1
+          },
+          "integration": {
+            "type": "string",
+            "description": "The connection's integration id.",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "source_tenant": {
+            "type": "string",
+            "description": "The connection's source tenant.",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "description": "Who asks, through which connection. platform_tenant + issuer + subject at most 1024 bytes together."
+      },
+      "Ref": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "Column": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "type"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "date",
+              "boolean",
+              "integer",
+              "decimal"
+            ]
+          },
+          "scale": {
+            "type": "integer",
+            "description": "Decimal places of a decimal, 0..18; absent for the other types.",
+            "minimum": 0,
+            "maximum": 18
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 32
+          }
+        }
+      },
+      "Dataset": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dataset",
+          "columns",
+          "metrics",
+          "dimensions",
+          "timezone"
+        ],
+        "properties": {
+          "dataset": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            },
+            "description": "The dimensions, then the metrics, in their order.",
+            "minItems": 1,
+            "maxItems": 64
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "currency_policy": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "An IANA zone."
+          }
+        }
+      },
+      "Filter": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "Sort": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "direction"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          }
+        }
+      },
+      "PageSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "limit"
+        ],
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "QuerySpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "integration_id",
+          "dataset",
+          "company_ids",
+          "metrics",
+          "dimensions",
+          "filters",
+          "sort",
+          "as_of",
+          "timezone",
+          "page"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "1.0"
+          },
+          "integration_id": {
+            "type": "string"
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "company_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ref"
+            }
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            },
+            "maxItems": 0
+          },
+          "sort": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sort"
+            },
+            "maxItems": 0
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "currency_policy": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageSpec"
+          }
+        },
+        "description": "The platform's query (docs/API.md), as the caller sent it, company_ids sorted. company_ids are selectors, never an authority."
+      },
+      "Read": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "scope_handle",
+          "query_hash",
+          "dataset",
+          "company_ids",
+          "timezone",
+          "watermark",
+          "expires_at"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "The source's reference of the read; also the path segment.",
+            "pattern": "^[A-Za-z0-9._~-]{1,128}$"
+          },
+          "scope_handle": {
+            "type": "string",
+            "description": "Opaque to the platform, 1..1024 printable ASCII.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "query_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The query_hash of the request, repeated."
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "company_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exactly the query's, in its order."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The query's."
+          },
+          "currency_policy": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "watermark": {
+            "type": "string",
+            "description": "The version of the source data the read is frozen at, 1..256 printable ASCII.",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in a fraction); the platform sends a read's expires_at back exactly as it was given. After the platform's now, at most 15 minutes ahead."
+          }
+        },
+        "description": "A prepared read. The platform keeps it and sends every field back unchanged in later requests; the source must check it against its own record."
+      },
+      "CatalogRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          }
+        }
+      },
+      "CatalogResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "datasets"
+        ],
+        "properties": {
+          "datasets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dataset"
+            },
+            "description": "The published versions the context may read now; at most 100, no reference twice.",
+            "maxItems": 100
+          }
+        }
+      },
+      "PrepareRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "query",
+          "query_hash"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QuerySpec"
+          },
+          "query_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "reporting.QueryHash of the query (SHA-256 of its JSON without page, companies sorted). The source may recompute it and refuse a mismatch (integrity)."
+          }
+        }
+      },
+      "PrepareResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "read"
+        ],
+        "properties": {
+          "read": {
+            "$ref": "#/components/schemas/Read"
+          }
+        }
+      },
+      "PageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "read",
+          "cursor",
+          "limit"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "read": {
+            "$ref": "#/components/schemas/Read"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "\"\" for the first page, else the next_cursor of the previous page.",
+            "maxLength": 2048
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "PageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "query_hash",
+          "watermark",
+          "rows",
+          "totals",
+          "next_cursor"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "query_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "watermark": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "At most limit rows, each of the dataset's columns, as exact strings.",
+            "maxItems": 100
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "One total per metric of the dataset, the same on every page."
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "\"\" on the last page; else 1..2048 printable ASCII, never the request's cursor, never after an empty page.",
+            "maxLength": 2048
+          }
+        }
+      },
+      "AuthorizeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "read"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "read": {
+            "$ref": "#/components/schemas/Read"
+          }
+        }
+      },
+      "AuthorizeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "authorized"
+        ],
+        "properties": {
+          "authorized": {
+            "type": "boolean",
+            "description": "Only true is an authorization; a refusal is an error.",
+            "const": true
+          }
+        }
+      },
+      "Group": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fields",
+          "key",
+          "rows",
+          "rows_sha256"
+        ],
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3
+          },
+          "key": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "rows_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "Intent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_id",
+          "read",
+          "row_index",
+          "row_sha256",
+          "template_id",
+          "template_version",
+          "template_sha256"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "The platform's job id.",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "read": {
+            "$ref": "#/components/schemas/Read"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "row_sha256": {
+            "type": "string",
+            "description": "SHA-256 of the row's JSON as docs/API.md specifies; \"\" for a group intent."
+          },
+          "template_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{32}$"
+          },
+          "template_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "template_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$"
+          },
+          "group": {
+            "$ref": "#/components/schemas/Group"
+          }
+        }
+      },
+      "PrepareIssueRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "intent"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/Intent"
+          }
+        }
+      },
+      "Reservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "job_id",
+          "number",
+          "issued_at",
+          "expires_at"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^[!-~]{1,128}$"
+          },
+          "job_id": {
+            "type": "string",
+            "description": "The platform's job id.",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "number": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
+          },
+          "issued_at": {
+            "type": "string",
+            "description": "RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in a fraction); the platform sends a read's expires_at back exactly as it was given. A whole second, 1970..9999."
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in a fraction); the platform sends a read's expires_at back exactly as it was given. After issued_at."
+          }
+        }
+      },
+      "PrepareIssueResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reservation"
+        ],
+        "properties": {
+          "reservation": {
+            "$ref": "#/components/schemas/Reservation"
+          }
+        }
+      },
+      "Confirmation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_id",
+          "reservation_ref",
+          "sha256",
+          "pages"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "The platform's job id.",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "reservation_ref": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "ConfirmRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "confirmation"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "confirmation": {
+            "$ref": "#/components/schemas/Confirmation"
+          }
+        }
+      },
+      "Receipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "confirmed_at"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^[!-~]{1,128}$"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "description": "RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in a fraction); the platform sends a read's expires_at back exactly as it was given. A whole second, not before issued_at."
+          }
+        }
+      },
+      "ConfirmResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "receipt"
+        ],
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          }
+        }
+      },
+      "VoidRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "job_id",
+          "reason"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "job_id": {
+            "type": "string",
+            "description": "The platform's job id.",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "reason": {
+            "type": "string",
+            "description": "The platform's reason (an error code), UTF-8, at most 1024 bytes.",
+            "maxLength": 1024
+          }
+        }
+      },
+      "VoidResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "voided"
+        ],
+        "properties": {
+          "voided": {
+            "type": "boolean",
+            "const": true
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid",
+              "denied",
+              "not_found",
+              "conflict",
+              "expired",
+              "unsupported",
+              "integrity",
+              "budget",
+              "unavailable"
+            ]
+          }
+        },
+        "description": "Every refusal's body, sent with the code's own status (docs/SOURCE_HTTP_PROTOCOL.md, Errors)."
+      }
+    }
+  }
+}
