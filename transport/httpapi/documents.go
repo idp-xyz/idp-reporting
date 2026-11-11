@@ -57,7 +57,7 @@ func WithDocumentPreviews(fallback http.Handler, s *r.Service, auth Authenticate
 }
 
 func describeDocumentBinding(req *http.Request, s *r.Service, p r.Principal, b doctemplates.Binding) (r.Dataset, error) {
-	catalog, e := s.Catalog(req.Context(), p, b.Integration)
+	catalog, e := catalogOf(req, s, p, b.Integration)
 	if e != nil {
 		return r.Dataset{}, e
 	}
@@ -72,10 +72,7 @@ func authorizeDocument(req *http.Request, s *r.Service, p r.Principal, config do
 	if e := doctemplates.Validate(config); e != nil {
 		return e
 	}
-	if _, e := resolveDocumentBackground(p, config, assets); e != nil {
-		return e
-	}
-	if _, e := resolveDocumentImages(p, config, assets); e != nil {
+	if e := checkDocumentAssets(req, p, config, assets); e != nil {
 		return e
 	}
 	d, e := describeDocumentBinding(req, s, p, config.Binding)

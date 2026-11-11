@@ -74,7 +74,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	if len(layoutStores) == 1 {
 		store = layoutStores[0]
 		describeBinding := func(req *http.Request, p r.Principal, b layouts.Binding) (r.Dataset, error) {
-			catalog, e := service.Catalog(req.Context(), p, b.Integration)
+			catalog, e := catalogOf(req, service, p, b.Integration)
 			if e != nil {
 				return r.Dataset{}, e
 			}
@@ -102,6 +102,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			if e != nil {
 				return e
 			}
+			req = listing(req) // one catalog answer per integration for the entries (listing.go)
 			out := []map[string]any{}
 			for _, v := range all {
 				if e = authorize(req, p, v.Layout); e != nil {

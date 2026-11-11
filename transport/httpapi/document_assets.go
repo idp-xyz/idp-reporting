@@ -52,6 +52,7 @@ func WithDocumentAssets(fallback http.Handler, s *r.Service, auth Authenticate, 
 		if e != nil {
 			return e
 		}
+		req = listing(req) // one catalog answer per integration for the entries (listing.go)
 		out := []doctemplates.BackgroundSummary{}
 		for _, v := range all {
 			if _, e = describeDocumentBinding(req, s, p, v.Binding); e != nil {
@@ -145,6 +146,7 @@ func mountDocumentImages(mux *http.ServeMux, s *r.Service, auth Authenticate, im
 		if e != nil {
 			return e
 		}
+		req = listing(req) // one catalog answer per integration for the entries (listing.go)
 		out := []doctemplates.ImageSummary{}
 		for _, v := range all {
 			if _, e = describeDocumentBinding(req, s, p, v.Binding); e != nil {

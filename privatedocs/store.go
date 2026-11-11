@@ -353,6 +353,22 @@ func (s *Store[T]) Release(owner r.Identity, id string) (ReleaseState, error) {
 	}
 	return ReleaseState{}, r.ErrNotFound
 }
+
+// Releases is the release state of every record of the owner by id, from one read of the owner's document: a listing that says what
+// each entry has published asks once, not once per entry (each Release reads and checks the whole document).
+func (s *Store[T]) Releases(owner r.Identity) (map[string]ReleaseState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all, e := s.read(owner)
+	if e != nil {
+		return nil, e
+	}
+	out := make(map[string]ReleaseState, len(all))
+	for _, item := range all {
+		out[item.Versions[0].ID] = releaseState(item.Releases)
+	}
+	return out, nil
+}
 func (s *Store[T]) Publish(owner r.Identity, id, action string, version, expected int) (ReleaseState, error) {
 	return s.PublishAs(owner, "", id, action, version, expected)
 }
