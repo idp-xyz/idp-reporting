@@ -5406,6 +5406,20 @@
         ],
         "additionalProperties": false
       },
+      "DashboardWidgetTitle": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "S21-A: a widget's title, shown in place of its default heading: 1 to 64 characters, none of them a control character (Unicode Cc)."
+      },
+      "DashboardWidgetWidth": {
+        "type": "string",
+        "enum": [
+          "half",
+          "full"
+        ],
+        "description": "S21-A: a widget's width in the dashboard's two-column grid; absent means half."
+      },
       "DashboardWidget": {
         "oneOf": [
           {
@@ -5418,6 +5432,12 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128
+              },
+              "title": {
+                "$ref": "#/components/schemas/DashboardWidgetTitle"
+              },
+              "width": {
+                "$ref": "#/components/schemas/DashboardWidgetWidth"
               }
             },
             "required": [
@@ -5430,7 +5450,11 @@
             "type": "object",
             "properties": {
               "type": {
-                "const": "bar"
+                "enum": [
+                  "bar",
+                  "line",
+                  "pie"
+                ]
               },
               "field": {
                 "type": "string",
@@ -5441,6 +5465,12 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128
+              },
+              "title": {
+                "$ref": "#/components/schemas/DashboardWidgetTitle"
+              },
+              "width": {
+                "$ref": "#/components/schemas/DashboardWidgetWidth"
               }
             },
             "required": [
@@ -5448,7 +5478,8 @@
               "field",
               "category"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "A chart over the current page's rows: a bar (S03-C4), a line or a pie (S21-A), of a category column and a numeric field. The console draws them; the server keeps the binding."
           },
           {
             "type": "object",
@@ -5466,6 +5497,12 @@
                 "minItems": 1,
                 "maxItems": 100,
                 "uniqueItems": true
+              },
+              "title": {
+                "$ref": "#/components/schemas/DashboardWidgetTitle"
+              },
+              "width": {
+                "$ref": "#/components/schemas/DashboardWidgetWidth"
               }
             },
             "required": [
@@ -5475,7 +5512,7 @@
             "additionalProperties": false
           }
         ],
-        "description": "One widget, in the exact field set of its type (dashboards.Widget)."
+        "description": "One widget, in the exact field set of its type (dashboards.Widget), plus the optional title and width (S21-A)."
       },
       "DashboardDocument": {
         "type": "object",

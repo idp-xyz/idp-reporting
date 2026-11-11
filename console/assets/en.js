@@ -1468,26 +1468,26 @@ window.reportingEnglish = {
   分类字段: 'Category field',
   数值字段: 'Value field',
   添加当前页柱状图: 'Add current-page bar chart',
-  '指标卡是服务端原范围合计，表格和柱状图是当前页或有界预览；两者范围可能不同。看板不计算新的汇总，不改变查询权限。':
-    'Metric cards are server-side totals over the original scope; tables and bar charts are the current page or a bounded preview, so the two scopes may differ. The dashboard computes no new aggregates and does not change query permissions.',
+  '指标卡是服务端原范围合计，表格和图表是当前页或有界预览；两者范围可能不同。看板不计算新的汇总，不改变查询权限。每个组件可设标题与宽度。':
+    'Metric cards are server-side totals over the original scope; tables and charts are the current page or a bounded preview, so the two scopes may differ. The dashboard computes no new aggregates and does not change query permissions. Every component may have a title and a width.',
   清空组件: 'Clear components',
   组件与顺序: 'Components and order',
   '自上而下即看板顺序；上移、下移或移除': 'Top to bottom is the dashboard order; move up, move down or remove',
-  '尚无组件。先在组件库里添加指标卡、明细表或柱状图。':
-    'No components yet. Add a metric card, detail table or bar chart from the component library first.',
+  '尚无组件。先在组件库里添加指标卡、明细表或图表。':
+    'No components yet. Add a metric card, detail table or chart from the component library first.',
   数据来源: 'Data source',
   看板绑定当前授权查询的数据集: 'The dashboard binds to the dataset of the current authorised query',
   参数与筛选: 'Parameters and filters',
   属性: 'Properties',
-  '选择数据集与公司范围，预览或冻结快照后再组合指标卡、明细表和柱状图。':
-    'Select a dataset and company scope, preview or freeze a snapshot, then compose metric cards, detail tables and bar charts.',
+  '选择数据集与公司范围，预览或冻结快照后再组合指标卡、明细表和图表。':
+    'Select a dataset and company scope, preview or freeze a snapshot, then compose metric cards, detail tables and charts.',
   看板属性: 'Dashboard properties',
   '绑定、范围与文件': 'Binding, scope and files',
   '0 个组件': '0 components',
   '未关联服务器看板；需显式启用私有看板目录。':
     'No server dashboard linked; the private dashboard directory must be enabled explicitly.',
-  '指标卡是全范围的服务端合计，表格与柱状图只是当前页；看板不改变查询权限，发布版本只属于你自己。':
-    'Metric cards are server-side totals over the full scope; tables and bar charts are only the current page. The dashboard does not change query permissions, and published versions belong only to you.',
+  '指标卡是全范围的服务端合计，表格与图表只是当前页；看板不改变查询权限，发布版本只属于你自己。':
+    'Metric cards are server-side totals over the full scope; tables and charts are only the current page. The dashboard does not change query permissions, and published versions belong only to you.',
   看板配置文件: 'Dashboard configuration file',
   生成看板配置文件: 'Generate dashboard configuration file',
   打开看板配置: 'Open dashboard configuration',
@@ -1516,16 +1516,16 @@ window.reportingEnglish = {
   看板说明与操作帮助: 'Dashboard notes and help',
   看板工作室的工作方式与边界: 'How Dashboard studio works and its limits',
   工作方式: 'How it works',
-  '看板组合当前授权查询的结果：指标卡显示服务端原范围合计，明细表与柱状图显示当前结果页或有界预览。看板只保存组件和字段绑定，不含数据、令牌或公司范围。':
-    'A dashboard composes the results of the current authorised query: metric cards show server-side totals over the original scope, detail tables and bar charts show the current results page or a bounded preview. The dashboard saves only components and field bindings, with no data, tokens or company scope.',
+  '看板组合当前授权查询的结果：指标卡显示服务端原范围合计，明细表与图表显示当前结果页或有界预览。看板只保存组件和字段绑定，不含数据、令牌或公司范围。':
+    'A dashboard composes the results of the current authorised query: metric cards show server-side totals over the original scope, detail tables and charts show the current results page or a bounded preview. The dashboard saves only components and field bindings, with no data, tokens or company scope.',
   保存与版本: 'Saving and versions',
   '保存版本在服务端创建不可变的新版本；“版本”列出这个看板的保存版本，可把某个版本恢复到编辑器（未保存的修改），或发布某个保存版本；另存为新看板创建新的看板。':
     "Saving a version creates a new immutable version on the server; “Versions” lists this dashboard's saved versions, from which you can restore a version to the editor (as unsaved changes) or publish a saved version; Save as new dashboard creates a new dashboard.",
   '发布只把发布指针移到一个保存版本；有未保存的修改时，“发布”先保存为下一个版本再发布它（保存并发布）；撤回是单独的操作；打开已发布看板不等于重新发布。发布版本仅当前身份私有，不冻结数据或授予访问权限。':
     'Publishing only moves the publish pointer to a saved version; with unsaved changes, “Publish” first saves them as the next version and then publishes it (save and publish); withdrawing is a separate action; opening the published dashboard is not republishing. The published version is private to the current identity; it does not freeze data or grant access.',
   限制: 'Limits',
-  '每个看板至多 12 个组件；配置至多 64 KiB；柱状图取当前页前 50 行，按原顺序逐行显示，不分组、不汇总，条长为近似比例，精确值见每行标签。':
-    "At most 12 components per dashboard; configuration at most 64 KiB; bar charts take the first 50 rows of the current page, shown row by row in the original order, without grouping or aggregation; bar lengths are approximately proportional, exact values are in each row's label.",
+  '每个看板至多 12 个组件；配置至多 64 KiB；柱状图与折线图取当前页前 50 行、饼图取前 12 行，按原顺序逐行显示，不分组、不汇总；条长、折线与扇区为近似比例，精确值见每行标签。标题 1–64 个字符，宽度半宽或全宽。':
+    "At most 12 components per dashboard; configuration at most 64 KiB; bar and line charts take the first 50 rows of the current page and a pie the first 12, shown row by row in the original order, without grouping or aggregation; bar lengths, the line and the slices are approximately proportional, exact values are in each row's label. A title is 1–64 characters; a width is half or full.",
   知道了: 'Got it',
   预览与导出: 'Preview and export',
   插入: 'Insert',
@@ -2067,4 +2067,41 @@ window.reportingEnglish = {
   适配器: 'Adapter',
   频率: 'Frequency',
   '默认（查看、设计、发布、出具）': 'Default (view, design, publish, issue)',
+  // ---- S21-A: the dashboard's line and pie, a widget's title and width (dashboard.js, index.html)
+  '折线图需要当前授权的分类字段和数值字段。': 'A line chart needs an authorised category field and numeric field.',
+  '饼图需要当前授权的分类字段和数值字段。': 'A pie chart needs an authorised category field and numeric field.',
+  '组件标题需为 1–64 个字符，且不含控制字符。': 'A component title is 1–64 characters, with no control characters.',
+  '组件宽度只能是半宽或全宽。': 'A component width is half or full.',
+  未绘制: 'not drawn',
+  '当前页 · 前 50 行 · 按行顺序。逐行连线，不分组、不汇总。{0}':
+    'Current page · first 50 rows · in row order. Joined row by row, without grouping or totals.{0}',
+  '当前页折线图：{0}，{1} 个点': 'Line chart of current page: {0}, {1} points',
+  '第 {0} 行 · {1} · {2}': 'Row {0} · {1} · {2}',
+  '线性标尺含零线；最小值 {0}，最大值 {1}。折线与点位为近似比例，精确值见下方列表。':
+    'Linear scale including the zero line; minimum {0}, maximum {1}. The line and its points are approximately proportional; exact values are in the list below.',
+  各点精确值: 'Exact value of each point',
+  '当前页 · 前 12 行 · 每行一个扇区，不分组、不汇总。{0}':
+    'Current page · first 12 rows · one slice per row, without grouping or totals.{0}',
+  '当前页有 {0} 行，只绘制前 12 行。': 'The current page has {0} rows; only the first 12 are drawn.',
+  '分类重复，饼图按行显示': 'Categories repeat; the pie shows rows',
+  '零或负值不绘制扇区：{0}。': 'Zero or negative values are not drawn as slices: {0}.',
+  '当前页饼图：{0}，{1} 个扇区': 'Pie chart of current page: {0}, {1} slices',
+  '没有可绘制的扇区：各行数值均为零或负。': 'No slice to draw: every row is zero or negative.',
+  '扇区为近似比例，只由绘制的正值确定；精确值见图例。':
+    'Slices are approximately proportional, set by the drawn positive values only; exact values are in the legend.',
+  图例与精确值: 'Legend and exact values',
+  '标题（可选）': 'Title (optional)',
+  组件标题: 'Component title',
+  组件宽度: 'Component width',
+  半宽: 'Half width',
+  全宽: 'Full width',
+  '{0} · 当前页折线图': '{0} · Line chart of current page',
+  '{0} · 当前页饼图': '{0} · Pie chart of current page',
+  折线图: 'Line chart',
+  添加折线图: 'Add line chart',
+  饼图: 'Pie chart',
+  '当前页 · 前 12 行': 'Page · first 12 rows',
+  添加饼图: 'Add pie chart',
+  '指标卡是服务端原范围合计，表格和图表是当前页或有界预览；两者范围可能不同。看板不计算新的汇总，不改变查询权限。':
+    'Metric cards are server-side totals over the original scope; tables and charts are the current page or a bounded preview, so the two scopes may differ. The dashboard computes no new aggregates and does not change query permissions.',
 };

@@ -2,8 +2,8 @@
 // real mouse and keyboard input over the Chrome DevTools Protocol. The console's pages are shown at 1440 px beside the prototype's two non-studio
 // screens (IDP_Reporting_Designer_UIUX_V3.0.html: the 模板中心 view, whose header and left column are the shell's specification, and the 数据中心 view),
 // alone at 1280, 768 and 390 px in the light and the dark scheme (no horizontal overflow, the contrast of every visible text measured), and a session
-// follows: sign in (the workbench is the home since S07-H), the data drawer with the dataset's fields, the workbench (preview, snapshot), the dashboard studio (three widgets, the structure panel, save,
-// the versions tab, the publish confirmation, the help), the tasks page, the system page, sign out.
+// follows: sign in (the workbench is the home since S07-H), the data drawer with the dataset's fields, the workbench (preview, snapshot), the dashboard studio (three widgets, then S21-A's line and pie
+// with a title and a full width, the structure panel, save, the versions tab, the publish confirmation, the help), the tasks page, the system page, sign out.
 // Visual sameness is judged by a person from the screenshots (docs/STUDIO.md says so); this script measures what it can and records the rest.
 // Not part of `npm test`; CI runs it through scripts/ci_browser_evidence.sh (job "browser"). By hand it needs a running reporting-demo started with a dashboard directory, and a Chrome started with
 //   --headless=new --remote-debugging-port=<cdp> --user-data-dir=<empty temp dir> --no-proxy-server
@@ -538,6 +538,53 @@ async function main() {
       `document.getElementById('board-widgets').children.length===3&&document.getElementById('bd-status-count').textContent==='3 / 12 个组件'&&document.getElementById('board-count').textContent==='3 / 12 个组件'`
     )
   );
+  // S21-A: a line and a pie from the two tools after the bar's; drawn from the snapshot's page (three rows, one of them negative), their
+  // legends print the cells' literal values; a title typed into the line's card becomes its heading, and the pie takes the full width.
+  await clickBtn('#bd-sidebar', '添加折线图');
+  await clickBtn('#bd-sidebar', '添加饼图');
+  await sleep(300);
+  const charts = await evalJs(
+    `(()=>{const cards=[...document.getElementById('board-widgets').children],line=cards[3],pie=cards[4];const cells=[...document.querySelectorAll('#result-table tbody tr')].map(r=>r.cells[2].textContent);const values=el=>[...el.querySelectorAll('.board-legend strong')].map(s=>s.textContent);return {count:cards.length,status:document.getElementById('bd-status-count').textContent,cells,points:line?line.querySelectorAll('.board-line circle.board-point').length:0,lineValues:line?values(line):[],slices:pie?pie.querySelectorAll('.board-pie .board-slice').length:0,pieValues:pie?values(pie):[],notDrawn:pie?[...pie.querySelectorAll('.board-legend em')].map(e=>e.textContent):[],note:pie?(pie.querySelector('.board-note')||{}).textContent:null,headings:cards.map(c=>c.querySelector('h3').textContent),styled:document.querySelectorAll('#board-widgets .board-line [style],#board-widgets .board-pie [style]').length,svg:[...document.querySelectorAll('#board-widgets svg[role=img]')].map(s=>s.getAttribute('aria-label'))};})()`
+  );
+  check(
+    'S21-A: a line of one point a row and a pie of one slice a positive row, the negative row listed and not drawn, the legends the literal cells, five widgets counted, no style attribute in the charts (the bar sets its widths through the CSSOM)',
+    charts.count === 5 &&
+      charts.status === '5 / 12 个组件' &&
+      charts.cells.length === 3 &&
+      charts.points === 3 &&
+      JSON.stringify(charts.lineValues) === JSON.stringify(charts.cells) &&
+      charts.slices === 2 &&
+      JSON.stringify(charts.pieValues) === JSON.stringify(charts.cells) &&
+      JSON.stringify(charts.notDrawn) === JSON.stringify(['未绘制']) &&
+      /^零或负值不绘制扇区：第 2 行 · customer_b · -0\.24。$/.test(charts.note || '') &&
+      charts.headings[3] === '应收余额 · 当前页折线图' &&
+      charts.headings[4] === '应收余额 · 当前页饼图' &&
+      charts.styled === 0 &&
+      JSON.stringify(charts.svg) ===
+        JSON.stringify(['当前页折线图：应收余额，3 个点', '当前页饼图：应收余额，2 个扇区']),
+    charts
+  );
+  await typeInto('#board-widgets > article:nth-child(4) .board-title', '账龄走势');
+  await key('Tab');
+  await sleep(200);
+  await evalJs(`document.querySelector('#board-widgets > article:nth-child(5) .board-width').focus()`);
+  await key('ArrowDown');
+  await sleep(250);
+  const titled = await evalJs(
+    `(()=>{const cards=[...document.getElementById('board-widgets').children];return {heading:cards[3].querySelector('h3').textContent,input:cards[3].querySelector('.board-title').value,wide:cards[4].classList.contains('board-wide'),width:cards[4].querySelector('.board-width').value,layers:[...document.querySelectorAll('#bd-layers .layer-row span')].map(e=>e.textContent),state:document.getElementById('bd-state').textContent,pieWidth:Math.round(cards[4].getBoundingClientRect().width),deskWidth:Math.round(document.getElementById('board-widgets').getBoundingClientRect().width)};})()`
+  );
+  check(
+    "S21-A: the typed title is the line's heading and its name in the structure panel; the pie at 全宽 spans the grid",
+    titled.heading === '账龄走势' &&
+      titled.input === '账龄走势' &&
+      titled.wide &&
+      titled.width === 'full' &&
+      titled.layers[3] === '4 · 账龄走势' &&
+      titled.layers[4] === '5 · 应收余额 · 当前页饼图' &&
+      titled.state === '草稿' &&
+      Math.abs(titled.pieWidth - titled.deskWidth) <= 1,
+    titled
+  );
   await shot('console-06-dashboard-widgets');
   await contrast('dashboard 1440 light');
   check('no horizontal overflow in the dashboard studio at 1440', !(await overflow()).over, await overflow());
@@ -630,7 +677,7 @@ async function main() {
     'the confirmation names the saved version, the dataset, the widgets and the current pointer, and holds the focus',
     summary['将发布的版本'] === '保存版本 2' &&
       summary['数据集'] === 'receivables.aging@1.0.0' &&
-      summary['组件'] === '4 个' &&
+      summary['组件'] === '6 个' &&
       summary['当前发布'] === '未发布' &&
       (await evalJs(`!!document.activeElement.closest('#bd-d-publish')&&document.getElementById('bd-studio').inert`)),
     summary

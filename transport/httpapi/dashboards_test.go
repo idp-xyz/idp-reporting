@@ -9,6 +9,7 @@ import (
 	"idp.local/reporting/transport/httpapi"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,102 @@ func TestDashboardRoutesPrivateCurrentCatalogAndSeparateFromLayouts(t *testing.T
 	list := request(h, "GET", "/api/reporting/v1/dashboards", nil, true)
 	if list.Code != 200 || list.Body.String() != "[]\n" {
 		t.Fatal("revoked listing")
+	}
+}
+
+// S21-A: a line and a pie are authorized as the bar is (a numeric field and a column of the bound dataset, 403 otherwise); a title and a
+// width are stored as written and a bad one is 400 before anything is looked up.
+func TestLineAndPieChartsAreAuthorizedAsTheBarAndKeepTitleAndWidth(t *testing.T) {
+	service, fallback := setup(t)
+	store, e := dashboards.Open(filepath.Join(t.TempDir(), "boards"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	demo, _ := httpapi.DemoBearer(secret, contractsim.DemoPrincipal())
+	h, e := httpapi.WithDashboards(fallback, service, demo, store)
+	if e != nil {
+		t.Fatal(e)
+	}
+	catalog, e := service.Catalog(t.Context(), contractsim.DemoPrincipal(), contractsim.FinanceIntegration)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var field, text string
+	for _, c := range catalog[0].Columns {
+		if (c.Type == "decimal" || c.Type == "integer") && field == "" {
+			field = c.ID
+		} else if c.Type == "string" && text == "" {
+			text = c.ID
+		}
+	}
+	if field == "" || text == "" {
+		t.Fatal("the dataset needs a numeric and a text column", catalog[0].Columns)
+	}
+	title, full := "账龄走势 · 2026", "full"
+	document := func(widgets ...dashboards.Widget) []byte {
+		config := dashboards.Document{Schema: "1.0", Kind: "dashboard", Binding: dashboards.Binding{Integration: contractsim.FinanceIntegration, Dataset: catalog[0].Ref}, Widgets: widgets}
+		body, _ := json.Marshal(map[string]any{"id": "", "expected_version": 0, "config": config})
+		return body
+	}
+	w := request(h, "POST", "/api/reporting/v1/dashboards", document(
+		dashboards.Widget{Type: "line", Category: &text, Field: &field, Title: &title, Width: &full},
+		dashboards.Widget{Type: "pie", Category: &text, Field: &field},
+		dashboards.Widget{Type: "table", Columns: []string{text}, Title: &title},
+	), true)
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var entry struct {
+		ID     string
+		Config dashboards.Document
+	}
+	json.Unmarshal(w.Body.Bytes(), &entry)
+	if len(entry.Config.Widgets) != 3 || entry.Config.Widgets[0].Title == nil || *entry.Config.Widgets[0].Title != title || entry.Config.Widgets[0].Width == nil || *entry.Config.Widgets[0].Width != "full" || entry.Config.Widgets[1].Title != nil || entry.Config.Widgets[1].Width != nil || entry.Config.Widgets[2].Title == nil {
+		t.Fatal("the answer is not the document as written", w.Body.String())
+	}
+	got := request(h, "GET", "/api/reporting/v1/dashboards/"+entry.ID+"?version=1", nil, true)
+	if got.Code != 200 || got.Body.String() != w.Body.String() {
+		t.Fatal("reopened differently", got.Code, got.Body.String())
+	}
+	unknown, numberAsCategory := "not-a-column", field
+	for name, widget := range map[string]dashboards.Widget{
+		"line of an unknown field":    {Type: "line", Category: &text, Field: &unknown},
+		"pie of an unknown field":     {Type: "pie", Category: &text, Field: &unknown},
+		"line of a text field":        {Type: "line", Category: &text, Field: &text},
+		"pie of a text field":         {Type: "pie", Category: &text, Field: &text},
+		"line of an unknown category": {Type: "line", Category: &unknown, Field: &field},
+		"pie of an unknown category":  {Type: "pie", Category: &unknown, Field: &field},
+	} {
+		if code := request(h, "POST", "/api/reporting/v1/dashboards", document(widget), true).Code; code != 403 {
+			t.Fatal(name, code)
+		}
+	}
+	// A numeric column is a column too: a chart may take it as its category.
+	if code := request(h, "POST", "/api/reporting/v1/dashboards", document(dashboards.Widget{Type: "pie", Category: &numberAsCategory, Field: &field}), true).Code; code != 201 {
+		t.Fatal("numeric category", code)
+	}
+	empty, long, control, third := "", strings.Repeat("标", 65), "a\tb", "third"
+	for name, widget := range map[string]dashboards.Widget{
+		"empty title":   {Type: "line", Category: &text, Field: &field, Title: &empty},
+		"65 characters": {Type: "pie", Category: &text, Field: &field, Title: &long},
+		"control":       {Type: "metric", Field: &field, Title: &control},
+		"third":         {Type: "table", Columns: []string{text}, Width: &third},
+	} {
+		if code := request(h, "POST", "/api/reporting/v1/dashboards", document(widget), true).Code; code != 400 {
+			t.Fatal(name, code)
+		}
+	}
+	for _, raw := range []string{
+		`{"type":"line","category":"` + text + `","field":"` + field + `","title":null}`,
+		`{"type":"pie","category":"` + text + `","field":"` + field + `","width":"Full"}`,
+		`{"type":"area","category":"` + text + `","field":"` + field + `"}`,
+		`{"type":"line","field":"` + field + `"}`,
+		`{"type":"pie","category":"` + text + `","field":"` + field + `","columns":["` + text + `"]}`,
+	} {
+		body := []byte(`{"id":"","expected_version":0,"config":{"schema_version":"1.0","kind":"dashboard","binding":{"integration_id":"` + contractsim.FinanceIntegration + `","dataset":{"id":"` + catalog[0].Ref.ID + `","version":"` + catalog[0].Ref.Version + `"}},"widgets":[` + raw + `]}}`)
+		if code := request(h, "POST", "/api/reporting/v1/dashboards", body, true).Code; code != 400 {
+			t.Fatal(raw, code)
+		}
 	}
 }

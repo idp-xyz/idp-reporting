@@ -15423,3 +15423,474 @@ test('S18-B: 管理 is offered to an administrator alone and shows the configura
     admin.close();
   }
 });
+
+// ---- S21-A: the dashboard studio draws lines and pies, and a widget has a title and a width (docs/S21A_SCOPE.md) ----
+test('S21-A: a line and a pie are added from the sidebar and drawn from the real result, titled and widened, then saved, published and reopened by exact metadata', async () => {
+  const a = app();
+  try {
+    await a.login();
+    a.configure();
+    a.click('preview');
+    await until(() => !a.$('preview').disabled && !a.$('result-table-wrap').hidden, 'query');
+    const cells = [...a.$('result-table').tBodies[0].rows].map(r => r.cells[2].textContent);
+    assert.deepEqual(cells, ['100.25', '-0.24', '9007199254740893.00']);
+    a.w.document.querySelector('[data-page="dashboard"]').click();
+    const sidebar = a.$('bd-sidebar');
+    // The two tools, after the bar's, with their own selects filled like the bar's; 添加指标卡 stays where the baseline finds it.
+    assert.deepEqual(
+      [...sidebar.querySelectorAll('.component-tool .btn')].map(b => b.textContent.trim()),
+      ['添加指标卡', '添加明细表', '添加当前页柱状图', '添加折线图', '添加饼图']
+    );
+    for (const id of ['board-line-category', 'board-pie-category'])
+      assert.deepEqual(
+        [...a.$(id).options].map(o => o.value),
+        ['customer.id', 'aging.bucket', 'ar.open_balance']
+      );
+    for (const id of ['board-line-value', 'board-pie-value'])
+      assert.deepEqual(
+        [...a.$(id).options].map(o => o.value),
+        ['ar.open_balance']
+      );
+    a.click('board-add-line');
+    a.click('board-add-pie');
+    const cards = a.$('board-widgets').children;
+    assert.equal(cards.length, 2);
+    assert.equal(a.$('board-count').textContent, '2 / 12 个组件');
+    // The line: a figure with an SVG picture (role img, named), a polyline of one point a row in row order, a point a row with its
+    // exact value as its tooltip, a zero line at the bottom (every value is above zero except -0.24, so the scale runs from it), and a
+    // legend whose literal values are the cells.
+    const line = cards[0].querySelector('.board-line');
+    assert.ok(line);
+    assert.equal(cards[0].querySelector('h3').textContent, '应收余额 · 当前页折线图');
+    assert.match(
+      line.querySelector('p').textContent,
+      /^当前页 · 前 50 行 · 按行顺序。逐行连线，不分组、不汇总。 币种：CNY$/
+    );
+    const picture = line.querySelector('figure > svg');
+    assert.equal(picture.getAttribute('role'), 'img');
+    assert.equal(picture.getAttribute('aria-label'), '当前页折线图：应收余额，3 个点');
+    assert.equal(picture.namespaceURI, 'http://www.w3.org/2000/svg');
+    const points = picture.querySelector('polyline').getAttribute('points').split(' ');
+    assert.equal(points.length, 3);
+    assert.deepEqual(
+      points.map(p => p.split(',')[0]),
+      ['10.00', '200.00', '390.00'],
+      'x is the row index'
+    );
+    const circles = [...picture.querySelectorAll('circle.board-point')];
+    assert.equal(circles.length, 3);
+    assert.deepEqual(
+      circles.map(c => c.getAttribute('cx') + ',' + c.getAttribute('cy')),
+      points
+    );
+    assert.deepEqual(
+      circles.map(c => c.querySelector('title').textContent),
+      ['第 1 行 · customer_a · 100.25', '第 2 行 · customer_b · -0.24', '第 3 行 · customer_c · 9007199254740893.00']
+    );
+    assert.equal(circles[2].getAttribute('cy'), '10.00', 'the maximum is at the top');
+    assert.equal(circles[1].getAttribute('cy'), '140.00', 'the minimum (-0.24) is at the bottom');
+    assert.equal(picture.querySelector('.board-zero').getAttribute('y1'), '139.99', 'zero sits just above it');
+    assert.match(
+      line.querySelector('figcaption > p').textContent,
+      /^线性标尺含零线；最小值 -0\.24，最大值 9007199254740893\.00。/
+    );
+    assert.deepEqual(
+      [...line.querySelectorAll('.board-legend li')].map(li => li.querySelector('strong').textContent),
+      cells
+    );
+    assert.deepEqual(
+      [...line.querySelectorAll('.board-legend li .board-legend-label')].map(s => s.textContent),
+      ['第 1 行 · customer_a', '第 2 行 · customer_b', '第 3 行 · customer_c']
+    );
+    assert.equal(line.querySelector('[style]'), null, 'no style attribute: the CSP');
+    assert.equal(line.textContent.includes('9007199254740893.00'), true);
+    // The pie: a slice a row for the positive rows, the negative row listed and not drawn, the colours as classes, the legend's
+    // swatches the same classes, the literal values the cells.
+    const pie = cards[1].querySelector('.board-pie');
+    assert.ok(pie);
+    assert.equal(cards[1].querySelector('h3').textContent, '应收余额 · 当前页饼图');
+    assert.match(pie.querySelector('p').textContent, /^当前页 · 前 12 行 · 每行一个扇区，不分组、不汇总。 币种：CNY$/);
+    assert.equal(pie.querySelector('.board-note').textContent, '零或负值不绘制扇区：第 2 行 · customer_b · -0.24。');
+    assert.equal(pie.textContent.includes('分类重复'), false);
+    const disc = pie.querySelector('figure > svg');
+    assert.equal(disc.getAttribute('aria-label'), '当前页饼图：应收余额，2 个扇区');
+    const slices = [...disc.querySelectorAll('.board-slice')];
+    assert.deepEqual(
+      slices.map(s => s.getAttribute('class')),
+      ['board-slice board-slice-1', 'board-slice board-slice-3']
+    );
+    assert.deepEqual(
+      slices.map(s => s.querySelector('title').textContent),
+      ['第 1 行 · customer_a · 100.25', '第 3 行 · customer_c · 9007199254740893.00']
+    );
+    // 100.25 of 9007199254740993.25 is below a millionth: its slice is a zero-width wedge; the other is the whole disc, as two arcs.
+    assert.equal(slices[0].getAttribute('d'), 'M100,100 L100.00,10.00 A90,90 0 0,1 100.00,10.00 Z');
+    assert.equal(
+      slices[1].getAttribute('d'),
+      'M100,100 L100.00,10.00 A90,90 0 0,1 100.00,190.00 A90,90 0 0,1 100.00,10.00 Z'
+    );
+    const legend = [...pie.querySelectorAll('.board-legend li')];
+    assert.deepEqual(
+      legend.map(li => li.querySelector('strong').textContent),
+      cells
+    );
+    assert.deepEqual(
+      legend.map(li => li.querySelector('.board-swatch').getAttribute('class')),
+      ['board-swatch board-slice-1', 'board-swatch', 'board-swatch board-slice-3']
+    );
+    assert.deepEqual(
+      legend.map(li => li.querySelector('em')?.textContent ?? ''),
+      ['', '未绘制', '']
+    );
+    assert.equal(pie.querySelector('[style]'), null);
+    // The structure panel lists them under their headings with the chart icon.
+    assert.deepEqual(
+      [...a.$('bd-layers').children].map(r => r.querySelector('span').textContent),
+      ['1 · 应收余额 · 当前页折线图', '2 · 应收余额 · 当前页饼图']
+    );
+    assert.deepEqual(
+      [...a.$('bd-layers').querySelectorAll('use')].slice(0, 1).map(u => u.getAttribute('href')),
+      ['#s-aggregate']
+    );
+    // A title replaces the heading; the width spans the grid; both are the document's.
+    const titleOf = card => card.querySelector('.board-controls .board-title'),
+      widthOf = card => card.querySelector('.board-controls .board-width');
+    assert.equal(titleOf(cards[0]).value, '');
+    assert.equal(titleOf(cards[0]).getAttribute('aria-label'), '组件标题');
+    assert.equal(titleOf(cards[0]).maxLength, 64);
+    assert.deepEqual(
+      [...widthOf(cards[0]).options].map(o => o.value + ':' + o.textContent),
+      ['half:半宽', 'full:全宽']
+    );
+    assert.equal(widthOf(cards[0]).value, 'half');
+    // The three buttons keep their places: the structure panel and the older tests click them by index.
+    assert.deepEqual(
+      [...cards[0].querySelectorAll('.board-controls button')].map(b => b.textContent),
+      ['上移', '下移', '移除']
+    );
+    titleOf(cards[0]).value = '  账龄走势 · 2026  ';
+    titleOf(cards[0]).dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    assert.equal(a.$('board-widgets').children[0].querySelector('h3').textContent, '账龄走势 · 2026', 'trimmed');
+    assert.equal(titleOf(a.$('board-widgets').children[0]).value, '账龄走势 · 2026');
+    assert.equal(a.$('bd-layers').children[0].querySelector('span').textContent, '1 · 账龄走势 · 2026');
+    assert.equal(
+      a.$('bd-layers').children[0].querySelectorAll('button')[2].getAttribute('aria-label'),
+      '移除：账龄走势 · 2026'
+    );
+    widthOf(a.$('board-widgets').children[0]).value = 'full';
+    widthOf(a.$('board-widgets').children[0]).dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    assert.equal(a.$('board-widgets').children[0].classList.contains('board-wide'), true);
+    assert.equal(a.$('board-widgets').children[1].classList.contains('board-wide'), false);
+    assert.equal(widthOf(a.$('board-widgets').children[0]).value, 'full');
+    assert.equal(a.$('board-status').textContent, '看板已更新；数据仍来自当前授权查询。');
+    // The file: the widgets as plain JSON, the title and width only where set, no value of the data.
+    a.click('board-save');
+    const config = JSON.parse(a.$('board-json').value);
+    assert.deepEqual(config.widgets, [
+      {type: 'line', category: 'customer.id', field: 'ar.open_balance', title: '账龄走势 · 2026', width: 'full'},
+      {type: 'pie', category: 'customer.id', field: 'ar.open_balance'},
+    ]);
+    assert.equal(/9007199254740893|100\.25|customer_a/.test(JSON.stringify(config)), false);
+    // The server keeps the same document: saved, published, reset and reopened from the published pointer.
+    a.click('board-server-save');
+    await until(
+      () => a.$('board-server-status').textContent.includes('版本 1') && !a.$('preview').disabled,
+      'save charts'
+    );
+    const id = a.$('board-server-status').textContent.match(/看板 ([a-f0-9]{32})/)[1];
+    const stored = await (
+      await fetch(url + '/api/reporting/v1/dashboards/' + id + '?version=1', {
+        headers: {Authorization: 'Bearer ' + token, Connection: 'close'},
+      })
+    ).json();
+    assert.deepEqual(stored.config.widgets, config.widgets, 'the server stored the widgets as written');
+    a.click('board-release-read');
+    await until(
+      () => a.$('board-release-status').textContent.includes('修订 0') && !a.$('preview').disabled,
+      'release'
+    );
+    a.click('board-release-publish');
+    await until(
+      () => a.$('board-release-status').textContent.includes('已发布版本 1') && !a.$('preview').disabled,
+      'publish'
+    );
+    a.click('board-reset');
+    assert.equal(a.$('board-widgets').children.length, 0);
+    a.click('board-published-open');
+    await until(
+      () => a.$('board-server-status').textContent.includes('已打开发布看板') && !a.$('preview').disabled,
+      'reopen'
+    );
+    const reopened = a.$('board-widgets').children;
+    assert.equal(reopened.length, 2);
+    assert.equal(reopened[0].querySelector('h3').textContent, '账龄走势 · 2026');
+    assert.equal(reopened[0].classList.contains('board-wide'), true);
+    assert.equal(titleOf(reopened[0]).value, '账龄走势 · 2026');
+    assert.equal(widthOf(reopened[0]).value, 'full');
+    assert.equal(reopened[0].querySelectorAll('.board-line circle.board-point').length, 3);
+    assert.equal(reopened[1].querySelectorAll('.board-pie .board-slice').length, 2);
+    assert.equal(reopened[1].querySelector('h3').textContent, '应收余额 · 当前页饼图');
+    a.click('board-save');
+    assert.deepEqual(JSON.parse(a.$('board-json').value).widgets, config.widgets);
+    // An emptied title brings the default heading back and leaves the document without the key.
+    titleOf(reopened[0]).value = '   ';
+    titleOf(reopened[0]).dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    assert.equal(a.$('board-widgets').children[0].querySelector('h3').textContent, '应收余额 · 当前页折线图');
+    a.click('board-save');
+    assert.deepEqual(JSON.parse(a.$('board-json').value).widgets[0], {
+      type: 'line',
+      category: 'customer.id',
+      field: 'ar.open_balance',
+      width: 'full',
+    });
+    assert.equal(a.$('bd-state').textContent, '已保存 v1 · 有未保存修改');
+    // A query change clears the charts and the tools' selects.
+    a.input('query-companies', 'company_other');
+    assert.equal(a.$('board-widgets').children.length, 0);
+    for (const id of ['board-line-category', 'board-line-value', 'board-pie-category', 'board-pie-value'])
+      assert.equal(a.$(id).options.length, 0, id);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S21-A: a pie says when a category repeats and lists a zero and a negative row without drawing them; a line keeps a scale that includes zero; the page is bounded', async () => {
+  const hostile = '<img src=x onerror=alert(1)>';
+  let rows = [
+    [hostile, 'x', '50.00'],
+    [hostile, 'x', '30.00'],
+    ['zero', 'x', '0.00'],
+    ['neg', 'x', '-20.00'],
+  ];
+  const a = app(async (path, options) => {
+    if (path.endsWith('/queries')) {
+      const response = await fetch(url + path, options),
+        value = await response.json();
+      value.rows = rows;
+      return Response.json(value);
+    }
+  });
+  try {
+    await a.login();
+    a.configure();
+    a.click('preview');
+    await until(() => !a.$('preview').disabled && !a.$('result-table-wrap').hidden, 'synthetic rows');
+    a.click('board-add-pie');
+    a.click('board-add-line');
+    const pie = a.$('board-widgets').children[0].querySelector('.board-pie'),
+      line = a.$('board-widgets').children[1].querySelector('.board-line');
+    assert.equal(a.$('board-widgets').querySelector('img'), null, 'a hostile category is text');
+    assert.deepEqual(
+      [...pie.querySelectorAll('.board-note')].map(n => n.textContent),
+      ['分类重复，饼图按行显示', '零或负值不绘制扇区：第 3 行 · zero · 0.00、第 4 行 · neg · -20.00。']
+    );
+    const slices = [...pie.querySelectorAll('.board-slice')];
+    assert.equal(slices.length, 2, 'one slice per positive row, the repeated category not summed');
+    assert.equal(pie.querySelector('svg').getAttribute('aria-label'), '当前页饼图：应收余额，2 个扇区');
+    // 50 of 80 is five eighths of the turn (two arcs), 30 of 80 the remaining three eighths, ending exactly at twelve o'clock.
+    assert.equal(
+      slices[0].getAttribute('d'),
+      'M100,100 L100.00,10.00 A90,90 0 0,1 183.15,134.44 A90,90 0 0,1 36.36,163.64 Z'
+    );
+    assert.equal(slices[1].getAttribute('d'), 'M100,100 L36.36,163.64 A90,90 0 0,1 100.00,10.00 Z');
+    assert.deepEqual(
+      slices.map(s => s.getAttribute('class')),
+      ['board-slice board-slice-1', 'board-slice board-slice-2']
+    );
+    const legend = [...pie.querySelectorAll('.board-legend li')];
+    assert.equal(legend.length, 4, 'every row is listed');
+    assert.deepEqual(
+      legend.map(li => li.querySelector('strong').textContent),
+      ['50.00', '30.00', '0.00', '-20.00']
+    );
+    assert.deepEqual(
+      legend.map(li => li.querySelector('.board-legend-label').textContent),
+      ['第 1 行 · ' + hostile, '第 2 行 · ' + hostile, '第 3 行 · zero', '第 4 行 · neg']
+    );
+    assert.deepEqual(
+      legend.map(li => (li.querySelector('em') ? li.querySelector('em').textContent : '')),
+      ['', '', '未绘制', '未绘制']
+    );
+    assert.deepEqual(
+      legend.map(li => li.querySelector('.board-swatch').getAttribute('class')),
+      ['board-swatch board-slice-1', 'board-swatch board-slice-2', 'board-swatch', 'board-swatch']
+    );
+    // The line: four points; the scale from -20 to 50 puts zero at five sevenths of the height.
+    assert.equal(
+      line.querySelector('polyline').getAttribute('points'),
+      '10.00,10.00 136.67,47.14 263.33,102.85 390.00,140.00'
+    );
+    assert.equal(line.querySelector('.board-zero').getAttribute('y1'), '102.85');
+    assert.equal(line.querySelectorAll('circle.board-point').length, 4);
+    assert.match(line.querySelector('figcaption > p').textContent, /最小值 -20\.00，最大值 50\.00/);
+    assert.deepEqual(
+      [...line.querySelectorAll('.board-legend strong')].map(s => s.textContent),
+      ['50.00', '30.00', '0.00', '-20.00']
+    );
+    async function refresh(values) {
+      rows = values;
+      a.click('preview');
+      await until(() => !a.$('preview').disabled, 'synthetic refresh');
+    }
+    // Every row zero or negative: nothing drawn, said; the line sits on its zero line.
+    await refresh([
+      ['a', 'x', '0'],
+      ['b', 'x', '-1.5'],
+    ]);
+    const none = a.$('board-widgets').children[0].querySelector('.board-pie');
+    assert.equal(none.querySelectorAll('.board-slice').length, 0);
+    assert.equal(none.querySelector('figure > svg'), null);
+    assert.match(none.textContent, /没有可绘制的扇区：各行数值均为零或负。/);
+    assert.equal(none.querySelectorAll('.board-legend li').length, 2);
+    assert.equal(none.querySelector('.board-pie-svg'), null);
+    assert.equal(
+      a.$('board-widgets').children[1].querySelector('.board-zero').getAttribute('y1'),
+      '10.00',
+      'zero is the top of a scale below zero'
+    );
+    // Every value zero: the line sits in the middle; a single row is one point in the middle and the pie one whole disc.
+    await refresh([['a', 'x', '0.00']]);
+    assert.equal(a.$('board-widgets').children[1].querySelector('polyline').getAttribute('points'), '200.00,75.00');
+    await refresh([['only', 'x', '7']]);
+    assert.equal(
+      a.$('board-widgets').children[0].querySelector('.board-slice').getAttribute('d'),
+      'M100,100 L100.00,10.00 A90,90 0 0,1 100.00,190.00 A90,90 0 0,1 100.00,10.00 Z'
+    );
+    assert.equal(
+      a.$('board-widgets').children[0].querySelector('svg').getAttribute('aria-label'),
+      '当前页饼图：应收余额，1 个扇区'
+    );
+    // Bounds: a pie takes the first 12 rows of a longer page and says so; a line the first 50; a huge exact value stays literal; an
+    // invalid cell disables the chart.
+    await refresh(Array.from({length: 60}, (_, i) => ['row ' + i, 'x', String(i + 1)]));
+    const bounded = a.$('board-widgets').children[0].querySelector('.board-pie');
+    assert.equal(bounded.querySelectorAll('.board-slice').length, 12);
+    assert.equal(bounded.querySelectorAll('.board-legend li').length, 12);
+    assert.match(bounded.textContent, /当前页有 60 行，只绘制前 12 行。/);
+    assert.equal(a.$('board-widgets').children[1].querySelectorAll('circle.board-point').length, 50);
+    assert.equal(a.$('board-widgets').children[1].querySelectorAll('.board-legend li').length, 50);
+    const huge = '9'.repeat(500);
+    await refresh([
+      ['big', 'x', huge],
+      ['small', 'x', '0.00000000000000000001'],
+    ]);
+    assert.equal(a.$('board-widgets').children[0].querySelectorAll('.board-slice').length, 2);
+    assert.equal(a.$('board-widgets').children[0].querySelector('.board-legend strong').textContent, huge);
+    assert.equal(a.$('board-widgets').children[1].querySelector('.board-legend strong').textContent, huge);
+    for (const invalid of ['NaN', '1e9', '+1', '', '9'.repeat(513)]) {
+      await refresh([
+        ['a', 'x', '1'],
+        ['b', 'x', invalid],
+      ]);
+      for (const card of a.$('board-widgets').children) {
+        assert.match(card.textContent, /图表不可用/);
+        assert.equal(card.querySelector('svg'), null);
+      }
+    }
+    await refresh([]);
+    for (const card of a.$('board-widgets').children) assert.match(card.textContent, /没有可绘制行/);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S21-A: the console refuses what the server refuses: a bad title, width or type in a file, and the server itself', async () => {
+  const a = app();
+  try {
+    await a.login();
+    a.configure();
+    a.click('preview');
+    await until(() => !a.$('preview').disabled && !a.$('result-table-wrap').hidden, 'query');
+    a.click('board-add-line');
+    a.click('board-save');
+    const good = JSON.parse(a.$('board-json').value);
+    assert.deepEqual(good.widgets, [{type: 'line', category: 'customer.id', field: 'ar.open_balance'}]);
+    // Each bad document, the console's reason, and the server's answer: 400 INVALID_REQUEST for a shape it cannot read, 403
+    // AUTH_SCOPE_DENIED for a field or category the bound dataset does not have (or a field that is not numeric), as for the bar.
+    const refused = [];
+    for (const [change, reason, status] of [
+      [x => (x.widgets[0].title = ''), /标题/, 400],
+      [x => (x.widgets[0].title = '标'.repeat(65)), /标题/, 400],
+      [x => (x.widgets[0].title = 'a\tb'), /标题/, 400],
+      [x => (x.widgets[0].title = 'a\nb'), /标题/, 400],
+      [x => (x.widgets[0].title = null), /标题/, 400],
+      [x => (x.widgets[0].title = 7), /标题/, 400],
+      [x => (x.widgets[0].width = 'third'), /宽度/, 400],
+      [x => (x.widgets[0].width = 'Full'), /宽度/, 400],
+      [x => (x.widgets[0].width = ''), /宽度/, 400],
+      [x => (x.widgets[0].width = null), /宽度/, 400],
+      [x => (x.widgets[0].type = 'area'), /不支持/, 400],
+      [x => (x.widgets[0].type = 'scatter'), /不支持/, 400],
+      [x => delete x.widgets[0].category, /折线图需要/, 400],
+      [x => (x.widgets[0].field = 'customer.id'), /折线图需要/, 403],
+      [x => (x.widgets[0].columns = ['customer.id']), /折线图需要/, 400],
+      [x => (x.widgets = [{type: 'pie', field: 'ar.open_balance'}]), /饼图需要/, 400],
+      [x => (x.widgets = [{type: 'pie', category: 'customer.id', field: 'aging.bucket'}]), /饼图需要/, 403],
+      [x => (x.widgets = [{type: 'pie', category: 'nope', field: 'ar.open_balance'}]), /饼图需要/, 403],
+      [
+        x => (x.widgets = [{type: 'pie', category: 'customer.id', field: 'ar.open_balance', colour: 'red'}]),
+        /饼图需要/,
+        400,
+      ],
+      [x => (x.widgets = [{type: 'metric', field: 'ar.open_balance', title: 'x', width: 'wide'}]), /宽度/, 400],
+      [x => (x.widgets = [{type: 'table', columns: ['customer.id'], title: 'x'.repeat(65)}]), /标题/, 400],
+    ]) {
+      const bad = structuredClone(good);
+      change(bad);
+      a.$('board-json').value = JSON.stringify(bad);
+      a.click('board-open');
+      assert.equal(a.$('board-widgets').children.length, 1);
+      assert.match(a.$('board-status').textContent, reason, JSON.stringify(bad.widgets));
+      refused.push([bad, status]);
+    }
+    // Accepted: a title of 64 characters, with spaces and punctuation; both widths; on every type.
+    for (const widgets of [
+      [{type: 'line', category: 'customer.id', field: 'ar.open_balance', title: '标'.repeat(64), width: 'half'}],
+      [{type: 'pie', category: 'customer.id', field: 'ar.open_balance', title: 'A / B · (2026)', width: 'full'}],
+      [{type: 'metric', field: 'ar.open_balance', title: 'x'}],
+      [{type: 'table', columns: ['customer.id'], width: 'full'}],
+      [{type: 'bar', category: 'aging.bucket', field: 'ar.open_balance', title: '账龄', width: 'full'}],
+    ]) {
+      a.$('board-json').value = JSON.stringify({...good, widgets});
+      a.click('board-open');
+      assert.equal(a.$('board-status').textContent, '看板已更新；数据仍来自当前授权查询。', JSON.stringify(widgets));
+      assert.equal(
+        a.$('board-widgets').children[0].querySelector('h3').textContent,
+        widgets[0].title ?? '明细表 · 当前结果页'
+      );
+      assert.equal(a.$('board-widgets').children[0].classList.contains('board-wide'), widgets[0].width === 'full');
+    }
+    // The server refuses the same documents directly, before any is stored.
+    const post = config =>
+      fetch(url + '/api/reporting/v1/dashboards', {
+        method: 'POST',
+        headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Connection: 'close'},
+        body: JSON.stringify({id: '', expected_version: 0, config}),
+      });
+    // The body is read before the status is asserted: a response left unread would hold its socket and the test runner open.
+    for (const [bad, status] of refused) {
+      const response = await post(bad),
+        answer = await response.json();
+      assert.equal(response.status, status, JSON.stringify(bad.widgets));
+      assert.deepEqual(answer, {error: status === 400 ? 'INVALID_REQUEST' : 'AUTH_SCOPE_DENIED'});
+    }
+    const accepted = await post({
+      ...good,
+      widgets: [
+        {type: 'line', category: 'customer.id', field: 'ar.open_balance', title: '走势', width: 'full'},
+        {type: 'pie', category: 'aging.bucket', field: 'ar.open_balance', title: '占比'},
+      ],
+    });
+    const entry = await accepted.json();
+    assert.equal(accepted.status, 201, JSON.stringify(entry));
+    assert.deepEqual(entry.config.widgets, [
+      {type: 'line', category: 'customer.id', field: 'ar.open_balance', title: '走势', width: 'full'},
+      {type: 'pie', category: 'aging.bucket', field: 'ar.open_balance', title: '占比'},
+    ]);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
