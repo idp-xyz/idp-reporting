@@ -19,6 +19,7 @@
   <script src="/console/board.js" defer></script>
   <script src="/console/embed.js" defer></script>
   <script src="/console/companies.js" defer></script>
+  <script src="/console/filters.js" defer></script>
   <script src="/console/app.js" defer></script>
 </head>
 <body class="embed">
@@ -38,7 +39,8 @@
             <div class="field"><label for="query-date">数据时点</label><input type="date" id="query-date"></div>
           </div>
           <div class="query-meta"><span>时区 <b id="query-timezone">—</b></span><span>币种政策 <b id="query-currency">—</b></span><span id="query-shape">选择数据集后显示批准组合</span></div>
-          <div class="query-actions"><span class="help">当前仅支持目录已发布的组合；未开放自定义筛选、排序或公式。</span><div><button type="button" id="preview" class="btn action">查询预览</button><button type="button" id="snapshot" class="btn primary action"><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-lock"/></svg>创建快照</button></div></div>
+          <div class="query-narrow" id="query-narrow" hidden><div class="narrow-group" id="query-filters" role="group" aria-labelledby="query-filters-title"><div class="narrow-head"><span class="narrow-title" id="query-filters-title">筛选</span><span class="help">全部条件同时满足；行与合计都是筛选后的范围。</span></div><div class="narrow-rows" id="query-filter-rows"></div><div class="narrow-add" id="query-filter-add-line"><span class="help" id="query-filter-add-label">添加筛选</span><span class="narrow-offers" id="query-filter-add" role="group" aria-labelledby="query-filter-add-label"></span></div></div><div class="narrow-group" id="query-sorts" role="group" aria-labelledby="query-sorts-title"><div class="narrow-head"><span class="narrow-title" id="query-sorts-title">排序</span><span class="help">最多 3 个排序键，按先后顺序生效。</span></div><div class="narrow-rows" id="query-sort-rows"></div><div class="narrow-add" id="query-sort-add-line"><span class="help" id="query-sort-add-label">添加排序</span><span class="narrow-offers" id="query-sort-add" role="group" aria-labelledby="query-sort-add-label"></span></div></div></div>
+          <div class="query-actions"><span class="help">当前仅支持目录已发布的组合：筛选与排序限于数据集发布的字段与运算符；未开放自定义 SQL 或公式。</span><div><span class="help" id="query-hint" aria-live="polite" hidden></span><button type="button" id="preview" class="btn action" aria-describedby="query-hint">查询预览</button><button type="button" id="snapshot" class="btn primary action" aria-describedby="query-hint"><svg class="ic" aria-hidden="true" focusable="false"><use href="#s-lock"/></svg>创建快照</button></div></div>
         </article>
         <div id="result-summary" class="result-summary" hidden></div>
         <article class="panel result-panel">

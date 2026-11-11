@@ -26,6 +26,7 @@ const [
   englishScript,
   languageScript,
   companiesScript,
+  filtersScript,
 ] = await Promise.all(
   [
     'index.html',
@@ -41,6 +42,7 @@ const [
     'en.js',
     'lang.js',
     'companies.js',
+    'filters.js',
   ].map(read)
 );
 const token = randomBytes(32).toString('hex');
@@ -324,6 +326,7 @@ async function embedPage({
   w.eval(boardScript);
   w.eval(embedScript);
   w.eval(companiesScript);
+  w.eval(filtersScript);
   w.eval(appScript);
   const $ = id => w.document.getElementById(id);
   const input = (id, value) => {
@@ -1128,6 +1131,7 @@ test('the console page loads none of the embed code, and answers no message', as
   w.eval(documentsScript);
   w.eval(boardScript);
   w.eval(companiesScript);
+  w.eval(filtersScript);
   w.eval(appScript);
   const other = new JSDOM('', {url: HOST + '/'}).window;
   w.dispatchEvent(
@@ -1281,6 +1285,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     ['documents.js', documentsScript],
     ['versions.js', versionsScript],
     ['lang.js', languageScript],
+    ['filters.js', filtersScript],
   ]) {
     for (const pattern of [
       /\.innerHTML/,
@@ -1309,6 +1314,7 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     ['canvas.js', canvasScript],
     ['en.js', englishScript],
     ['lang.js', languageScript],
+    ['filters.js', filtersScript],
   ]) {
     assert.equal(/postMessage\(/.test(code) && name !== 'embed.js', false, name + ' posts a message');
     assert.equal(/['"`]\*['"`]\s*\)/.test(code.replace(/\/\*[\s\S]*?\*\//g, '')), false, name + ' has a "*" argument');
@@ -1570,6 +1576,121 @@ test("S09-D: the embed page's 公司范围 is the same picker as the console's, 
     assert.equal(b.$('query-companies-picker').hidden, true, 'without the directory: no picker');
     assert.equal(b.$('query-companies').hidden, false, 'the text field of ids as before');
     await queried(b);
+    assert.equal(b.errors.length, 0, b.errors.join('|'));
+  } finally {
+    b.close();
+  }
+});
+
+// S20-B (ADR 0023 decision 5): the embed page's query panel has the console's filters and sort (the section is the console's own, byte
+// for byte, and filters.js is loaded before app.js): built from the dataset's declaration, sent in the server's form, the narrowed
+// rows and totals back from the real server. A filter's field and values are the user's query: nothing of them goes to the parent page.
+test("S20-B: the embed page's query panel filters and sorts as the console's does: the blocks from the declaration, the server's form on the wire, the narrowed rows and totals, nothing of it told to the parent; a designer view has them with its panel", async () => {
+  const bodies = [];
+  const offers = (a, id) => [...a.$(id).querySelectorAll('button')];
+  const row = (a, list, field) => [...a.$(list).children].find(r => r.dataset.field === field);
+  const a = await embedPage({
+    view: 'report',
+    companies: true,
+    intercept: async (path, options) => {
+      if (/\/(queries|snapshot-jobs)$/.test(path) && options?.method === 'POST') bodies.push(JSON.parse(options.body));
+    },
+  });
+  try {
+    assert.match(embedHtml, /<script src="\/console\/filters\.js" defer>/);
+    assert.ok(
+      embedHtml.indexOf('filters.js') < embedHtml.indexOf('app.js'),
+      'the embed page loads the blocks before app.js'
+    );
+    a.give();
+    await a.connected();
+    assert.equal(a.$('query-narrow').hidden, false);
+    assert.deepEqual(
+      offers(a, 'query-filter-add').map(b => b.textContent),
+      ['客户', '账龄区间', '应收余额']
+    );
+    assert.deepEqual(
+      offers(a, 'query-sort-add').map(b => b.textContent),
+      ['应收余额', '客户']
+    );
+    // 账龄区间 属于 1_30、31_60, the largest balance first. Until the filter has a value the query waits and says why.
+    offers(a, 'query-filter-add')
+      .find(b => b.dataset.field === 'aging.bucket')
+      .click();
+    const bucket = row(a, 'query-filter-rows', 'aging.bucket');
+    assert.equal(bucket.querySelector('.narrow-name').textContent, '账龄区间');
+    assert.equal(bucket.querySelector('.narrow-id').textContent, 'aging.bucket');
+    assert.equal(a.$('preview').disabled, true);
+    assert.equal(a.$('snapshot').disabled, true);
+    assert.equal(a.$('query-hint').textContent, '筛选“账龄区间”还没有值：填写或移除它才能查询。');
+    assert.equal(a.$('query-hint').hidden, false);
+    bucket.querySelector('input[type=radio][value="in"]').click();
+    for (const value of ['31_60', '1_30']) bucket.querySelector('input[type=checkbox][value="' + value + '"]').click();
+    offers(a, 'query-sort-add')
+      .find(b => b.dataset.field === 'ar.open_balance')
+      .click();
+    row(a, 'query-sort-rows', 'ar.open_balance').querySelector('input[type=radio][value="desc"]').click();
+    assert.equal(a.$('query-hint').hidden, true);
+    assert.equal(a.$('preview').disabled, false);
+    a.click('preview');
+    await until(() => !a.$('result-table-wrap').hidden && !a.$('preview').disabled, 'the narrowed result');
+    assert.deepEqual(bodies[0].filters, [{field: 'aging.bucket', operator: 'in', value: '["1_30","31_60"]'}]);
+    assert.deepEqual(bodies[0].sort, [{field: 'ar.open_balance', direction: 'desc'}]);
+    const rows = () => [...a.$('result-table').tBodies[0].rows].map(r => [...r.cells].map(c => c.textContent));
+    assert.deepEqual(rows(), [
+      ['customer_c', '31_60', '9007199254740893.00'],
+      ['customer_b', '1_30', '-0.24'],
+    ]);
+    assert.equal(a.$('result-summary').querySelector('small').textContent, '应收余额 · 筛选后范围合计 / CNY');
+    assert.equal(a.$('result-summary').querySelector('strong').textContent, '9007199254740892.76');
+    assert.equal(
+      a.$('result-subtitle').textContent,
+      '当前显示 2 行 · 当前批准组合的完整结果 · 已按 1 个筛选缩小范围，合计是筛选后的范围'
+    );
+    assert.deepEqual([...a.$('result-evidence').children].map(s => s.textContent).slice(0, 3), [
+      '范围已缩小：行与合计只含符合全部筛选的数据',
+      '筛选：账龄区间 属于 1_30、31_60',
+      '排序：按应收余额降序',
+    ]);
+    // The snapshot freezes the same query.
+    a.click('snapshot');
+    await until(
+      () => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled,
+      'the narrowed snapshot'
+    );
+    assert.deepEqual([bodies[1].filters, bodies[1].sort], [bodies[0].filters, bodies[0].sort]);
+    assert.deepEqual(rows(), [
+      ['customer_c', '31_60', '9007199254740893.00'],
+      ['customer_b', '1_30', '-0.24'],
+    ]);
+    // The parent page learns nothing of the filters, the sort or the rows.
+    const told = JSON.stringify(a.sent);
+    for (const word of ['aging.bucket', '1_30', '31_60', 'ar.open_balance', '账龄区间', '筛选', 'customer_'])
+      assert.equal(told.includes(word), false, 'told to the parent: ' + word);
+    assert.equal(a.w.localStorage.length, 0);
+    assert.equal(a.w.sessionStorage.length, 0);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  // The dashboard view: the query panel sits above the view with its blocks, for the dataset the dashboard is bound to.
+  const b = await embedPage({view: 'dashboard', resource: {dashboard: await seedDashboard()}, companies: true});
+  try {
+    b.give();
+    await b.connected();
+    const panel = b.w.document.querySelector('.query-panel');
+    assert.equal(panel.closest('.page').id, 'page-dashboard');
+    assert.equal(panel.contains(b.$('query-narrow')), true);
+    assert.equal(b.$('query-narrow').hidden, false);
+    assert.deepEqual(
+      offers(b, 'query-filter-add').map(e => e.textContent),
+      ['客户', '账龄区间', '应收余额']
+    );
+    offers(b, 'query-sort-add')
+      .find(e => e.dataset.field === 'customer.id')
+      .click();
+    b.click('preview');
+    await until(() => !b.$('result-table-wrap').hidden && !b.$('preview').disabled, 'the ordered result');
     assert.equal(b.errors.length, 0, b.errors.join('|'));
   } finally {
     b.close();

@@ -197,6 +197,27 @@ return [...found].sort((a,b)=>b.length-a.length);})()`);
   );
   if (company === 'listed') await click('#query-companies-picker .company-option label');
   else if (company === 'text') await typeInto('#query-companies', 'company_demo');
+  // S20-B: the filters and the sort of the query panel in English. 账龄区间 属于 its three buckets (the dataset's rows all stay), a
+  // filter on 客户 that waits for its value (the reason beside the disabled actions), 应收余额 降序: measured as they stand, then the
+  // customer filter is given 开头为 customer_ and the query runs narrowed, so every page below shows the scope in English too.
+  const narrowRow = (list, field) =>
+    `[...document.querySelectorAll('#${list} .narrow-row')].find(r=>r.dataset.field==='${field}')`;
+  await evalJs(
+    `(()=>{const add=(line,f)=>[...document.querySelectorAll('#'+line+' button')].find(b=>b.dataset.field===f).click();add('query-filter-add','aging.bucket');const bucket=${narrowRow('query-filter-rows', 'aging.bucket')};bucket.querySelector('input[value="in"]').click();for(const v of ['current','1_30','31_60'])bucket.querySelector('input[value="'+v+'"]').click();add('query-filter-add','customer.id');add('query-sort-add','ar.open_balance');${narrowRow('query-sort-rows', 'ar.open_balance')}.querySelector('input[value="desc"]').click();})()`
+  );
+  await sleep(300);
+  check(
+    'a filter without a value holds the query, and the reason is said in English',
+    await evalJs(
+      `document.getElementById('preview').disabled&&!document.getElementById('query-hint').hidden&&!/[\\u3400-\\u9fff]/.test(document.getElementById('query-hint').textContent.replace('客户',''))`
+    ),
+    await evalJs(`document.getElementById('query-hint').textContent`)
+  );
+  await shot('en-filters-1440');
+  await measure('filters and sort 1440');
+  await evalJs(`${narrowRow('query-filter-rows', 'customer.id')}.querySelector('input[value="prefix"]').click()`);
+  await typeInto('#query-filter-rows .narrow-row[data-field="customer.id"] .narrow-value input', 'customer_');
+  await waitFor(`!document.getElementById('preview').disabled`, 'the filters are complete');
   await click('#preview');
   await waitFor(`!document.getElementById('result-table-wrap').hidden`, 'the preview');
   await click('#snapshot');

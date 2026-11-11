@@ -213,6 +213,17 @@ const chooseCompany = async () => {
 };
 // The picker as the page shows it: the one company by name with its id as secondary text, chosen, no typed line and no filter.
 const PICKER = `(()=>{const p=document.getElementById('query-companies-picker');if(!p||p.hidden)return null;const o=p.querySelector('.company-option'),b=p.getBoundingClientRect();return {name:o&&o.querySelector('.company-name').textContent,id:o&&o.querySelector('.company-id').textContent,chosen:!!o&&o.querySelector('input').checked,typedHidden:document.getElementById('query-companies').hidden,filterHidden:document.getElementById('query-companies-filter').hidden,count:p.querySelectorAll('.company-option').length,left:b.left,right:b.right,width:b.width,inner:innerWidth};})()`;
+// S20-B (ADR 0023 decision 5): the query panel's filters and sort (filters.js). What 添加筛选 / 添加排序 offer for a field, a word of a row
+// (an operator, a value of a closed list, a direction: its label is clicked), a row's 移除, and the blocks as the page shows them.
+const offerOf = (line, field) =>
+  `[...document.querySelectorAll('#${line} button')].find(b=>b.dataset.field===${JSON.stringify(field)})`;
+const rowOf = (list, field) =>
+  `[...document.querySelectorAll('#${list} .narrow-row')].find(r=>r.dataset.field===${JSON.stringify(field)})`;
+const wordOf = (list, field, value) =>
+  `${rowOf(list, field)}?.querySelector('input[value=${JSON.stringify(value)}]')?.closest('label')`;
+const removeOf = (list, field) =>
+  `[...(${rowOf(list, field)}?.querySelectorAll('.narrow-tools button')||[])].find(b=>b.getAttribute('aria-label').startsWith('移除'))`;
+const NARROW = `(()=>{const b=document.getElementById('query-narrow');if(!b||b.hidden)return null;const box=e=>{const r=e.getBoundingClientRect();return {left:Math.round(r.left),right:Math.round(r.right),width:Math.round(r.width)};};const rows=id=>[...document.querySelectorAll('#'+id+' .narrow-row')].map(r=>({field:r.dataset.field,name:r.querySelector('.narrow-name').textContent,id:r.querySelector('.narrow-id').textContent,words:[...r.querySelectorAll('.narrow-ops label')].map(l=>l.textContent+(l.querySelector('input').checked?'*':'')),values:[...r.querySelectorAll('.narrow-value input')].filter(i=>i.type==='text'||i.checked).map(i=>i.value),...box(r)}));const body=b.closest('.dialog-body');return {filters:rows('query-filter-rows'),sorts:rows('query-sort-rows'),offers:[...b.querySelectorAll('.narrow-offers button')].map(x=>x.textContent),hint:document.getElementById('query-hint').hidden?'':document.getElementById('query-hint').textContent,previewDisabled:document.getElementById('preview').disabled,snapshotDisabled:document.getElementById('snapshot').disabled,previewTitle:document.getElementById('preview').title,scrolls:body?body.scrollWidth>body.clientWidth+1:false,inner:innerWidth,...box(b)};})()`;
 // A studio or the centre hides the console's navigation: the way out is their own wordmark, as a person would take it.
 // S07-A: the application rail is on every shell, so a page is one click away from anywhere.
 const nav = async page => {
@@ -487,7 +498,155 @@ async function main() {
   await shot('console-03a-company-picker');
   await contrast('company picker 1440 light');
   check('no horizontal overflow with the picker at 1440', !(await overflow()).over, await overflow());
+  // S20-B (ADR 0023 decision 5): the filters and the sort, open on the page between the panel's meta line and its actions. What the
+  // dataset declares is offered by label; a filter without a value holds the query and says why; then two filters (a closed list, a
+  // number typed in the column's form) and a sort key, in the light and the dark scheme; the narrowed preview; and 移除 gives the
+  // whole dataset back for the checks that follow.
   await chooseCompany();
+  const narrow0 = await evalJs(NARROW);
+  check(
+    'the query panel offers the filters and the sorts the dataset declares, by label, and nothing is chosen for the person',
+    !!narrow0 &&
+      JSON.stringify(narrow0.offers) === JSON.stringify(['客户', '账龄区间', '应收余额', '应收余额', '客户']) &&
+      narrow0.filters.length === 0 &&
+      narrow0.sorts.length === 0 &&
+      narrow0.hint === '' &&
+      !narrow0.previewDisabled,
+    narrow0
+  );
+  await clickExpr(offerOf('query-filter-add', 'aging.bucket'), '添加筛选：账龄区间');
+  const waiting = await evalJs(NARROW);
+  check(
+    'a filter without a value holds 查询预览 and 创建快照; their title and the line beside them say why',
+    waiting.filters.length === 1 &&
+      waiting.previewDisabled &&
+      waiting.snapshotDisabled &&
+      waiting.hint === '筛选“账龄区间”还没有值：填写或移除它才能查询。' &&
+      waiting.previewTitle === waiting.hint,
+    waiting
+  );
+  await shot('console-03c-filter-waiting');
+  await contrast('a filter waiting for its value 1440 light');
+  await clickExpr(wordOf('query-filter-rows', 'aging.bucket', 'in'), '属于');
+  await clickExpr(wordOf('query-filter-rows', 'aging.bucket', '1_30'), '1_30');
+  await clickExpr(wordOf('query-filter-rows', 'aging.bucket', '31_60'), '31_60');
+  await clickExpr(offerOf('query-filter-add', 'ar.open_balance'), '添加筛选：应收余额');
+  await clickExpr(wordOf('query-filter-rows', 'ar.open_balance', 'le'), '不大于');
+  await typeInto('#query-filter-rows .narrow-row[data-field="ar.open_balance"] .narrow-value input', '100');
+  const malformed = await evalJs(NARROW);
+  check(
+    "a number that is not in the column's form holds the query and says the form",
+    malformed.previewDisabled && malformed.hint === '筛选“应收余额”的值须写成 2 位小数，例如 100.00。',
+    malformed
+  );
+  await typeInto(
+    '#query-filter-rows .narrow-row[data-field="ar.open_balance"] .narrow-value input',
+    '9007199254740893.00'
+  );
+  await clickExpr(offerOf('query-sort-add', 'ar.open_balance'), '添加排序：应收余额');
+  await clickExpr(wordOf('query-sort-rows', 'ar.open_balance', 'desc'), '降序');
+  await sleep(150);
+  const narrow1 = await evalJs(NARROW);
+  check(
+    'two filter rows and a sort key at 1440: the field by its label with the id as secondary text, the declared operators as words with the chosen one marked, the values, inside the panel',
+    narrow1.filters.length === 2 &&
+      narrow1.filters[0].name === '账龄区间' &&
+      narrow1.filters[0].id === 'aging.bucket' &&
+      JSON.stringify(narrow1.filters[0].words) === JSON.stringify(['等于', '属于*']) &&
+      JSON.stringify(narrow1.filters[0].values) === JSON.stringify(['1_30', '31_60']) &&
+      narrow1.filters[1].name === '应收余额' &&
+      narrow1.filters[1].id === 'ar.open_balance' &&
+      JSON.stringify(narrow1.filters[1].words) === JSON.stringify(['小于', '不大于*', '大于', '不小于', '介于']) &&
+      JSON.stringify(narrow1.filters[1].values) === JSON.stringify(['9007199254740893.00']) &&
+      narrow1.sorts.length === 1 &&
+      narrow1.sorts[0].name === '应收余额' &&
+      JSON.stringify(narrow1.sorts[0].words) === JSON.stringify(['升序', '降序*']) &&
+      JSON.stringify(narrow1.offers) === JSON.stringify(['客户', '客户']) &&
+      narrow1.hint === '' &&
+      !narrow1.previewDisabled &&
+      [...narrow1.filters, ...narrow1.sorts].every(r => r.left >= narrow1.left && r.right <= narrow1.right + 1) &&
+      narrow1.right <= narrow1.inner,
+    narrow1
+  );
+  await shot('console-03d-filters-and-sort');
+  await contrast('filters and sort 1440 light');
+  await legibility('workbench with filters and sort 1440');
+  check('no horizontal overflow with the filters and the sort at 1440', !(await overflow()).over, await overflow());
+  // The scheme changes while another page is shown, as in the dark pass at the end of this script. The layout designer below the
+  // panel is a closed <details>: Chrome restyles what it does not render only when something reads it, so after a change made with
+  // the workbench on screen the audit's own reading starts the 0.15 s background transition of the designer's buttons and measures
+  // its first frame, the new scheme's text on the old scheme's fill (1.22:1, on something nobody sees). The rows stay in the panel.
+  const schemeOf = async scheme => {
+    await nav('system');
+    await viewport(1440, 900, scheme);
+    await nav('workspace');
+  };
+  await schemeOf('dark');
+  const narrowDark1440 = await evalJs(NARROW);
+  check(
+    'the rows are still in the panel in the dark scheme, inside it',
+    !!narrowDark1440 &&
+      narrowDark1440.filters.length === 2 &&
+      narrowDark1440.sorts.length === 1 &&
+      [...narrowDark1440.filters, ...narrowDark1440.sorts].every(
+        r => r.left >= narrowDark1440.left && r.right <= narrowDark1440.right + 1
+      ),
+    narrowDark1440
+  );
+  await contrast('filters and sort 1440 dark');
+  check(
+    'no horizontal overflow with the filters and the sort at 1440 dark',
+    !(await overflow()).over,
+    await overflow()
+  );
+  await shot('console-1440-dark-filters-and-sort');
+  await schemeOf('light');
+  await clickBtn('#page-workspace', '查询预览');
+  await waitFor(
+    `!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`,
+    'the narrowed preview',
+    30000
+  );
+  const narrowedResult = await evalJs(
+    `({rows:[...document.querySelectorAll('#result-table tbody tr')].map(r=>r.cells[0].textContent),card:document.querySelector('#result-summary small').textContent,total:document.querySelector('#result-summary strong').textContent,chip:document.getElementById('sh-data-text').textContent,subtitle:document.getElementById('result-subtitle').textContent,evidence:[...document.getElementById('result-evidence').children].map(s=>s.textContent).slice(0,4)})`
+  );
+  check(
+    'the narrowed preview: the rows of the two buckets, the largest balance first; the total is theirs and its card says so; the chip, the subtitle and the evidence line say the scope',
+    JSON.stringify(narrowedResult.rows) === JSON.stringify(['customer_c', 'customer_b']) &&
+      narrowedResult.card === '应收余额 · 筛选后范围合计 / CNY' &&
+      narrowedResult.total === '9007199254740892.76' &&
+      /^应收余额 · 演示公司 · \d{4}-\d{2}-\d{2} · 2 个筛选 · 按应收余额降序$/.test(narrowedResult.chip) &&
+      narrowedResult.subtitle ===
+        '当前显示 2 行 · 当前批准组合的完整结果 · 已按 2 个筛选缩小范围，合计是筛选后的范围' &&
+      JSON.stringify(narrowedResult.evidence) ===
+        JSON.stringify([
+          '范围已缩小：行与合计只含符合全部筛选的数据',
+          '筛选：账龄区间 属于 1_30、31_60',
+          '筛选：应收余额 不大于 9007199254740893.00',
+          '排序：按应收余额降序',
+        ]),
+    narrowedResult
+  );
+  await shot('console-03e-narrowed-preview');
+  await contrast('narrowed preview 1440 light');
+  check('no horizontal overflow with the narrowed preview at 1440', !(await overflow()).over, await overflow());
+  for (const [list, field] of [
+    ['query-filter-rows', 'aging.bucket'],
+    ['query-filter-rows', 'ar.open_balance'],
+    ['query-sort-rows', 'ar.open_balance'],
+  ])
+    await clickExpr(removeOf(list, field), '移除 ' + field);
+  const narrow2 = await evalJs(NARROW);
+  check(
+    '移除 takes the rows away, and the narrowed result with them: the whole dataset is the query again',
+    narrow2.filters.length === 0 &&
+      narrow2.sorts.length === 0 &&
+      narrow2.offers.length === 5 &&
+      (await evalJs(
+        `document.getElementById('result-kind').textContent==='尚未查询'&&document.getElementById('sh-data-text').textContent==='未选择数据'`
+      )),
+    narrow2
+  );
   await clickBtn('#page-workspace', '查询预览');
   await waitFor(
     `!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`,
@@ -918,6 +1077,57 @@ async function main() {
       check('no horizontal overflow with the picker open at 390', !o390.over, o390);
       await contrast('company picker 390 light');
       await shot('console-390-company-picker');
+      // S20-B: the filters and the sort at 390, in the data drawer with the rest of the panel: a filter row and a sort key stack
+      // inside the drawer (the field and its 移除, then the operators, then the value), nothing scrolls sideways, and the text is
+      // legible and holds its contrast in both schemes. 移除 leaves the panel as it was found.
+      await clickExpr(offerOf('query-filter-add', 'aging.bucket'), '添加筛选：账龄区间');
+      await clickExpr(wordOf('query-filter-rows', 'aging.bucket', 'in'), '属于');
+      await clickExpr(wordOf('query-filter-rows', 'aging.bucket', '1_30'), '1_30');
+      await clickExpr(offerOf('query-filter-add', 'ar.open_balance'), '添加筛选：应收余额');
+      await clickExpr(wordOf('query-filter-rows', 'ar.open_balance', 'between'), '介于');
+      await clickExpr(offerOf('query-sort-add', 'ar.open_balance'), '添加排序：应收余额');
+      await clickExpr(wordOf('query-sort-rows', 'ar.open_balance', 'desc'), '降序');
+      await sleep(200);
+      const narrow390 = await evalJs(NARROW);
+      check(
+        'two filter rows and a sort key at 390 are in the data drawer and fit it; the filter without its two values holds the query and says why',
+        !!narrow390 &&
+          narrow390.filters.length === 2 &&
+          narrow390.sorts.length === 1 &&
+          [...narrow390.filters, ...narrow390.sorts].every(
+            r => r.width > 0 && r.left >= 0 && r.right <= narrow390.inner
+          ) &&
+          narrow390.right <= narrow390.inner &&
+          !narrow390.scrolls &&
+          narrow390.previewDisabled &&
+          narrow390.hint === '筛选“应收余额”的“介于”需要起止两个值。' &&
+          (await evalJs(`document.getElementById('sh-query-slot').contains(document.getElementById('query-narrow'))`)),
+        narrow390
+      );
+      const narrowOver = await overflow();
+      check('no horizontal overflow with the filters and the sort open at 390', !narrowOver.over, narrowOver);
+      await contrast('filters and sort 390 light');
+      await legibility('data drawer with filters and sort 390');
+      await shot('console-390-filters-and-sort');
+      await viewport(390, 844, 'dark', true);
+      await contrast('filters and sort 390 dark');
+      const narrowDark = await overflow();
+      check('no horizontal overflow with the filters and the sort open at 390 dark', !narrowDark.over, narrowDark);
+      await shot('console-390-dark-filters-and-sort');
+      await viewport(390, 844, 'light', true);
+      for (const [list, field] of [
+        ['query-filter-rows', 'aging.bucket'],
+        ['query-filter-rows', 'ar.open_balance'],
+        ['query-sort-rows', 'ar.open_balance'],
+      ])
+        await clickExpr(removeOf(list, field), '移除 ' + field);
+      check(
+        '移除 at 390 leaves no row and nothing to wait for',
+        await evalJs(
+          `document.querySelectorAll('#query-narrow .narrow-row').length===0&&document.getElementById('query-hint').hidden&&!document.getElementById('preview').disabled`
+        ),
+        await evalJs(NARROW)
+      );
       await key('Escape');
       await sleep(250);
     }

@@ -22,6 +22,7 @@ export const SCRIPTS = [
   'documents.js',
   'board.js',
   'companies.js',
+  'filters.js',
 ];
 export const ATTRIBUTES = ['aria-label', 'title', 'placeholder', 'alt'];
 // The normal form of a key: what the translator looks up after trimming a text node.

@@ -23,6 +23,7 @@ const libraryScript = await readFile(join(root, 'console/assets/library.js'), 'u
 const issueScript = await readFile(join(root, 'console/assets/issue.js'), 'utf8');
 const boardScript = await readFile(join(root, 'console/assets/board.js'), 'utf8');
 const companiesScript = await readFile(join(root, 'console/assets/companies.js'), 'utf8');
+const filtersScript = await readFile(join(root, 'console/assets/filters.js'), 'utf8');
 const token = randomBytes(32).toString('hex');
 const artifactDir = process.env.REPORTING_S03A_EVIDENCE_DIR;
 const pdfConfigured = ['REPORTING_TYPST', 'REPORTING_TYPST_SHA256', 'REPORTING_PDF_FONTS'].every(k => process.env[k]);
@@ -191,6 +192,7 @@ function app(intercept, options) {
   w.eval(boardScript);
   w.eval(documentsScript);
   w.eval(companiesScript);
+  w.eval(filtersScript);
   w.eval(script);
   const $ = id => w.document.getElementById(id);
   const input = (id, value) => {
@@ -16962,6 +16964,1322 @@ test("S09-F F6: the raw chooser (another layout or dashboard, a version by numbe
     a.click('layout-server-open');
     await until(() => a.$('layout-state').textContent === '已保存 v1' && !a.$('preview').disabled, 'v1 opened');
     assert.match(a.$('layout-server-status').textContent, /正在编辑 [a-f0-9]{32} · 版本 1/);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+// ---- S20-B: the query panel's filters and sort (docs/ADR_0023_PUBLISHED_FILTERS_AND_SORTS.md decision 5, docs/S20B_SCOPE.md) ----
+// The two blocks, as a test reads and drives them; kind is 'filter' or 'sort', a row is named by its field's id.
+const narrowOf = a => {
+  const list = kind => a.$(kind === 'sort' ? 'query-sort-rows' : 'query-filter-rows'),
+    line = kind => a.$(kind === 'sort' ? 'query-sort-add' : 'query-filter-add');
+  const row = (kind, field) => [...list(kind).children].find(r => r.dataset.field === field);
+  const controls = field => [
+    ...row('filter', field).querySelectorAll('.narrow-value input, .narrow-value select, .narrow-value textarea'),
+  ];
+  return {
+    block: a.$('query-narrow'),
+    hint: a.$('query-hint'),
+    row,
+    controls,
+    rows: kind => [...list(kind).children].map(r => r.dataset.field),
+    // What 添加筛选 / 添加排序 still offer: the label on each button, its name and its title.
+    offers: kind =>
+      [...line(kind).querySelectorAll('button')].map(b => [b.textContent, b.getAttribute('aria-label'), b.title]),
+    add: (kind, field) => [...line(kind).querySelectorAll('button')].find(b => b.dataset.field === field).click(),
+    // A row as a person reads it: the field, the words to choose among (the chosen one marked) or the one word, the value's controls.
+    read: (kind, field) => {
+      const r = row(kind, field);
+      return {
+        name: r.querySelector('.narrow-name').textContent,
+        id: r.querySelector('.narrow-id').textContent,
+        choices: [...r.querySelectorAll('.narrow-ops .narrow-choice')].map(
+          l => l.textContent + (l.querySelector('input').checked ? ' ✓' : '')
+        ),
+        word: r.querySelector('.narrow-ops .narrow-word')?.textContent ?? null,
+        controls: [...r.querySelectorAll('.narrow-value input, .narrow-value select, .narrow-value textarea')].map(c =>
+          c.tagName === 'INPUT' ? c.type : c.tagName.toLowerCase()
+        ),
+        buttons: [...r.querySelectorAll('.narrow-tools button')]
+          .filter(b => !b.hidden)
+          .map(b => b.getAttribute('aria-label')),
+      };
+    },
+    // The operator of a filter, the direction of a sort key.
+    choose: (kind, field, value) =>
+      row(kind, field)
+        .querySelector('input[type=radio][value="' + value + '"]')
+        .click(),
+    // A value typed or picked in the nth control of a filter's value.
+    type: (field, value, nth = 0) => {
+      const c = controls(field)[nth];
+      c.value = value;
+      c.dispatchEvent(new a.w.Event(c.tagName === 'SELECT' ? 'change' : 'input', {bubbles: true}));
+    },
+    tick: (field, value) =>
+      controls(field)
+        .find(c => c.type === 'checkbox' && c.value === value)
+        .click(),
+    press: (kind, field, label) =>
+      [...row(kind, field).querySelectorAll('.narrow-tools button')]
+        .find(b => !b.hidden && b.getAttribute('aria-label').startsWith(label))
+        .click(),
+  };
+};
+// What the console sends as a query: the bodies of POST /queries and POST /snapshot-jobs, in order; the server answers them.
+const queriesInto = bodies => async (path, options) => {
+  if (/\/(queries|snapshot-jobs)$/.test(path) && options?.method === 'POST') bodies.push(JSON.parse(options.body));
+};
+// The catalogue as the server gives it with the receivables entry changed by the test: what the console builds its blocks on, while
+// the server keeps its own declaration and refuses what it did not publish.
+const catalogWith = change => async (path, options) => {
+  if (!/\/catalog\?integration_id=/.test(path)) return undefined;
+  const real = await (await fetch(url + path, options)).json();
+  const entry = Array.isArray(real) && real.find(d => d.dataset.id === 'receivables.aging');
+  return json(entry ? change(entry, real) || real : real);
+};
+const eachOf =
+  (...handlers) =>
+  async (path, options) => {
+    for (const handler of handlers) {
+      const answer = await handler(path, options);
+      if (answer) return answer;
+    }
+  };
+const resultRows = a => [...a.$('result-table').tBodies[0].rows].map(r => [...r.cells].map(c => c.textContent));
+const evidenceLines = a => [...a.$('result-evidence').children].map(s => s.textContent);
+const totalCard = a => [
+  a.$('result-summary').querySelector('small').textContent,
+  a.$('result-summary').querySelector('strong').textContent,
+];
+async function previewNow(a) {
+  assert.equal(a.$('preview').disabled, false, 'the preview can be asked: ' + a.$('query-hint').textContent);
+  a.click('preview');
+  await until(() => a.$('result-kind').textContent === '查询预览' && !a.$('preview').disabled, 'the preview');
+}
+// The three rows the demo's receivables hold for the demo identity, as the unfiltered query returns them.
+const AR = {
+  a: ['customer_a', 'current', '100.25'],
+  b: ['customer_b', '1_30', '-0.24'],
+  c: ['customer_c', '31_60', '9007199254740893.00'],
+};
+const CHIP = /^应收余额 · 演示公司 · \d{4}-\d{2}-\d{2}/;
+
+test("S20-B: the query panel's 筛选 and 排序 blocks are built from the dataset's declaration: the fields by label with the id as secondary text, only the declared operators as words, closed values as a list, a value control by operator", async () => {
+  const a = app(undefined, {companies: true});
+  try {
+    await a.login();
+    const n = narrowOf(a),
+      d = a.w.document;
+    // Both blocks, between the panel's meta line and its actions; each a named group.
+    assert.equal(n.block.hidden, false);
+    assert.equal(n.block.previousElementSibling.className, 'query-meta');
+    assert.equal(n.block.nextElementSibling.className, 'query-actions');
+    for (const [id, name] of [
+      ['query-filters', '筛选'],
+      ['query-sorts', '排序'],
+    ]) {
+      assert.equal(a.$(id).hidden, false, id);
+      assert.equal(a.$(id).getAttribute('role'), 'group');
+      assert.equal(d.getElementById(a.$(id).getAttribute('aria-labelledby')).textContent, name);
+    }
+    // Nothing is chosen for the person: no row, and what can be added is what receivables.aging declares, by label, the id in the title.
+    assert.deepEqual(n.rows('filter'), []);
+    assert.deepEqual(n.rows('sort'), []);
+    assert.deepEqual(n.offers('filter'), [
+      ['客户', '添加筛选：客户', '添加筛选：客户（customer.id）'],
+      ['账龄区间', '添加筛选：账龄区间', '添加筛选：账龄区间（aging.bucket）'],
+      ['应收余额', '添加筛选：应收余额', '添加筛选：应收余额（ar.open_balance）'],
+    ]);
+    assert.deepEqual(n.offers('sort'), [
+      ['应收余额', '添加排序：应收余额', '添加排序：应收余额（ar.open_balance）'],
+      ['客户', '添加排序：客户', '添加排序：客户（customer.id）'],
+    ]);
+    assert.equal(d.getElementById(a.$('query-filter-add').getAttribute('aria-labelledby')).textContent, '添加筛选');
+    assert.equal(a.$('preview').disabled, false);
+    assert.equal(n.hint.hidden, true);
+    assert.equal(a.$('preview').getAttribute('aria-describedby'), 'query-hint');
+    assert.equal(a.$('snapshot').getAttribute('aria-describedby'), 'query-hint');
+    // 客户, a string without closed values: 等于 不等于 属于 开头为 and nothing else; one text field, which takes the focus.
+    n.add('filter', 'customer.id');
+    assert.deepEqual(n.read('filter', 'customer.id'), {
+      name: '客户',
+      id: 'customer.id',
+      choices: ['等于 ✓', '不等于', '属于', '开头为'],
+      word: null,
+      controls: ['text'],
+      buttons: ['移除筛选：客户'],
+    });
+    const ops = n.row('filter', 'customer.id').querySelector('.narrow-ops');
+    assert.equal(ops.getAttribute('role'), 'radiogroup');
+    assert.equal(ops.getAttribute('aria-label'), '客户 的运算符');
+    assert.equal(n.controls('customer.id')[0].getAttribute('aria-label'), '客户 的筛选值');
+    assert.equal(d.activeElement, n.controls('customer.id')[0], 'the value to fill takes the focus');
+    assert.deepEqual(
+      n.offers('filter').map(o => o[0]),
+      ['账龄区间', '应收余额'],
+      'a field has one row'
+    );
+    // 属于 without closed values is one value a line; 开头为 is one text again.
+    n.choose('filter', 'customer.id', 'in');
+    assert.deepEqual(n.read('filter', 'customer.id').controls, ['textarea']);
+    assert.equal(n.controls('customer.id')[0].placeholder, '每行一个值，最多 32 个');
+    assert.equal(n.controls('customer.id')[0].getAttribute('aria-label'), '客户 的筛选值，每行一个');
+    n.choose('filter', 'customer.id', 'prefix');
+    assert.deepEqual(n.read('filter', 'customer.id').choices, ['等于', '不等于', '属于', '开头为 ✓']);
+    assert.deepEqual(n.read('filter', 'customer.id').controls, ['text']);
+    // 账龄区间 has closed values: one of them for 等于, any of them for 属于; no free text.
+    n.add('filter', 'aging.bucket');
+    assert.deepEqual(n.read('filter', 'aging.bucket'), {
+      name: '账龄区间',
+      id: 'aging.bucket',
+      choices: ['等于 ✓', '属于'],
+      word: null,
+      controls: ['select'],
+      buttons: ['移除筛选：账龄区间'],
+    });
+    assert.deepEqual(
+      [...n.controls('aging.bucket')[0].options].map(o => [o.value, o.textContent]),
+      [
+        ['', '请选择…'],
+        ['current', 'current'],
+        ['1_30', '1_30'],
+        ['31_60', '31_60'],
+        ['61_90', '61_90'],
+        ['90+', '90+'],
+      ]
+    );
+    n.choose('filter', 'aging.bucket', 'in');
+    assert.deepEqual(n.read('filter', 'aging.bucket').controls, Array(5).fill('checkbox'));
+    const set = n.row('filter', 'aging.bucket').querySelector('.narrow-set');
+    assert.equal(set.getAttribute('role'), 'group');
+    assert.equal(set.getAttribute('aria-label'), '账龄区间 的可选值');
+    assert.deepEqual(
+      [...set.querySelectorAll('.narrow-choice')].map(l => l.textContent),
+      ['current', '1_30', '31_60', '61_90', '90+']
+    );
+    // 应收余额, a decimal of two places: 小于 不大于 大于 不小于 介于; a number is typed as text in the column's form; 介于 takes two.
+    n.add('filter', 'ar.open_balance');
+    assert.deepEqual(n.read('filter', 'ar.open_balance'), {
+      name: '应收余额',
+      id: 'ar.open_balance',
+      choices: ['小于 ✓', '不大于', '大于', '不小于', '介于'],
+      word: null,
+      controls: ['text'],
+      buttons: ['移除筛选：应收余额'],
+    });
+    const number = n.controls('ar.open_balance')[0];
+    assert.equal(number.getAttribute('inputmode'), 'decimal');
+    assert.equal(number.placeholder, '0.00', "the column's form");
+    n.type('ar.open_balance', '100.25');
+    n.choose('filter', 'ar.open_balance', 'between');
+    assert.deepEqual(n.read('filter', 'ar.open_balance').controls, ['text', 'text']);
+    assert.deepEqual(
+      n.controls('ar.open_balance').map(c => [c.getAttribute('aria-label'), c.value]),
+      [
+        ['应收余额 的起始值', '100.25'],
+        ['应收余额 的结束值', ''],
+      ],
+      'the value typed for one operator stays for the next'
+    );
+    assert.equal(n.row('filter', 'ar.open_balance').querySelector('.narrow-range .narrow-word').textContent, '至');
+    // Every declared field has its row: nothing left to add, and the line goes.
+    assert.deepEqual(n.rows('filter'), ['customer.id', 'aging.bucket', 'ar.open_balance']);
+    assert.equal(a.$('query-filter-add-line').hidden, true);
+    // 移除 takes the row away and gives the field back to 添加筛选, with the focus.
+    n.press('filter', 'customer.id', '移除筛选');
+    assert.deepEqual(n.rows('filter'), ['aging.bucket', 'ar.open_balance']);
+    assert.deepEqual(
+      n.offers('filter').map(o => o[0]),
+      ['客户']
+    );
+    assert.equal(a.$('query-filter-add-line').hidden, false);
+    assert.equal(d.activeElement.getAttribute('aria-label'), '添加筛选：客户');
+    // A sort key: the field by its label, 升序 / 降序 as declared, its place in the order.
+    n.add('sort', 'customer.id');
+    assert.deepEqual(n.read('sort', 'customer.id'), {
+      name: '客户',
+      id: 'customer.id',
+      choices: ['升序 ✓', '降序'],
+      word: null,
+      controls: [],
+      buttons: ['移除排序：客户'],
+    });
+    assert.equal(
+      n.row('sort', 'customer.id').querySelector('.narrow-ops').getAttribute('aria-label'),
+      '客户 的排序方向'
+    );
+    assert.equal(n.row('sort', 'customer.id').querySelector('.narrow-rank').textContent, '1');
+    // Nothing of the blocks is markup from a string or an inline style.
+    assert.equal(n.block.querySelectorAll('[style]').length, 0);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test("S20-B: 等于, 属于 and 介于 go to the server in its own form and the rows and totals come back narrowed; the chip, the total's card, the subtitle and the evidence line say the scope; a snapshot freezes it", async () => {
+  const bodies = [];
+  const a = app(queriesInto(bodies), {companies: true});
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    const digest = () => [...a.$('result-evidence').children].find(s => s.textContent.startsWith('查询摘要 ')).title;
+    // Without a filter the query carries its two empty lists, as before, and nothing says "narrowed".
+    await previewNow(a);
+    assert.deepEqual([bodies[0].filters, bodies[0].sort], [[], []]);
+    assert.deepEqual(resultRows(a), [AR.a, AR.b, AR.c]);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + '$'));
+    assert.deepEqual(totalCard(a), ['应收余额 · 原范围合计 / CNY', '9007199254740993.01']);
+    assert.equal(a.$('result-subtitle').textContent, '当前显示 3 行 · 当前批准组合的完整结果');
+    assert.equal(
+      evidenceLines(a).some(s => /筛选|排序|范围/.test(s)),
+      false
+    );
+    const whole = digest();
+    assert.match(whole, /^[a-f0-9]{64}$/);
+    // 等于: the one value as it is typed. A filter is a change of the query: the result on show goes.
+    n.add('filter', 'customer.id');
+    assert.equal(a.$('result-kind').textContent, '尚未查询');
+    assert.equal(a.$('sh-data-text').textContent, '未选择数据');
+    n.type('customer.id', ' customer_a ');
+    await previewNow(a);
+    assert.deepEqual(bodies[1].filters, [{field: 'customer.id', operator: 'eq', value: 'customer_a'}]);
+    assert.deepEqual(bodies[1].sort, []);
+    assert.deepEqual(resultRows(a), [AR.a]);
+    assert.deepEqual(
+      totalCard(a),
+      ['应收余额 · 筛选后范围合计 / CNY', '100.25'],
+      "the server's total is the narrowed scope's"
+    );
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 1 个筛选$'));
+    assert.match(a.$('sh-data-chip').title, /1 个筛选 · 查询预览 · 数据集 receivables\.aging@1\.0\.0/);
+    assert.equal(
+      a.$('result-subtitle').textContent,
+      '当前显示 1 行 · 当前批准组合的完整结果 · 已按 1 个筛选缩小范围，合计是筛选后的范围'
+    );
+    assert.deepEqual(evidenceLines(a).slice(0, 2), [
+      '范围已缩小：行与合计只含符合全部筛选的数据',
+      '筛选：客户 等于 customer_a',
+    ]);
+    assert.notEqual(digest(), whole, 'the digest binds the narrowed query: another one than the whole dataset');
+    // 不等于, 开头为 and 属于 as a list a line (a value given twice counts once, the spaces around a value are not part of it).
+    n.choose('filter', 'customer.id', 'ne');
+    await previewNow(a);
+    assert.deepEqual(bodies[2].filters, [{field: 'customer.id', operator: 'ne', value: 'customer_a'}]);
+    assert.deepEqual(resultRows(a), [AR.b, AR.c]);
+    n.choose('filter', 'customer.id', 'prefix');
+    n.type('customer.id', 'customer_');
+    await previewNow(a);
+    assert.deepEqual(bodies[3].filters, [{field: 'customer.id', operator: 'prefix', value: 'customer_'}]);
+    assert.deepEqual(resultRows(a), [AR.a, AR.b, AR.c]);
+    assert.deepEqual(evidenceLines(a)[1], '筛选：客户 开头为 customer_');
+    n.choose('filter', 'customer.id', 'in');
+    n.type('customer.id', 'customer_c\n\n  customer_a  \r\ncustomer_c');
+    await previewNow(a);
+    assert.deepEqual(bodies[4].filters, [{field: 'customer.id', operator: 'in', value: '["customer_c","customer_a"]'}]);
+    assert.deepEqual(resultRows(a), [AR.a, AR.c]);
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '9007199254740993.25']);
+    assert.deepEqual(evidenceLines(a)[1], '筛选：客户 属于 customer_c、customer_a');
+    // 属于 from the closed list: the values chosen, in the declaration's order, as a JSON array of strings in `value`.
+    n.press('filter', 'customer.id', '移除筛选');
+    n.add('filter', 'aging.bucket');
+    n.choose('filter', 'aging.bucket', 'in');
+    n.tick('aging.bucket', '31_60');
+    n.tick('aging.bucket', '1_30');
+    await previewNow(a);
+    assert.deepEqual(bodies[5].filters, [{field: 'aging.bucket', operator: 'in', value: '["1_30","31_60"]'}]);
+    assert.deepEqual(resultRows(a), [AR.b, AR.c]);
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '9007199254740892.76']);
+    assert.deepEqual(evidenceLines(a)[1], '筛选：账龄区间 属于 1_30、31_60');
+    // 等于 from the closed list.
+    n.choose('filter', 'aging.bucket', 'eq');
+    n.type('aging.bucket', 'current');
+    await previewNow(a);
+    assert.deepEqual(bodies[6].filters, [{field: 'aging.bucket', operator: 'eq', value: 'current'}]);
+    assert.deepEqual(resultRows(a), [AR.a]);
+    // A second filter is a conjunction. 介于 carries its two values as a JSON array of the exact strings: the bound one cent under
+    // customer_c's balance keeps it out, which a float could not tell.
+    n.choose('filter', 'aging.bucket', 'in');
+    n.tick('aging.bucket', '1_30');
+    n.tick('aging.bucket', '31_60');
+    n.add('filter', 'ar.open_balance');
+    n.choose('filter', 'ar.open_balance', 'between');
+    n.type('ar.open_balance', '-1.00', 0);
+    n.type('ar.open_balance', '9007199254740892.99', 1);
+    await previewNow(a);
+    assert.deepEqual(bodies[7].filters, [
+      {field: 'aging.bucket', operator: 'in', value: '["1_30","31_60"]'},
+      {field: 'ar.open_balance', operator: 'between', value: '["-1.00","9007199254740892.99"]'},
+    ]);
+    assert.deepEqual(resultRows(a), [AR.b]);
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '-0.24']);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 2 个筛选$'));
+    assert.equal(
+      a.$('result-subtitle').textContent,
+      '当前显示 1 行 · 当前批准组合的完整结果 · 已按 2 个筛选缩小范围，合计是筛选后的范围'
+    );
+    assert.deepEqual(evidenceLines(a).slice(0, 3), [
+      '范围已缩小：行与合计只含符合全部筛选的数据',
+      '筛选：账龄区间 属于 1_30、31_60',
+      '筛选：应收余额 介于 -1.00 至 9007199254740892.99',
+    ]);
+    n.type('ar.open_balance', '9007199254740893.00', 1);
+    await previewNow(a);
+    assert.deepEqual(resultRows(a), [AR.b, AR.c]);
+    // A bound: 不大于 100.25 keeps the two rows at or under it.
+    n.press('filter', 'aging.bucket', '移除筛选');
+    n.choose('filter', 'ar.open_balance', 'le');
+    n.type('ar.open_balance', '100.25');
+    await previewNow(a);
+    assert.deepEqual(bodies[9].filters, [{field: 'ar.open_balance', operator: 'le', value: '100.25'}]);
+    assert.deepEqual(resultRows(a), [AR.a, AR.b]);
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '100.01']);
+    // The snapshot freezes the same narrowed query: the job is asked with it, and the frozen pages are its rows and totals.
+    a.click('snapshot');
+    await until(
+      () => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled,
+      'the narrowed snapshot'
+    );
+    assert.deepEqual(bodies[10].filters, bodies[9].filters);
+    assert.deepEqual(bodies[10].sort, []);
+    assert.equal(
+      a.trace.filter(t => t.path.endsWith('/snapshot-jobs')).length,
+      1,
+      'one job, with the filters in its query'
+    );
+    assert.deepEqual(resultRows(a), [AR.a, AR.b]);
+    assert.equal(a.$('page-info').textContent, '第 1 页 · 共 2 行');
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '100.01']);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 1 个筛选$'));
+    assert.equal(a.$('sh-data-kind').textContent, '冻结快照');
+    assert.match(
+      a.$('result-subtitle').textContent,
+      /^同一快照分页 · \d{4}-\d{2}-\d{2} · Asia\/Shanghai · 已按 1 个筛选缩小范围，合计是筛选后的范围$/
+    );
+    assert.deepEqual(evidenceLines(a).slice(0, 2), [
+      '范围已缩小：行与合计只含符合全部筛选的数据',
+      '筛选：应收余额 不大于 100.25',
+    ]);
+    // The export buttons stay what they are: the workbook of the narrowed snapshot downloads as any other.
+    a.click('export');
+    await until(() => a.downloads.length === 1, 'the workbook of the narrowed snapshot');
+    assert.equal(
+      Buffer.from(await a.downloads[0].blob.arrayBuffer())
+        .subarray(0, 2)
+        .toString(),
+      'PK'
+    );
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S20-B: the 排序 block takes up to three keys in the order they apply, a field once, in the declared directions; the rows come back in the order asked and the chip says it', async () => {
+  const bodies = [];
+  const a = app(queriesInto(bodies), {companies: true});
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    const ranks = () => [...a.$('query-sort-rows').querySelectorAll('.narrow-rank')].map(r => r.textContent);
+    // One key, descending: the largest balance first; the scope is the whole dataset, only ordered.
+    n.add('sort', 'ar.open_balance');
+    assert.equal(a.w.document.activeElement.value, 'asc', 'the direction to choose takes the focus');
+    assert.deepEqual(
+      n.offers('sort').map(o => o[0]),
+      ['客户'],
+      'a field is a sort key once'
+    );
+    n.choose('sort', 'ar.open_balance', 'desc');
+    assert.deepEqual(n.read('sort', 'ar.open_balance').choices, ['升序', '降序 ✓']);
+    await previewNow(a);
+    assert.deepEqual(bodies[0].sort, [{field: 'ar.open_balance', direction: 'desc'}]);
+    assert.deepEqual(bodies[0].filters, []);
+    assert.deepEqual(resultRows(a), [AR.c, AR.a, AR.b]);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 按应收余额降序$'));
+    assert.deepEqual(totalCard(a), ['应收余额 · 原范围合计 / CNY', '9007199254740993.01'], 'an order narrows nothing');
+    assert.equal(a.$('result-subtitle').textContent, '当前显示 3 行 · 当前批准组合的完整结果');
+    assert.equal(evidenceLines(a)[0], '排序：按应收余额降序');
+    // Ascending.
+    n.choose('sort', 'ar.open_balance', 'asc');
+    await previewNow(a);
+    assert.deepEqual(bodies[1].sort, [{field: 'ar.open_balance', direction: 'asc'}]);
+    assert.deepEqual(resultRows(a), [AR.b, AR.a, AR.c]);
+    // Two keys, in the order they were added; the chip names both.
+    n.choose('sort', 'ar.open_balance', 'desc');
+    n.add('sort', 'customer.id');
+    assert.deepEqual(n.rows('sort'), ['ar.open_balance', 'customer.id']);
+    assert.deepEqual(ranks(), ['1', '2']);
+    assert.deepEqual(
+      n.read('sort', 'ar.open_balance').buttons,
+      ['移除排序：应收余额'],
+      'the first key has nowhere to move up to'
+    );
+    assert.deepEqual(n.read('sort', 'customer.id').buttons, ['上移排序：客户', '移除排序：客户']);
+    assert.equal(a.$('query-sort-add-line').hidden, true, 'both declared fields are keys: nothing left to add');
+    await previewNow(a);
+    assert.deepEqual(bodies[2].sort, [
+      {field: 'ar.open_balance', direction: 'desc'},
+      {field: 'customer.id', direction: 'asc'},
+    ]);
+    assert.deepEqual(resultRows(a), [AR.c, AR.a, AR.b]);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 按应收余额降序、再按客户升序$'));
+    assert.equal(evidenceLines(a)[0], '排序：按应收余额降序、再按客户升序');
+    // 上移: the order of the keys is their meaning.
+    n.press('sort', 'customer.id', '上移排序');
+    assert.deepEqual(n.rows('sort'), ['customer.id', 'ar.open_balance']);
+    assert.deepEqual(ranks(), ['1', '2']);
+    assert.deepEqual(n.read('sort', 'customer.id').buttons, ['移除排序：客户']);
+    assert.deepEqual(n.read('sort', 'ar.open_balance').buttons, ['上移排序：应收余额', '移除排序：应收余额']);
+    assert.equal(a.$('result-kind').textContent, '尚未查询', 'another order is another query');
+    n.choose('sort', 'customer.id', 'desc');
+    await previewNow(a);
+    assert.deepEqual(bodies[3].sort, [
+      {field: 'customer.id', direction: 'desc'},
+      {field: 'ar.open_balance', direction: 'desc'},
+    ]);
+    assert.deepEqual(resultRows(a), [AR.c, AR.b, AR.a]);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 按客户降序、再按应收余额降序$'));
+    // With a filter: the narrowed rows in the order asked, and the chip says both.
+    n.add('filter', 'ar.open_balance');
+    n.choose('filter', 'ar.open_balance', 'ge');
+    n.type('ar.open_balance', '0.00');
+    n.press('sort', 'customer.id', '移除排序');
+    assert.deepEqual(n.rows('sort'), ['ar.open_balance']);
+    assert.deepEqual(
+      n.offers('sort').map(o => o[0]),
+      ['客户']
+    );
+    await previewNow(a);
+    assert.deepEqual(bodies[4].filters, [{field: 'ar.open_balance', operator: 'ge', value: '0.00'}]);
+    assert.deepEqual(bodies[4].sort, [{field: 'ar.open_balance', direction: 'desc'}]);
+    assert.deepEqual(resultRows(a), [AR.c, AR.a]);
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '9007199254740993.25']);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 1 个筛选 · 按应收余额降序$'));
+    assert.deepEqual(evidenceLines(a).slice(0, 3), [
+      '范围已缩小：行与合计只含符合全部筛选的数据',
+      '筛选：应收余额 不小于 0.00',
+      '排序：按应收余额降序',
+    ]);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  // More fields than three keys, and a field the declaration orders one way only: a catalogue that declares four sorts (the server's
+  // own are two; the query is answered here, the test is about what the console sends).
+  const sent = [];
+  const b = app(
+    eachOf(
+      catalogWith(entry => {
+        entry.columns.push({id: 'due.date', label: '到期日', type: 'date'});
+        entry.sorts = [
+          {field: 'customer.id', directions: ['asc']},
+          {field: 'aging.bucket', directions: ['desc', 'asc']},
+          {field: 'ar.open_balance', directions: ['asc', 'desc']},
+          {field: 'due.date', directions: ['desc']},
+        ];
+      }),
+      async (path, options) => {
+        if (path.endsWith('/queries') && options?.method === 'POST') {
+          sent.push(JSON.parse(options.body));
+          return someResult();
+        }
+      }
+    ),
+    {companies: true}
+  );
+  try {
+    await b.login();
+    const n = narrowOf(b);
+    assert.deepEqual(
+      n.offers('sort').map(o => o[0]),
+      ['客户', '账龄区间', '应收余额', '到期日']
+    );
+    n.add('sort', 'due.date');
+    assert.deepEqual(n.read('sort', 'due.date'), {
+      name: '到期日',
+      id: 'due.date',
+      choices: [],
+      word: '降序',
+      controls: [],
+      buttons: ['移除排序：到期日'],
+    });
+    n.add('sort', 'aging.bucket');
+    assert.deepEqual(
+      n.read('sort', 'aging.bucket').choices,
+      ['降序 ✓', '升序'],
+      "the declaration's order, its first chosen"
+    );
+    n.add('sort', 'customer.id');
+    assert.equal(n.read('sort', 'customer.id').word, '升序');
+    // Three keys: the fourth field is not offered, and the standing line says the bound.
+    assert.deepEqual(n.rows('sort'), ['due.date', 'aging.bucket', 'customer.id']);
+    assert.deepEqual(n.offers('sort'), []);
+    assert.equal(b.$('query-sort-add-line').hidden, true);
+    assert.match(b.$('query-sorts').textContent, /最多 3 个排序键，按先后顺序生效。/);
+    await previewNow(b);
+    assert.deepEqual(sent[0].sort, [
+      {field: 'due.date', direction: 'desc'},
+      {field: 'aging.bucket', direction: 'desc'},
+      {field: 'customer.id', direction: 'asc'},
+    ]);
+    // One removed frees the place.
+    n.press('sort', 'aging.bucket', '移除排序');
+    assert.deepEqual(
+      n.offers('sort').map(o => o[0]),
+      ['账龄区间', '应收余额']
+    );
+    assert.equal(b.$('query-sort-add-line').hidden, false);
+    assert.equal(b.errors.length, 0, b.errors.join('|'));
+  } finally {
+    b.close();
+  }
+});
+
+test("S20-B: the value control follows the column's type and the operator (a date field, a number as its exact text, 是 / 否, text, a list a line, two values for 介于), and what the console can see is wrong disables 查询预览 and 创建快照 with the reason", async () => {
+  // A catalogue that declares a filter on a column of every type (the demo's columns are text and numbers): the queries are answered
+  // here, the test is about the controls and about what the console sends.
+  const sent = [];
+  const a = app(
+    eachOf(
+      catalogWith(entry => {
+        entry.columns.push(
+          {id: 'due.date', label: '到期日', type: 'date'},
+          {id: 'line.count', label: '笔数', type: 'integer'},
+          {id: 'fee.rate', label: '费率', type: 'decimal', scale: 4},
+          {id: 'checked', label: '已核对', type: 'boolean'},
+          {id: 'note', label: '备注', type: 'string'}
+        );
+        entry.filters = [
+          {
+            field: 'customer.id',
+            operators: ['eq', 'ne', 'lt', 'le', 'gt', 'ge', 'in', 'between', 'prefix', 'contains'],
+          },
+          {field: 'due.date', operators: ['ge', 'between', 'in']},
+          {field: 'line.count', operators: ['ge', 'in']},
+          {field: 'fee.rate', operators: ['lt']},
+          {field: 'checked', operators: ['eq', 'ne']},
+          {field: 'note', operators: ['contains']},
+        ];
+      }),
+      async (path, options) => {
+        if (/\/(queries|snapshot-jobs)$/.test(path) && options?.method === 'POST') {
+          sent.push(JSON.parse(options.body));
+          return someResult();
+        }
+      }
+    ),
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    // The query is not sendable while the console sees why not: both actions are disabled, their title and the line beside them say
+    // the reason, and nothing is asked of the server.
+    const refused = async why => {
+      assert.equal(n.hint.hidden, false, why);
+      assert.equal(n.hint.textContent, why);
+      for (const id of ['preview', 'snapshot']) {
+        assert.equal(a.$(id).disabled, true, id + ': ' + why);
+        assert.equal(a.$(id).title, why);
+      }
+      const before = sent.length;
+      a.click('preview');
+      a.click('snapshot');
+      assert.equal(sent.length, before, 'nothing is sent: ' + why);
+    };
+    // The one filter of the next query, as the console sends it.
+    const sends = async () => {
+      assert.equal(n.hint.hidden, true, n.hint.textContent);
+      assert.equal(a.$('preview').title, '');
+      await previewNow(a);
+      return sent.at(-1).filters;
+    };
+    // A string that declares every operator: the ten words, in the declaration's order.
+    n.add('filter', 'customer.id');
+    assert.deepEqual(n.read('filter', 'customer.id').choices, [
+      '等于 ✓',
+      '不等于',
+      '小于',
+      '不大于',
+      '大于',
+      '不小于',
+      '属于',
+      '介于',
+      '开头为',
+      '包含',
+    ]);
+    await refused('筛选“客户”还没有值：填写或移除它才能查询。');
+    n.type('customer.id', '   ');
+    await refused('筛选“客户”还没有值：填写或移除它才能查询。');
+    n.type('customer.id', 'a\tb');
+    await refused('筛选“客户”的值含有控制字符，不能使用。');
+    n.type('customer.id', 'x'.repeat(129));
+    await refused('筛选“客户”的值超过 128 个字符。');
+    // 128 characters are counted as characters, not as UTF-16 units: 128 emoji pass.
+    n.type('customer.id', '😀'.repeat(128));
+    assert.deepEqual(await sends(), [{field: 'customer.id', operator: 'eq', value: '😀'.repeat(128)}]);
+    for (const [op, word] of [
+      ['lt', '小于'],
+      ['le', '不大于'],
+      ['gt', '大于'],
+      ['ge', '不小于'],
+      ['contains', '包含'],
+    ]) {
+      n.choose('filter', 'customer.id', op);
+      n.type('customer.id', 'm');
+      assert.deepEqual(await sends(), [{field: 'customer.id', operator: op, value: 'm'}], word);
+      assert.equal(
+        evidenceLines(a)[1],
+        '筛选：customer.id ' + word + ' m',
+        'a field the result does not label is named by its id'
+      );
+    }
+    // 介于 takes two values in ascending order, text compared as text ("10" before "9").
+    n.choose('filter', 'customer.id', 'between');
+    assert.deepEqual(
+      n.controls('customer.id').map(c => c.value),
+      ['m', '']
+    );
+    await refused('筛选“客户”的“介于”需要起止两个值。');
+    n.type('customer.id', 'b', 1);
+    await refused('筛选“客户”的起始值大于结束值：“介于”要求从小到大。');
+    n.type('customer.id', '10', 0);
+    n.type('customer.id', '9', 1);
+    assert.deepEqual(await sends(), [{field: 'customer.id', operator: 'between', value: '["10","9"]'}]);
+    n.type('customer.id', 'same', 0);
+    n.type('customer.id', 'same', 1);
+    assert.deepEqual(await sends(), [{field: 'customer.id', operator: 'between', value: '["same","same"]'}]);
+    // 属于 as a list a line: 1..32 values.
+    n.choose('filter', 'customer.id', 'in');
+    await refused('筛选“客户”还没有值：填写或移除它才能查询。');
+    n.type('customer.id', Array.from({length: 33}, (_, i) => 'c' + i).join('\n'));
+    await refused('筛选“客户”的“属于”最多 32 个值，现在是 33 个。');
+    const most = Array.from({length: 32}, (_, i) => 'c' + i);
+    n.type('customer.id', most.join('\n'));
+    assert.deepEqual(await sends(), [{field: 'customer.id', operator: 'in', value: JSON.stringify(most)}]);
+    n.press('filter', 'customer.id', '移除筛选');
+    assert.equal(n.hint.hidden, true, 'the reason goes with the row');
+    // A date: a date field; 介于 two of them, in order; 属于 a list a line.
+    n.add('filter', 'due.date');
+    assert.deepEqual(n.read('filter', 'due.date').choices, ['不小于 ✓', '介于', '属于']);
+    assert.deepEqual(n.read('filter', 'due.date').controls, ['date']);
+    await refused('筛选“到期日”还没有值：填写或移除它才能查询。');
+    n.type('due.date', '2026-11-30');
+    assert.deepEqual(await sends(), [{field: 'due.date', operator: 'ge', value: '2026-11-30'}]);
+    n.choose('filter', 'due.date', 'between');
+    assert.deepEqual(n.read('filter', 'due.date').controls, ['date', 'date']);
+    n.type('due.date', '2026-11-01', 1);
+    await refused('筛选“到期日”的起始值大于结束值：“介于”要求从小到大。');
+    n.type('due.date', '2026-10-01', 0);
+    assert.deepEqual(await sends(), [{field: 'due.date', operator: 'between', value: '["2026-10-01","2026-11-01"]'}]);
+    assert.equal(evidenceLines(a)[1], '筛选：due.date 介于 2026-10-01 至 2026-11-01');
+    n.choose('filter', 'due.date', 'in');
+    assert.deepEqual(n.read('filter', 'due.date').controls, ['textarea']);
+    n.type('due.date', '2026-02-29\n2026-03-01');
+    await refused('筛选“到期日”的值须是日期（年-月-日）。');
+    n.type('due.date', '2028-02-29\n2026-03-01');
+    assert.deepEqual(await sends(), [{field: 'due.date', operator: 'in', value: '["2028-02-29","2026-03-01"]'}]);
+    n.press('filter', 'due.date', '移除筛选');
+    // An integer: text in the column's form, never a float.
+    n.add('filter', 'line.count');
+    assert.deepEqual(n.read('filter', 'line.count').controls, ['text']);
+    assert.equal(n.controls('line.count')[0].placeholder, '0');
+    assert.equal(n.controls('line.count')[0].getAttribute('inputmode'), 'decimal');
+    for (const wrong of ['1.5', '007', '+7', '1e3', '１２', '9'.repeat(129)]) {
+      n.type('line.count', wrong);
+      await refused('筛选“笔数”的值须是整数，例如 100。');
+    }
+    for (const right of ['12', '-0', '-7', '9007199254740993', '9'.repeat(128)]) {
+      n.type('line.count', right);
+      assert.deepEqual(await sends(), [{field: 'line.count', operator: 'ge', value: right}], right);
+    }
+    n.choose('filter', 'line.count', 'in');
+    n.type('line.count', '3\n2\nx');
+    await refused('筛选“笔数”的值须是整数，例如 100。');
+    n.type('line.count', '3\n2');
+    assert.deepEqual(await sends(), [{field: 'line.count', operator: 'in', value: '["3","2"]'}]);
+    n.press('filter', 'line.count', '移除筛选');
+    // A decimal of four places, declared with one operator: the word, not a choice; exactly the column's scale.
+    n.add('filter', 'fee.rate');
+    assert.deepEqual(n.read('filter', 'fee.rate'), {
+      name: '费率',
+      id: 'fee.rate',
+      choices: [],
+      word: '小于',
+      controls: ['text'],
+      buttons: ['移除筛选：费率'],
+    });
+    assert.equal(n.controls('fee.rate')[0].placeholder, '0.0000');
+    for (const wrong of ['0.5', '1', '.5000', '0.50000', '0,5000', '1e3']) {
+      n.type('fee.rate', wrong);
+      await refused('筛选“费率”的值须写成 4 位小数，例如 100.0000。');
+    }
+    for (const right of ['0.5000', '-0.0001', '12.3400']) {
+      n.type('fee.rate', right);
+      assert.deepEqual(await sends(), [{field: 'fee.rate', operator: 'lt', value: right}], right);
+    }
+    n.press('filter', 'fee.rate', '移除筛选');
+    // A boolean: 是 / 否, true / false on the wire.
+    n.add('filter', 'checked');
+    assert.deepEqual(n.read('filter', 'checked').choices, ['等于 ✓', '不等于']);
+    assert.deepEqual(n.read('filter', 'checked').controls, ['select']);
+    assert.deepEqual(
+      [...n.controls('checked')[0].options].map(o => [o.value, o.textContent]),
+      [
+        ['', '请选择…'],
+        ['true', '是'],
+        ['false', '否'],
+      ]
+    );
+    await refused('筛选“已核对”还没有值：填写或移除它才能查询。');
+    n.type('checked', 'false');
+    n.choose('filter', 'checked', 'ne');
+    assert.deepEqual(await sends(), [{field: 'checked', operator: 'ne', value: 'false'}]);
+    // The first thing wrong is the one said: a second incomplete filter waits for the first.
+    n.add('filter', 'note');
+    assert.equal(n.read('filter', 'note').word, '包含');
+    await refused('筛选“备注”还没有值：填写或移除它才能查询。');
+    n.type('checked', '');
+    await refused('筛选“已核对”还没有值：填写或移除它才能查询。');
+    // Whoever gets past the disabled button is refused the same way, on the page: the query is never built.
+    const before = sent.length;
+    a.$('preview').disabled = false;
+    a.click('preview');
+    await until(
+      () => a.$('notice').textContent === '筛选“已核对”还没有值：填写或移除它才能查询。' && a.$('preview').disabled,
+      'the refusal on the page'
+    );
+    assert.equal(a.$('notice').className, 'notice error');
+    assert.equal(sent.length, before);
+    n.type('checked', 'true');
+    n.type('note', '月结');
+    assert.deepEqual(await sends(), [
+      {field: 'checked', operator: 'ne', value: 'true'},
+      {field: 'note', operator: 'contains', value: '月结'},
+    ]);
+    // The snapshot is asked with the same lists.
+    a.click('snapshot');
+    await until(() => sent.length === before + 2, 'the snapshot asked');
+    assert.deepEqual(sent.at(-1).filters, sent.at(-2).filters);
+    await until(() => !a.$('snapshot').disabled, 'settled');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test("S20-B: what the catalogue on the page declares and the server does not is the server's to refuse, and its 422 is told as the filters' or the sort's; a plain query's 422 stays what it was", async () => {
+  const bodies = [];
+  const REFUSED =
+    '服务端不接受这组筛选或排序：字段、运算符、取值或排序方向不在数据集当前发布的范围内。请核对筛选值，或刷新目录后重试。';
+  // The page's catalogue says more than the server's: 包含 on the customer, and a sort by the aging bucket.
+  const a = app(
+    eachOf(
+      catalogWith(entry => {
+        entry.filters.find(f => f.field === 'customer.id').operators.push('contains');
+        entry.sorts.push({field: 'aging.bucket', directions: ['asc', 'desc']});
+      }),
+      queriesInto(bodies)
+    ),
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    const refusal = async () => {
+      await until(() => !a.$('notice').hidden && !a.$('preview').disabled, 'the refusal');
+      assert.equal(a.$('notice').textContent, REFUSED);
+      assert.equal(a.$('notice').className, 'notice error');
+      assert.equal(a.$('result-kind').textContent, '尚未查询');
+      assert.equal(a.$('result-table').tBodies[0].rows.length, 0);
+      assert.equal(a.$('sh-data-text').textContent, '未选择数据');
+      a.$('notice').hidden = true;
+    };
+    n.add('filter', 'customer.id');
+    assert.deepEqual(n.read('filter', 'customer.id').choices, ['等于 ✓', '不等于', '属于', '开头为', '包含']);
+    n.choose('filter', 'customer.id', 'contains');
+    n.type('customer.id', 'customer');
+    assert.equal(n.hint.hidden, true, 'nothing the console can see is wrong');
+    a.click('preview');
+    await refusal();
+    assert.deepEqual(bodies[0].filters, [{field: 'customer.id', operator: 'contains', value: 'customer'}]);
+    assert.deepEqual(n.rows('filter'), ['customer.id'], 'the filter stays on the panel to be corrected');
+    // The snapshot is refused at admission the same way: no job.
+    a.click('snapshot');
+    await refusal();
+    assert.deepEqual(bodies[1].filters, bodies[0].filters);
+    assert.equal(a.$('tasks-body').rows.length, 0);
+    // What the server declares too is answered.
+    n.choose('filter', 'customer.id', 'prefix');
+    await previewNow(a);
+    assert.deepEqual(resultRows(a), [AR.a, AR.b, AR.c]);
+    // A sort the server did not publish.
+    n.press('filter', 'customer.id', '移除筛选');
+    n.add('sort', 'aging.bucket');
+    a.click('preview');
+    await refusal();
+    assert.deepEqual(bodies[3].sort, [{field: 'aging.bucket', direction: 'asc'}]);
+    assert.deepEqual(bodies[3].filters, []);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  // A 422 of a query that carries neither is the dataset's combination, as before.
+  const b = app(async (path, options) => {
+    if (path.endsWith('/queries') && options?.method === 'POST') return problem(422, 'UNSUPPORTED_COMBINATION');
+  });
+  try {
+    await b.login();
+    b.configure();
+    b.click('preview');
+    await until(() => !b.$('notice').hidden, 'the refusal');
+    assert.equal(b.$('notice').textContent, '当前数据集不支持此查询组合。');
+    assert.equal(b.errors.length, 0, b.errors.join('|'));
+  } finally {
+    b.close();
+  }
+});
+
+test("S20-B: a required filter's row is there from the start and cannot be removed; the query waits for its value, the data drawer's focus goes to it, and the server takes the query once it has one", async () => {
+  const bodies = [];
+  const a = app(
+    eachOf(
+      catalogWith(entry => {
+        entry.filters.find(f => f.field === 'aging.bucket').required = true;
+      }),
+      queriesInto(bodies)
+    ),
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    const WAITING = '必填筛选“账龄区间”还没有值：填写后才能查询。';
+    // The row before anything was added: 必填, no 移除, the field not among what can be added.
+    assert.deepEqual(n.rows('filter'), ['aging.bucket']);
+    assert.deepEqual(n.read('filter', 'aging.bucket'), {
+      name: '账龄区间',
+      id: 'aging.bucket',
+      choices: ['等于 ✓', '属于'],
+      word: null,
+      controls: ['select'],
+      buttons: [],
+    });
+    assert.equal(n.row('filter', 'aging.bucket').querySelector('.narrow-field .pill').textContent, '必填');
+    assert.deepEqual(
+      n.offers('filter').map(o => o[0]),
+      ['客户', '应收余额']
+    );
+    // The query waits: both actions disabled, the reason on them and beside them, nothing sent.
+    assert.equal(n.hint.textContent, WAITING);
+    assert.equal(n.hint.hidden, false);
+    for (const id of ['preview', 'snapshot']) {
+      assert.equal(a.$(id).disabled, true, id);
+      assert.equal(a.$(id).title, WAITING);
+    }
+    a.click('preview');
+    a.click('snapshot');
+    assert.equal(bodies.length, 0);
+    // The data drawer opens on what the person has to do next: the company is chosen, so the required value.
+    a.click('sh-data-chip');
+    assert.equal(a.$('sh-d-data').hidden, false);
+    assert.equal(a.w.document.activeElement, n.controls('aging.bucket')[0]);
+    assert.equal(a.$('sh-query-slot').contains(n.block), true, 'the blocks go with the panel into the drawer');
+    // A value: the actions are back, and the query carries the filter exactly once.
+    n.type('aging.bucket', '1_30');
+    assert.equal(n.hint.hidden, true);
+    assert.equal(a.$('preview').disabled, false);
+    assert.equal(a.$('preview').title, '');
+    await previewNow(a);
+    assert.equal(a.$('sh-d-data').hidden, true, 'the result closes the drawer');
+    assert.deepEqual(bodies[0].filters, [{field: 'aging.bucket', operator: 'eq', value: '1_30'}]);
+    assert.deepEqual(resultRows(a), [AR.b]);
+    // With the value in, the drawer's focus is 查询预览 again.
+    a.click('sh-data-chip');
+    assert.equal(a.w.document.activeElement, a.$('preview'));
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    // 属于 with nothing ticked waits again; the other filters come and go, the required one stays.
+    n.choose('filter', 'aging.bucket', 'in');
+    assert.equal(n.hint.textContent, WAITING);
+    assert.equal(a.$('snapshot').disabled, true);
+    n.tick('aging.bucket', 'current');
+    n.add('filter', 'customer.id');
+    n.type('customer.id', 'customer_a');
+    assert.deepEqual(n.rows('filter'), ['aging.bucket', 'customer.id']);
+    await previewNow(a);
+    assert.deepEqual(bodies[1].filters, [
+      {field: 'aging.bucket', operator: 'in', value: '["current"]'},
+      {field: 'customer.id', operator: 'eq', value: 'customer_a'},
+    ]);
+    assert.deepEqual(resultRows(a), [AR.a]);
+    n.press('filter', 'customer.id', '移除筛选');
+    assert.deepEqual(n.rows('filter'), ['aging.bucket']);
+    // 刷新目录 starts the panel over: the required row is back without its value, and the query waits again.
+    a.click('refresh-catalog');
+    await until(() => a.$('notice').textContent.includes('数据目录已刷新'), 'the catalogue again');
+    assert.deepEqual(n.rows('filter'), ['aging.bucket']);
+    assert.equal(n.controls('aging.bucket')[0].value, '');
+    assert.equal(n.hint.textContent, WAITING);
+    assert.equal(a.$('preview').disabled, true);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test("S20-B: the blocks are the dataset's: another dataset or product starts them over from its own declaration, a dataset that declares nothing shows none, sign-out clears them", async () => {
+  const bodies = [];
+  // Two more entries beside the real one: one that declares nothing, one that declares sorts only (their queries are answered here).
+  const a = app(
+    eachOf(
+      catalogWith((entry, list) => {
+        const plain = structuredClone(entry),
+          ordered = structuredClone(entry);
+        plain.dataset = {id: 'receivables.plain', version: '1.0.0'};
+        delete plain.filters;
+        delete plain.sorts;
+        ordered.dataset = {id: 'receivables.ordered', version: '1.0.0'};
+        delete ordered.filters;
+        list.push(plain, ordered);
+      }),
+      async (path, options) => {
+        if (!path.endsWith('/queries') || options?.method !== 'POST') return undefined;
+        const body = JSON.parse(options.body);
+        bodies.push(body);
+        return ['receivables.plain', 'receivables.ordered'].includes(body.dataset.id) ? someResult() : undefined;
+      }
+    ),
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    const select = (id, value) => {
+      a.$(id).value = value;
+      a.$(id).dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    };
+    assert.deepEqual(
+      [...a.$('query-dataset').options].map(o => o.value),
+      ['receivables.aging@1.0.0', 'receivables.plain@1.0.0', 'receivables.ordered@1.0.0']
+    );
+    // A filter with a value, one without, a sort key: the query waits for the second filter.
+    n.add('filter', 'aging.bucket');
+    n.type('aging.bucket', '1_30');
+    n.add('filter', 'customer.id');
+    n.add('sort', 'ar.open_balance');
+    assert.equal(n.hint.hidden, false);
+    assert.equal(a.$('preview').disabled, true);
+    // The dataset that declares nothing: no block at all, nothing kept, nothing to wait for; its query carries the two empty lists.
+    select('query-dataset', 'receivables.plain@1.0.0');
+    assert.equal(n.block.hidden, true);
+    assert.deepEqual([n.rows('filter'), n.rows('sort')], [[], []]);
+    assert.deepEqual([n.offers('filter'), n.offers('sort')], [[], []]);
+    assert.equal(n.hint.hidden, true);
+    assert.equal(a.$('preview').disabled, false);
+    await previewNow(a);
+    assert.equal(bodies[0].dataset.id, 'receivables.plain');
+    assert.deepEqual([bodies[0].filters, bodies[0].sort], [[], []]);
+    // The dataset that declares sorts only: the 排序 block alone.
+    select('query-dataset', 'receivables.ordered@1.0.0');
+    assert.equal(n.block.hidden, false);
+    assert.equal(a.$('query-filters').hidden, true);
+    assert.equal(a.$('query-sorts').hidden, false);
+    assert.deepEqual(
+      n.offers('sort').map(o => o[0]),
+      ['应收余额', '客户']
+    );
+    n.add('sort', 'customer.id');
+    await previewNow(a);
+    assert.deepEqual([bodies[1].filters, bodies[1].sort], [[], [{field: 'customer.id', direction: 'asc'}]]);
+    // Back to the first: its blocks from its declaration, and none of the rows that were there.
+    select('query-dataset', 'receivables.aging@1.0.0');
+    assert.equal(a.$('query-filters').hidden, false);
+    assert.deepEqual([n.rows('filter'), n.rows('sort')], [[], []]);
+    assert.deepEqual(
+      n.offers('filter').map(o => o[0]),
+      ['客户', '账龄区间', '应收余额']
+    );
+    assert.equal(a.$('preview').disabled, false);
+    n.add('filter', 'customer.id');
+    n.type('customer.id', 'customer_a');
+    // Another product: its own dataset's declaration (the shipments of the demo), by its own labels.
+    const second = a.$('query-product').options[1].value;
+    select('query-product', second);
+    await until(() => a.$('query-product').value === second && !a.$('preview').disabled, 'the second product');
+    assert.equal(a.$('query-dataset').value, 'shipments.daily@1.0.0');
+    assert.deepEqual([n.rows('filter'), n.rows('sort')], [[], []]);
+    assert.deepEqual(n.offers('filter'), [
+      ['目的国', '添加筛选：目的国', '添加筛选：目的国（shipment.destination_country）'],
+      ['服务', '添加筛选：服务', '添加筛选：服务（shipment.service_code）'],
+      ['运单数', '添加筛选：运单数', '添加筛选：运单数（shipment.count）'],
+    ]);
+    assert.deepEqual(
+      n.offers('sort').map(o => o[0]),
+      ['运单数', '目的国']
+    );
+    // 服务 takes 等于 alone: the word, no choice. 运单数 is an integer with two bounds.
+    n.add('filter', 'shipment.service_code');
+    assert.deepEqual(n.read('filter', 'shipment.service_code'), {
+      name: '服务',
+      id: 'shipment.service_code',
+      choices: [],
+      word: '等于',
+      controls: ['text'],
+      buttons: ['移除筛选：服务'],
+    });
+    n.press('filter', 'shipment.service_code', '移除筛选');
+    n.add('filter', 'shipment.count');
+    assert.deepEqual(n.read('filter', 'shipment.count').choices, ['不小于 ✓', '不大于']);
+    assert.equal(n.controls('shipment.count')[0].placeholder, '0');
+    n.type('shipment.count', '8.0');
+    assert.equal(n.hint.textContent, '筛选“运单数”的值须是整数，例如 100。');
+    n.type('shipment.count', '8');
+    n.add('sort', 'shipment.count');
+    await previewNow(a);
+    assert.deepEqual(bodies.at(-1).filters, [{field: 'shipment.count', operator: 'ge', value: '8'}]);
+    assert.deepEqual(bodies.at(-1).sort, [{field: 'shipment.count', direction: 'asc'}]);
+    assert.deepEqual(resultRows(a), [['CN', 'express', '9007199254740993']]);
+    assert.deepEqual(totalCard(a), ['运单数 · 筛选后范围合计 / shipment', '9007199254740993']);
+    assert.match(a.$('sh-data-text').textContent, /^运单数 · 演示公司 · \d{4}-\d{2}-\d{2} · 1 个筛选 · 按运单数升序$/);
+    // 目的国 属于 a list a line; the whole set in ascending order of the count.
+    n.press('filter', 'shipment.count', '移除筛选');
+    n.add('filter', 'shipment.destination_country');
+    n.choose('filter', 'shipment.destination_country', 'in');
+    n.type('shipment.destination_country', 'CN\nDE');
+    await previewNow(a);
+    assert.deepEqual(bodies.at(-1).filters, [
+      {field: 'shipment.destination_country', operator: 'in', value: '["CN","DE"]'},
+    ]);
+    assert.deepEqual(resultRows(a), [
+      ['DE', 'standard', '7'],
+      ['CN', 'express', '9007199254740993'],
+    ]);
+    assert.equal(evidenceLines(a)[1], '筛选：目的国 属于 CN、DE');
+    assert.equal(evidenceLines(a)[2], '排序：按运单数升序');
+    // Sign-out leaves nothing: no row, no block; a new session starts from the declaration.
+    a.click('logout');
+    assert.equal(n.block.hidden, true);
+    assert.deepEqual([n.rows('filter'), n.rows('sort')], [[], []]);
+    assert.equal(n.hint.hidden, true);
+    assert.equal(a.w.localStorage.length, 0);
+    assert.equal(a.w.sessionStorage.length, 0);
+    await a.login();
+    assert.equal(n.block.hidden, false);
+    assert.deepEqual([n.rows('filter'), n.rows('sort')], [[], []]);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test("S20-B: a snapshot restored from the tasks shows the filters and the sort it was frozen with, while the panel stays the next query's; 设为定时 carries them; a snapshot whose query this session does not have says so", async () => {
+  const bodies = [],
+    schedules = [];
+  const a = app(
+    eachOf(queriesInto(bodies), async (path, options) => {
+      if (path.endsWith('/schedules') && options?.method === 'POST') schedules.push(JSON.parse(options.body));
+    }),
+    {companies: true}
+  );
+  const view = () => [...a.$('tasks-body').querySelectorAll('button')].find(b => b.textContent === '查看结果').click();
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    n.add('filter', 'aging.bucket');
+    n.choose('filter', 'aging.bucket', 'in');
+    n.tick('aging.bucket', '1_30');
+    n.add('sort', 'ar.open_balance');
+    n.choose('sort', 'ar.open_balance', 'desc');
+    a.click('snapshot');
+    await until(
+      () => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled,
+      'the narrowed snapshot'
+    );
+    const frozen = {
+      filters: [{field: 'aging.bucket', operator: 'in', value: '["1_30"]'}],
+      sort: [{field: 'ar.open_balance', direction: 'desc'}],
+    };
+    assert.deepEqual([bodies[0].filters, bodies[0].sort], [frozen.filters, frozen.sort]);
+    assert.deepEqual(resultRows(a), [AR.b]);
+    const job = a.$('tasks-body').rows[0].cells[1].textContent;
+    assert.match(job, /^[a-f0-9]{32}$/);
+    // The person goes on: the panel's filter and sort key are taken away, and the result with them. The task stays.
+    n.press('filter', 'aging.bucket', '移除筛选');
+    n.press('sort', 'ar.open_balance', '移除排序');
+    assert.equal(a.$('result-kind').textContent, '尚未查询');
+    assert.equal(a.$('sh-data-text').textContent, '未选择数据');
+    // 查看结果: the snapshot as it was frozen — its rows and total, and its scope in words on the chip, the subtitle and the
+    // evidence line. The panel is not touched: it is the next query's, as its companies and its date are.
+    view();
+    await until(
+      () => a.$('result-kind').textContent === '冻结快照' && !a.$('preview').disabled,
+      'the restored snapshot'
+    );
+    assert.deepEqual(resultRows(a), [AR.b]);
+    assert.deepEqual(totalCard(a), ['应收余额 · 筛选后范围合计 / CNY', '-0.24']);
+    assert.match(a.$('sh-data-text').textContent, new RegExp(CHIP.source + ' · 1 个筛选 · 按应收余额降序$'));
+    assert.equal(a.$('sh-data-kind').textContent, '冻结快照');
+    assert.match(
+      a.$('result-subtitle').textContent,
+      /^同一快照分页 · \d{4}-\d{2}-\d{2} · Asia\/Shanghai · 已按 1 个筛选缩小范围，合计是筛选后的范围$/
+    );
+    assert.deepEqual(evidenceLines(a).slice(0, 3), [
+      '范围已缩小：行与合计只含符合全部筛选的数据',
+      '筛选：账龄区间 属于 1_30',
+      '排序：按应收余额降序',
+    ]);
+    assert.deepEqual([n.rows('filter'), n.rows('sort')], [[], []], 'the panel is the next query, not the restored one');
+    assert.equal(bodies.length, 1, 'restoring asks no query');
+    // 设为定时 takes the query on show: the dialog names its scope, the schedule is made with its filters and sort, and the list says so.
+    a.click('schedule-from-result');
+    assert.equal(a.$('sc-d-new').hidden, false);
+    assert.match(
+      a.$('sc-query').textContent,
+      /^数据：应收余额 · 演示公司 · 当前数据时点 \d{4}-\d{2}-\d{2} · 1 个筛选 · 按应收余额降序$/
+    );
+    a.$('sc-name').value = 'S20-B 筛选后的应收';
+    a.click('sc-create');
+    await until(() => schedules.length === 1 && !a.$('page-schedules').hidden, 'the schedule made');
+    assert.deepEqual([schedules[0].query.filters, schedules[0].query.sort], [frozen.filters, frozen.sort]);
+    const listed = () =>
+      [...a.$('schedules-body').rows].find(r => r.cells[0].textContent.startsWith('S20-B 筛选后的应收'));
+    await until(() => !!listed() && !a.$('preview').disabled, 'the schedule listed');
+    assert.match(listed().cells[1].textContent, /^应收余额 · company_demo · 1 个筛选 · 按应收余额降序/);
+    a.w.confirm = () => true;
+    [...listed().querySelectorAll('button')].find(b => b.textContent === '删除').click();
+    await until(() => !listed(), 'the schedule deleted');
+    // A new session does not have the query the snapshot was frozen with (the server's job view carries none): restored by its
+    // id, the snapshot says that its filters and sort are its own, not known here. Its total keeps the words every total had
+    // before (原范围合计: the snapshot's own scope, not the page), since the page cannot say whether that scope was narrowed.
+    a.click('logout');
+    await a.login();
+    a.input('restore-id', job);
+    a.click('restore-job');
+    await until(() => a.$('notice').textContent.includes('已恢复') && !a.$('preview').disabled, 'the job restored');
+    view();
+    await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('preview').disabled, 'the snapshot again');
+    assert.deepEqual(resultRows(a), [AR.b]);
+    assert.equal(a.$('result-subtitle').textContent, '同一快照分页 · 原数据时点 · 原快照时区 · 筛选与排序以原快照为准');
+    assert.equal(evidenceLines(a)[0], '筛选与排序：本会话没有这个快照的查询，以原快照为准');
+    assert.ok(evidenceLines(a).some(s => s.startsWith('查询摘要 ')));
+    assert.deepEqual(totalCard(a), ['应收余额 · 原范围合计 / CNY', '-0.24']);
+    assert.equal(a.$('sh-data-text').textContent, '已保存的快照 ·  · 原数据时点');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test("S20-B: a declaration that breaks ADR 0023's rules is a catalogue the console does not build on, as a malformed column is; the bounds themselves verify, sixteen filters and all", async () => {
+  // Columns enough for the bounds: c1 … c20, text.
+  const more = entry => {
+    for (let i = 1; i <= 20; i++) entry.columns.push({id: 'c' + i, label: '列' + i, type: 'string'});
+    entry.columns.push({id: 'flag', label: '标记', type: 'boolean'}, {id: 'when', label: '时刻', type: 'time'});
+  };
+  const many = (count, make) => Array.from({length: count}, (_, i) => make('c' + (i + 1)));
+  const broken = {
+    'filters that are not a list': e => (e.filters = {field: 'customer.id', operators: ['eq']}),
+    'filters that are null': e => (e.filters = null),
+    'seventeen filters': e => (e.filters = many(17, field => ({field, operators: ['eq']}))),
+    'a filter that is not an object': e => e.filters.push('customer.id'),
+    'a filter on a column that is not': e => (e.filters[0].field = 'nope'),
+    'a filter without a field': e => delete e.filters[0].field,
+    'a filter field twice': e => (e.filters[1].field = 'customer.id'),
+    'no operators': e => (e.filters[0].operators = []),
+    'operators that are not a list': e => (e.filters[0].operators = 'eq'),
+    'an operator outside the set': e => e.filters[0].operators.push('like'),
+    'an operator twice': e => e.filters[0].operators.push('eq'),
+    '开头为 on a decimal': e => e.filters[2].operators.push('prefix'),
+    '小于 on a boolean': e => e.filters.push({field: 'flag', operators: ['lt']}),
+    'a filter on a column of a type no operator fits': e => e.filters.push({field: 'when', operators: ['eq']}),
+    'values that are not a list': e => (e.filters[1].values = 'current'),
+    'sixty-five values': e => (e.filters[0].values = Array.from({length: 65}, (_, i) => 'v' + i)),
+    'a value twice': e => e.filters[1].values.push('current'),
+    'a value that is not text': e => e.filters[1].values.push(7),
+    'an empty value': e => e.filters[1].values.push(''),
+    "a value not in the column's form": e => (e.filters[2].values = ['100']),
+    'required that is not a boolean': e => (e.filters[0].required = 'yes'),
+    'sorts that are not a list': e => (e.sorts = 'customer.id'),
+    'nine sorts': e => (e.sorts = many(9, field => ({field, directions: ['asc']}))),
+    'a sort on a column that is not': e => (e.sorts[0].field = 'nope'),
+    'a sort field twice': e => (e.sorts[1].field = 'ar.open_balance'),
+    'no directions': e => (e.sorts[0].directions = []),
+    'a direction that is not': e => e.sorts[0].directions.push('up'),
+    'a direction twice': e => e.sorts[0].directions.push('asc'),
+  };
+  for (const [name, change] of Object.entries(broken)) {
+    const a = app(
+      catalogWith(entry => {
+        more(entry);
+        change(entry);
+      }),
+      {companies: true}
+    );
+    try {
+      a.input('access-token', token);
+      a.$('connect-form').dispatchEvent(new a.w.Event('submit', {bubbles: true, cancelable: true}));
+      await until(() => a.$('connection-overlay').hidden && !a.$('notice').hidden, name + ': the catalogue refused');
+      assert.equal(a.$('notice').textContent, '服务返回了无法验证的响应。', name);
+      assert.equal(a.$('query-dataset').options.length, 0, name + ': no dataset is offered');
+      assert.equal(a.$('query-narrow').hidden, true, name + ': no block');
+      assert.equal(a.$('preview').disabled, false, name + ': nothing holds the page');
+      assert.equal(a.errors.length, 0, name + ': ' + a.errors.join('|'));
+    } finally {
+      a.close();
+    }
+  }
+  // The inclusive bounds: sixteen filters (one with sixty-four closed values of 128 characters, one required) and eight sorts.
+  const sent = [];
+  const a = app(
+    eachOf(
+      catalogWith(entry => {
+        more(entry);
+        entry.filters = many(16, field => ({field, operators: ['eq', 'in']}));
+        entry.filters[0].values = Array.from({length: 64}, (_, i) => String(i).padStart(128, 'v'));
+        entry.filters[15].required = true;
+        entry.sorts = many(8, field => ({field, directions: ['asc', 'desc']}));
+      }),
+      async (path, options) => {
+        if (path.endsWith('/queries') && options?.method === 'POST') {
+          sent.push(JSON.parse(options.body));
+          return someResult();
+        }
+      }
+    ),
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const n = narrowOf(a);
+    assert.deepEqual(n.rows('filter'), ['c16'], 'the required one from the start');
+    assert.equal(n.offers('filter').length, 15);
+    assert.equal(n.offers('sort').length, 8);
+    for (let i = 1; i <= 15; i++) n.add('filter', 'c' + i);
+    assert.equal(n.rows('filter').length, 16, "sixteen rows: the server's bound of one query");
+    assert.deepEqual(n.offers('filter'), []);
+    assert.equal(a.$('query-filter-add-line').hidden, true);
+    for (let i = 2; i <= 16; i++) n.type('c' + i, 'v' + i);
+    // The closed list of sixty-four is a list of sixty-four; more than thirty-two of them is more than one 属于 takes.
+    assert.equal(n.controls('c1')[0].options.length, 65);
+    n.choose('filter', 'c1', 'in');
+    assert.equal(n.controls('c1').length, 64);
+    for (const box of n.controls('c1').slice(0, 33)) box.click();
+    assert.equal(n.hint.textContent, '筛选“列1”的“属于”最多 32 个值，现在是 33 个。');
+    assert.equal(a.$('preview').disabled, true);
+    n.controls('c1')[32].click();
+    assert.equal(n.hint.hidden, true);
+    await previewNow(a);
+    assert.equal(sent[0].filters.length, 16);
+    assert.deepEqual(sent[0].filters[0], {
+      field: 'c16',
+      operator: 'eq',
+      value: 'v16',
+    });
+    assert.equal(JSON.parse(sent[0].filters[1].value).length, 32);
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
     a.close();

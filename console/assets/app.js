@@ -513,7 +513,20 @@
   // The company scope (S09-D, ADR 0015 decision 4; companies.js): the source's directory as a picker when the product lists the companies,
   // the text field of ids otherwise. A change of the selection is a change of the query, as a typed id is.
   const companies = window.createReportingCompanyPicker({changed: () => queryChanged()});
-  const drawer = makeDrawer('sh-d-data', [['.query-panel', 'sh-query-slot']], () => companies.focus());
+  // The filters and the sort (S20-B, ADR 0023 decision 5; filters.js): the two blocks of the query panel, built from what the dataset
+  // on show declares. A change of a filter or of a sort key is a change of the query, as a change of the companies is.
+  const narrowing = window.createReportingFilters({
+    changed: () => {
+      queryChanged();
+      queryHint();
+    },
+  });
+  // The data drawer's first focus is what the person has to do next: the company to choose, then a filter the console can see is not
+  // filled (查询预览 is disabled until it is, S20-B), then 查询预览.
+  const drawer = makeDrawer('sh-d-data', [['.query-panel', 'sh-query-slot']], () => {
+    const next = companies.focus();
+    return (next === $('preview') && narrowing.invalid()) || next;
+  });
   // The tasks panel (S07-B): the tasks page's restore row, list and refresh button, reachable from every shell through the rail.
   const tasksPanel = makeDrawer(
     'sh-d-tasks',
@@ -547,13 +560,25 @@
     const known = state.datasets.find(d => d.dataset.id === dataset.id && d.dataset.version === dataset.version);
     return known ? datasetTitle(known) : dataset.id;
   }
+  // The columns of the dataset a query names, from the catalogue the console read for the query's product (S20-B: the labels of the
+  // fields a schedule's query narrows and orders by); none when the console has not read it, and the ids are shown.
+  function knownColumns(query) {
+    const known = (state.catalogs.get(query.integration_id) || []).find(
+      d => d.dataset.id === query.dataset.id && d.dataset.version === query.dataset.version
+    );
+    return known ? known.columns : [];
+  }
   function dataSummary() {
     if (!state.lastResult || !state.query) return null;
     const q = state.query;
     const dataset = q.dataset.id + '@' + q.dataset.version;
     // The companies by name where the product's directory names them (S09-D), by id otherwise; more than two: the first and the count.
     const scope = companies.text(q.company_ids, q.integration_id);
-    const text = datasetName(q.dataset) + ' · ' + scope + ' · ' + q.as_of;
+    // S20-B (ADR 0023 decisions 3 and 5): a narrowed query says so wherever it is named — the number of its filters and its order
+    // after the date (· 2 个筛选 · 按应收余额降序), the fields by the labels of the result on show.
+    const text = [datasetName(q.dataset), scope, q.as_of, ...narrowing.words(q, state.lastResult.columns).parts].join(
+      ' · '
+    );
     return {
       dataset,
       scope,
@@ -648,10 +673,24 @@
     for (const id of ['export', 'export-pdf']) $(id).title = needsSnapshot ? '导出需要冻结快照：先创建快照' : '';
     if ($('export-hint')) $('export-hint').hidden = !needsSnapshot;
   }
+  // S20-B (ADR 0014 decision 6): a query the console can see cannot be sent as it is — a filter without a value, a number not in the
+  // column's form, 介于 out of order, too many values — keeps 查询预览 and 创建快照 disabled, and they say why: in their title and in the
+  // line beside them. What the console cannot see is the server's to refuse (422).
+  function queryHint() {
+    const blocked = !state.session || state.busy > 0 || state.catalogLoading;
+    const why = state.session && !state.catalogLoading ? narrowing.reason() : '';
+    for (const id of ['preview', 'snapshot']) {
+      $(id).disabled = blocked || !!why;
+      $(id).title = why;
+    }
+    $('query-hint').textContent = why;
+    $('query-hint').hidden = !why;
+  }
   function busy(change) {
     state.busy = Math.max(0, state.busy + change);
     const blocked = !state.session || state.busy > 0 || state.catalogLoading;
     document.querySelectorAll('.action').forEach(b => (b.disabled = blocked));
+    queryHint();
     $('export').disabled = blocked || !state.snapshot;
     $('export-pdf').disabled = blocked || !state.snapshot;
     if ($('schedule-from-result')) $('schedule-from-result').disabled = blocked || !state.query || !state.lastResult;
@@ -662,6 +701,7 @@
     for (const id of ['query-dataset', 'query-companies', 'query-date', 'refresh-catalog'])
       $(id).disabled = !state.session || state.catalogLoading;
     companies.disable(!state.session || state.catalogLoading);
+    narrowing.disable(!state.session || state.catalogLoading);
     // The centre tells what can be opened from whether the console is idle: a result that arrives while it is on screen (from the data drawer, S07-H) is shown once the work is done.
     if (change < 0 && !state.busy && library && library.data && !$('page-library').hidden) library.data();
   }
@@ -733,6 +773,7 @@
     state.catalogs.clear();
     state.companies.clear();
     companies.clear();
+    narrowing.clear();
     state.connections.clear();
     state.roles = null;
     for (const role of ['designer', 'publisher', 'issuer', 'administrator'])
@@ -865,6 +906,11 @@
       );
     if (error.code === 'ISSUE_UNSUPPORTED')
       return '该数据集的来源产品不支持正式出具，或服务端未启用出具；2.0 分带模板按分组出具，还要求来源产品声明支持分组出具（合同版本 2）；也可能是所选行或其分组含有文档无法打印的值，或模板用到的底稿在当前服务端不可用。';
+    // S20-B: a 422 of a query that carried filters or a sort names them; the console's own refusal of a query it can see is not
+    // complete says what is missing (the buttons say it too and are disabled, so this is reached only past them).
+    if (error.code === 'NARROWING_UNSUPPORTED')
+      return '服务端不接受这组筛选或排序：字段、运算符、取值或排序方向不在数据集当前发布的范围内。请核对筛选值，或刷新目录后重试。';
+    if (error.code === 'QUERY_INCOMPLETE' && typeof error.reason === 'string') return error.reason;
     if (error.status === 422) return '当前数据集不支持此查询组合。';
     if (error.status === 400) return '请检查数据集、公司范围及数据时点。';
     if (error.code === 'INVALID_RESPONSE') return '服务返回了无法验证的响应。';
@@ -1136,6 +1182,8 @@
     const labels = d.columns.filter(c => ['decimal', 'integer'].includes(c.type)).map(c => c.label);
     return labels.length ? labels.join(' / ') : d.dataset.id;
   }
+  // S20-B: the filters and sorts a dataset version declares (ADR 0023 decision 1) are part of the entry: a declaration that breaks the
+  // ADR's rules is a catalogue the console cannot build on, like a malformed column (filters.js check; the server refuses to run it too).
   function validDataset(d) {
     return (
       d &&
@@ -1146,7 +1194,8 @@
       d.columns.every(c => typeof c.id === 'string' && typeof c.label === 'string' && typeof c.type === 'string') &&
       Array.isArray(d.metrics) &&
       Array.isArray(d.dimensions) &&
-      typeof d.timezone === 'string'
+      typeof d.timezone === 'string' &&
+      narrowing.check(d) !== null
     );
   }
   function dateInZone(zone) {
@@ -1455,7 +1504,15 @@
       const row = node('tr');
       const name = node('td');
       name.append(node('b', v.name), node('small', ' ' + v.schedule_id.slice(0, 8), 'task-id'));
-      const data = node('td', datasetName(v.query.dataset) + ' · ' + (v.query.company_ids || []).join('、'));
+      // S20-B: a schedule of a narrowed query says so, the fields by the labels of the product's catalogue where the console has it.
+      const data = node(
+        'td',
+        [
+          datasetName(v.query.dataset),
+          (v.query.company_ids || []).join('、'),
+          ...narrowing.words(v.query, knownColumns(v.query)).parts,
+        ].join(' · ')
+      );
       data.append(
         node(
           'small',
@@ -1632,13 +1689,15 @@
       return;
     }
     const q = state.query;
-    $('sc-query').textContent =
+    const data =
       '数据：' +
       datasetName(q.dataset) +
       ' · ' +
       companies.text(q.company_ids, q.integration_id) +
       ' · 当前数据时点 ' +
       q.as_of;
+    // S20-B: the schedule runs this query with its filters and its order; the line names them as the chip does.
+    $('sc-query').textContent = [data, ...narrowing.words(q, state.lastResult.columns).parts].join(' · ');
     $('sc-name').value = datasetName(q.dataset);
     $('sc-timezone').value = q.timezone || 'Asia/Shanghai';
     $('sc-error').hidden = true;
@@ -1805,6 +1864,8 @@
     $('query-dataset').replaceChildren();
     // The companies belong to the product: the field starts over as the text field until the product's directory has answered.
     companies.show(id, null);
+    // The filters and the sort belong to the dataset (S20-B): none until the product's catalogue has answered.
+    narrowing.show(null);
     const active = () => epoch === state.epoch && operation === state.catalogOperation && id === state.product;
     try {
       let datasets = state.catalogs.get(id),
@@ -1831,6 +1892,7 @@
       }
       state.catalogLoading = false;
       renderCatalog();
+      narrowing.show(selected());
       queryChanged();
       $('query-date').value = selected() ? dateInZone(selected().timezone) : '';
     } catch (error) {
@@ -2220,6 +2282,7 @@
   }
   function selectDataset(d) {
     $('query-dataset').value = d.dataset.id + '@' + d.dataset.version;
+    narrowing.show(d);
     queryChanged();
     $('query-date').value = dateInZone(d.timezone);
   }
@@ -2315,6 +2378,10 @@
       !$('query-date').value
     )
       throw new Failure(400, 'INVALID_REQUEST');
+    // S20-B (ADR 0023 decision 5): the filters and the sort of the panel, in the server's form. A query the console can see is not
+    // complete is not sent: the buttons are disabled and say why (queryHint), and this is the same refusal for whoever gets past them.
+    const why = narrowing.reason();
+    if (why) throw Object.assign(new Failure(400, 'QUERY_INCOMPLETE'), {reason: why});
     const q = {
       schema_version: '1.0',
       integration_id: state.product,
@@ -2322,8 +2389,8 @@
       company_ids: scope,
       metrics: copy(d.metrics),
       dimensions: copy(d.dimensions),
-      filters: [],
-      sort: [],
+      filters: narrowing.filters(),
+      sort: narrowing.sort(),
       as_of: $('query-date').value,
       timezone: d.timezone,
       page: {limit: 50},
@@ -2910,17 +2977,23 @@
     renderTable(result);
     dashboard.refresh(result, query, !!meta);
     documents.refresh(result, query);
+    // S20-B (ADR 0023 decision 5): the scope of this result in words. A query with filters is narrowed, and the rows and totals the
+    // server returned are the narrowed scope's: the total cards, the subtitle and the evidence line say so, so that nobody reads a
+    // filtered total as the whole. A snapshot shown without its query (loadSnapshot: restored by id, or listed by the server in a
+    // later session) says that its filters and sort are the snapshot's own, not known here.
+    const narrowed = narrowing.words(query, result.columns);
     const summary = $('result-summary');
     summary.replaceChildren();
     for (const [id, value] of Object.entries(result.totals).slice(0, 20)) {
       const column = result.columns.find(c => c.id === id);
+      const unit = column?.currency ? ' / ' + column.currency : column?.unit ? ' / ' + column.unit : '';
       const card = node('div', undefined, 'summary-card');
       card.append(
         node(
           'small',
-          (column?.label || id) +
-            ' · 原范围合计' +
-            (column?.currency ? ' / ' + column.currency : column?.unit ? ' / ' + column.unit : '')
+          narrowed.count
+            ? (column?.label || id) + ' · 筛选后范围合计' + unit
+            : (column?.label || id) + ' · 原范围合计' + unit
         ),
         node('strong', value)
       );
@@ -2936,14 +3009,29 @@
     $('result-title').textContent = datasetTitle({columns: result.columns, dataset: query.dataset});
     $('result-kind').textContent = meta ? '冻结快照' : '查询预览';
     $('result-kind').className = 'badge' + (meta ? '' : ' neutral');
-    $('result-subtitle').textContent = meta
+    const subtitle = meta
       ? '同一快照分页 · ' + query.as_of + ' · ' + query.timezone
       : '当前显示 ' +
         result.rows.length +
         ' 行 · ' +
         (result.completeness === 'preview' ? '有界预览，不能作为完整导出' : '当前批准组合的完整结果');
+    $('result-subtitle').textContent = [
+      subtitle,
+      ...(!narrowed.known
+        ? ['筛选与排序以原快照为准']
+        : narrowed.count
+          ? ['已按 ' + narrowed.count + ' 个筛选缩小范围，合计是筛选后的范围']
+          : []),
+    ].join(' · ');
     const evidence = $('result-evidence');
     evidence.replaceChildren();
+    // The scope first, then what binds it: the query digest covers the filters and the sort (ADR 0023 decision 3).
+    if (!narrowed.known) evidence.append(node('span', '筛选与排序：本会话没有这个快照的查询，以原快照为准'));
+    else {
+      if (narrowed.count) evidence.append(node('span', '范围已缩小：行与合计只含符合全部筛选的数据'));
+      for (const line of narrowed.filters) evidence.append(node('span', '筛选：' + line));
+      if (narrowed.order) evidence.append(node('span', '排序：' + narrowed.order));
+    }
     if (result.evidence)
       for (const [label, key] of [
         ['查询摘要', 'query_hash'],
@@ -3267,10 +3355,25 @@
       if (m.epoch === state.epoch) busy(-1);
     }
   }
+  // S20-B: a 422 of a query that carries filters or a sort is told as theirs. The console sent what the catalogue on the page declares
+  // and what it could check; the server, or the source behind it, takes less (a catalogue that changed since, a value only the source
+  // can judge), and its refusal is the truth.
+  function narrowingRefused(error, q) {
+    if (
+      error &&
+      error.status === 422 &&
+      error.code === 'UNSUPPORTED_COMBINATION' &&
+      (q.filters.length || q.sort.length)
+    )
+      error.code = 'NARROWING_UNSUPPORTED';
+    return error;
+  }
   async function preview(m) {
     const q = buildQuery();
     clearResult();
-    const result = await request('/queries', {method: 'POST', body: q});
+    const result = await request('/queries', {method: 'POST', body: q}).catch(error => {
+      throw narrowingRefused(error, q);
+    });
     if (!current(m)) throw new Stale();
     renderResult(result, q, null);
     notify('预览已更新。完整冻结导出请先创建快照。', 'success');
@@ -3321,7 +3424,7 @@
       job = await submit('snapshot', q, {query: copy(q), integration: q.integration_id});
     } catch (error) {
       if (error.code !== 'QUOTA_EXCEEDED' && error.code !== 'OVERLOADED') clearResult();
-      throw error;
+      throw narrowingRefused(error, q);
     }
     clearResult();
     if (!current(m)) throw new Stale();
@@ -3462,7 +3565,10 @@
     loadProduct($('query-product').value).catch(error => fail(error))
   );
   $('query-dataset').addEventListener('change', () => {
+    // S20-B: the filters and the sort are the dataset's: another dataset starts them over from its own declaration.
+    narrowing.show(selected());
     queryChanged();
+    queryHint();
     $('query-date').value = selected() ? dateInZone(selected().timezone) : '';
   });
   for (const id of ['query-companies', 'query-date']) $(id).addEventListener('input', queryChanged);
