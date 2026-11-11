@@ -2,12 +2,12 @@ package pdf
 
 import (
 	"fmt"
-	"math/big"
 	"strconv"
 	"strings"
 	"unicode"
 
 	"idp.local/reporting/doctemplates"
+	"idp.local/reporting/export/present"
 	r "idp.local/reporting/reporting"
 )
 
@@ -191,10 +191,10 @@ func newTableLayout(spec tableSpec, data *doctemplates.TableData, m *measurer) (
 	if lay.header, err = lay.wrapRow(headerTexts(lay), true, -1); err != nil {
 		return nil, nil, nil, err
 	}
-	sums := make([]*column, len(lay.columns))
+	sums := make([]*present.Sum, len(lay.columns))
 	for j, c := range lay.columns {
 		if c.metric && j > 0 {
-			sums[j] = &column{scale: data.Columns[j].Scale}
+			sums[j] = present.NewSum(data.Columns[j].Scale)
 		}
 	}
 	// The carried rows are one line each: their labels (the widest page number is maxPages) and
@@ -220,7 +220,7 @@ func newTableLayout(spec tableSpec, data *doctemplates.TableData, m *measurer) (
 					return nil, nil, nil, refuse(doctemplates.ReasonDoesNotFit, lay.at(j, i), "pdf: an amount does not fit its column")
 				}
 				if sums[j] != nil {
-					if err := sums[j].add(v); err != nil {
+					if err := sums[j].Add(v); err != nil {
 						return nil, nil, nil, err
 					}
 				}
@@ -238,16 +238,16 @@ func newTableLayout(spec tableSpec, data *doctemplates.TableData, m *measurer) (
 		if s == nil {
 			continue
 		}
-		if total, ok := data.Totals[data.Columns[j].ID]; ok && !s.equals(total) {
+		if total, ok := data.Totals[data.Columns[j].ID]; ok && !s.Equals(total) {
 			return nil, nil, nil, fmt.Errorf("pdf: the rows of %s do not add up to the snapshot's total: %w", data.Columns[j].ID, r.ErrIntegrity)
 		}
 	}
 	// Running sums after each row, per metric column, as printed strings.
 	running := make([][]string, len(data.Rows))
-	partial := make([]*column, len(lay.columns))
+	partial := make([]*present.Sum, len(lay.columns))
 	for j, s := range sums {
 		if s != nil {
-			partial[j] = &column{scale: s.scale, frac: s.frac}
+			partial[j] = s.Zero()
 		}
 	}
 	for i, row := range data.Rows {
@@ -256,7 +256,7 @@ func newTableLayout(spec tableSpec, data *doctemplates.TableData, m *measurer) (
 			if s == nil {
 				continue
 			}
-			if err := s.add(row[j]); err != nil {
+			if err := s.Add(row[j]); err != nil {
 				return nil, nil, nil, err
 			}
 			running[i][j] = groupDigits(s.String())
@@ -265,7 +265,7 @@ func newTableLayout(spec tableSpec, data *doctemplates.TableData, m *measurer) (
 	zero := make([]string, len(lay.columns))
 	for j, s := range sums {
 		if s != nil {
-			zero[j] = groupDigits((&column{scale: s.scale, frac: s.frac}).String())
+			zero[j] = groupDigits(s.Zero().String())
 		}
 	}
 	return lay, running, zero, nil
@@ -567,63 +567,5 @@ func (lay *tableLayout) wrap(text string, width float64, bold bool) (cell, error
 	return c, nil
 }
 
-// column accumulates exact decimal strings: integers scaled to the longest fraction seen (or
-// the column's declared scale), so no digit is ever rounded.
-type column struct {
-	scale int // the column's declared scale, if any
-	frac  int // the longest fraction seen; sum is scaled by 10^frac
-	sum   big.Int
-}
-
-func (c *column) add(v string) error {
-	if !exactNumber.MatchString(v) {
-		return r.ErrIntegrity
-	}
-	_, f, _ := strings.Cut(v, ".")
-	if len(f) > c.frac {
-		c.sum.Mul(&c.sum, pow10(len(f)-c.frac))
-		c.frac = len(f)
-	}
-	c.sum.Add(&c.sum, scaled(v, c.frac))
-	return nil
-}
-
-func pow10(n int) *big.Int { return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(n)), nil) }
-
-// scaled is v as an integer with frac fraction digits.
-func scaled(v string, frac int) *big.Int {
-	whole, f, _ := strings.Cut(v, ".")
-	f += strings.Repeat("0", frac-len(f))
-	n, _ := new(big.Int).SetString(whole+f, 10)
-	return n
-}
-
-// String is the sum with the column's fraction digits.
-func (c *column) String() string {
-	frac := max(c.frac, c.scale)
-	digits := new(big.Int).Abs(&c.sum)
-	if frac > c.frac {
-		digits.Mul(digits, pow10(frac-c.frac))
-	}
-	s := digits.String()
-	if frac > 0 {
-		for len(s) <= frac {
-			s = "0" + s
-		}
-		s = s[:len(s)-frac] + "." + s[len(s)-frac:]
-	}
-	if c.sum.Sign() < 0 {
-		s = "-" + s
-	}
-	return s
-}
-
-// equals compares the sum with another exact decimal string numerically.
-func (c *column) equals(v string) bool {
-	if !exactNumber.MatchString(v) {
-		return false
-	}
-	_, f, _ := strings.Cut(v, ".")
-	frac := max(c.frac, c.scale, len(f))
-	return scaled(c.String(), frac).Cmp(scaled(v, frac)) == 0
-}
+// The exact decimal arithmetic of the carried rows and totals is present.Sum (S23-A): the one implementation the document tables, the
+// subtotal rows of a presented export and the workbook share.

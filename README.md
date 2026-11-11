@@ -27,7 +27,7 @@ IDP 产品的独立报表平台：一个 Go 服务端和它自带的网页控制
 | `transport/httpapi/` | HTTP API（docs/API.md） |
 | `identity/accessjwt/` | RS256 访问令牌（docs/ACCESS_JWT.md） |
 | `tracecontext/` | W3C Trace Context：`traceparent` 的严格解析、请求的 span、适配器发给来源产品的头（docs/S14A_SCOPE.md）；只依赖标准库 |
-| `export/` | XLSX、PDF（固定版本的 Typst，PDF/A-2b）与条码 |
+| `export/` | XLSX、PDF（固定版本的 Typst，PDF/A-2b）与条码；`present` 是两种导出共用的表现层（布局的列、标签、格式、小计与标记，ADR 0024） |
 | `doctemplates/`、`issuance/`、`privatedocs/` | 文档模板与样例包、出具的渲染、私有版本目录 |
 | `layouts/`、`dashboards/` | 报表列布局、看板 |
 | `embedding/` | 谁可以在框架里显示平台的页面（ADR 0006） |
@@ -82,7 +82,7 @@ npm run format:check                                           # Prettier（ADR 
 | 想知道 | 看 |
 |---|---|
 | 架构基线与接口合同 | docs/s00/ARCHITECTURE.md、docs/s00/INTERFACES.md |
-| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0015_COMPANY_DIRECTORY.md（0021 为提案） |
+| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0024_TABLE_REPORT_FORMATTING.md（0021 为提案） |
 | API | docs/API.md |
 | 控制台与设计器 | docs/CONSOLE.md、docs/STUDIO.md，用户手册 docs/manual/ |
 | 嵌入 | docs/EMBEDDING.md |

@@ -6,6 +6,12 @@
 
 ---
 
+# IDP Reporting Platform · S23-A
+
+2026-11-11。表格报表的表现层（ADR 0024，docs/S23A_SCOPE.md）：报表布局 schema 1.1（标题、脚注、列标签、居中、数值列格式、一级小计、至多 8 条标记规则；1.0 不变），`POST /exports` 可带 `layout_id`，导出按布局最新保存版本渲染并在任务与产物上记录布局 id 与版本（任务视图 `layout`，幂等键绑定版本）；PDF 与工作簿共用表现层 `export/present`（精确小计沿用文档表格的十进制规则）；每份工作簿的数值列改为带数字格式的数值单元格并在旁边加 `<标签>（精确）` 文本列，`Totals` 加 `value`，`Metadata` 加 `inexact_cells` 与布局信息；不带布局的 PDF 逐字节不变（golden 测试）。无 SQL 迁移。控制台部分是 S23-B。
+
+---
+
 # IDP Reporting Platform · S07-H
 
 2026-11-06。迁移 010 `jobs_identity_kind_stats`（docs/CAPACITY.md “Migration 010”）：给 `jobs` 的 (tenant, issuer, subject, kind) 加扩展统计并 ANALYZE。签发记录很多的身份，签发记录列表在 1,000,000 行时从约 101 ms 降到约 1.1 ms（p50，两次各量）：规划器以前把四列当成互相独立、估计 91 行（实际 20,000），保留唯一键并排序全部 20,000 行；有了统计后按 `jobs_identity_created` 从新到旧读，读到 25 行就停。没有新索引，没有改语句；009 不变（账本按校验和核对已应用的迁移）。

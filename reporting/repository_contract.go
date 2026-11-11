@@ -28,6 +28,29 @@ func ExportRequestHash(snapshotID, format string) string {
 	return Digest(struct{ SnapshotID, Format string }{snapshotID, format})
 }
 
+// ExportRequestHashWithLayout binds an export job to its snapshot, its format and the layout version it carries (S23-A, ADR 0024), so that
+// a replay of the key with the same layout version answers the same job and one with another version, or none, is a conflict. Without a
+// layout it is ExportRequestHash, so that every export job admitted before layouts existed keeps its hash.
+func ExportRequestHashWithLayout(snapshotID, format, layoutID string, layoutVersion int) string {
+	if layoutID == "" {
+		return ExportRequestHash(snapshotID, format)
+	}
+	return Digest(struct {
+		SnapshotID, Format, LayoutID string
+		LayoutVersion                int
+	}{snapshotID, format, layoutID, layoutVersion})
+}
+
+// exportFields checks what an export job freezes apart from its snapshot and format: its request hash binds the layout version its
+// presentation names, the presentation (when there is one) is whole and names its layout, and nothing of an issue job is set.
+func exportFields(j Job) bool {
+	layoutID, layoutVersion := layoutOf(j.Presentation)
+	if j.RequestHash != ExportRequestHashWithLayout(j.SnapshotID, j.Format, layoutID, layoutVersion) || j.TemplateID != "" || j.Template != "" {
+		return false
+	}
+	return j.Presentation == nil || (layoutID != "" && j.Presentation.Validate() == nil)
+}
+
 // IssueRequestHash binds an issue job to everything it freezes.
 func IssueRequestHash(templateID string, version int, templateSHA256, snapshotID string, row int) string {
 	return Digest(struct {
@@ -102,7 +125,7 @@ func ValidateAdmission(j Job) error {
 			return ErrInvalid
 		}
 	case "export":
-		if !validID(j.SnapshotID) || !validFormat(j.Format) || j.RequestHash != ExportRequestHash(j.SnapshotID, j.Format) || j.TemplateID != "" || j.Template != "" {
+		if !validID(j.SnapshotID) || !validFormat(j.Format) || !exportFields(j) {
 			return ErrInvalid
 		}
 	case "issue":
@@ -113,6 +136,10 @@ func ValidateAdmission(j Job) error {
 		return ErrInvalid
 	}
 	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0 || j.Group != nil) {
+		return ErrInvalid
+	}
+	// Only an export job presents its snapshot (S23-A).
+	if j.Kind != "export" && j.Presentation != nil {
 		return ErrInvalid
 	}
 	return nil
@@ -153,9 +180,13 @@ func ValidatePublication(j Job, p Publication) error {
 		if v == nil || p.Snapshot != nil || p.Issue != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != j.Format || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || !ValidArtifactBody(*v) || v.Issue != "" {
 			return ErrIntegrity
 		}
+		// The artifact records the layout version the job's presentation named, and none when the job has none (S23-A).
+		if layoutID, layoutVersion := layoutOf(j.Presentation); v.LayoutID != layoutID || v.LayoutVersion != layoutVersion {
+			return ErrIntegrity
+		}
 	case "issue":
 		v, rec := p.Artifact, p.Issue
-		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || !ValidArtifactBody(*v) || v.Issue != j.ID {
+		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || !ValidArtifactBody(*v) || v.Issue != j.ID || v.LayoutID != "" || v.LayoutVersion != 0 {
 			return ErrIntegrity
 		}
 		if rec.ID != j.ID || rec.Owner != j.Owner || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || !rec.Group.Equal(j.Group) || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages {

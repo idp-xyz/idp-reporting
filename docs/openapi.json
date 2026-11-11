@@ -1749,7 +1749,7 @@
           "core"
         ],
         "summary": "Admit an export job of a snapshot",
-        "description": "`format` absent or `xlsx` is the workbook; `pdf` needs a server started with PDF (listed in `formats`); other values are 422.",
+        "description": "`format` absent or `xlsx` is the workbook; `pdf` needs a server started with PDF (listed in `formats`); other values are 422. `layout_id` (S23-A, ADR 0024) names a layout of the caller's own or the tenant's shared space whose latest saved version the file is rendered through (its columns, labels, alignments, formats, subtotal rows, marks, title and footnote); the job and the artifact record the layout version (`layout` in the job view) and the Idempotency-Key binds it: the same key with another version, or without the layout, is 409 IDEMPOTENCY_CONFLICT. A layout the caller cannot read is 404; one bound to another integration or dataset than the snapshot, or a format whose writer cannot present (none of the shipped ones), is 422 UNSUPPORTED_COMBINATION; one that no longer fits its dataset's rules is 400; without a layout store on the server a `layout_id` is 422. Without `layout_id` the file is byte for byte what it was before layouts (the PDF), or the whole snapshot (the workbook, which since S23-A writes typed cells beside exact columns in every case).",
         "x-reporting-mount": "core",
         "parameters": [
           {
@@ -1770,6 +1770,10 @@
                   "format": {
                     "type": "string",
                     "description": "Absent means xlsx."
+                  },
+                  "layout_id": {
+                    "$ref": "#/components/schemas/Id",
+                    "description": "S23-A: the layout whose latest saved version the export is rendered through. Absent means the whole snapshot."
                   }
                 },
                 "required": [
@@ -4847,6 +4851,10 @@
           "expired": {
             "type": "boolean",
             "description": "Present (true) for a succeeded job whose results are no longer served (S04-B)."
+          },
+          "layout": {
+            "$ref": "#/components/schemas/LayoutRef",
+            "description": "Present for an export job that carries a layout (S23-A, ADR 0024): the layout version the file is rendered through. Absent for an export of the whole snapshot and for every other kind."
           }
         },
         "required": [
@@ -5027,10 +5035,26 @@
         "properties": {
           "schema_version": {
             "type": "string",
-            "const": "1.0"
+            "enum": [
+              "1.0",
+              "1.1"
+            ],
+            "description": "1.0 picks, orders and aligns (left, right) the columns. 1.1 (S23-A, ADR 0024) adds, all optional: title, footnote, a column's label and format, center, subtotals and marks; a 1.0 document carrying any of them is 400."
           },
           "binding": {
             "$ref": "#/components/schemas/Binding"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "1.1. Printed above the table by the exports; a literal, never a value."
+          },
+          "footnote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400,
+            "description": "1.1. Printed under the total row by the exports."
           },
           "columns": {
             "type": "array",
@@ -5046,8 +5070,19 @@
                   "type": "string",
                   "enum": [
                     "left",
-                    "right"
-                  ]
+                    "right",
+                    "center"
+                  ],
+                  "description": "center is 1.1."
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "1.1. Replaces the dataset's label (and its currency and unit) in the header."
+                },
+                "format": {
+                  "$ref": "#/components/schemas/LayoutFormat"
                 }
               },
               "required": [
@@ -5058,6 +5093,31 @@
             },
             "minItems": 1,
             "maxItems": 100
+          },
+          "subtotals": {
+            "type": "object",
+            "properties": {
+              "by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "The id of a column of the layout that is a dimension of the dataset. The rows are partitioned by its exact strings, the groups ordered by their first row; after each group a 小计 row carries the exact sum of each shown metric. The source's 合计 row is not recomputed."
+              }
+            },
+            "required": [
+              "by"
+            ],
+            "additionalProperties": false,
+            "description": "1.1. One level of subtotals."
+          },
+          "marks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LayoutMark"
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "description": "1.1. Conditional marks: the first rule that holds colours the cell."
           }
         },
         "required": [
@@ -5066,7 +5126,100 @@
           "columns"
         ],
         "additionalProperties": false,
-        "description": "A report layout (layouts.Document): at most 64 KiB as JSON; distinct column ids of the bound dataset."
+        "description": "A report layout (layouts.Document): at most 64 KiB as JSON; distinct column ids of the bound dataset. A format on a column that is not decimal or integer, a subtotal column that is not a dimension, a mark whose relation does not fit its column's type, or a mark or subtotal column that is not in the layout are 400 INVALID_REQUEST; a column the dataset does not have is 403."
+      },
+      "LayoutFormat": {
+        "type": "object",
+        "properties": {
+          "grouping": {
+            "type": "boolean",
+            "default": true,
+            "description": "Thousands separators in the integer part."
+          },
+          "negative": {
+            "type": "string",
+            "enum": [
+              "minus",
+              "parentheses"
+            ],
+            "default": "minus"
+          },
+          "zero": {
+            "type": "string",
+            "enum": [
+              "digits",
+              "dash"
+            ],
+            "default": "digits",
+            "description": "dash prints a zero as —."
+          }
+        },
+        "additionalProperties": false,
+        "description": "How a decimal or integer column shows its digits (layouts.Format, 1.1). It changes which digits are shown never: no rounding, scaling or unit conversion. An absent key takes its default."
+      },
+      "LayoutMark": {
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "A column of the layout."
+          },
+          "when": {
+            "type": "string",
+            "enum": [
+              "lt",
+              "le",
+              "gt",
+              "ge",
+              "eq",
+              "ne",
+              "blank"
+            ],
+            "description": "lt le gt ge eq ne on a decimal or integer column (an exact decimal comparison with value, an exact decimal string); eq ne blank on any other column (an exact string comparison; blank is the empty string and takes no value)."
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Absent for blank."
+          },
+          "mark": {
+            "type": "string",
+            "enum": [
+              "good",
+              "warn",
+              "bad",
+              "note"
+            ],
+            "description": "A closed palette with one colour each, the same on screen, in the PDF and in the workbook. A mark colours a cell; it never hides a row, changes a value or adds text."
+          }
+        },
+        "required": [
+          "column",
+          "when",
+          "mark"
+        ],
+        "additionalProperties": false,
+        "description": "One conditional rule of a 1.1 layout (layouts.Mark)."
+      },
+      "LayoutRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "The layout version an export job was rendered through (reporting.LayoutRef, S23-A)."
       },
       "LayoutSummary": {
         "type": "object",

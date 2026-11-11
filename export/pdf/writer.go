@@ -260,6 +260,18 @@ var probe = r.Snapshot{
 // Write renders one snapshot. Characters the fonts do not cover and snapshots too wide for a
 // page are unsupported; time and size limits are budget errors. Errors never carry values.
 func (w *Writer) Write(ctx context.Context, s r.Snapshot) ([]byte, error) {
+	return w.write(ctx, s, nil)
+}
+
+// WritePresented renders one snapshot through a presentation (S23-A, ADR 0024): the layout's columns in its order with its labels,
+// alignments and formats, its subtotal rows, its marks as cell fills, its title above the table and its footnote under the total row,
+// with the layout version in the meta line. The same rules as Write apply: more than MaxColumns shown columns, and characters the fonts
+// do not cover, are unsupported; a presentation that does not fit the snapshot is refused whole.
+func (w *Writer) WritePresented(ctx context.Context, s r.Snapshot, p r.Presentation) ([]byte, error) {
+	return w.write(ctx, s, &p)
+}
+
+func (w *Writer) write(ctx context.Context, s r.Snapshot, p *r.Presentation) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -267,7 +279,7 @@ func (w *Writer) Write(ctx context.Context, s r.Snapshot) ([]byte, error) {
 		return nil, r.ErrBudget
 	}
 	created := w.cfg.Now()
-	d, err := build(s, newMeasurer(w.fonts), created)
+	d, err := buildTable(s, p, newMeasurer(w.fonts), created)
 	if err != nil {
 		return nil, err
 	}
@@ -359,4 +371,4 @@ func (t *head) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-var _ r.WorkbookWriter = (*Writer)(nil)
+var _ r.PresentedWriter = (*Writer)(nil)

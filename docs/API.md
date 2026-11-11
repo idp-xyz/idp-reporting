@@ -31,7 +31,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | GET /jobs/{id} | Owner-scoped status; current source authority even after success. A job that succeeded and whose source read has expired is not re-authorized (there is no result left to authorize): it answers 200 with `expired: true`, its own state and ids, and, for an issue, the number from its record; the same after retention deleted its snapshot and artifact (S04-B, "Retention" below) |
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned. A running issue job is not cancelled (the source product may already hold a reservation for it): it is returned unchanged, and a queued one is cancelled |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
-| POST /exports | `{ "snapshot_id": "…", "format": "pdf" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports |
+| POST /exports | `{ "snapshot_id": "…", "format": "pdf", "layout_id": "…" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports. `layout_id` (S23-A, ADR 0024, "Layouts and presented exports" below) is optional: the export is rendered through the latest saved version of that layout and the job view carries `layout: {id, version}` |
 | GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256; an issued PDF is named `issued-<issue id>.pdf` (the console saves it as `issued-<number>.pdf`) |
 
 The standalone HTML/CSS/JS console is served at /console/. Static assets contain
@@ -53,11 +53,17 @@ the full original authorized result. A truncated preview says `preview`; a
 partial snapshot page says `page`; all rows says `complete`. Snapshot paging does
 not reread the source. Cursor alone confers no access.
 
-Every XLSX cell is explicit text, with Data/Totals/Metadata sheets. Exact decimals,
-negative values and integers beyond JavaScript/Excel precision survive unchanged.
-External strings beginning '=' do not generate formulas. Consumers wanting Excel
-arithmetic must use an approved typed import; automatic numeric coercion is not
-promised by this slice.
+The workbook has Data/Totals/Metadata sheets. Since S23-A (ADR 0024 decision 3) a `decimal` or
+`integer` column of the Data sheet is numeric cells with an Excel number format derived from the
+column's scale (and the layout's format, when there is one), each followed by a text column
+`<label>（精确）` that holds the exact frozen string; a numeric cell is written only when the exact
+string survives a float64 and comes back as the same digits at the column's scale, else the cell
+is text too and `Metadata` counts it in `inexact_cells`. The `Totals` sheet has `value` beside
+`exact_value` under the same rule. Every other cell is text: exact decimals, negative values and
+integers beyond JavaScript/Excel precision survive unchanged in the exact columns; external
+strings beginning '=' do not generate formulas, and no formula is ever generated (a layout's
+subtotal rows are values). `Metadata` names the layout (`layout_id`, `layout_version`,
+`layout_title`, `layout_footnote`, `subtotal_by`; empty without one).
 
 A PDF is PDF/A-2b, rendered by a pinned Typst binary from a server-owned template
 (export/pdf): the same rows in snapshot order, the column labels repeated on every page,
@@ -423,6 +429,65 @@ snapshots are qualified only in the protected S01-B simulator fixture. S02-A's
 signature/audience/token-purpose/scope checks are locally qualified. Real
 delegated subjects, issuer/membership authority and source authorization SLA
 remain S02 contracts, not simulated by a service account.
+
+## Layouts and presented exports (S23-A, docs/ADR_0024_TABLE_REPORT_FORMATTING.md, docs/S23A_SCOPE.md)
+
+A layout (`layouts.Document`, routes `GET, POST /layouts`, `GET /layouts/{id}?version=N`, `GET, POST /layouts/{id}/release`,
+`GET /layouts/{id}/published`; the schemas `LayoutDocument`, `LayoutFormat`, `LayoutMark` of docs/openapi.json) is a private design
+bound to one integration and dataset. Schema 1.0 picks, orders and aligns (`left`, `right`) the columns. Schema 1.1 adds, all optional,
+what the exports print:
+
+```json
+{
+  "schema_version": "1.1",
+  "binding": {"integration_id": "brant_finance", "dataset": {"id": "receivables.aging", "version": "1.0.0"}},
+  "title": "应收账龄",
+  "footnote": "小计为本表所列金额之和。",
+  "columns": [
+    {"id": "aging.bucket", "align": "center", "label": "账龄"},
+    {"id": "customer.id", "align": "left"},
+    {"id": "ar.open_balance", "align": "right", "format": {"grouping": true, "negative": "parentheses", "zero": "digits"}}
+  ],
+  "subtotals": {"by": "aging.bucket"},
+  "marks": [
+    {"column": "ar.open_balance", "when": "lt", "value": "0", "mark": "bad"},
+    {"column": "aging.bucket", "when": "eq", "value": "current", "mark": "good"},
+    {"column": "customer.id", "when": "blank", "mark": "note"}
+  ]
+}
+```
+
+- `title` 1..120 characters and `footnote` 1..400: literals printed above the table and under the total row, never a value of the data.
+- A column's `label` (1..64) replaces the dataset's label and its currency and unit in the header; `align` gains `center`; `format` is
+  allowed on a `decimal` or `integer` column only: `grouping` (default `true`), `negative` `minus` | `parentheses` (default `minus`), `zero`
+  `digits` | `dash` (default `digits`; the dash is `—`). A format changes how the digits are shown, never which: no rounding, scaling or
+  unit conversion.
+- `subtotals.by` names a column of the layout that is a dimension of the dataset. The rows are partitioned by its exact frozen strings,
+  the groups ordered by their first row and the snapshot's order kept inside, and each group is followed by a 小计 row with the exact
+  decimal sum of each shown metric (the rule the document tables use for their totals). The source's 合计 row is shown as it came.
+- `marks` is 1..8 rules `{column, when, value?, mark}`: `when` is `lt le gt ge eq ne` on a numeric column (an exact decimal comparison with
+  `value`, an exact decimal string) or `eq ne blank` on any other column (an exact string comparison; `blank` is the empty string and takes
+  no `value`); `mark` is `good`, `warn`, `bad` or `note`, a closed palette with one light colour each, the same on screen, in the PDF and in
+  the workbook. The first rule that holds colours the cell; a mark never hides a row, changes a value or adds text.
+- Bounds and refusals (400 INVALID_REQUEST): 100 columns, 8 marks, 64 KiB, unknown keys, a 1.0 document with a 1.1 key, a format on a
+  column that is not numeric, a subtotal column that is not a dimension or not in the layout, a mark whose column is not in the layout or
+  whose relation does not fit the column's type. A column the dataset does not have is 403, as before.
+
+`POST /exports` with `layout_id`: the layout must be readable by the caller (the caller's own, or the tenant's shared space; else 404) and
+bound to the snapshot's integration and dataset (else 422 UNSUPPORTED_COMBINATION); its latest saved version at the time of the request is
+frozen on the job, as an issue job freezes its template, and the job view, `GET /jobs/{id}` and `GET /jobs` carry it:
+
+```json
+{"job_id": "…", "kind": "export", "state": "queued", "snapshot_id": "…", "format": "pdf", "layout": {"id": "…", "version": 3}}
+```
+
+The Idempotency-Key binds the layout version: the same key with the same version answers the same job; with another version (the layout
+was saved again meanwhile), or without the layout, it is 409 IDEMPOTENCY_CONFLICT. The artifact records the layout id and version; the
+workbook's `Metadata` sheet names them and the PDF's meta line says `布局 <id>@<version>`. Both exports show the layout's columns in its
+order with its labels, alignments and formats, the subtotal rows (bold, under a rule), the marks as cell fills (text stays black), the
+title above the table and the footnote under the total row; a PDF of more than 32 shown columns is refused as before. Without `layout_id`
+the PDF is byte for byte what it was before S23-A (a golden test guards it), and the workbook is the whole snapshot. Unsaved edits of a
+layout are not exported: the console sends the saved layout's id (S23-B). A server without a layout store answers 422 for a `layout_id`.
 
 ## Embedding (S03-N, ADR 0006, docs/EMBEDDING.md)
 

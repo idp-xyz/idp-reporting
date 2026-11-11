@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/layouts"
 	"idp.local/reporting/privatedocs"
@@ -47,8 +48,31 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		mux.HandleFunc(pattern, authenticated(authenticate, fn))
 	}
 	const base = "/api/reporting/v1"
+	// store is the layout store when the deployment has one; resolveLayout finds the latest saved version of a layout the principal may
+	// read, in the principal's own space or the tenant's shared space (S23-A, ADR 0024 decision 2), for an export that carries a layout.
+	var store *layouts.Store
+	resolveLayout := func(p r.Principal, id string) (layouts.Entry, error) {
+		if store == nil {
+			return layouts.Entry{}, r.ErrUnsupported
+		}
+		if !layouts.ValidID(id) {
+			return layouts.Entry{}, r.ErrInvalid
+		}
+		for _, owner := range []r.Identity{p.Identity, r.TeamOf(p.Identity)} {
+			all, e := store.List(owner)
+			if e != nil {
+				return layouts.Entry{}, e
+			}
+			for _, entry := range all {
+				if entry.ID == id {
+					return entry, nil
+				}
+			}
+		}
+		return layouts.Entry{}, r.ErrNotFound
+	}
 	if len(layoutStores) == 1 {
-		store := layoutStores[0]
+		store = layoutStores[0]
 		describeBinding := func(req *http.Request, p r.Principal, b layouts.Binding) (r.Dataset, error) {
 			catalog, e := service.Catalog(req.Context(), p, b.Integration)
 			if e != nil {
@@ -69,19 +93,9 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 			if e != nil {
 				return e
 			}
-			for _, column := range d.Columns {
-				found := false
-				for _, known := range dataset.Columns {
-					if known.ID == column.ID {
-						found = true
-						break
-					}
-				}
-				if !found {
-					return r.ErrDenied
-				}
-			}
-			return nil
+			// Every column one of the dataset's (403 otherwise, as before), and the 1.1 rules that need the dataset: a format on a numeric
+			// column, a subtotal column that is a dimension, a relation that fits the column's type (400, ADR 0024 decision 1).
+			return layouts.Check(d, dataset.Columns, dataset.Dimensions)
 		}
 		bind("GET "+base+"/layouts", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 			all, e := store.List(p.Identity)
@@ -347,7 +361,8 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	bind("POST "+base+"/exports", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		var input struct {
 			SnapshotID string `json:"snapshot_id"`
-			Format     string `json:"format"` // absent means xlsx
+			Format     string `json:"format"`    // absent means xlsx
+			LayoutID   string `json:"layout_id"` // S23-A: the layout whose latest saved version the export is rendered through
 		}
 		if e := decode(w, req, &input, bodySmall); e != nil {
 			return e
@@ -356,7 +371,32 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		if e != nil {
 			return e
 		}
-		v, e := service.SubmitExportFormat(req.Context(), p, input.SnapshotID, input.Format, key)
+		options := r.ExportOptions{Format: input.Format}
+		if input.LayoutID != "" {
+			// A layout the principal may read (its own or the team's; 404 otherwise, as the layout routes answer), bound to the snapshot's
+			// integration and dataset (422 otherwise), fitting the snapshot's frozen columns (ADR 0024 decision 1's rules against the
+			// frozen read; the catalog is not asked: the snapshot's authorization is the principal's current right on that dataset).
+			entry, e := resolveLayout(p, input.LayoutID)
+			if e != nil {
+				return e
+			}
+			if e = layouts.Validate(entry.Layout); e != nil {
+				return e
+			}
+			snap, e := service.AuthorizedSnapshot(req.Context(), p, input.SnapshotID)
+			if e != nil {
+				return e
+			}
+			if entry.Layout.Binding.Integration != snap.Owner.Integration || entry.Layout.Binding.Dataset != snap.Query.Dataset {
+				return fmt.Errorf("the layout is bound to another integration or dataset than the snapshot: %w", r.ErrUnsupported)
+			}
+			if e = layouts.Check(entry.Layout, snap.Result.Columns, snap.Query.Dimensions); e != nil {
+				return e
+			}
+			presentation := layouts.Presentation(entry.Layout, entry.ID, entry.Version)
+			options.Presentation = &presentation
+		}
+		v, e := service.SubmitExportWith(req.Context(), p, input.SnapshotID, options, key)
 		if e != nil {
 			return e
 		}

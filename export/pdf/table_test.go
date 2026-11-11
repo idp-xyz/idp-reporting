@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"idp.local/reporting/doctemplates"
+	"idp.local/reporting/export/present"
 	r "idp.local/reporting/reporting"
 )
 
@@ -32,50 +33,57 @@ func amounts(n int) *doctemplates.TableData {
 	return data
 }
 
+// The table's sums are present.Sum (S23-A): this is the document table's view of the rule, the package's own tests have the rest.
 func TestColumnSumsExactly(t *testing.T) {
-	c := &column{scale: 2}
+	c := present.NewSum(2)
 	for _, v := range []string{"1.50", "2", "-0.25", "9007199254740993.01"} {
-		if err := c.add(v); err != nil {
+		if err := c.Add(v); err != nil {
 			t.Fatal(v, err)
 		}
 	}
 	if got := c.String(); got != "9007199254740996.26" {
 		t.Errorf("sum %s", got)
 	}
-	if !c.equals("9007199254740996.260") || c.equals("9007199254740996.27") || c.equals("x") {
+	if !c.Equals("9007199254740996.260") || c.Equals("9007199254740996.27") || c.Equals("x") {
 		t.Error("equals")
 	}
 	// A fraction longer than the ones before it rescales the sum already accumulated.
-	c = &column{}
+	c = present.NewSum(0)
 	for _, v := range []string{"1", "2.5", "0.125", "-1"} {
-		_ = c.add(v)
+		_ = c.Add(v)
 	}
 	if got := c.String(); got != "2.625" {
 		t.Errorf("sum %s", got)
 	}
 	// A declared scale longer than any fraction seen: the sum prints and compares at that scale.
-	c = &column{scale: 2}
+	c = present.NewSum(2)
 	for _, v := range []string{"1", "2"} {
-		_ = c.add(v)
+		_ = c.Add(v)
 	}
-	if got := c.String(); got != "3.00" || !c.equals("3") || !c.equals("3.0") || c.equals("3.01") {
+	if got := c.String(); got != "3.00" || !c.Equals("3") || !c.Equals("3.0") || c.Equals("3.01") {
 		t.Errorf("sum %s", got)
 	}
 	// A negative sum, and a column with no fraction at all.
-	c = &column{}
+	c = present.NewSum(0)
 	for _, v := range []string{"-5", "2"} {
-		_ = c.add(v)
+		_ = c.Add(v)
 	}
 	if got := c.String(); got != "-3" {
 		t.Errorf("sum %s", got)
 	}
-	c = &column{scale: 3}
-	_ = c.add("0.5")
+	c = present.NewSum(3)
+	_ = c.Add("0.5")
 	if got := c.String(); got != "0.500" {
 		t.Errorf("sum %s", got)
 	}
-	if err := c.add("1,000"); !errors.Is(err, r.ErrIntegrity) {
+	if err := c.Add("1,000"); !errors.Is(err, r.ErrIntegrity) {
 		t.Errorf("a grouped number: %v", err)
+	}
+	// Zero is the empty sum at the fraction the sum has reached: what a carry prints before any row.
+	c = present.NewSum(0)
+	_ = c.Add("1.25")
+	if got := c.Zero().String(); got != "0.00" {
+		t.Errorf("zero %s", got)
 	}
 }
 

@@ -11,6 +11,15 @@
   c.map(p => if type(p) == str { p } else { p.pieces.join(linebreak()) }).join()
 }
 
+// A presented export (S23-A) may add subtotal rows (bold under a rule, like the total row),
+// cell fills for its marks (one colour or "" per cell of each row) and a footnote; without a
+// presentation the keys are absent and the document is laid out exactly as before.
+#let subtotal-rows = d.at("subtotal_rows", default: ())
+#let fills = d.at("fills", default: none)
+#let cell-fill(x, y) = if y == 0 { luma(232) } else if fills != none and y - 1 < fills.len() and fills.at(y - 1).at(x) != "" {
+  rgb(fills.at(y - 1).at(x))
+}
+
 #set document(title: d.title)
 // No kerning: the server measures plain advances, and some pairs kern outward. No overhang:
 // a full stop or comma at the end of a line would hang into the cell padding, and numbers
@@ -40,10 +49,12 @@
   columns: d.widths.map(w => w * 1pt),
   inset: (x: 4pt, y: 3pt),
   stroke: 0.5pt + luma(150),
-  align: (x, y) => (if d.align.at(x) == "right" { right } else { left }) + top,
-  fill: (x, y) => if y == 0 { luma(232) },
+  align: (x, y) => (if d.align.at(x) == "right" { right } else if d.align.at(x) == "center" { center } else { left }) + top,
+  fill: cell-fill,
   table.header(..d.header.map(c => text(weight: "bold", show-text(c)))),
-  ..d.rows.map(row => row.map(show-text)).flatten(),
+  ..d.rows.enumerate().map(((i, row)) => if subtotal-rows.contains(i) {
+    (table.hline(stroke: 1pt + luma(60)),) + row.map(c => text(weight: "bold", show-text(c)))
+  } else { row.map(show-text) }).flatten(),
   ..if d.total_row != none {
     (table.hline(stroke: 1pt + luma(60)),) + d.total_row.map(c => text(weight: "bold", show-text(c)))
   } else { () },
@@ -53,3 +64,4 @@
 #if d.total_list != none {
   for c in d.total_list { block(above: 6pt, text(weight: "bold", show-text(c))) }
 }
+#if d.at("footnote", default: none) != none { block(above: 6pt, text(size: 7.5pt, fill: luma(60), show-text(d.footnote))) }

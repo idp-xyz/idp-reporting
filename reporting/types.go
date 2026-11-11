@@ -314,6 +314,10 @@ type Artifact struct {
 	Object string `json:",omitempty"`
 	Size   int    `json:",omitempty"`
 	Issue  string `json:",omitempty"` // the issue record this artifact was issued under (S03-G)
+	// LayoutID and LayoutVersion name the layout version the export was rendered through (S23-A, ADR 0024): what the job's presentation
+	// named. Empty for an export of the whole snapshot and for an issued document.
+	LayoutID      string `json:",omitempty"`
+	LayoutVersion int    `json:",omitempty"`
 }
 type Job struct {
 	ID          string
@@ -344,6 +348,10 @@ type Job struct {
 	// Group is the row group a schema 2.0 template is issued for (S03-K): frozen at admission in place of the
 	// row, so that RowIndex is 0 for a group job. Nil for a 1.x job.
 	Group *IssueGroup `json:",omitempty"`
+	// Presentation is what an export job shows of its snapshot (S23-A, ADR 0024): the layout's presentation, frozen at admission as an
+	// issue job freezes its template, naming the layout version it came from. Nil for an export of the whole snapshot (the exports as they
+	// were before S23-A) and for every other kind. Retention keeps it: the view names the layout after the results are gone.
+	Presentation *Presentation `json:",omitempty"`
 	// Reduced marks a terminal job whose frozen read was cleared by retention (S04-B): its query, its prepared source
 	// read and its columns are gone (no query value survives; the request hash does), and so are the snapshot and the artifact
 	// it named, which keep their ids in the job and its view. The job keeps what its view and the audit need: owner, kind,
@@ -391,6 +399,9 @@ type JobView struct {
 	// has expired (its snapshot and artifact are not downloadable) and, once the retention grace has passed, they are
 	// deleted (S04-B). State stays the job's own state, the audit of what happened; the ids stay as the job recorded them.
 	Expired bool `json:"expired,omitempty"`
+	// Layout names the layout version an export job carries (S23-A, ADR 0024); absent for an export of the whole snapshot and for every
+	// other kind.
+	Layout *LayoutRef `json:"layout,omitempty"`
 }
 
 // IssueSummary is what an issue job says about itself before and after it ran. The number is
@@ -533,6 +544,16 @@ type Repository interface {
 // the workbook.
 type WorkbookWriter interface {
 	Write(context.Context, Snapshot) ([]byte, error)
+}
+
+// PresentedWriter is a WorkbookWriter that can also render a snapshot through a presentation (S23-A, ADR 0024): the columns it picks in its
+// order with its labels, alignments and formats, its subtotal rows, its marks, its title and its footnote. The export worker calls
+// WritePresented when the job carries a presentation and Write otherwise, so that an export without a layout is byte for byte what it was.
+// A presentation that does not fit the snapshot is refused, never applied in part. An export with a presentation is admitted only for a
+// format whose writer implements this.
+type PresentedWriter interface {
+	WorkbookWriter
+	WritePresented(context.Context, Snapshot, Presentation) ([]byte, error)
 }
 type Config struct {
 	Repository  Repository
