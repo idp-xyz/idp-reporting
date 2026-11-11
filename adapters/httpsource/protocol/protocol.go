@@ -16,8 +16,9 @@ import (
 // Version is the protocol's version, the v1 of every path.
 const Version = 1
 
-// Revision is the minor revision of version 1: 1 since S19-B added the optional route companies (docs/SOURCE_HTTP_PROTOCOL.md). A minor
-// revision only adds optional routes; a source of an earlier revision is served unchanged.
+// Revision is the minor revision of version 1: 1 since S19-B added the optional route companies and S20-A the optional filters and sorts
+// of a dataset, which a query then carries (docs/SOURCE_HTTP_PROTOCOL.md). A minor revision only adds optional routes and optional
+// fields; a source of an earlier revision is served unchanged.
 const Revision = 1
 
 // Prefix is the path every route of version 1 starts with, under the connection's base URL.

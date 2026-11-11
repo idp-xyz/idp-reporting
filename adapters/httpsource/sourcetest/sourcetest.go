@@ -4,6 +4,12 @@
 // contract simulators behind it, so that everything the platform does through adapters/httpsource is the same as what it does in process;
 // a product team written in Go can read it as the shape of its own implementation. It is not a product: authority is the wrapped
 // adapter's, and the handler only checks the service credential, decodes strictly and maps errors to the protocol's codes.
+//
+// The published filters and sorts (S20-A, ADR 0023) are the wrapped adapter's too: the catalog it answers carries the declaration the
+// adapter makes, a read's query reaches the adapter's PrepareRead with its filters and sort as the platform sent them, and a filter or a
+// sort the adapter's dataset version does not declare is the adapter's reporting.ErrUnsupported, answered here as `unsupported`. Behind
+// the contract simulator (adapters/contractsim), which declares and applies them in memory, this is the reference source the checker
+// (cmd/reporting-source-check) passes with every rule, F1–F6 included.
 package sourcetest
 
 import (

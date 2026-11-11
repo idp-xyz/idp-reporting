@@ -115,6 +115,8 @@ func (s *Simulator) PrepareRead(ctx context.Context, sc r.SourceContext, q r.Que
 	if e != nil {
 		return r.PreparedRead{}, e
 	}
+	// The query's shape, filters and sort are checked against what this source published (ADR 0023 decision 4): the platform's own
+	// validation is not a substitute, and a filter or a sort the dataset version does not declare is unsupported here too.
 	if e = r.ValidateQuery(q, s.dataset); e != nil {
 		return r.PreparedRead{}, e
 	}

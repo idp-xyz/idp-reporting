@@ -21,7 +21,7 @@ subject 映射为自己的 actor，除此之外请求里的任何东西都不能
 | 来源定位 | 服务端仓库/固定提交、实际运行配置与受控测试数据；说明与现有设计和 UI 包的关系 |
 | 可信身份 | issuer、资源 audience、访问令牌 typ/算法/claim/profile；主体到来源 actor/account 的服务端映射及撤销方式 |
 | 租户/产品映射 | platform tenant + integration 对应哪个 source tenant；issuer+subject 对应谁；不得按同名 ID/邮箱自动合并 |
-| 数据目录 | 数据集/指标版本、行粒度、字段与缺失值、金额精度/币种、数量单位、支持维度/筛选/排序与日期政策 |
+| 数据目录 | 数据集/指标版本、行粒度、字段与缺失值、金额精度/币种、数量单位、支持维度/筛选/排序与日期政策。产品在目录中为每个数据集版本声明允许筛选的字段与运算符（`filters`，可带封闭取值表与必填）和允许排序的字段与方向（`sorts`，ADR 0023）；未声明则不开放。产品在自己的事务里应用它们，筛选值一律作为参数绑定，绝不拼入语句文本；未声明的字段、运算符或取值回答 `unsupported`，合计必须是筛选后范围的合计；`reporting-source-check` 的规则 F1–F6 逐一核对 |
 | 稳定读取 | 准备读取的事务/版本/水位/TTL；分页如何维持同一事实与原授权范围；过期、清理与更新后的行为 |
 | 当前授权 | 原冻结范围如何被当前资格完整覆盖；公司/账户/记录/敏感字段；撤权/币种政策变化及授权源故障如何拒绝 |
 | 公司目录（可选能力，ADR 0015，S19-B） | 来源能否列出当前主体可选的公司及其名称（`CompanyDirectory`；协议 1.1 版的可选路由 `POST /reporting-source/v1/companies`，docs/SOURCE_HTTP_PROTOCOL.md "companies"）；列表多新；超过 1000 项时怎么截断并标记 `partial`；每个 id 与 name 1–128 字节、无控制字符、id 不重复。不实现则不要在连接上声明 `companies: true`，控制台保持手输公司 ID；实现了也不改变 PrepareRead / AuthorizeCurrent 的授权（列表只是建议，读取仍由来源逐次授权），平台不存、不缓存、不记录名称。声明前先通过 `reporting-source-check -companies`（规则 D1–D2） |

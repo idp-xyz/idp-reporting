@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -136,12 +137,20 @@ func checkShape(v any, t reflect.Type) error {
 	}
 	return nil
 }
+
+// Normalize is the canonical form of a query, the one that is hashed and stored: the companies sorted, the filters sorted by field,
+// operator and value (ADR 0023: a conjunction has no order), the sort keys in their order (order is meaning), empty lists never nil.
 func Normalize(q QuerySpec) QuerySpec {
 	q.Companies = slices.Clone(q.Companies)
 	sort.Strings(q.Companies)
+	q.Filters = slices.Clone(q.Filters)
+	slices.SortStableFunc(q.Filters, func(a, b Filter) int {
+		return cmp.Or(strings.Compare(a.Field, b.Field), strings.Compare(a.Operator, b.Operator), strings.Compare(a.Value, b.Value))
+	})
 	if q.Filters == nil {
 		q.Filters = []Filter{}
 	}
+	q.Sort = slices.Clone(q.Sort)
 	if q.Sort == nil {
 		q.Sort = []Sort{}
 	}
@@ -155,7 +164,14 @@ func Digest(v any) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
+
+// QueryHash is the digest of the normalized query without its page: the companies, the dataset, the shape, the date, and (ADR 0023) the
+// filters and the sort, so that a frozen snapshot's hash binds the narrowed scope as it binds the companies.
 func QueryHash(q QuerySpec) string { q = Normalize(q); q.Page = PageSpec{}; return Digest(q) }
+
+// ValidateQuery holds a query to a dataset: the query well formed (ErrInvalid); of the dataset's shape, and its filters and sort within
+// what the dataset declares (ErrUnsupported, a combination the catalogue does not publish); the dataset itself one the platform can run,
+// its columns and its declaration of filters and sorts well formed (ErrIntegrity).
 func ValidateQuery(q QuerySpec, d Dataset) error {
 	if q.SchemaVersion != "1.0" || q.Integration == "" || len(q.Integration) > 128 || len(q.Companies) == 0 || len(q.Companies) > 100 || q.Page.Limit < 1 || q.Page.Limit > 100 {
 		return ErrInvalid
@@ -173,7 +189,7 @@ func ValidateQuery(q QuerySpec, d Dataset) error {
 		}
 		seen[c] = true
 	}
-	if q.Dataset != d.Ref || !reflect.DeepEqual(q.Metrics, d.Metrics) || !reflect.DeepEqual(q.Dimensions, d.Dimensions) || !reflect.DeepEqual(q.CurrencyPolicy, d.CurrencyPolicy) || q.Timezone != d.Timezone || len(q.Filters) != 0 || len(q.Sort) != 0 {
+	if q.Dataset != d.Ref || !reflect.DeepEqual(q.Metrics, d.Metrics) || !reflect.DeepEqual(q.Dimensions, d.Dimensions) || !reflect.DeepEqual(q.CurrencyPolicy, d.CurrencyPolicy) || q.Timezone != d.Timezone {
 		return ErrUnsupported
 	}
 	if len(d.Columns) != len(q.Metrics)+len(q.Dimensions) || len(d.Columns) == 0 || len(d.Columns) > 64 {
@@ -192,7 +208,10 @@ func ValidateQuery(q QuerySpec, d Dataset) error {
 		}
 		seen[c.ID] = true
 	}
-	return nil
+	if !validDeclaration(d) {
+		return ErrIntegrity
+	}
+	return validateNarrowing(q, d)
 }
 func validColumn(c Column) bool {
 	switch c.Type {

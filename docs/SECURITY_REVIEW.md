@@ -161,6 +161,15 @@
 - 审查时看：名称是披露给已被来源接纳的主体的、与目录列标签同类的数据；真实产品声明 `companies: true` 前应通过 `reporting-source-check -companies`，并确认列表确实按当前授权过滤（D2 只能抽查）。
 - 已知不覆盖：控制台的选择器（S09-D）尚未实现，`partial` 与超限的界面行为由它负责；没有对真实产品测过。
 
+## 已发布的筛选与排序（S20-A，ADR 0023，docs/S20A_SCOPE.md）
+
+- 要成立的：筛选值是用户输入并到达数据源的第一种数据，但平台不开放任何表达式——能筛选的字段、允许的算子、能排序的字段与方向都由目录声明（白名单），查询只能在声明之内；平台只校验、规范化并下传，从不求值，也不改变来源的授权；查询摘要（`query_hash`）覆盖筛选与排序，所以证据与幂等仍成立；没有声明的数据集与之前完全一样。
+- 做法：`Dataset.Filters`/`Dataset.Sorts` 由 `ValidateQuery` 先校验声明本身（字段是数据集的列、算子来自封闭集合且与列类型相容、`values` 至多 64 项各 1–128 字符、至多 16 条筛选与 8 个排序键；不合法即 `INTEGRITY_FAILURE`，目录不转交），再把查询钉在声明上（至多 16 条筛选、3 个排序键；字段、算子、方向、`required`、值的形状——按列类型与算子逐个校验，`in`/`between` 的多值只接受一种 JSON 字符串数组写法——越出即 `UNSUPPORTED_COMBINATION`，422）。`Normalize` 按（字段、算子、值）排序筛选、保留排序键顺序，摘要因此不依赖书写顺序；未筛选查询的摘要字面值不变（测试钉住）。值作为字符串原样下传，`http` 适配器把目录声明当作回答的一部分严格验证；模拟器在内存中以精确比较（`big`）与稳定排序实现，合计按筛选后的行计算。
+- 代码：`reporting/types.go`（`FilterSpec`、`SortSpec`）、`reporting/filters.go`（算子集合、边界、`OperatorFits`、`FilterValues`、`ValidFilterValue`、`CompareValues`）、`reporting/validation.go`（`ValidateQuery`、`Normalize`）、`adapters/contractsim/narrow.go`、`adapters/httpsource/httpsource.go`（目录声明的验证）、`adapters/httpsource/conformance/narrowing.go`（F1–F6）。
+- 测试：`TestTheDeclarationIsValidatedLikeAColumn`、`TestEveryOperatorAndTypeTakesWellFormedValuesOnly`、`TestAQueryIsHeldToTheDeclaration`、`TestNormalizeOrdersTheFiltersAndKeepsTheSortOrder`、`TestTheQueryHashCoversTheFiltersAndIsUnchangedWithoutThem`、`TestFilterValuesReadsTheOneFormThePlatformValidates`、`TestTheServiceRunsAFilteredAndSortedQuery`、`TestCompareValuesIsExactForNumbersAndTextualOtherwise`、`TestTheFixtureAppliesEveryDeclaredFilterAndTotalsTheNarrowedRows`、`TestTheFixtureSortsStablyAndTheSameAcrossPages`、`TestTheSimulatorRefusesWhatItsVersionDoesNotDeclare`、`TestTheCatalogCarriesTheDeclaredFiltersAndSorts`、`TestTheProtocolCarriesTheDeclaredFiltersAndSorts`、`TestQueriesAndSnapshotJobsTakeDeclaredFiltersAndRefuseTheRest`、`cmd/reporting-source-check` 的 F1–F6（声明被遵守、未声明的字段/算子/方向被拒、合计按筛选后的行）。
+- 审查时看：来源产品收到的筛选值是不可信输入，必须参数绑定、绝不拼接进 SQL 或表达式——这是协议文档对来源的要求，`reporting-source-check` 的 F 规则只能验证行为（声明被遵守、越界被拒），验证不了实现方式；接入真实产品时要看它的代码。平台侧的 `required` 筛选是来源要求的最小范围（如必须给日期区间），不是授权，授权仍是 `PrepareRead`/`AuthorizeCurrent`。
+- 已知不覆盖：控制台的筛选面板（S20-B）与导出的筛选元数据（S20-C）尚未实现；没有对真实产品测过；`/queries` 与 `/snapshot-jobs` 的 64 KiB 请求体上限未动。
+
 ## 已知没有覆盖的
 
 - 真实发行方、各产品对来源协议的实现与自检、数据对账与准入决定（上线清单第 16–19 项）。

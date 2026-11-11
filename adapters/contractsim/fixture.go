@@ -26,6 +26,11 @@ func (s *Simulator) Fixture() Fixture {
 // ReadFrozenPage projects an already authorized immutable fixture version. Both
 // simulator adapters authorize at their four-operation boundary before calling
 // this helper; the helper is not an authorization endpoint.
+//
+// The rows are the frozen query's scope (S20-A, ADR 0023): the records of the query's companies the grant covers, narrowed by the
+// query's filters and ordered by its sort as the dataset version declares them (narrow), and the totals are the narrowed rows'. The
+// query is validated against the version's declaration here as in PrepareRead, so a read whose filters the version does not publish
+// is unsupported however it was stored.
 func ReadFrozenPage(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p r.PreparedRead, cursor string, limit int) (r.SourcePage, error) {
 	if e := r.ValidateQuery(q, seed.Dataset); e != nil {
 		return r.SourcePage{}, e
@@ -53,8 +58,15 @@ func ReadFrozenPage(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p
 			return r.SourcePage{}, e
 		}
 		if slices.Contains(q.Companies, record.Company) && slices.Contains(g.Rows, record.Key) {
+			if len(record.Values) != len(seed.Dataset.Columns) {
+				return r.SourcePage{}, r.ErrIntegrity
+			}
 			rows = append(rows, slices.Clone(record.Values))
 		}
+	}
+	rows, e := narrow(seed.Dataset, q, rows)
+	if e != nil {
+		return r.SourcePage{}, e
 	}
 	for i, m := range q.Metrics {
 		values := []string{}

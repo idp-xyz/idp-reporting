@@ -23,10 +23,10 @@ it does not change the simulator data classification or qualify a real issuer.
 | POST /schedules/{id}/pause, POST /schedules/{id}/resume, DELETE /schedules/{id} | No body. The schedule after the change (`paused` without `next_run_at`; `active` from the next occurrence after now, the catalog checked again; `deleted`, then 404). Each is `schedule.change` in the audit. |
 | GET /schedules/{id}/runs?limit=N&before=ID | The schedule's runs, newest occurrence first: `{run_id, schedule_id, due_at, state, as_of, snapshot_job_id?, export_job_id?, snapshot_id?, artifact_id?, export_format?, error_code?, delivery, finished_at?}`. The jobs and results are read through their own routes, as the owner. |
 | GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
-| GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal |
+| GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal. Each dataset version carries, when it declares any, `filters: [{field, operators, values?, required?}]` and `sorts: [{field, directions}]` (S20-A, ADR 0023): the columns a query may narrow by and order by, with their operators, an optional closed list of values and whether a filter on the field is required |
 | GET /companies?integration_id=… | S19-B (ADR 0015): the companies the principal may choose in that product, under the catalog's authority and refusals (`integration_id` exactly once, else 400; a product the principal does not hold 403). Exactly `{"supported": true, "partial": false, "companies": [{"id", "name"}, …]}`: at most 1000 entries in the product's order, each id and name 1–128 characters, no id twice; for an adapter without the capability `{"supported": false, "partial": false, "companies": []}` (200, not an error); `partial` true when the product cut the list, and the person may still type an id. The list is advisory: a read still names company ids and the source authorizes it as before; nothing of it is stored, cached across requests or logged, and the answer carries the API's `Cache-Control: no-store`. The source's failure is the catalogue's 503; a list outside the bounds is 409 `INTEGRITY_FAILURE` and none of it is shown. A `viewer`'s |
-| POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence |
-| POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission |
+| POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence. `filters` and `sort` within what the catalog entry declares (below); the rows and the totals are the narrowed scope's |
+| POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission. The filters and the sort are validated at admission, frozen in the job's query and bound by its `query_hash` |
 | GET /jobs?limit=N&kind=K&state=S&before=ID | S07-E: `kind` (snapshot, export, issue) and `state` (queued, running, succeeded, failed, cancelled) narrow the page; `before` is the last `job_id` of the previous page and the page starts strictly after it (a `before` that is not the caller's job under the caller's integrations gives `[]`). Each key at most once and not empty, anything else 400. A page shorter than `limit` is the last. The caller's jobs of every kind under the integrations the caller holds, newest first (N 1..100, default 50; any other query is 400): the job view of each (`job_id, kind, state, snapshot_id, format, artifact_id, error_code, issue, expired`) as `GET /jobs/{id}` shows it, without asking the source: the listing authorizes no result, the reads do (`GET /jobs/{id}`, the snapshot's rows, the artifact's content). Another identity's jobs are never listed; an identity without integrations gets `[]`. An issue record that cannot be read as published is 409 for the whole page, as in `GET /issues` (S07-C, docs/S07C_SCOPE.md) |
 | GET /jobs/{id} | Owner-scoped status; current source authority even after success. A job that succeeded and whose source read has expired is not re-authorized (there is no result left to authorize): it answers 200 with `expired: true`, its own state and ids, and, for an issue, the number from its record; the same after retention deleted its snapshot and artifact (S04-B, "Retention" below) |
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned. A running issue job is not cancelled (the source product may already hold a reservation for it): it is returned unchanged, and a queued one is cancelled |
@@ -44,8 +44,26 @@ carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `X-Repo
 JSON POST bodies require application/json. Unknown/case-mismatched fields,
 duplicate keys, null, extra roots, excessive nesting and >1 MiB bodies are rejected.
 QuerySpec accepts only the dataset/version, metrics, dimensions, timezone and
-currency policy declared by a published catalog entry; filters and sort are
-explicitly unsupported in this slice. Company IDs are constrained selectors.
+currency policy declared by a published catalog entry. Company IDs are constrained selectors.
+
+**Filters and sort** (S20-A, ADR 0023). A query's `filters` and `sort` are accepted exactly as far as the catalog entry declares them
+(`filters` and `sorts` of the entry; an entry without them takes none, as before). At most 16 filters, a conjunction, each
+`{field, operator, value}` on a declared field with one of its declared operators (`eq ne lt le gt ge in between prefix contains`), its
+`value` a string well formed for the column: a date `YYYY-MM-DD`; an integer or a decimal as the column writes it (exactly its scale), at
+most 128 characters; `true` or `false`; a string of 1..128 characters without control characters; from the entry's closed `values` when
+it has them and the operator is `eq`, `ne` or `in`. `in` and `between` carry their values in `value` as a JSON array of strings as text
+(`"value": "[\"current\",\"1_30\"]"`): 1..32 for `in`, exactly 2 in ascending order for `between` (the first not greater than the second,
+compared as the column's type compares: exactly for numbers, as text for dates and strings). A field the entry marks `required`
+must be filtered exactly once. At most 3 `sort` keys `{field, direction}`, in the order they apply, each on a declared field in a declared
+direction (`asc`, `desc`), no field twice. Anything else — an undeclared field, operator or direction, a value off the list or malformed, a
+required filter missing or doubled — is 422 `UNSUPPORTED_COMBINATION`, as any combination the catalog does not publish; the platform never
+evaluates a filter itself. The source product applies them in its own transaction, binding the values as parameters, and the result's
+rows **and totals** are the narrowed scope's, in the order asked, stable across pages. The normalized query sorts the filters by field,
+operator and value and keeps the sort keys in their order; `query_hash`, the frozen snapshot and the evidence cover both, so a narrowed
+snapshot is another snapshot than the whole dataset's. The demo's two datasets declare: `receivables.aging` — `customer.id` eq/ne/in/prefix,
+`aging.bucket` eq/in from `current 1_30 31_60 61_90 90+`, `ar.open_balance` lt/le/gt/ge/between; sorts `ar.open_balance` and `customer.id`
+asc/desc; `shipments.daily` — `shipment.destination_country` eq/in, `shipment.service_code` eq, `shipment.count` ge/le; sorts
+`shipment.count` and `shipment.destination_country` asc/desc.
 
 Cells and totals are strings with declared types (string/date/boolean/integer/
 decimal), scale, currency and unit. No float64 business conversion. Totals cover

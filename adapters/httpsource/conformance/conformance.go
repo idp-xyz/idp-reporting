@@ -4,9 +4,10 @@
 // printed.
 //
 // The checks need a sample source context the product has granted (with at least one row in the sample query's scope) and the query.
-// They only read; with Issue set they also reserve a number for a job id of their own and void it at once, which a product must be able to
-// account for (do not set it against production). With Companies set they also check the company directory (ADR 0015, S19-B), as a
-// connection that declares it would use it.
+// They only read: the sample query, and, for every filter and sort its dataset declares (S20-A, ADR 0023), the same query narrowed or
+// ordered by it (F1–F6, narrowing.go). With Companies set they also check the company directory (ADR 0015, S19-B), as a connection that
+// declares it would use it. With Issue set they also reserve a number for a job id of their own and void it at once, which a product
+// must be able to account for (do not set it against production).
 package conformance
 
 import (
@@ -126,7 +127,8 @@ func Run(ctx context.Context, t Target) []Result {
 	}
 	add("R2", "the read is authorized now", a.AuthorizeCurrent(ctx, sc, p))
 	rows, totals, err := readAll(ctx, a, sc, p)
-	if add("R3", "every page verifies (reference, hash, watermark, row width and types, totals, cursor at most 2048 and moving) within 1000 rows", err) {
+	paged := add("R3", "every page verifies (reference, hash, watermark, row width and types, totals, cursor at most 2048 and moving) within 1000 rows", err)
+	if paged {
 		again, againTotals, err := readAll(ctx, a, sc, p)
 		if err == nil && (!reflect.DeepEqual(rows, again) || !reflect.DeepEqual(totals, againTotals)) {
 			err = fail("a second read of the same read gave other rows or totals", r.ErrIntegrity)
@@ -162,6 +164,9 @@ func Run(ctx context.Context, t Target) []Result {
 	version.Dataset.Version += "-reporting-source-check"
 	_, err = a.PrepareRead(ctx, sc, version, r.QueryHash(version))
 	add("R13", "a dataset version that is not in the catalog is refused (unsupported or invalid)", expect(err, r.ErrUnsupported, r.ErrInvalid))
+
+	// The published filters and sorts (S20-A, ADR 0023): F1–F6, from what the dataset declares and the whole read's own values.
+	narrowing(ctx, a, sc, q, *d, rows, totals, paged, add, skip)
 
 	// The company directory (ADR 0015, S19-B).
 	const listRule = "the directory answers and verifies (at most 1000 companies, each id and name 1..128 characters of text, no id twice)"
