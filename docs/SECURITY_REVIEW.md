@@ -168,7 +168,16 @@
 - 代码：`reporting/types.go`（`FilterSpec`、`SortSpec`）、`reporting/filters.go`（算子集合、边界、`OperatorFits`、`FilterValues`、`ValidFilterValue`、`CompareValues`）、`reporting/validation.go`（`ValidateQuery`、`Normalize`）、`adapters/contractsim/narrow.go`、`adapters/httpsource/httpsource.go`（目录声明的验证）、`adapters/httpsource/conformance/narrowing.go`（F1–F6）。
 - 测试：`TestTheDeclarationIsValidatedLikeAColumn`、`TestEveryOperatorAndTypeTakesWellFormedValuesOnly`、`TestAQueryIsHeldToTheDeclaration`、`TestNormalizeOrdersTheFiltersAndKeepsTheSortOrder`、`TestTheQueryHashCoversTheFiltersAndIsUnchangedWithoutThem`、`TestFilterValuesReadsTheOneFormThePlatformValidates`、`TestTheServiceRunsAFilteredAndSortedQuery`、`TestCompareValuesIsExactForNumbersAndTextualOtherwise`、`TestTheFixtureAppliesEveryDeclaredFilterAndTotalsTheNarrowedRows`、`TestTheFixtureSortsStablyAndTheSameAcrossPages`、`TestTheSimulatorRefusesWhatItsVersionDoesNotDeclare`、`TestTheCatalogCarriesTheDeclaredFiltersAndSorts`、`TestTheProtocolCarriesTheDeclaredFiltersAndSorts`、`TestQueriesAndSnapshotJobsTakeDeclaredFiltersAndRefuseTheRest`、`cmd/reporting-source-check` 的 F1–F6（声明被遵守、未声明的字段/算子/方向被拒、合计按筛选后的行）。
 - 审查时看：来源产品收到的筛选值是不可信输入，必须参数绑定、绝不拼接进 SQL 或表达式——这是协议文档对来源的要求，`reporting-source-check` 的 F 规则只能验证行为（声明被遵守、越界被拒），验证不了实现方式；接入真实产品时要看它的代码。平台侧的 `required` 筛选是来源要求的最小范围（如必须给日期区间），不是授权，授权仍是 `PrepareRead`/`AuthorizeCurrent`。
-- 已知不覆盖：控制台的筛选面板（S20-B）与导出的筛选元数据（S20-C）尚未实现；没有对真实产品测过；`/queries` 与 `/snapshot-jobs` 的 64 KiB 请求体上限未动。
+- 已知不覆盖：控制台的筛选面板（S20-B）尚未实现（导出里的筛选与排序见下一节，S20-C）；没有对真实产品测过；`/queries` 与 `/snapshot-jobs` 的 64 KiB 请求体上限未动。
+
+## 导出说明查询范围（S20-C，ADR 0023 决定 6，docs/S20C_SCOPE.md）
+
+- 要成立的：筛选值是用户输入，现在被写进导出文件——它只能作为数据出现，不被求值，不成为公式或排版指令；导出只陈述冻结查询里的筛选与排序，不应用它们（行与合计仍是来源给出的）；PDF 里的文字有上限且不静默截断；不带筛选与排序的导出不变（PDF 逐字节，工作簿只多一行）；错误与日志不带字段名与取值。
+- 做法：`ScopeOf` 从冻结快照的查询读取筛选（规范化顺序）与排序，`in`/`between` 的多值只经核心的 `reporting.FilterValues` 解码；再按核心规则（条数上限、`OperatorFits`、`ValidFilterValue`、`between` 升序、方向）对照冻结的列核一遍，不符即 `INTEGRITY_FAILURE`，什么都不写。工作簿：`Metadata` 末尾的每个单元格都用 `SetCellStr` 写成文本（以 `=` 开头的取值不是公式，项数也是文本），超过单元格容量的文字拒绝而不截断。PDF：文字只进入 `data.json`（`scope` 键，每个元素是服务端排好并量过的一行），模板只把各行换行拼接；每个字符都按字体核对，缺字即 `UNSUPPORTED_COMBINATION`，与表格取值相同，被上限挡在页面之外的部分也核对；筛选句至多 6 行、排序句至多 2 行，放不下时写明总数、列出放得下的完整条件并指向快照的查询与工作簿的 `Metadata` 表；每页页脚在快照编号旁写明筛选与排序的项数。可能被误读的取值（首尾空白，或含句子自身使用的标点）加引号，取值本身不变。
+- 代码：`export/present/scope.go`、`export/xlsx/writer.go`（`scopeRows`）、`export/pdf/scope.go`（`scopeBlock`、`scopeSentence`、`lines`）、`export/pdf/layout.go`、`export/pdf/template.typ`。
+- 测试：`TestScopeOfRefusesWhatAFrozenQueryCannotHold`（错误不带取值）、`TestTheMetadataSheetSaysTheScopeOfTheQuery`（文本单元格、无公式）、`TestAScopeTheWorkbookCannotSayIsRefused`、`TestAWorkbookWithoutFiltersOrSortIsWhatItWasButForTheScopeRow`、`TestTheScopeLinesAreBoundAndSayWhenTheyContinue`、`TestTheScopeIsCheckedAgainstTheFontsAndTheColumns`、`TestLinesFillGreedilyAndLoseNothing`、`TestTypstLaysOutDocuments`（`plain_golden` 与 `filtered_*`：CI 的检查脚本从 PDF 读回范围文字，veraPDF 校验）、`TestAFilteredSnapshotsWorkbookSaysItsScope`。
+- 审查时看：取值在 PDF 里是页面文字、在工作簿里是文本单元格，两处都不经过任何解释器；`template.typ` 对 `scope` 只做换行拼接，没有 `eval`。
+- 已知不覆盖：控制台的筛选文字（S20-B）；经布局导出的 PDF 的范围文字只由 veraPDF 与构建数据的测试覆盖（检查脚本没有布局模式）；没有接口返回快照的查询，PDF 里“见本快照的查询”目前只能在同一快照的工作簿导出里读到全部条件。
 
 ## 已知没有覆盖的
 

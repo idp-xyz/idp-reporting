@@ -139,7 +139,8 @@ exported as PDF through the service: the built document's lines and footer, othe
 bytes; `filtered.pdf` with its expectation and `presented_filtered.pdf` are written as evidence.
 
 C7 · **Docs**: this file; docs/API.md ("The exports say the scope", the export row, the workbook paragraph, the filters paragraph);
-docs/openapi.json (the description of `POST /exports`; no schema changes); ADR 0023's status line and slice list; ADR 0017's Progress line.
+docs/openapi.json (the description of `POST /exports`; no schema changes); ADR 0023's status line and slice list; ADR 0017's Progress line;
+docs/SECURITY_REVIEW.md (a section: filter values are a person's input and are now written into the files, as data only).
 
 C8 · Not done: the console's chip, subtitles and evidence line (S20-B); a route that serves a snapshot's query; the scope in the document
 templates (decided against by the ADR); a presented-table mode of the PDF checker (S23-A's open item).
