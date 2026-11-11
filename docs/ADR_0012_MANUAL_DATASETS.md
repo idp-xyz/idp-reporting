@@ -1,9 +1,13 @@
 # ADR 0012 · Manually entered datasets: a source of their own, marked wherever they show
 
-Date: 2026-11-06. Status: accepted 2026-11-11, by the decision the product owner delegated to engineering that day ("按你的建议全面开始吧");
-the open questions are decided at the end. Implementation: S08-A (the data class), S08-B (the manual source), S08-C (the
-editor). ADR 0013 decides issuing from these datasets (S08-D). Written before ADR 0018 gave the platform roles; the decisions
-below say how the two meet.
+Date: 2026-11-06. Status: **decision 6 accepted by the product owner on 2026-11-11** (the data class is the adapter's word: S08-A,
+which a real product's adapter needs too); **the rest proposed**. Engineering had marked the whole ADR accepted on 2026-11-11 under
+the owner's general delegation ("按你的建议全面开始吧"); what the platform stores of business data and who may see it are the owner's
+own decisions (CODING_STANDARDS.md), and, asked that evening, the owner chose to build S08-A alone and to wait with the manual
+source for the outcome of the real-source discovery. The answers to the open questions at the end are engineering's recommendations
+until the owner gives them. Implementation: S08-A (the data class) now; S08-B (the manual source) and S08-C (the editor) once the
+rest is accepted. ADR 0013 decides issuing from these datasets (S08-D). Written before ADR 0018 gave the platform roles; the
+decisions below say how the two meet.
 
 ## Context
 
@@ -100,7 +104,7 @@ per query, as before), and it has no formulas and no attachments.
 - Should reports see draft versions? Proposed: no (decision 4). A draft is seen only in the editor.
 - Is one set of roles per connection enough (decision 5), or are roles per dataset needed from the start?
 
-## Decisions on the open questions (2026-11-11)
+## Recommended answers to the open questions (2026-11-11; engineering's, not yet the owner's)
 
 - **Drafts are not reports.** Reports, snapshots, exports, dashboards and templates see the confirmed version only (decision 4 stands);
   a draft is seen in the editor by those who may edit or confirm. A report built on a draft would be a report on data nobody has

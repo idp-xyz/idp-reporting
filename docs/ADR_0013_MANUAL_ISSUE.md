@@ -1,7 +1,10 @@
 # ADR 0013 · Issuing from manual datasets: the operator numbers the documents and answers for them
 
-Date: 2026-11-06. Status: accepted 2026-11-11, by the decision the product owner delegated to engineering that day; the open
-questions are decided at the end. Amends ADR 0003 decisions 1 and 5, and the same rule in docs/s00/ARCHITECTURE.md and
+Date: 2026-11-06. Status: **proposed**. Engineering had marked it accepted on 2026-11-11 under the owner's general delegation; who
+issues under whose number is the owner's own decision (CODING_STANDARDS.md), and, asked that evening, the owner chose to wait with
+the manual source and its issuing for the outcome of the real-source discovery (ADR 0012's status). Nothing of it is built; the
+answers to the open questions at the end are engineering's recommendations until the owner gives them. Once accepted it amends ADR
+0003 decisions 1 and 5, and the same rule in docs/s00/ARCHITECTURE.md and
 docs/s00/INTERFACES.md, for the datasets of a manual source (ADR 0012) and for nothing else. Implementation: S08-D, after
 S09-G (the issue page, where manual issuing is done from).
 
@@ -79,7 +82,7 @@ are numbered by its product or by a manual source, never by both, because a conn
 - Are the series of decision 2 enough: one prefix per connection, numbers that never restart, a new prefix for a new
   year?
 
-## Decisions on the open questions (2026-11-11)
+## Recommended answers to the open questions (2026-11-11; engineering's, not yet the owner's)
 
 - **A second person confirms before anyone issues.** Decision 3 stands, and it is the same control ADR 0018 decision 3 gives publication
   in the shared design space: the person who saved the version cannot be the one who confirms it, and only a confirmed version is issued
