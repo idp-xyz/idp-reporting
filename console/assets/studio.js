@@ -708,14 +708,14 @@ window.createReportingStudio = function (api) {
       api.loadChooser(() => render());
       render();
     });
-  // 版本历史与发布指针 and 发布前确认 are the shared component (versions.js, S09-E); these ports are the studio's dialogs, its state, the
-  // designer's functions and its own additions: the detail card's content and the confirmation's checks.
+  // 历史 and 发布前确认 are the shared component (versions.js, S09-E; the words of S09-F, ADR 0014 decision 11); these ports are the
+  // studio's dialogs, its state, the designer's functions and its own additions: the detail card's content and the confirmation's checks.
   const dialog = id => ({open: () => open(id), close: () => close(id), isOpen: () => openId === id});
   const versions = window.createReportingVersions({
     prefix: 'st',
     ids: {confirm: 'st-pub-confirm', withdraw: 'doc-release-withdraw'},
     dialogs: {versions: dialog('versions'), publish: dialog('publish')},
-    texts: {thing: '模板', editor: null, unread: ''},
+    texts: {thing: '模板', unread: ''},
     readsWhileOpen: true,
     state: () => S,
     readVersions: then => api.loadVersions(then),
@@ -745,7 +745,8 @@ window.createReportingStudio = function (api) {
     },
     renderPublish(plan) {
       const n = plan.target,
-        cur = !!S.saved && !plan.historical,
+        // The editor's count stands for the version only while the editor holds it as it was saved.
+        cur = !!S.saved && !plan.historical && !(plan.version && S.dirty),
         stale = plan.saveFirst,
         bad = S.issues.length;
       text('st-pub-version', n ? 'v' + n : '草稿');
@@ -754,19 +755,22 @@ window.createReportingStudio = function (api) {
         'st-pub-pointer',
         (n && S.pointer && n < S.pointer ? '历史版本回退 · ' : '') +
           '当前发布 ' +
-          (S.pointer ? 'v' + S.pointer : S.release ? '无' : '（发布状态未读取）') +
+          (S.pointer ? 'v' + S.pointer : S.release ? '无' : '（读取中）') +
           ' → ' +
           (n ? 'v' + n : '待保存')
       );
+      $('st-pub-pointer').title = S.release ? '修订 ' + S.release.revision : '';
       setCheck(
         'st-pub-saved',
         stale,
-        stale ? '需要先保存当前修改' : '已明确引用不可变保存版本',
+        stale ? '需要先保存当前修改' : '发布的是一个保存过的版本',
         stale
           ? S.saved
-            ? '画布存在未保存的修改，自动草稿不等于保存版本。'
+            ? '画布有未保存的修改：先保存为下一个版本，再发布它。'
             : '先保存第一个版本。'
-          : '本次发布固定引用 v' + n + '。'
+          : plan.version && S.dirty
+            ? '发布的是已保存的 v' + n + '；画布上未保存的修改不在其中。'
+            : '本次发布的是 v' + n + '，之后的编辑不改变它。'
       );
       setCheck(
         'st-pub-valid',
@@ -775,14 +779,25 @@ window.createReportingStudio = function (api) {
         bad ? S.issues[0].detail || S.issues[0].title : '设计器的校验与最近一次边界样本检查均无问题；PDF 预览另行确认。'
       );
       text('st-pub-dataset', S.query ? S.query.dataset.id + '@' + S.query.dataset.version : '—');
-      text('st-pub-elements', cur ? S.count + ' 个组件' : '该版本的组件数见“版本”对话框');
+      text('st-pub-elements', cur ? S.count + ' 个组件' : '该版本的组件数见“历史”');
       text('st-pub-schema', S.config ? 'schema ' + S.config.schema_version : '—');
-      text('st-pub-footnote', plan.blocked ? '正在读取发布状态…' : plan.saveFirst ? '先保存为新版本，再发布它' : '');
+      text(
+        'st-pub-footnote',
+        plan.retry
+          ? '发布状态已改变（另一处发布或撤回过）：' + (plan.blocked ? '正在重新读取…' : '已重新读取，请核对后重试。')
+          : plan.blocked
+            ? '正在读取发布状态…'
+            : plan.saveFirst
+              ? '先保存为新版本，再发布它'
+              : ''
+      );
     },
-    // 保存并发布 (S07-B): the unsaved changes become the next version, its release state is read, and that version is published.
+    // 保存并发布 (S07-B): the unsaved changes become the next version, its release state is read, and that version is published. A publish
+    // the server refused because the release state changed hands the confirmation back for a 重试 (S09-F).
     publish(plan) {
-      if (plan.saveFirst) api.save(() => api.readRelease(() => api.publish()));
-      else api.publish(plan.historical || undefined);
+      const conflict = () => versions.conflict();
+      if (plan.saveFirst) api.save(() => api.readRelease(() => api.publish(undefined, conflict)));
+      else api.publish(plan.version || undefined, conflict);
     },
   });
   $('st-ver-preview').addEventListener('click', () => {
@@ -1103,7 +1118,7 @@ window.createReportingStudio = function (api) {
   function renderChrome() {
     text('st-name', S.name);
     text('st-state', S.badge);
-    $('st-state').title = S.pointer ? '发布指针：v' + S.pointer : '';
+    $('st-state').title = S.pointer ? '当前发布：v' + S.pointer : '';
     text('autosaveStatus', S.slot);
     text('datasetName', S.name);
     text('recordBadge', (S.result ? S.result.rows.length : 0) + ' 条示例');
@@ -1160,24 +1175,18 @@ window.createReportingStudio = function (api) {
                 r.binding.dataset.version === S.query.dataset.version;
             const name = node('td', r.name || '模板 ' + r.id.slice(0, 8));
             if (S.saved && S.saved.id === r.id) name.append(node('span', ' 当前', 'pill blue'));
+            // S09-F: 打开 opens the latest version; the published one, when it is an older version, is a number in the 已发布版本 column
+            // and opens through 高级 · 打开指定版本 (the console issues from the 出具 page, S09-G).
             const act = node('td'),
               a = node('button', '打开', 'btn small'),
-              b = node('button', '打开已发布版本', 'btn small'),
               label = r.name || r.id.slice(0, 8);
-            a.type = b.type = 'button';
+            a.type = 'button';
             a.setAttribute('data-k', 'open:' + r.id);
-            b.setAttribute('data-k', 'pub:' + r.id);
             a.setAttribute('aria-label', '打开 ' + label + ' 的最新版本');
-            b.setAttribute('aria-label', '打开 ' + label + ' 的已发布版本');
             const reason = !r.known ? '正在读取' : !same ? '绑定的数据集与当前冻结快照不同' : '';
             if (reason) {
-              for (const x of [a, b]) {
-                x.setAttribute('aria-disabled', 'true');
-                x.title = reason;
-              }
-            } else if (!r.published) {
-              b.setAttribute('aria-disabled', 'true');
-              b.title = '尚无已发布版本';
+              a.setAttribute('aria-disabled', 'true');
+              a.title = reason;
             }
             a.addEventListener('click', () => {
               if (a.getAttribute('aria-disabled') === 'true') {
@@ -1189,15 +1198,7 @@ window.createReportingStudio = function (api) {
               $('doc-server-open').click();
               close('chooser');
             });
-            b.addEventListener('click', () => {
-              if (b.getAttribute('aria-disabled') === 'true') {
-                say(b.title);
-                return;
-              }
-              api.openPublishedOf(r.id);
-              close('chooser');
-            });
-            act.append(a, b);
+            act.append(a);
             const id = node('td', r.id.slice(0, 8));
             id.title = r.id;
             tr.append(

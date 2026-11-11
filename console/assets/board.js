@@ -278,9 +278,9 @@ window.createReportingBoardStudio = function (ports) {
       list.append(row);
     });
   }
-  // ---- the topbar: 版本 opens the version dialog (S07-G, ADR 0011: the document studio's 版本历史与发布指针); 发布 reads the release state and asks ----
-  // Both are the shared component (versions.js, S09-E); these ports are the dashboard's state, requests and words. Opening the version
-  // dialog reads the list (the latest version) and the release state; 刷新发布状态与历史 stays as the retry after a conflict.
+  // ---- the topbar: 历史 opens the version dialog (S07-G, ADR 0011; the words of S09-F, ADR 0014 decision 11); 发布 reads the release state and asks ----
+  // Both are the shared component (versions.js, S09-E); these ports are the dashboard's state, requests and words. Opening 历史 reads the
+  // list (the latest version) and the release state; a publish that finds the state changed comes back as a 重试.
   const dialog = id => ({
     open: opener => open(id, opener),
     close,
@@ -292,7 +292,6 @@ window.createReportingBoardStudio = function (ports) {
     dialogs: {versions: dialog('bd-d-versions'), publish: dialog('bd-d-publish')},
     texts: {
       thing: '看板',
-      opened: '打开已发布看板',
       content: '内容',
       dirty: '画布有未保存的修改',
       count: ['组件', '个'],
@@ -329,7 +328,8 @@ window.createReportingBoardStudio = function (ports) {
       sync();
     },
     // 保存并发布 (S07-B): unsaved changes, or no saved version yet, are saved as the next version first, its release state is read, and it is
-    // published; a step that did not happen ends the sequence. A historical version is published as it is (a rollback).
+    // published; a step that did not happen ends the sequence. A version picked in 历史 is published as it is (an older one is a rollback).
+    // A publish the server refused because the release state changed hands the confirmation back for a 重试 (S09-F).
     async publish(plan) {
       if (plan.saveFirst) {
         const was = ports.dashboard.state().saved;
@@ -345,7 +345,7 @@ window.createReportingBoardStudio = function (ports) {
           return;
         }
       }
-      await ports.dashboard.publish(plan.historical || undefined);
+      await ports.dashboard.publish(plan.version || undefined, () => versions.conflict());
       sync();
     },
   });

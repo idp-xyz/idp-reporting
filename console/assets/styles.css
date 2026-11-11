@@ -955,6 +955,13 @@ html[lang="en"] #page-documents .toolrail button small {
   color: var(--muted);
   margin-top: 5px;
 }
+/* S09-F (ADR 0014 decision 11): a card's marks, 已发布 and 当前打开, side by side. */
+.version-card .marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
 .ver-dialog .version-detail {
   padding: 2px 0 0 22px;
   min-width: 0;
@@ -971,40 +978,21 @@ html[lang="en"] #page-documents .toolrail button small {
   gap: 6px;
   margin-top: 9px;
 }
-.ver-dialog .release-box {
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
+/* S09-F (ADR 0014 decisions 5 and 11): the raw chooser (another layout or dashboard, or a version by number) is advanced: a closed
+   section under 高级, in the layout designer's JSON section and the dashboard inspector's 文件 tab. */
+.chooser-raw {
   font-size: 12px;
 }
-.ver-dialog .release-box p {
-  margin-top: 8px;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.ver-dialog .release-box ol {
-  margin: 6px 0;
-  padding-left: 18px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.ver-dialog .chooser-raw {
-  margin-top: 14px;
-  font-size: 12px;
-}
-.ver-dialog .chooser-raw summary {
+.chooser-raw summary {
   cursor: pointer;
   color: var(--muted);
 }
-.ver-dialog .chooser-raw .designer-row {
+.chooser-raw .designer-row {
   border: 0;
   padding: 8px 0;
 }
-.ver-dialog .ver-note {
-  margin-top: 16px;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.8;
+.form-panel.advanced > .chooser-raw {
+  margin: 4px 20px 10px;
 }
 @media (max-width: 700px) {
   .ver-dialog .version-layout {
@@ -4138,12 +4126,9 @@ body.no-designer #st-import-json,
 body.no-designer #st-import-sample,
 body.no-publisher #bd-publish,
 body.no-publisher #bd-ver-publish,
-body.no-publisher #board-release-publish,
 body.no-publisher #board-release-withdraw,
-body.no-publisher #doc-release-publish,
 body.no-publisher #doc-release-withdraw,
 body.no-publisher #layout-publish,
-body.no-publisher #layout-release-publish,
 body.no-publisher #layout-release-withdraw,
 body.no-publisher #ly-ver-publish,
 body.no-publisher #st-publish,

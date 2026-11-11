@@ -491,7 +491,7 @@ async function main() {
   await clickBtn('#ly-d-publish', '保存并发布');
   await waitFor(`document.getElementById('layout-state').textContent==='已发布 v1'`, 'the layout published', 30000);
   await idle();
-  await clickBtn('#report-designer .designer-bar', '版本');
+  await clickBtn('#report-designer .designer-bar', '历史');
   await waitFor(`document.getElementById('ly-version-list').children.length>=1`, 'the layout versions');
   await idle();
   await shot('09-layout-designer');
@@ -516,7 +516,7 @@ async function main() {
   await sleep(250);
   await shot('13-dashboard-structure');
   await click('#bd-rail-components');
-  await clickBtn('#bd-studio .topbar', '保存版本');
+  await clickBtn('#bd-studio .topbar', '保存');
   await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'the dashboard saved', 30000);
   await idle();
   await clickBtn('#bd-sidebar', '添加指标卡');
@@ -531,7 +531,7 @@ async function main() {
   await clickBtn('#bd-d-publish', '保存并发布');
   await waitFor(`document.getElementById('bd-state').textContent==='已发布 v2'`, 'the dashboard published', 30000);
   await idle();
-  await clickBtn('#bd-studio .topbar', '版本');
+  await clickBtn('#bd-studio .topbar', '历史');
   await waitFor(`document.getElementById('bd-version-list').children.length>=2`, 'the dashboard versions');
   await idle();
   await shot('15-dashboard-versions');
@@ -667,7 +667,7 @@ async function main() {
   await key('Escape');
   await sleep(200);
 
-  // ---- 31/32 the official issue: the published 1.x template, opened through 打开已发布模板, issued for the snapshot's first row ----------------
+  // ---- 31/32 the official issue: the published 1.x template (its latest version is the published one), issued for the snapshot's first row ----
   await nav('library');
   await waitFor(
     `${q(`#page-library .catalog-card[aria-label="${ISSUED_TEMPLATE}"]`)}`,
@@ -680,17 +680,7 @@ async function main() {
     40000
   );
   await idle();
-  await click('#st-versions');
-  await waitFor(studioDialog('st-d-versions'), 'the versions of the published template');
-  await clickBtn('#st-d-versions', '打开已发布模板');
-  await waitFor(
-    `document.getElementById('doc-server-status').textContent.includes('已打开发布模板')`,
-    'the published version is open',
-    30000
-  );
-  await idle();
-  await key('Escape');
-  await sleep(200);
+  // S09-F: there is no 打开已发布模板; the editor holds the published version, and the issue reads the release state itself.
   await click('#st-tab-check');
   await click('#st-tool-issue');
   await waitFor(studioDialog('st-d-issue'), 'the issue dialog');

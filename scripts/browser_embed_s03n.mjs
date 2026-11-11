@@ -639,14 +639,15 @@ try {
     'saved version 2',
     20000
   );
-  await clickFrame('#doc-release-read');
+  // S09-F: 发布 in the bar reads the release state and asks; 确认发布 publishes the saved version.
+  await clickFrame('#st-publish');
   await inFrame(
-    `document.getElementById('doc-release-status').textContent.includes('修订')&&!document.getElementById('preview').disabled`,
+    `!document.getElementById('st-pub-confirm').disabled&&!document.getElementById('preview').disabled`,
     'release state'
   );
-  await clickFrame('#doc-release-publish');
+  await clickFrame('#st-pub-confirm');
   await inFrame(
-    `document.getElementById('doc-release-status').textContent.includes('已发布版本 2')&&!document.getElementById('preview').disabled`,
+    `document.getElementById('st-state').textContent==='已发布 v2'&&!document.getElementById('preview').disabled`,
     'published'
   );
   await sleep(200);
@@ -668,12 +669,7 @@ try {
       'frozen',
       30000
     );
-    await clickFrame('#doc-published-open');
-    await inFrame(
-      `document.getElementById('doc-server-status').textContent.includes('已打开发布模板')&&!document.getElementById('preview').disabled`,
-      'published open',
-      20000
-    );
+    // S09-F: the editor holds the published v2 (just published); the issue reads the release state itself.
     const d0 = downloads.length;
     await clickFrame('#doc-issue');
     await waitFor(
