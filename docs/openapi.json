@@ -296,6 +296,58 @@
         }
       }
     },
+    "/api/reporting/v1/companies": {
+      "get": {
+        "operationId": "listCompanies",
+        "tags": [
+          "core"
+        ],
+        "summary": "The companies the principal may choose in one integration (ADR 0015, S19-B)",
+        "description": "Under the catalog's authority: only a product explicitly allowed for the principal, the same refusals. An adapter without the capability answers 200 with `supported` false and an empty list. The list is advisory: a read still names company ids and the source authorizes it as before; nothing of the list is stored or logged, and the answer is never cached. A list the source answers outside the bounds (more than 1000 entries, an id or a name not 1–128 characters of text, an id twice) is 409 INTEGRITY_FAILURE; a source that cannot be reached is 503.",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "name": "integration_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The only query parameter, exactly once."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The directory, or `supported` false.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyDirectory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/api/reporting/v1/dashboards": {
       "get": {
         "operationId": "listDashboards",
@@ -4350,6 +4402,57 @@
         ],
         "additionalProperties": false,
         "description": "A published catalog entry (reporting.Dataset)."
+      },
+      "Company": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The value a query names in `company_ids`."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "What a person reads; never stored by the platform."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "One company the principal may choose (reporting.Company, ADR 0015)."
+      },
+      "CompanyDirectory": {
+        "type": "object",
+        "properties": {
+          "supported": {
+            "type": "boolean",
+            "description": "Whether the integration's source product can list the principal's companies. False: the list is empty and the console keeps its text input."
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "True when the product cut the list (the platform accepts at most 1000 entries); the person may still type an id. False when `supported` is false."
+          },
+          "companies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Company"
+            },
+            "maxItems": 1000,
+            "description": "The companies the principal may choose now, in the product's order, no id twice; `[]` when nothing may be chosen or the capability is absent."
+          }
+        },
+        "required": [
+          "supported",
+          "partial",
+          "companies"
+        ],
+        "additionalProperties": false,
+        "description": "The answer of GET /companies (reporting.CompanyDirectoryAnswer, ADR 0015 decision 3): exactly these three keys."
       },
       "QuerySpec": {
         "type": "object",

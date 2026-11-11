@@ -143,7 +143,16 @@
 - 代码：`adapters/httpsource/httpsource.go`（`call`、`refusal`、`validDataset`、`PrepareRead`、`ReadPage`、`Authority`）、`adapters/httpsource/protocol`、`reporting/validation.go`（`ValidateSourcePage`）、`server/registry.go`（`DefaultRegistry`，`http` 不是模拟器）。
 - 测试：`TestEveryStatusMapsToItsPlatformError`、`TestAnswersThatDoNotVerifyAreIntegrityFailures`、`TestARedirectIsNeverFollowed`、`TestAnAnswerOverTheBoundIsRefused`、`TestASlowSourceIsUnavailableWithinTheTimeout`、`TestMutualTLSAndAPinnedCA`（含 TLS 1.1 被拒）、`TestTheConfigurationIsCheckedAndNeverShown`、`TestAReadOfAnotherContextIsNeverSent`、`TestTheRequestCarriesTheContextTheCredentialAndARequestID`、`TestMemoryContractOverHTTP` 与 `TestPostgresContract/over_http`（整套合同经协议运行）、`TestDocumentAuthorityOverHTTP`（出具授权一致性套件经协议运行）、`TestTheShippedRegistryServesAnHTTPSourceEndToEnd` 与 `TestABadHTTPConnectionRefusesTheStartAndIsNeverShown`（日志与拒绝中不出现凭据与地址）、`cmd/reporting-source-check` 的测试。
 - 审查时看：协议只证明“这是平台”，代表谁看 context——来源产品必须在服务端映射 subject 并以自己的当前授权判断（`reporting-source-check` 的 C3、C4、R7–R10 检查，但只能抽查）；服务凭据泄露等于可以以平台身份为任意 context 发请求，所以凭据只给这一个产品、按产品分开、经 mTLS 更好。
-- 已知不覆盖：没有对真实产品端点测过；没有请求签名或防重放（依赖 TLS 与短时读取）；公司目录（ADR 0015）不在第 1 版（S19-B）；来源侧的限速与配额是产品自己的；`Evidence.DataClass` 仍是 `contract-simulator`（核心固定值，与适配器无关，另行处理）。
+- 已知不覆盖：没有对真实产品端点测过；没有请求签名或防重放（依赖 TLS 与短时读取）；来源侧的限速与配额是产品自己的；`Evidence.DataClass` 仍是 `contract-simulator`（核心固定值，与适配器无关，另行处理）。
+
+## 公司目录（S19-B，ADR 0015，docs/S19B_SCOPE.md）
+
+- 要成立的：目录只是建议，不是授权——`PrepareRead` 与 `AuthorizeCurrent` 对每次读取的判断与没有目录时完全一样；公司名称只经线路到达控制台，平台不存、不跨请求缓存、不写日志（冻结的读取仍只有公司 id）；目录回答不过验证就不转交；没有该能力的适配器与没有声明该能力的连接什么都不变。
+- 做法：`reporting.CompanyDirectory` 是可选接口（与 `DocumentAuthority` 同一模式）；`Service.ListCompanies` 用与目录（catalog）相同的连接解析与拒绝，适配器不实现即答 `supported:false`，实现则回答须过 `ValidateCompanyList`（至多 1000 项、id 与 name 各 1–128 字节 UTF-8 且无控制字符、不空白、id 不重复，否则 `INTEGRITY_FAILURE`）。`GET /companies?integration_id=…` 只答三个键，viewer 角色，`Cache-Control: no-store`，不进审计（读）。`http` 适配器只在连接声明 `companies: true` 时才是目录、才会请求 `POST /reporting-source/v1/companies`，回答同样严格解码并以同一规则验证；来源拒绝按协议的错误表映射。模拟器只列当前授权（grant）里的公司，`company_other` 依旧被读取拒绝。
+- 代码：`reporting/types.go`（`CompanyDirectory`、`Company`、`CompanyList`、`CompanyDirectoryAnswer`）、`reporting/validation.go`（`ValidateCompanyList`、`plainText`）、`reporting/service.go`（`ListCompanies`）、`transport/httpapi/api.go`（`GET /companies`）、`adapters/httpsource/httpsource.go`（`listCompanies`、`Directory` 及其出具形态）、`adapters/httpsource/sourcetest`（`companies` 路由）、`adapters/contractsim/companies.go`、`adapters/contractsim/pgsource`。
+- 测试：`TestACompanyListIsVerifiedFailClosed`、`TestListCompaniesAnswersTheDirectoryOfTheProduct`、`TestTheSimulatorListsTheGrantsCompaniesWithNames`、`TestTheDirectoryIsDeclaredByTheConnection`、`TestASourceWithoutTheDirectoryIsUnsupportedWhenDeclared`、`TestACompanyListThatDoesNotVerifyIsAnIntegrityFailure`、`TestTheDirectorysRefusalsAreTheProtocols`、`TestTheServiceListsCompaniesThroughTheProtocol`、`TestTheCompaniesRouteAnswersTheThreeShapes`、`TestTheCompaniesRouteIsAViewers`、合同场景 `company_directory_lists_the_grant`（内存、经协议、PostgreSQL）与 `company_directory_lists_the_stored_grant`、`TestTheShippedRegistryServesAnHTTPSourceEndToEnd`、`cmd/reporting-source-check` 的 D1–D2。
+- 审查时看：名称是披露给已被来源接纳的主体的、与目录列标签同类的数据；真实产品声明 `companies: true` 前应通过 `reporting-source-check -companies`，并确认列表确实按当前授权过滤（D2 只能抽查）。
+- 已知不覆盖：控制台的选择器（S09-D）尚未实现，`partial` 与超限的界面行为由它负责；没有对真实产品测过。
 
 ## 已知没有覆盖的
 

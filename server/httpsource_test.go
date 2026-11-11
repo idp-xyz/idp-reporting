@@ -24,7 +24,7 @@ func httpWorld(t *testing.T) (*world, *httptest.Server) {
 	t.Cleanup(src.Close)
 	ca := filepath.Join(w.dir, "source-ca.pem")
 	writeFile(t, ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: src.Certificate().Raw}), 0o644)
-	options, _ := json.Marshal(map[string]any{"base_url": src.URL, "ca_file": ca, "auth_env": "REPORTING_SOURCE_AUTH", "timeout": 5})
+	options, _ := json.Marshal(map[string]any{"base_url": src.URL, "ca_file": ca, "auth_env": "REPORTING_SOURCE_AUTH", "timeout": 5, "companies": true})
 	w.cfg.AllowSimulator = false
 	w.cfg.Connections[0].Adapter = HTTPAdapter
 	w.cfg.Connections[0].Options = options
@@ -50,6 +50,11 @@ func TestTheShippedRegistryServesAnHTTPSourceEndToEnd(t *testing.T) {
 	status, _, body = s.do(t, "GET", api+"/catalog?integration_id="+w.finance, good, nil)
 	if status != 200 || !strings.Contains(string(body), "receivables.aging") {
 		t.Fatalf("catalog: %d %s", status, body)
+	}
+	// S19-B: the connection declares companies, so the directory is asked over the protocol and answered in the platform's shape.
+	status, _, body = s.do(t, "GET", api+"/companies?integration_id="+w.finance, good, nil)
+	if status != 200 || strings.TrimSpace(string(body)) != `{"supported":true,"partial":false,"companies":[{"id":"company_demo","name":"演示公司"}]}` {
+		t.Fatalf("companies: %d %s", status, body)
 	}
 	status, _, body = s.do(t, "POST", api+"/queries", good, contractsim.FinancialQuery())
 	var result r.Result

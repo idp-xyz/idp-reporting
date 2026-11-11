@@ -33,8 +33,9 @@ contract and refusals (docs/s00/INTERFACES.md, docs/REAL_SOURCE_ONBOARDING.md, A
 5. **Conformance is checked before a connection exists.** `reporting-source-check` exercises the protocol through the platform's own
    adapter against a product's endpoint; go-live item 17 becomes "the product implements the protocol and passes the checker". The checker
    is necessary, not sufficient: reconciliation (item 18) stays.
-6. **What is not in version 1 waits for its capability.** The company directory (ADR 0015) is not implemented in the core yet; it will be an
-   additive route of version 1 (S19-B). A breaking change is a new path prefix.
+6. **What is not in version 1 waits for its capability.** The company directory (ADR 0015) was not implemented in the core when version 1
+   was written; S19-B (2026-11-11) added it as an additive optional route of version 1 (`companies`, revision 1.1), asked only of a
+   connection that declares `companies: true`. A breaking change is a new path prefix.
 
 ## Consequences
 

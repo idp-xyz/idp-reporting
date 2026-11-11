@@ -196,6 +196,37 @@ func TestDurablePostgresContract(t *testing.T) {
 			t.Fatal(current, e)
 		}
 	})
+	t.Run("company_directory_lists_the_stored_grant", func(t *testing.T) {
+		// ADR 0015 (S19-B): the durable simulator lists the companies of the stored grant with names; a wider grant lists more, a revoked
+		// one is denied, and company_other stays refused by a read.
+		v := newDurable(t)
+		got, e := v.s.ListCompanies(ctx, v.p, contractsim.FinanceIntegration)
+		if e != nil || !got.Supported || got.Partial || len(got.Companies) != 1 || got.Companies[0] != (r.Company{ID: "company_demo", Name: "演示公司"}) {
+			t.Fatalf("%+v %v", got, e)
+		}
+		sc := sourceContext(v.p, contractsim.FinanceIntegration)
+		wider := contractsim.DefaultGrant()
+		wider.Companies = []string{"company_demo", "company_other"}
+		if e = v.source.SetGrant(ctx, sc, wider); e != nil {
+			t.Fatal(e)
+		}
+		got, e = v.s.ListCompanies(ctx, v.p, contractsim.FinanceIntegration)
+		if e != nil || len(got.Companies) != 2 || got.Companies[1] != (r.Company{ID: "company_other", Name: "其他公司"}) {
+			t.Fatalf("%+v %v", got, e)
+		}
+		if e = v.source.SetGrant(ctx, sc, contractsim.DefaultGrant()); e != nil {
+			t.Fatal(e)
+		}
+		q := contractsim.FinancialQuery()
+		q.Companies = []string{"company_other"}
+		_, e = v.s.Query(ctx, v.p, q)
+		mustError(t, e, r.ErrDenied)
+		if e = v.source.Revoke(ctx, sc); e != nil {
+			t.Fatal(e)
+		}
+		_, e = v.s.ListCompanies(ctx, v.p, contractsim.FinanceIntegration)
+		mustError(t, e, r.ErrDenied)
+	})
 	t.Run("seed_never_resurrects_revocation", func(t *testing.T) {
 		v := newDurable(t)
 		j := durableFreeze(t, v, contractsim.FinancialQuery(), "one")

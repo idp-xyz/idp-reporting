@@ -1,9 +1,11 @@
-# The reporting source protocol, version 1 (S19-A)
+# The reporting source protocol, version 1 (S19-A; revision 1.1, S19-B)
 
-2026-11-09. What a source product implements so that the reporting platform reads it, through the platform's adapter `http`
-(`adapters/httpsource`), without the platform carrying Go code for the product. It is the adapter contract of docs/s00/INTERFACES.md
-(`DescribeCatalog`, `PrepareRead`, `ReadPage`, `AuthorizeCurrent`) and, optionally, the document authority of ADR 0003 (`PrepareDocument`,
-`ConfirmIssue`, `VoidIssue`), carried as JSON over HTTPS. The machine-readable description is docs/source-openapi.json
+2026-11-09; revision 1.1 on 2026-11-11 (S19-B) adds one optional route, `companies`, and changes nothing else: a source written to the
+first revision is served unchanged. What a source product implements so that the reporting platform reads it, through the platform's
+adapter `http` (`adapters/httpsource`), without the platform carrying Go code for the product. It is the adapter contract of
+docs/s00/INTERFACES.md (`DescribeCatalog`, `PrepareRead`, `ReadPage`, `AuthorizeCurrent`) and, optionally, the document authority of ADR
+0003 (`PrepareDocument`, `ConfirmIssue`, `VoidIssue`) and the company directory of ADR 0015 (`ListCompanies`), carried as JSON over
+HTTPS. The machine-readable description is docs/source-openapi.json
 (`TestTheOpenAPIDescriptionIsTheProtocol` holds it to the bodies the adapter sends and accepts); this page wins where they differ. The
 obligations behind each call (what a stable read is, what "covers the frozen scope" means, how numbers are accounted for) are those of
 docs/REAL_SOURCE_ONBOARDING.md and ADR 0003; this page says how they travel.
@@ -58,6 +60,7 @@ configured for the credential is `denied`. The platform never sends the person's
 | Route | Contract operation | Body → answer |
 |---|---|---|
 | `POST /reporting-source/v1/catalog` | `DescribeCatalog` | `{context}` → `{datasets: [Dataset]}` |
+| `POST /reporting-source/v1/companies` | `ListCompanies` (optional, revision 1.1) | `{context}` → `{companies: [{id, name}], partial}` |
 | `POST /reporting-source/v1/reads` | `PrepareRead` | `{context, query, query_hash}` → `{read: Read}` |
 | `POST /reporting-source/v1/reads/{ref}/pages` | `ReadPage` | `{context, read, cursor, limit}` → `{ref, query_hash, watermark, rows, totals, next_cursor}` |
 | `POST /reporting-source/v1/reads/{ref}/authorize` | `AuthorizeCurrent` | `{context, read}` → `{authorized: true}` |
@@ -65,8 +68,9 @@ configured for the credential is `denied`. The platform never sends the person's
 | `POST /reporting-source/v1/issues/{job_id}/confirm` | `ConfirmIssue` | `{context, confirmation}` → `{receipt}` |
 | `POST /reporting-source/v1/issues/{job_id}/void` | `VoidIssue` | `{context, job_id, reason}` → `{voided: true}` |
 
-The issue routes are needed only for a connection whose `issuance` is `rows` or `groups`. `{ref}` and `{job_id}` repeat a value of the body
-(`read.ref`, `intent.job_id`, `confirmation.job_id`, `job_id`); a source refuses a mismatch with `invalid`.
+The issue routes are needed only for a connection whose `issuance` is `rows` or `groups`; the `companies` route only for a connection with
+`companies: true` (the platform never asks it otherwise). `{ref}` and `{job_id}` repeat a value of the body (`read.ref`, `intent.job_id`,
+`confirmation.job_id`, `job_id`); a source refuses a mismatch with `invalid`.
 
 ### catalog
 
@@ -83,6 +87,23 @@ The published, approved dataset versions the context may read now (docs/API.md "
 The platform requires of each dataset: `columns` are the `dimensions` then the `metrics` (by id) in that order, 1..64 of them, unique ids, a
 label of 1..256 bytes, a type of `string`, `date`, `boolean`, `integer` (no scale) or `decimal` (scale 0..18), `currency`/`unit` at most 32
 bytes; `timezone` an IANA zone; ids and versions 1..128 printable ASCII. A dataset version is immutable: a change is a new version.
+
+### companies (optional; ADR 0015, revision 1.1, S19-B)
+
+The companies the context may choose **now**, under the same authority as the catalog (an unknown subject or another source tenant is
+`denied`), each with the id a query names in `company_ids` and the name a person reads, in the product's order:
+
+```json
+{"companies": [{"id": "company_demo", "name": "演示公司"}, {"id": "company_7", "name": "第七分公司"}], "partial": false}
+```
+
+The platform requires: at most 1000 entries; each `id` and each `name` 1..128 bytes of UTF-8 text without control characters (C0, DEL,
+U+FFFE, U+FFFF) and not blank; no `id` twice; both fields present (`partial` says whether the product cut the list: then the person may
+still type an id). An empty list is an answer: nothing may be chosen. The list is **advisory**: `reads` and `authorize` decide every read
+exactly as without it, so a company the product listed may be refused a moment later when the rights changed, and one it did not list is
+refused as today. The platform does not store the list, does not cache it across requests and never logs a name; a frozen read keeps
+company ids, never names. A source without the capability answers `unsupported`; the platform asks the route only for a connection with
+`companies: true` (docs/DEPLOYMENT.md), and answers its console `supported: false` for every other connection.
 
 ### reads
 
@@ -176,6 +197,7 @@ refusal (docs/API.md) and nothing of the source's.
 |---|---|
 | A request body, an answer | 1 MiB (an answer: the connection's `max_response_bytes`, 4096..1048576) |
 | Datasets in a catalog; columns of a dataset | 100; 1..64 |
+| Companies in a directory; a company's `id` and `name` | 1000, no id twice; each 1..128 bytes of UTF-8 text without control characters, not blank |
 | `read.ref`; `scope_handle`; `watermark` | 1..128 of `A-Z a-z 0-9 . _ ~ -`; 1..1024 and 1..256 printable ASCII |
 | A read's lifetime | after now, at most 15 minutes ahead (the platform's clock) |
 | Rows of a page; of a read | at most `limit` (1..100, the platform asks 50); 1000 and 1 MiB in all |
@@ -185,7 +207,7 @@ refusal (docs/API.md) and nothing of the source's.
 
 ## 6. Idempotency and repetition
 
-`catalog`, `pages` and `authorize` are reads: repeating one changes nothing. `reads` makes a new read each time (a repeated job prepares
+`catalog`, `companies`, `pages` and `authorize` are reads: repeating one changes nothing. `reads` makes a new read each time (a repeated job prepares
 again; old reads expire by themselves; a source bounds how many it holds and answers `budget` beyond). The issue routes are idempotent by
 job id as section 3 says, so a job that a second worker re-runs reaches the same outcome. No `Idempotency-Key` header is used: the job id
 is the key.
@@ -195,7 +217,7 @@ is the key.
 ```
 export PRODUCT_REPORTING_AUTH=…          # the credential the operator gave the product
 reporting-source-check -base-url https://product.staging.internal -auth-env PRODUCT_REPORTING_AUTH -ca-file /path/ca.pem \
-    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue]
+    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue] [-companies]
 ```
 
 `context.json` is a context object (section 2) of a test subject the product has granted; `query.json` a query inside that grant with at
@@ -203,17 +225,19 @@ least one row. The command checks the connection the platform would make (P1), t
 catalog (C1–C4: it verifies, holds the query's dataset, refuses an unknown subject and another source tenant), the read (R1–R13: it
 verifies, is authorized, pages verify and end, a second reading gives the same rows and totals, a forged cursor is `invalid`, a read with
 another watermark or scope handle, a read the source never made and another subject's read are refused, a wrong query hash, a company
-outside the grant and an unpublished dataset version are refused) and, with `-issue`, the document authority (I1: a reservation, the same
-reservation again, `conflict` for another intent, a void, a second void, `conflict` after the void; **this reserves and voids one number:
-never against production**). It prints `PASS`, `FAIL` or `SKIP` per rule with a fixed text and exits 0 when nothing failed, 1 when a rule
-failed, 2 for a usage error. It never prints the credential, a URL or a byte of an answer. Passing it is necessary, not sufficient: the
-reconciliation of the product's data (go-live item 18) is the product's and the platform's together.
+outside the grant and an unpublished dataset version are refused), with `-companies` the company directory (D1–D2: the list verifies, at
+most 1000 companies with unique ids and texts within bounds; a read naming the listed companies, the first 100, is accepted and one naming
+a company the directory does not list is refused; skipped without the flag, as a connection without `companies: true` never asks) and, with
+`-issue`, the document authority (I1: a reservation, the same reservation again, `conflict` for another intent, a void, a second void,
+`conflict` after the void; **this reserves and voids one number: never against production**). It prints `PASS`, `FAIL` or `SKIP` per
+rule with a fixed text and exits 0 when nothing failed, 1 when a rule failed, 2 for a usage error. It never prints the credential, a URL or
+a byte of an answer. Passing it is necessary, not sufficient: the reconciliation of the product's data (go-live item 18) is the product's
+and the platform's together.
 
 ## 8. Not in version 1
 
-- The company directory of ADR 0015 (`CompanyDirectory`, `GET /companies` on the platform): the platform's capability is not implemented in
-  the core yet (S09-D). It will be `POST /reporting-source/v1/companies` in a later minor revision (S19-B), additive.
 - Filters and sorts beyond what the platform supports (none in query version 1).
 - A health probe of a source (ADR 0016 left it open).
 
-A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes only.
+A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes only, each a minor
+revision of this page (1.1: `companies`, S19-B).

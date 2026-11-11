@@ -5,7 +5,8 @@
 //
 // The checks need a sample source context the product has granted (with at least one row in the sample query's scope) and the query.
 // They only read; with Issue set they also reserve a number for a job id of their own and void it at once, which a product must be able to
-// account for (do not set it against production).
+// account for (do not set it against production). With Companies set they also check the company directory (ADR 0015, S19-B), as a
+// connection that declares it would use it.
 package conformance
 
 import (
@@ -46,10 +47,13 @@ func (x Result) Line() string {
 
 // Target is what is checked.
 type Target struct {
-	Config  httpsource.Config // the connection as the platform would make it; its Issuance is ignored (Issue decides)
+	Config  httpsource.Config // the connection as the platform would make it; its Issuance and Companies are ignored (Issue and Companies decide)
 	Context r.SourceContext   // a context the product has granted
 	Query   r.QuerySpec       // a query of the catalog, inside that grant, with at least one row
 	Issue   bool              // also check the document authority (reserves and voids one number)
+	// Companies also checks the company directory (ADR 0015, S19-B): the connection would declare `companies: true`. The rules D1 and
+	// D2 are skipped without it, as the platform never asks a connection that does not declare the capability.
+	Companies bool
 	// Client sends the raw requests of the rules that the adapter cannot make (a request without the credential); nil is a client with
 	// the configuration's TLS settings.
 	Client *http.Client
@@ -72,6 +76,7 @@ func Run(ctx context.Context, t Target) []Result {
 	if t.Issue {
 		cfg.Issuance = httpsource.IssuanceGroups
 	}
+	cfg.Companies = t.Companies
 	a, err := httpsource.New(cfg)
 	if !add("P1", "the connection is one the platform accepts (https or loopback http, a credential, the bounds)", err) {
 		return out
@@ -158,6 +163,25 @@ func Run(ctx context.Context, t Target) []Result {
 	_, err = a.PrepareRead(ctx, sc, version, r.QueryHash(version))
 	add("R13", "a dataset version that is not in the catalog is refused (unsupported or invalid)", expect(err, r.ErrUnsupported, r.ErrInvalid))
 
+	// The company directory (ADR 0015, S19-B).
+	const listRule = "the directory answers and verifies (at most 1000 companies, each id and name 1..128 characters of text, no id twice)"
+	const readRule = "a read naming the listed companies is accepted (the first 100), and one naming a company the directory does not list is refused (denied)"
+	if !t.Companies {
+		skip("D1", listRule, "not asked (-companies: the connection declares the capability)")
+		skip("D2", readRule, "not asked (-companies: the connection declares the capability)")
+	} else {
+		list, err := a.(r.CompanyDirectory).ListCompanies(ctx, sc)
+		if add("D1", listRule, err) {
+			if len(list.Companies) == 0 {
+				skip("D2", readRule, "the directory lists no company")
+			} else {
+				add("D2", readRule, listedCompaniesRead(ctx, a, sc, q, list))
+			}
+		} else {
+			skip("D2", readRule, "the directory did not answer")
+		}
+	}
+
 	// The document authority.
 	const issueRule = "a number is reserved for one row, the same intent answers the same reservation, a void is final"
 	if !t.Issue {
@@ -199,6 +223,28 @@ func issue(ctx context.Context, auth r.DocumentAuthority, sc r.SourceContext, p 
 	}
 	if _, err = auth.PrepareDocument(ctx, sc, in); !errors.Is(err, r.ErrConflict) {
 		return fail("a voided job could be reserved again", unexpected(err))
+	}
+	return nil
+}
+
+// listedCompaniesRead holds the directory to the reads (ADR 0015 decision 2: the list is advisory, but at this instant what it lists must
+// be what PrepareRead accepts): the sample query over the listed companies (the first 100, a query's bound) is prepared, and the same
+// query over a company the directory does not list is refused.
+func listedCompaniesRead(ctx context.Context, a r.Adapter, sc r.SourceContext, q r.QuerySpec, list r.CompanyList) error {
+	listed := q
+	listed.Companies = nil
+	for _, c := range list.Companies[:min(len(list.Companies), 100)] {
+		listed.Companies = append(listed.Companies, c.ID)
+	}
+	listed = r.Normalize(listed)
+	if _, err := a.PrepareRead(ctx, sc, listed, r.QueryHash(listed)); err != nil {
+		return fail("a read naming the listed companies was refused", err)
+	}
+	unlisted := q
+	unlisted.Companies = []string{"reporting-source-check-" + r.NewID()}
+	_, err := a.PrepareRead(ctx, sc, unlisted, r.QueryHash(unlisted))
+	if e := expect(err, r.ErrDenied); e != nil {
+		return fail("a read naming a company the directory does not list", e)
 	}
 	return nil
 }

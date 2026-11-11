@@ -2,6 +2,8 @@
 
 Date: 2026-11-06. Status: accepted, by the decision the owner delegated to engineering the same day (ADR 0014 decision 13).
 It adds an optional capability to the adapter contract; no existing adapter, request or stored record changes.
+Implementation: S19-B (server, 2026-11-11: `reporting.CompanyDirectory`, the simulators, `GET /companies`, and the protocol's optional
+route `POST /reporting-source/v1/companies` for a connection with `companies: true`; docs/S19B_SCOPE.md); the console picker is S09-D.
 
 ## Context
 

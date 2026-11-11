@@ -1,5 +1,6 @@
 // Package sourcetest is the reference source of the reporting source protocol (S19-A, docs/SOURCE_HTTP_PROTOCOL.md): an http.Handler that
-// serves the protocol from any reporting.Adapter, and from its reporting.DocumentAuthority when it has one. The platform's tests run the
+// serves the protocol from any reporting.Adapter, from its reporting.DocumentAuthority when it has one and from its
+// reporting.CompanyDirectory when it has one (S19-B). The platform's tests run the
 // contract simulators behind it, so that everything the platform does through adapters/httpsource is the same as what it does in process;
 // a product team written in Go can read it as the shape of its own implementation. It is not a product: authority is the wrapped
 // adapter's, and the handler only checks the service credential, decodes strictly and maps errors to the protocol's codes.
@@ -36,6 +37,7 @@ func New(a r.Adapter, o Options) http.Handler {
 	h := &handler{a: a, o: o}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST "+protocol.PathCatalog, h.catalog)
+	mux.HandleFunc("POST "+protocol.PathCompanies, h.companies)
 	mux.HandleFunc("POST "+protocol.PathReads, h.prepare)
 	mux.HandleFunc("POST "+protocol.PathPages, h.page)
 	mux.HandleFunc("POST "+protocol.PathAuthorize, h.authorize)
@@ -153,6 +155,34 @@ func (h *handler) catalog(w http.ResponseWriter, req *http.Request) {
 		ds = []r.Dataset{}
 	}
 	answer(w, protocol.CatalogResponse{Datasets: ds})
+}
+
+// companies is the company directory of ADR 0015 (S19-B): the wrapped adapter's list, with its names; a source without the capability
+// answers unsupported (the platform never asks a connection that does not declare it).
+func (h *handler) companies(w http.ResponseWriter, req *http.Request) {
+	var in protocol.CompaniesRequest
+	if !decode(w, req, &in) {
+		return
+	}
+	sc, ok := source(w, in.Context)
+	if !ok {
+		return
+	}
+	d, ok := h.a.(r.CompanyDirectory)
+	if !ok {
+		refuse(w, protocol.CodeUnsupported)
+		return
+	}
+	list, err := d.ListCompanies(req.Context(), sc)
+	if err != nil {
+		failed(w, err)
+		return
+	}
+	if list.Companies == nil {
+		list.Companies = []r.Company{}
+	}
+	partial := list.Partial
+	answer(w, protocol.CompaniesResponse{Companies: list.Companies, Partial: &partial})
 }
 
 func (h *handler) prepare(w http.ResponseWriter, req *http.Request) {

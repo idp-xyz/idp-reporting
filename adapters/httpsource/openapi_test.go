@@ -18,6 +18,7 @@ var schemaTypes = map[string]reflect.Type{
 	"Context": reflect.TypeFor[protocol.Context](), "Ref": reflect.TypeFor[r.Ref](), "Column": reflect.TypeFor[r.Column](), "Dataset": reflect.TypeFor[r.Dataset](),
 	"Filter": reflect.TypeFor[r.Filter](), "Sort": reflect.TypeFor[r.Sort](), "PageSpec": reflect.TypeFor[r.PageSpec](), "QuerySpec": reflect.TypeFor[r.QuerySpec](),
 	"Read": reflect.TypeFor[protocol.Read](), "CatalogRequest": reflect.TypeFor[protocol.CatalogRequest](), "CatalogResponse": reflect.TypeFor[protocol.CatalogResponse](),
+	"Company": reflect.TypeFor[r.Company](), "CompaniesRequest": reflect.TypeFor[protocol.CompaniesRequest](), "CompaniesResponse": reflect.TypeFor[protocol.CompaniesResponse](),
 	"PrepareRequest": reflect.TypeFor[protocol.PrepareRequest](), "PrepareResponse": reflect.TypeFor[protocol.PrepareResponse](),
 	"PageRequest": reflect.TypeFor[protocol.PageRequest](), "PageResponse": reflect.TypeFor[protocol.PageResponse](),
 	"AuthorizeRequest": reflect.TypeFor[protocol.AuthorizeRequest](), "AuthorizeResponse": reflect.TypeFor[protocol.AuthorizeResponse](),
@@ -79,9 +80,9 @@ func field(t *testing.T, where string, s schema, ft reflect.Type) {
 }
 
 // TestTheOpenAPIDescriptionIsTheProtocol holds docs/source-openapi.json to the bodies of package protocol, which are what the adapter
-// sends and accepts: the seven routes, each POST, its body and answer, the statuses of its error codes, every schema's properties (the
-// Go type's JSON fields, with their types) and required fields (those without omitempty), no additional property, and the closed set of
-// error codes.
+// sends and accepts: the eight routes (companies since revision 1, S19-B), each POST, its body and answer, the statuses of its error
+// codes, every schema's properties (the Go type's JSON fields, with their types) and required fields (those without omitempty), no
+// additional property, and the closed set of error codes.
 func TestTheOpenAPIDescriptionIsTheProtocol(t *testing.T) {
 	b, err := os.ReadFile("../../docs/source-openapi.json")
 	if err != nil {
@@ -105,7 +106,7 @@ func TestTheOpenAPIDescriptionIsTheProtocol(t *testing.T) {
 		t.Fatal(doc.OpenAPI, err)
 	}
 	routes := map[string][2]string{
-		protocol.PathCatalog: {"CatalogRequest", "CatalogResponse"}, protocol.PathReads: {"PrepareRequest", "PrepareResponse"},
+		protocol.PathCatalog: {"CatalogRequest", "CatalogResponse"}, protocol.PathCompanies: {"CompaniesRequest", "CompaniesResponse"}, protocol.PathReads: {"PrepareRequest", "PrepareResponse"},
 		protocol.PathPages: {"PageRequest", "PageResponse"}, protocol.PathAuthorize: {"AuthorizeRequest", "AuthorizeResponse"},
 		protocol.PathPrepare: {"PrepareIssueRequest", "PrepareIssueResponse"}, protocol.PathConfirm: {"ConfirmRequest", "ConfirmResponse"},
 		protocol.PathVoid: {"VoidRequest", "VoidResponse"},

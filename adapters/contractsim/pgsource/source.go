@@ -323,6 +323,24 @@ func (s *Source) DescribeCatalog(ctx context.Context, sc r.SourceContext) ([]r.D
 	}
 	return []r.Dataset{v.Dataset}, nil
 }
+
+// ListCompanies is the company directory of ADR 0015 (S19-B) over the stored grant: the same authority as the catalog (an unknown
+// principal or another source tenant is denied, an outage unavailable), the grant's companies with the fixtures' names, never partial.
+func (s *Source) ListCompanies(ctx context.Context, sc r.SourceContext) (r.CompanyList, error) {
+	tx, e := s.begin(ctx, true)
+	if e != nil {
+		return r.CompanyList{}, e
+	}
+	defer rollback(ctx, tx)
+	v, e := loadSource(ctx, tx, sc, false)
+	if e != nil {
+		return r.CompanyList{}, e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return r.CompanyList{}, r.ErrUnavailable
+	}
+	return contractsim.Companies(v.Grant), nil
+}
 func (s *Source) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QuerySpec, hash string) (r.PreparedRead, error) {
 	tx, e := s.begin(ctx, false)
 	if e != nil {
@@ -462,4 +480,7 @@ func (s *Source) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedR
 	return page, nil
 }
 
-var _ r.Adapter = (*Source)(nil)
+var (
+	_ r.Adapter          = (*Source)(nil)
+	_ r.CompanyDirectory = (*Source)(nil)
+)

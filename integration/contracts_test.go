@@ -195,6 +195,28 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 		_, e := v.s.Query(ctx, v.p, q)
 		mustError(t, e, r.ErrDenied)
 	})
+	t.Run("company_directory_lists_the_grant", func(t *testing.T) {
+		// ADR 0015 (S19-B): each product lists the companies of the principal's grant with names; the list is advisory and a company
+		// outside the grant stays refused; a product the principal does not hold is refused as the catalog refuses it.
+		v := envVia(t, through, factory(t))
+		for _, id := range []string{contractsim.FinanceIntegration, contractsim.ShipmentIntegration} {
+			got, e := v.s.ListCompanies(ctx, v.p, id)
+			if e != nil || !got.Supported || got.Partial || !slices.Equal(got.Companies, []r.Company{{ID: "company_demo", Name: "演示公司"}}) {
+				t.Fatalf("%s: %+v %v", id, got, e)
+			}
+		}
+		q := contractsim.FinancialQuery()
+		q.Companies = []string{"company_other"}
+		_, e := v.s.Query(ctx, v.p, q)
+		mustError(t, e, r.ErrDenied)
+		p := v.p
+		p.Integrations = []string{contractsim.FinanceIntegration}
+		_, e = v.s.ListCompanies(ctx, p, contractsim.ShipmentIntegration)
+		mustError(t, e, r.ErrDenied)
+		v.a.SetUnavailable(true)
+		_, e = v.s.ListCompanies(ctx, v.p, contractsim.FinanceIntegration)
+		mustError(t, e, r.ErrUnavailable)
+	})
 	t.Run("frozen_source_not_live_refresh", func(t *testing.T) {
 		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "one")

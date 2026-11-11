@@ -174,6 +174,8 @@ func TestEveryRouteAnswersWithTheSecurityHeaders(t *testing.T) {
 			{"capabilities", "GET", base + "capabilities", nil, 200, nil},
 			{"catalog", "GET", base + "catalog?integration_id=" + contractsim.FinanceIntegration, nil, 200, nil},
 			{"catalog refused", "GET", base + "catalog", nil, 400, nil},
+			{"companies", "GET", base + "companies?integration_id=" + contractsim.FinanceIntegration, nil, 200, nil},
+			{"companies refused", "GET", base + "companies", nil, 400, nil},
 			{"query", "POST", base + "queries", query, 200, nil},
 			{"query refused", "POST", base + "queries", map[string]any{"tenant": "other"}, 400, nil},
 			{"snapshot job", "POST", base + "snapshot-jobs", query, 202, nil},

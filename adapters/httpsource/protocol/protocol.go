@@ -16,13 +16,18 @@ import (
 // Version is the protocol's version, the v1 of every path.
 const Version = 1
 
+// Revision is the minor revision of version 1: 1 since S19-B added the optional route companies (docs/SOURCE_HTTP_PROTOCOL.md). A minor
+// revision only adds optional routes; a source of an earlier revision is served unchanged.
+const Revision = 1
+
 // Prefix is the path every route of version 1 starts with, under the connection's base URL.
 const Prefix = "/reporting-source/v1"
 
 // The paths. The read reference and the job id are path segments (RefPattern, JobPattern), always repeated in the body, where the source
-// must find the same value.
+// must find the same value. PathCompanies is optional (revision 1, S19-B): asked only of a connection that declares the capability.
 const (
 	PathCatalog   = Prefix + "/catalog"
+	PathCompanies = Prefix + "/companies"
 	PathReads     = Prefix + "/reads"
 	PathPages     = Prefix + "/reads/{ref}/pages"
 	PathAuthorize = Prefix + "/reads/{ref}/authorize"
@@ -49,6 +54,9 @@ const (
 	MaxLabelBytes     = 256
 	MaxReasonBytes    = 1024
 	MaxCurrencyOrUnit = 32
+	// MaxCompanies and MaxCompanyBytes bound the company directory's answer (ADR 0015, S19-B): the platform's own bounds.
+	MaxCompanies    = r.MaxCompanies
+	MaxCompanyBytes = r.MaxCompanyBytes
 )
 
 // Path fills a path's one parameter, escaped (the patterns allow nothing that needs escaping, which the adapter checks before it sends).
@@ -132,6 +140,16 @@ type CatalogRequest struct {
 }
 type CatalogResponse struct {
 	Datasets []r.Dataset `json:"datasets"`
+}
+
+// The company directory (ADR 0015, S19-B): the companies the context may choose now, each with its id and name, and whether the source
+// cut the list. Both fields are required: an answer without a list, or without saying whether it is whole, does not verify.
+type CompaniesRequest struct {
+	Context *Context `json:"context"`
+}
+type CompaniesResponse struct {
+	Companies []r.Company `json:"companies"`
+	Partial   *bool       `json:"partial"`
 }
 
 type PrepareRequest struct {

@@ -4,7 +4,8 @@
 //
 // Nothing a source answers is passed on before it verifies against what was asked: the catalog's datasets, the read's query hash,
 // dataset, companies, zone, currency policy and expiry, every page's reference, hash, watermark, row widths and cell types, totals and
-// cursor, the authorization's answer, the reservation's job and number and every time. An answer that does not verify is
+// cursor, the authorization's answer, the reservation's job and number and every time, the directory's companies (S19-B, for a
+// connection that declares them). An answer that does not verify is
 // reporting.ErrIntegrity; a source that cannot be reached, is too slow, redirects or answers a 5xx is reporting.ErrUnavailable; a refusal
 // in the protocol's closed set of codes is the platform error of its code. Error texts are fixed: never the URL, the credential or a byte
 // of the body. It is safe for concurrent use and depends on the standard library only.
@@ -71,6 +72,10 @@ type Config struct {
 	MaxResponseBytes int
 	// Issuance is IssuanceNone (or ""), IssuanceRows or IssuanceGroups.
 	Issuance string
+	// Companies declares that the source implements the company directory (ADR 0015, S19-B): the adapter is then a
+	// reporting.CompanyDirectory and asks POST /reporting-source/v1/companies. Without it the route is never asked and the platform
+	// answers supported false, as for any adapter without the capability.
+	Companies bool
 	// Now is the clock a read's expiry is judged by; nil is time.Now.
 	Now func() time.Time
 }
@@ -87,6 +92,7 @@ type Options struct {
 	AuthEnv          string `json:"auth_env"`
 	MaxResponseBytes int    `json:"max_response_bytes"`
 	Issuance         string `json:"issuance"`
+	Companies        bool   `json:"companies"`
 }
 
 var envName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
@@ -112,7 +118,7 @@ func Factory(options json.RawMessage, getenv func(string) string) (r.Adapter, er
 
 // Config resolves the options: reads the CA and the client certificate and its key, and the credential from the environment.
 func (o Options) Config(getenv func(string) string) (Config, error) {
-	c := Config{BaseURL: o.BaseURL, LoopbackHTTP: o.LoopbackHTTP, MaxResponseBytes: o.MaxResponseBytes, Issuance: o.Issuance}
+	c := Config{BaseURL: o.BaseURL, LoopbackHTTP: o.LoopbackHTTP, MaxResponseBytes: o.MaxResponseBytes, Issuance: o.Issuance, Companies: o.Companies}
 	if o.Timeout < 0 || o.Timeout > int(MaxTimeout/time.Second) {
 		return Config{}, errConfig("timeout", "must be 0 or 1..60 seconds")
 	}
@@ -172,7 +178,7 @@ func readFile(name string, secret bool) ([]byte, error) {
 }
 
 // Adapter is a source over the protocol. It implements reporting.Adapter; New returns it wrapped as a document authority when the
-// connection's issuance says so.
+// connection's issuance says so, and as a company directory when the connection declares companies.
 type Adapter struct {
 	base    string
 	token   string
@@ -191,7 +197,9 @@ type catalogKey struct {
 	dataset                   r.Ref
 }
 
-// New checks the configuration and makes the adapter. Its errors are fixed texts naming the field.
+// New checks the configuration and makes the adapter. Its errors are fixed texts naming the field. The value is the adapter wrapped for
+// the capabilities the connection declares: a document authority of the issuance's contract version, a company directory with
+// Companies; the method set of the value says what the connection declared, as it does for an adapter in process.
 func New(c Config) (r.Adapter, error) {
 	a, err := newAdapter(c)
 	if err != nil {
@@ -199,10 +207,19 @@ func New(c Config) (r.Adapter, error) {
 	}
 	switch c.Issuance {
 	case "", IssuanceNone:
+		if c.Companies {
+			return &Directory{Adapter: a}, nil
+		}
 		return a, nil
 	case IssuanceRows:
+		if c.Companies {
+			return &AuthorityDirectory{Authority: &Authority{Adapter: a}}, nil
+		}
 		return &Authority{Adapter: a}, nil
 	case IssuanceGroups:
+		if c.Companies {
+			return &GroupAuthorityDirectory{GroupAuthority: &GroupAuthority{Authority{Adapter: a, groups: true}}}, nil
+		}
 		return &GroupAuthority{Authority{Adapter: a, groups: true}}, nil
 	}
 	return nil, errConfig("issuance", `must be "none", "rows" or "groups"`)
@@ -573,6 +590,55 @@ func (a *Adapter) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.
 	return nil
 }
 
+// listCompanies asks the source which companies the context may choose now (ADR 0015) and verifies the list with the platform's own
+// rule (reporting.ValidateCompanyList): at most 1000 entries, each id and name 1..128 bytes of text without control characters, no id
+// twice. A list that does not verify, or an answer without a list or without partial, is an integrity failure: nothing of it is passed
+// on. Only the adapters of a connection that declares companies expose it (Directory and its issuing forms).
+func (a *Adapter) listCompanies(ctx context.Context, sc r.SourceContext) (r.CompanyList, error) {
+	if !validContext(sc) {
+		return r.CompanyList{}, fail("companies", "the source context is incomplete", r.ErrDenied)
+	}
+	var out protocol.CompaniesResponse
+	wire := protocol.ContextOf(sc)
+	if err := a.call(ctx, "companies", protocol.PathCompanies, false, protocol.CompaniesRequest{Context: &wire}, &out); err != nil {
+		return r.CompanyList{}, err
+	}
+	if out.Companies == nil || out.Partial == nil {
+		return r.CompanyList{}, fail("companies", "the answer has no list or does not say whether it is whole", r.ErrIntegrity)
+	}
+	list := r.CompanyList{Companies: out.Companies, Partial: *out.Partial}
+	if r.ValidateCompanyList(list) != nil {
+		return r.CompanyList{}, fail("companies", "the list is over 1000 entries, an id repeats, or an id or a name is not 1..128 characters of text", r.ErrIntegrity)
+	}
+	return list, nil
+}
+
+// Directory is the adapter of a connection that declares companies (ADR 0015, S19-B) without issuance: a company directory.
+type Directory struct{ *Adapter }
+
+// ListCompanies is the company directory of ADR 0015 over the protocol.
+func (d *Directory) ListCompanies(ctx context.Context, sc r.SourceContext) (r.CompanyList, error) {
+	return d.listCompanies(ctx, sc)
+}
+
+// AuthorityDirectory is the adapter of a connection with issuance rows that declares companies: a document authority of contract
+// version 1 and a company directory.
+type AuthorityDirectory struct{ *Authority }
+
+// ListCompanies is the company directory of ADR 0015 over the protocol.
+func (d *AuthorityDirectory) ListCompanies(ctx context.Context, sc r.SourceContext) (r.CompanyList, error) {
+	return d.listCompanies(ctx, sc)
+}
+
+// GroupAuthorityDirectory is the adapter of a connection with issuance groups that declares companies: a document authority of
+// contract version 2 and a company directory.
+type GroupAuthorityDirectory struct{ *GroupAuthority }
+
+// ListCompanies is the company directory of ADR 0015 over the protocol.
+func (d *GroupAuthorityDirectory) ListCompanies(ctx context.Context, sc r.SourceContext) (r.CompanyList, error) {
+	return d.listCompanies(ctx, sc)
+}
+
 // Authority is the adapter of a source that is the document authority (ADR 0003), contract version 1.
 type Authority struct {
 	*Adapter
@@ -677,4 +743,9 @@ var (
 	_ r.Adapter            = (*Adapter)(nil)
 	_ r.DocumentAuthority  = (*Authority)(nil)
 	_ r.VersionedAuthority = (*GroupAuthority)(nil)
+	_ r.CompanyDirectory   = (*Directory)(nil)
+	_ r.DocumentAuthority  = (*AuthorityDirectory)(nil)
+	_ r.CompanyDirectory   = (*AuthorityDirectory)(nil)
+	_ r.VersionedAuthority = (*GroupAuthorityDirectory)(nil)
+	_ r.CompanyDirectory   = (*GroupAuthorityDirectory)(nil)
 )

@@ -28,6 +28,7 @@
     },
     "routes": [
       "GET /catalog",
+      "GET /companies",
       "POST /queries",
       "POST /snapshot-jobs",
       "GET /jobs/{id}",

@@ -11,7 +11,8 @@ import (
 
 // Remote puts the adapter behind the reference source on a loopback TLS server and returns the platform's adapter of that source: the
 // adapter's behaviour as the platform sees it through the protocol. The issuance follows the wrapped adapter (groups for a version-2
-// document authority, rows for a version-1 one, none otherwise); the server and the adapter's connections end with the test.
+// document authority, rows for a version-1 one, none otherwise), and so does the company directory (declared when the wrapped adapter
+// is one, S19-B); the server and the adapter's connections end with the test.
 func Remote(tb testing.TB, a r.Adapter, options ...func(*httpsource.Config)) r.Adapter {
 	tb.Helper()
 	token := r.NewID() + r.NewID()
@@ -26,7 +27,8 @@ func Remote(tb testing.TB, a r.Adapter, options ...func(*httpsource.Config)) r.A
 			issuance = httpsource.IssuanceGroups
 		}
 	}
-	c := httpsource.Config{BaseURL: srv.URL, RootCAs: pool, Token: token, Issuance: issuance}
+	_, companies := a.(r.CompanyDirectory)
+	c := httpsource.Config{BaseURL: srv.URL, RootCAs: pool, Token: token, Issuance: issuance, Companies: companies}
 	for _, o := range options {
 		o(&c)
 	}

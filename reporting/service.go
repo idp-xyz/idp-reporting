@@ -121,6 +121,32 @@ func (s *Service) Catalog(ctx context.Context, p Principal, integration string) 
 	}
 	return c.Adapter.DescribeCatalog(ctx, sc)
 }
+
+// ListCompanies is the company directory of ADR 0015 (S19-B) for one of the principal's products: the connection is resolved as Catalog
+// resolves it (the same refusal for a product the principal does not hold); an adapter without the capability answers supported false
+// and an empty list; otherwise the adapter's answer is held to ValidateCompanyList (ErrIntegrity: nothing of it is passed on) and
+// returned as the directory answers it. Nothing is stored or logged: the list is the source's at this instant, and the source
+// authorizes every read as before.
+func (s *Service) ListCompanies(ctx context.Context, p Principal, integration string) (CompanyDirectoryAnswer, error) {
+	c, sc, e := s.source(p, integration)
+	if e != nil {
+		return CompanyDirectoryAnswer{}, e
+	}
+	directory, ok := c.Adapter.(CompanyDirectory)
+	if !ok {
+		return CompanyDirectoryAnswer{Companies: []Company{}}, nil
+	}
+	list, e := directory.ListCompanies(ctx, sc)
+	if e != nil {
+		return CompanyDirectoryAnswer{}, e
+	}
+	if e = ValidateCompanyList(list); e != nil {
+		return CompanyDirectoryAnswer{}, e
+	}
+	companies := make([]Company, len(list.Companies))
+	copy(companies, list.Companies)
+	return CompanyDirectoryAnswer{Supported: true, Partial: list.Partial, Companies: companies}, nil
+}
 func (s *Service) prepare(ctx context.Context, p Principal, q QuerySpec) (QuerySpec, Dataset, PreparedRead, error) {
 	q = Normalize(q)
 	c, sc, e := s.source(p, q.Integration)
