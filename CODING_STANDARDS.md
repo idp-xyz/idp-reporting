@@ -15,3 +15,11 @@
   runtime logs and distinguish simulator, host, live DB and production evidence.
 - The demo is explicit, loopback-only and protected by a random bearer secret.
   It must refuse production database names and cannot serve as production SSO.
+- Contract-level decisions are the product owner's own: the adapter contract and
+  the source protocol; what the platform stores of business data and for how
+  long; who may see what (authorization, roles, isolation); a migration that
+  discards data; the admission decision. An ADR on one of them stays `proposed`,
+  with its questions and a recommended answer to each, until the owner has
+  answered those questions. A general delegation ("you decide", "按你的建议")
+  starts the work and is not that answer. Engineering decides everything else
+  and records it in an ADR.
