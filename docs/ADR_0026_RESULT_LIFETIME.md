@@ -1,10 +1,11 @@
 # ADR 0026 · A result outlives the read it was frozen from: the source vouches for the scope, the platform keeps by class
 
-Date: 2026-11-11. Status: **proposed**. This is a contract-level decision (the source protocol, and what the platform stores of
-business data and for how long), so the product owner answers the two questions at the end and nothing here is implemented
-before that (CODING_STANDARDS.md). Accepted, it would add a second time to the `PrepareRead` row of docs/s00/INTERFACES.md, make
-ADR 0003 decision 1 true, and change the sentence of ADR 0025 (S24, in review) that a file lives while its snapshot's read does.
-It keeps every authorization rule of the baseline.
+Date: 2026-11-11. Status: **accepted** 2026-11-11. This is a contract-level decision (the source protocol, and what the platform
+stores of business data and for how long), so it waited for the product owner's answers to the two questions at the end
+(CODING_STANDARDS.md); the owner chose the model of the decision below with its default times. It adds a second time to the
+`PrepareRead` row of docs/s00/INTERFACES.md, makes ADR 0003 decision 1 true, and changes the sentence of ADR 0025 (S24, in
+review) that a file lives while its snapshot's read does. It keeps every authorization rule of the baseline. Implementation:
+S25-A to S25-D.
 
 ## Context
 
@@ -47,7 +48,7 @@ does.
 No product implements the protocol yet and no production store exists, so today the change costs a revision of a document and
 of the simulators. After the first product it costs that product a release.
 
-## Decision (proposed)
+## Decision
 
 1. **Three lifetimes, each with its own name.**
    - *The read*: `expires_at`, at most 15 minutes ahead, unchanged. While it lasts the source serves pages, and the product can
@@ -63,13 +64,15 @@ of the simulators. After the first product it costs that product a release.
    `pages` answers `expired`. What a source keeps in order to answer (a row per read with the grant it froze, or a handle that
    describes itself) is its own business; it need not keep the data version for it. The platform never asks after
    `scope_expires_at`.
-3. **The platform keeps a result by its class, never beyond the scope.** A result's expiry is fixed when it is published: the
-   earlier of its class's time and the read's `scope_expires_at`. The classes:
-   - a *working snapshot* (a person's 创建快照): the read's `expires_at`, as today. It is working state; the person freezes again.
+3. **The platform keeps a result by its class, never beyond the scope.** A result's expiry is fixed when the job that makes it
+   is admitted: the read's `expires_at` plus its class's time, or the read's `scope_expires_at` when that is earlier. The classes:
+   - a *working snapshot* (a person's 创建快照): no time beyond the read's `expires_at`, as today. It is working state; the person
+     freezes again.
    - a *kept result*: every export file, and the snapshot of a scheduled run. `retention.results`, default 7 days.
    - an *issued document*: `retention.issued`, default 10 years.
 
-   The sweep deletes by the result's own expiry plus the grace, as today. The issue record stays permanent.
+   The sweep deletes by the result's own expiry plus the grace, as today. The issue record stays permanent. A change of the two
+   times applies to the jobs admitted after it.
 4. **Every disclosure still asks the source.** A page of a kept snapshot and every download check, in this order: the row is the
    caller's (row-level security), the product is still bound, the result's own expiry has not passed, the source authorizes the
    read's scope now, and the bytes match the row's digest. A source that cannot be reached is 503, a refusal is a refusal, and
@@ -128,7 +131,7 @@ of the simulators. After the first product it costs that product a release.
 - No change of the store's schema is expected: the expiry is a column since migration 005, and the payloads gain optional
   fields. S25-A confirms it or adds the migration.
 
-## Slices (after the owner's answers)
+## Slices
 
 - **S25-A**: the core and the stores. The three lifetimes, an artifact's own basis and expiry, the retention classes and their
   configuration, the quota, the sweep; the memory and PostgreSQL contracts. With no source declaring a scope, every test of
@@ -146,3 +149,10 @@ of the simulators. After the first product it costs that product a release.
   publication the owner alone, without asking the source again. (c) Leave the one time as it is.
 - **Q2, the default times** (a deployment may change them). Export files and scheduled snapshots 7 days, issued documents 10
   years, working snapshots unchanged (recommended); or other numbers.
+
+## The owner's answers (2026-11-11)
+
+- **Q1: (a).** The source vouches for the scope, the platform keeps by class, and every download still asks the source. The
+  owner was shown (b) with its cost (a revocation would not reach the files already kept) and (c), and chose (a).
+- **Q2: the recommended times.** Export files and scheduled snapshots 7 days, issued documents 10 years, working snapshots
+  unchanged; a deployment may change the two times.
