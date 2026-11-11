@@ -2173,4 +2173,17 @@ window.reportingEnglish = {
   确认出具: 'Confirm issue',
   '在“出具”页用这个模板的已发布版本出具；出具记录也在那里':
     "Issue with this template's published version on the “Issue” page; the issue records are there too",
+  // ---- S09-D: the company picker (companies.js, ADR 0015 decision 4)
+  筛选公司: 'Filter companies',
+  '在 {0} 家公司中筛选（名称或 ID）': 'Filter {0} companies (name or ID)',
+  '没有匹配的公司。': 'No company matches.',
+  '来源没有列出公司；可在下方输入公司 ID。': 'The source listed no company; company IDs can be entered below.',
+  '当前身份没有可选择的公司。': 'There is no company this identity may choose.',
+  '已选 {0} 家，达到一次查询的上限；取消一家才能再选其他公司。':
+    '{0} companies chosen, the most one query takes; unselect one to choose another.',
+  '来源的名单不完整：名单之外的公司可在下方输入 ID。':
+    "The source's list is incomplete: the ID of a company it does not list can be entered below.",
+  '输入其他公司 ID，多个以逗号分隔': 'Enter other company IDs, separated by commas',
+  '输入其他公司 ID': 'Enter other company IDs',
+  '共 {0} 家': '{0} companies',
 };

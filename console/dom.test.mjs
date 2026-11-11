@@ -22,6 +22,7 @@ const documentsScript = await readFile(join(root, 'console/assets/documents.js')
 const libraryScript = await readFile(join(root, 'console/assets/library.js'), 'utf8');
 const issueScript = await readFile(join(root, 'console/assets/issue.js'), 'utf8');
 const boardScript = await readFile(join(root, 'console/assets/board.js'), 'utf8');
+const companiesScript = await readFile(join(root, 'console/assets/companies.js'), 'utf8');
 const token = randomBytes(32).toString('hex');
 const artifactDir = process.env.REPORTING_S03A_EVIDENCE_DIR;
 const pdfConfigured = ['REPORTING_TYPST', 'REPORTING_TYPST_SHA256', 'REPORTING_PDF_FONTS'].every(k => process.env[k]);
@@ -128,6 +129,9 @@ after(async () => {
 // app(intercept, options): the console in jsdom against the real server. The server and its identity are shared by every test of this
 // file, so the server's job listing (S07-C, GET /jobs) would show each test the jobs of the tests before it: by default the harness answers
 // it with an empty list and a test sees its own jobs only, as it did when the list was the session's; options.listing=true lets it through.
+// The company directory (S09-D, GET /companies) is answered by default as a product without the capability, so that the 公司范围 field is
+// the text field of ids every test before S09-D typed into; options.companies=true lets the server's directory through (the picker).
+const noDirectory = () => json({supported: false, partial: false, companies: []});
 function app(intercept, options) {
   const errors = [];
   const downloads = [];
@@ -172,9 +176,11 @@ function app(intercept, options) {
       if (response) return response;
     }
     if (!listing && /\/jobs\?limit=\d+(&|$)/.test(String(path))) return json([]);
+    if (!directory && /\/companies\?/.test(String(path))) return noDirectory();
     return fetch(origin + path, options);
   };
-  const listing = !!options?.listing;
+  const listing = !!options?.listing,
+    directory = !!options?.companies;
   for (const [k, v] of Object.entries(options?.storage || {})) w.sessionStorage.setItem(k, v);
   w.eval(dashboardScript);
   w.eval(canvasScript);
@@ -184,6 +190,7 @@ function app(intercept, options) {
   w.eval(issueScript);
   w.eval(boardScript);
   w.eval(documentsScript);
+  w.eval(companiesScript);
   w.eval(script);
   const $ = id => w.document.getElementById(id);
   const input = (id, value) => {
@@ -16214,6 +16221,390 @@ test('S21-A: the console refuses what the server refuses: a bad title, width or 
       {type: 'line', category: 'customer.id', field: 'ar.open_balance', title: '走势', width: 'full'},
       {type: 'pie', category: 'aging.bucket', field: 'ar.open_balance', title: '占比'},
     ]);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+// ---- S09-D: the company picker (docs/ADR_0015_COMPANY_DIRECTORY.md decision 4, docs/S09D_SCOPE.md) ----
+// The picker's parts, as a test reads them.
+const pickerOf = a => ({
+  picker: a.$('query-companies-picker'),
+  boxes: () => [...a.$('query-companies-list').querySelectorAll('input[type=checkbox]')],
+  box: id => a.$('query-companies-list').querySelector('input[value="' + id + '"]'),
+  options: () =>
+    [...a.$('query-companies-list').querySelectorAll('.company-option')].map(o => [
+      o.querySelector('.company-name').textContent,
+      o.querySelector('.company-id').textContent,
+      o.hidden,
+    ]),
+  note: a.$('query-companies-note'),
+  filter: a.$('query-companies-filter'),
+  typed: a.$('query-companies'),
+  hint: a.$('query-companies').nextElementSibling, // the text field's demo hint (当前本地演示可使用 company_demo…)
+});
+const directoryOf = (companies, partial = false) => json({supported: true, partial, companies});
+// A directory of n companies, 公司1 … 公司n under the ids c1 … cn.
+const manyCompanies = n => Array.from({length: n}, (_, i) => ({id: 'c' + (i + 1), name: '公司' + (i + 1)}));
+// A result any query may be answered with when the test is about the query sent, not about the data.
+const someResult = () =>
+  json({columns: [{id: 'a', label: 'A', type: 'string'}], rows: [['x']], totals: {}, completeness: 'complete'});
+
+test("S09-D: with the source's directory 公司范围 is a picker: the companies by name with the id as secondary text, the one company chosen already, the chip names it, the wire carries ids; sign-out forgets it", async () => {
+  const bodies = [];
+  const a = app(
+    async (path, options) => {
+      if (path.endsWith('/queries') && options?.method === 'POST') bodies.push(JSON.parse(options.body));
+    },
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const p = pickerOf(a);
+    await until(() => !p.picker.hidden, 'the picker');
+    assert.equal(p.picker.getAttribute('role'), 'group');
+    assert.equal(
+      a.w.document.getElementById(p.picker.getAttribute('aria-labelledby')).textContent,
+      '公司范围',
+      'the field label names the group'
+    );
+    assert.deepEqual(p.options(), [['演示公司', 'company_demo', false]], 'the demo lists its one company by name');
+    assert.equal(p.boxes()[0].checked, true, 'the only company is chosen for the person');
+    assert.equal(p.typed.hidden, true, 'a complete directory has no typed line');
+    assert.equal(p.hint.hidden, true, 'the demo hint of the text field goes with it');
+    assert.equal(p.filter.hidden, true, 'no filter for one company');
+    assert.equal(p.note.hidden, true);
+    assert.equal(a.trace.filter(t => /\/companies\?integration_id=/.test(t.path)).length, 1, 'asked once');
+    // The query sends ids; the chip names the company.
+    a.click('preview');
+    await until(() => !a.$('result-table-wrap').hidden && !a.$('preview').disabled, 'preview');
+    assert.deepEqual(bodies.at(-1).company_ids, ['company_demo']);
+    assert.match(a.$('sh-data-text').textContent, /^应收余额 · 演示公司 · \d{4}-\d{2}-\d{2}$/);
+    assert.match(a.$('sh-data-chip').title, /演示公司/);
+    assert.doesNotMatch(a.$('sh-data-text').textContent, /company_demo/, 'the id is not the primary text');
+    // Unchoosing the company is a change of the query: the result goes, and a query with no company is refused on the page.
+    p.boxes()[0].click();
+    assert.equal(p.boxes()[0].checked, false);
+    assert.equal(a.$('result-table-wrap').hidden, true);
+    assert.equal(a.$('sh-data-text').textContent, '未选择数据');
+    a.click('preview');
+    await until(() => !a.$('notice').hidden, 'refused on the page');
+    assert.match(a.$('notice').textContent, /请检查数据集、公司范围及数据时点/);
+    assert.equal(bodies.length, 1, 'no request without a company');
+    // The data drawer's first focus: the company to choose, then 查询预览 once one is chosen (S07-A).
+    a.click('sh-data-chip');
+    assert.equal(a.$('sh-d-data').hidden, false);
+    assert.equal(a.w.document.activeElement, p.boxes()[0], 'the drawer focuses the company to choose');
+    p.boxes()[0].click();
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    a.click('sh-data-chip');
+    assert.equal(a.w.document.activeElement, a.$('preview'), 'with a company chosen the drawer focuses 查询预览');
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    // A schedule names the companies too (S18-A's dialog takes the current query).
+    a.click('preview');
+    await until(() => !a.$('schedule-from-result').disabled, 'a result to schedule');
+    a.click('schedule-from-result');
+    assert.match(a.$('sc-query').textContent, /演示公司/);
+    assert.doesNotMatch(a.$('sc-query').textContent, /company_demo/);
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    // Nothing is kept: sign-out brings the text field back, empty, and the browser's storage stays empty.
+    a.click('logout');
+    assert.equal(p.picker.hidden, true);
+    assert.equal(p.boxes().length, 0);
+    assert.equal(p.typed.hidden, false);
+    assert.equal(p.typed.value, '');
+    assert.equal(p.hint.hidden, false);
+    assert.equal(a.w.localStorage.length, 0);
+    assert.equal(a.w.sessionStorage.length, 0);
+    // A new session asks again.
+    await a.login();
+    await until(() => !p.picker.hidden, 'the picker again');
+    assert.equal(a.trace.filter(t => /\/companies\?integration_id=/.test(t.path)).length, 2);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S09-D: without the capability, or when the route fails, 公司范围 stays the text field of ids and a typed wrong company is refused by the source (the manual, figure 10)', async () => {
+  // supported: false is the documented answer of a product without the directory (the harness answers it by default).
+  const a = app();
+  try {
+    await a.login();
+    const p = pickerOf(a);
+    assert.equal(p.picker.hidden, true);
+    assert.equal(p.typed.hidden, false);
+    assert.equal(p.typed.placeholder, '输入公司 ID，多个以逗号分隔');
+    assert.equal(p.hint.hidden, false);
+    assert.equal(a.$('notice').hidden, true, 'nothing to say');
+    a.click('sh-data-chip');
+    assert.equal(a.w.document.activeElement, p.typed, 'the drawer focuses the empty text field as before');
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    a.input('query-companies', 'company_other');
+    a.click('preview');
+    await until(() => !a.$('notice').hidden, 'the refusal');
+    assert.match(a.$('notice').textContent, /无权访问/);
+    assert.equal(a.$('result-table').tBodies[0].rows.length, 0);
+    a.input('query-companies', 'company_demo');
+    a.click('preview');
+    await until(() => !a.$('result-table-wrap').hidden && !a.$('preview').disabled, 'preview');
+    assert.match(a.$('sh-data-text').textContent, /^应收余额 · company_demo · \d{4}-\d{2}-\d{2}$/, 'ids, as before');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  // The source's failure is the route's 503 (ADR 0015 decision 3): the text field for the session, the catalogue unaffected, no notice.
+  for (const [name, answer] of [
+    ['503', () => problem(503, 'SOURCE_UNAVAILABLE')],
+    ['404 of a server before the route', () => problem(404, 'NOT_FOUND')],
+    ['403', () => problem(403, 'AUTH_SCOPE_DENIED')],
+    ['not JSON', () => new Response('<html>', {status: 200, headers: {'Content-Type': 'text/html'}})],
+  ]) {
+    const b = app(async path => (/\/companies\?/.test(path) ? answer() : undefined), {companies: true});
+    try {
+      await b.login();
+      const p = pickerOf(b);
+      assert.equal(p.picker.hidden, true, name);
+      assert.equal(p.typed.hidden, false, name);
+      assert.ok(b.$('query-dataset').options.length > 0, name + ': the catalogue is there');
+      assert.equal(b.$('notice').hidden, true, name + ': no notice for the directory');
+      b.input('query-companies', 'company_demo');
+      b.click('preview');
+      await until(() => !b.$('result-table-wrap').hidden && !b.$('preview').disabled, name + ' preview');
+      assert.equal(b.errors.length, 0, b.errors.join('|'));
+    } finally {
+      b.close();
+    }
+  }
+});
+
+test('S09-D: an answer that is not exactly the documented shape fails closed to the text field: unknown keys, over the bound, a duplicate id, a wrong value', async () => {
+  const ok = manyCompanies(3);
+  const shapes = {
+    'an unknown key': {supported: true, partial: false, companies: ok, more: 1},
+    'a missing key': {supported: true, companies: ok},
+    'an array': [ok],
+    'supported as text': {supported: 'true', partial: false, companies: ok},
+    'partial as text': {supported: true, partial: 'no', companies: ok},
+    'companies as an object': {supported: true, partial: false, companies: {c1: '公司1'}},
+    'more than 1000 entries': {supported: true, partial: false, companies: manyCompanies(1001)},
+    'a duplicate id': {supported: true, partial: false, companies: [...ok, {id: 'c1', name: '又一次'}]},
+    'an entry with an unknown key': {supported: true, partial: false, companies: [{id: 'c1', name: '公司1', x: 1}]},
+    'an entry without a name': {supported: true, partial: false, companies: [{id: 'c1'}]},
+    'an empty id': {supported: true, partial: false, companies: [{id: '', name: '公司'}]},
+    'a blank name': {supported: true, partial: false, companies: [{id: 'c1', name: '  '}]},
+    'an id of 129 characters': {supported: true, partial: false, companies: [{id: 'a'.repeat(129), name: '公司'}]},
+    'a name of 129 characters': {supported: true, partial: false, companies: [{id: 'c1', name: 'n'.repeat(129)}]},
+    'a control character': {supported: true, partial: false, companies: [{id: 'c1', name: '公司\n一'}]},
+    'a number for an id': {supported: true, partial: false, companies: [{id: 7, name: '公司'}]},
+    'unsupported with companies': {supported: false, partial: false, companies: ok},
+    'unsupported and partial': {supported: false, partial: true, companies: []},
+    null: null,
+  };
+  for (const [name, shape] of Object.entries(shapes)) {
+    const a = app(async path => (/\/companies\?/.test(path) ? json(shape) : undefined), {companies: true});
+    try {
+      await a.login();
+      const p = pickerOf(a);
+      assert.equal(p.picker.hidden, true, name);
+      assert.equal(p.typed.hidden, false, name);
+      assert.equal(p.boxes().length, 0, name);
+      assert.equal(a.$('notice').hidden, true, name + ': no notice');
+      assert.equal(a.errors.length, 0, name + ': ' + a.errors.join('|'));
+    } finally {
+      a.close();
+    }
+  }
+  // The inclusive bounds verify: 1000 companies of 128-character ids and names, and the picker shows them all.
+  const a = app(
+    async path =>
+      /\/companies\?/.test(path)
+        ? directoryOf(
+            Array.from({length: 1000}, (_, i) => ({
+              id: String(i).padStart(128, 'x'),
+              name: ('公司' + i).padEnd(128, '名'),
+            }))
+          )
+        : undefined,
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const p = pickerOf(a);
+    await until(() => !p.picker.hidden, 'the picker');
+    assert.equal(p.boxes().length, 1000);
+    assert.equal(p.filter.hidden, false);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S09-D: a partial directory keeps the typed line under the picker and its ids join the selection; the sixteenth chosen disables the rest and says why; a filter appears above eight; the chip says the first and the count', async () => {
+  const bodies = [];
+  const a = app(
+    async (path, options) => {
+      if (/\/companies\?/.test(path)) return directoryOf(manyCompanies(20), true);
+      if (path.endsWith('/queries') && options?.method === 'POST') {
+        bodies.push(JSON.parse(options.body));
+        return someResult();
+      }
+    },
+    {companies: true}
+  );
+  try {
+    await a.login();
+    const p = pickerOf(a);
+    await until(() => !p.picker.hidden, 'the picker');
+    assert.equal(p.boxes().length, 20);
+    assert.equal(p.boxes().filter(b => b.checked).length, 0, 'nothing is chosen for the person among many');
+    assert.deepEqual(p.options()[0], ['公司1', 'c1', false]);
+    assert.equal(p.filter.hidden, false, 'a filter above eight');
+    assert.equal(p.filter.placeholder, '在 20 家公司中筛选（名称或 ID）');
+    assert.equal(p.typed.hidden, false, 'the typed line stays under the picker');
+    assert.equal(p.typed.placeholder, '输入其他公司 ID，多个以逗号分隔');
+    assert.equal(p.typed.getAttribute('aria-label'), '输入其他公司 ID');
+    assert.equal(p.note.hidden, false);
+    assert.match(p.note.textContent, /名单不完整/);
+    a.click('sh-data-chip');
+    assert.equal(a.w.document.activeElement, p.filter, 'the drawer focuses the filter');
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    // The filter matches the name or the id, case apart; nothing matching says so; filtering is not a change of the query.
+    a.input('query-companies-filter', 'C1');
+    assert.deepEqual(
+      p
+        .options()
+        .filter(o => !o[2])
+        .map(o => o[1]),
+      ['c1', 'c10', 'c11', 'c12', 'c13', 'c14', 'c15', 'c16', 'c17', 'c18', 'c19']
+    );
+    a.input('query-companies-filter', '公司20');
+    assert.deepEqual(
+      p
+        .options()
+        .filter(o => !o[2])
+        .map(o => o[0]),
+      ['公司20']
+    );
+    a.input('query-companies-filter', 'zzz');
+    assert.equal(p.options().filter(o => !o[2]).length, 0);
+    assert.equal(a.$('query-companies-list').querySelector('.company-none').hidden, false);
+    a.input('query-companies-filter', '');
+    assert.equal(a.$('query-companies-list').querySelector('.company-none').hidden, true);
+    // Two chosen and two typed: the wire carries the four ids, the chosen first.
+    p.box('c1').click();
+    p.box('c2').click();
+    a.input('query-companies', 'other_a，other_b, c2');
+    a.click('preview');
+    await until(() => bodies.length === 1 && !a.$('preview').disabled, 'the query');
+    assert.deepEqual(
+      bodies[0].company_ids,
+      ['c1', 'c2', 'other_a', 'other_b'],
+      'ids on the wire, a typed id already chosen once'
+    );
+    assert.match(
+      a.$('sh-data-text').textContent,
+      /^应收余额 · 公司1 · 共 4 家 · \d{4}-\d{2}-\d{2}$/,
+      'more than two: the first and the count'
+    );
+    a.input('query-companies', '');
+    a.click('preview');
+    await until(() => bodies.length === 2 && !a.$('preview').disabled, 'the query again');
+    assert.deepEqual(bodies[1].company_ids, ['c1', 'c2']);
+    assert.match(a.$('sh-data-text').textContent, /^应收余额 · 公司1、公司2 · \d{4}-\d{2}-\d{2}$/, 'two: both names');
+    // The sixteenth chosen disables the rest, and the line says why; one unchosen frees them.
+    for (let i = 3; i <= 16; i++) p.box('c' + i).click();
+    assert.equal(p.boxes().filter(b => b.checked).length, 16);
+    assert.deepEqual(
+      p
+        .boxes()
+        .filter(b => b.disabled)
+        .map(b => b.value),
+      ['c17', 'c18', 'c19', 'c20']
+    );
+    assert.equal(p.note.textContent, '已选 16 家，达到一次查询的上限；取消一家才能再选其他公司。');
+    assert.equal(p.box('c17').closest('.company-option').classList.contains('is-disabled'), true);
+    p.box('c16').click();
+    assert.equal(p.boxes().filter(b => b.disabled).length, 0);
+    assert.match(p.note.textContent, /名单不完整/);
+    // A seventeenth through the typed line is refused on the page, as sixteen typed ids were.
+    p.box('c16').click();
+    a.input('query-companies', 'other_a');
+    a.click('preview');
+    await until(() => !a.$('notice').hidden, 'refused on the page');
+    assert.match(a.$('notice').textContent, /请检查数据集、公司范围及数据时点/);
+    assert.equal(bodies.length, 2);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S09-D: an empty directory is an answer: nothing may be chosen (complete), or only typed ids (partial); the companies belong to the product and a product change asks once, 刷新目录 again', async () => {
+  const empty = app(async path => (/\/companies\?/.test(path) ? directoryOf([]) : undefined), {companies: true});
+  try {
+    await empty.login();
+    const p = pickerOf(empty);
+    await until(() => !p.picker.hidden, 'the picker');
+    assert.equal(p.boxes().length, 0);
+    assert.equal(p.note.textContent, '当前身份没有可选择的公司。');
+    assert.equal(p.typed.hidden, true);
+    empty.click('preview');
+    await until(() => !empty.$('notice').hidden, 'refused on the page');
+    assert.match(empty.$('notice').textContent, /请检查数据集、公司范围及数据时点/);
+    empty.click('sh-data-chip');
+    assert.equal(empty.w.document.activeElement, empty.$('preview'), 'nothing to choose: the drawer focuses 查询预览');
+    assert.equal(empty.errors.length, 0, empty.errors.join('|'));
+  } finally {
+    empty.close();
+  }
+  const partial = app(async path => (/\/companies\?/.test(path) ? directoryOf([], true) : undefined), {
+    companies: true,
+  });
+  try {
+    await partial.login();
+    const p = pickerOf(partial);
+    await until(() => !p.picker.hidden, 'the picker');
+    assert.equal(p.note.textContent, '来源没有列出公司；可在下方输入公司 ID。');
+    assert.equal(p.typed.hidden, false);
+    partial.click('sh-data-chip');
+    assert.equal(partial.w.document.activeElement, p.typed, 'the typed line is what is left to fill');
+    partial.w.document.dispatchEvent(
+      new partial.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})
+    );
+    partial.input('query-companies', 'company_demo');
+    partial.click('preview');
+    await until(() => !partial.$('result-table-wrap').hidden && !partial.$('preview').disabled, 'preview');
+    assert.equal(partial.errors.length, 0, partial.errors.join('|'));
+  } finally {
+    partial.close();
+  }
+  // Two products of the real server, each with its own directory (both simulators list 演示公司): asked once each, the selection reset.
+  const a = app(undefined, {companies: true});
+  try {
+    await a.login();
+    const p = pickerOf(a);
+    const asked = () => a.trace.filter(t => /\/companies\?integration_id=/.test(t.path)).map(t => t.path);
+    await until(() => !p.picker.hidden, 'the picker');
+    const first = a.$('query-product').value,
+      second = a.$('query-product').options[1].value;
+    assert.equal(asked().length, 1);
+    p.boxes()[0].click();
+    assert.equal(p.boxes()[0].checked, false);
+    a.$('query-product').value = second;
+    a.$('query-product').dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    await until(() => asked().length === 2 && !a.$('preview').disabled, 'the second product');
+    assert.ok(asked()[1].includes(encodeURIComponent(second)));
+    assert.equal(p.boxes()[0].checked, true, 'the new product starts over: its one company chosen');
+    a.$('query-product').value = first;
+    a.$('query-product').dispatchEvent(new a.w.Event('change', {bubbles: true}));
+    await until(() => !a.$('preview').disabled && a.$('query-product').value === first, 'back to the first');
+    await sleep(50);
+    assert.equal(asked().length, 2, 'asked once per product and session');
+    a.click('refresh-catalog');
+    await until(() => asked().length === 3 && !a.$('preview').disabled, '刷新目录 asks again');
+    assert.equal(p.boxes()[0].checked, true);
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
     a.close();

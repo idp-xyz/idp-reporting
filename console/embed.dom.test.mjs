@@ -25,6 +25,7 @@ const [
   boardScript,
   englishScript,
   languageScript,
+  companiesScript,
 ] = await Promise.all(
   [
     'index.html',
@@ -39,6 +40,7 @@ const [
     'board.js',
     'en.js',
     'lang.js',
+    'companies.js',
   ].map(read)
 );
 const token = randomBytes(32).toString('hex');
@@ -210,6 +212,8 @@ const accepted = new Map([
 ]);
 
 // An embed page: served by the real server for the given view and resource, run in jsdom with a stub parent. intercept(path, options, who) may answer a request.
+// The company directory (S09-D, GET /companies) is answered as a product without the capability unless companies=true lets the server's
+// through: the 公司范围 field stays the text field of ids these tests type into, as the console's suite does (console/dom.test.mjs).
 async function embedPage({
   view = 'dashboard',
   resource,
@@ -220,6 +224,7 @@ async function embedPage({
   location,
   observer = true,
   shrink = false,
+  companies = false,
 } = {}) {
   const resourceKey = {report: 'dataset', dashboard: 'dashboard', 'document-designer': 'template'}[view];
   const params = new URLSearchParams({integration, parent});
@@ -298,6 +303,11 @@ async function embedPage({
         const answer = await intercept(String(path), options, given);
         if (answer) return answer;
       }
+      if (!companies && /\/companies\?/.test(String(path)))
+        return new Response(JSON.stringify({supported: false, partial: false, companies: []}), {
+          status: 200,
+          headers: {'Content-Type': 'application/json'},
+        });
       return await fetch(url + path, {
         ...options,
         headers: {...headers, ...(accepted.has(given) ? {Authorization: 'Bearer ' + accepted.get(given)} : {})},
@@ -313,6 +323,7 @@ async function embedPage({
   w.eval(documentsScript);
   w.eval(boardScript);
   w.eval(embedScript);
+  w.eval(companiesScript);
   w.eval(appScript);
   const $ = id => w.document.getElementById(id);
   const input = (id, value) => {
@@ -1126,6 +1137,7 @@ test('the console page loads none of the embed code, and answers no message', as
   w.eval(studioScript);
   w.eval(documentsScript);
   w.eval(boardScript);
+  w.eval(companiesScript);
   w.eval(appScript);
   const other = new JSDOM('', {url: HOST + '/'}).window;
   w.dispatchEvent(
@@ -1521,5 +1533,58 @@ test('the embedded dashboard studio: the query form waits in its start card, the
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
     a.close();
+  }
+});
+
+// S09-D (ADR 0015 decision 4): the embed page's query panel behaves as the console's: the source's directory makes 公司范围 a picker of the
+// companies by name, the id secondary, the one company chosen; the wire carries ids; a product without the directory keeps the text field.
+// The names cross to the frame and nowhere else: nothing of them goes to the parent page.
+test("S09-D: the embed page's 公司范围 is the same picker as the console's, ids on the wire, nothing of it told to the parent; without the directory the text field", async () => {
+  const bodies = [];
+  const a = await embedPage({
+    view: 'report',
+    companies: true,
+    intercept: async (path, options) => {
+      if (path.endsWith('/queries') && options?.method === 'POST') bodies.push(JSON.parse(options.body));
+    },
+  });
+  try {
+    assert.match(
+      embedHtml,
+      /<script src="\/console\/companies\.js" defer>/,
+      'the embed page loads the picker before app.js'
+    );
+    assert.ok(embedHtml.indexOf('companies.js') < embedHtml.indexOf('app.js'));
+    a.give();
+    await a.connected();
+    const picker = a.$('query-companies-picker');
+    await until(() => !picker.hidden, 'the picker');
+    const option = a.$('query-companies-list').querySelector('.company-option');
+    assert.equal(option.querySelector('.company-name').textContent, '演示公司');
+    assert.equal(option.querySelector('.company-id').textContent, 'company_demo');
+    assert.equal(option.querySelector('input[type=checkbox]').checked, true, 'the one company is chosen');
+    assert.equal(a.$('query-companies').hidden, true, 'a complete directory has no typed line');
+    assert.equal(a.trace.filter(t => /\/companies\?integration_id=/.test(t.path)).length, 1, 'asked once');
+    a.click('preview');
+    await until(() => !a.$('result-table-wrap').hidden && !a.$('preview').disabled, 'query result');
+    assert.deepEqual(bodies.at(-1).company_ids, ['company_demo'], 'ids on the wire');
+    assert.equal(JSON.stringify(a.sent).includes('演示公司'), false, 'no name goes to the parent');
+    assert.equal(JSON.stringify(a.sent).includes('company_demo'), false);
+    assert.equal(a.w.localStorage.length, 0);
+    assert.equal(a.w.sessionStorage.length, 0);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+  const b = await embedPage({view: 'report'});
+  try {
+    b.give();
+    await b.connected();
+    assert.equal(b.$('query-companies-picker').hidden, true, 'without the directory: no picker');
+    assert.equal(b.$('query-companies').hidden, false, 'the text field of ids as before');
+    await queried(b);
+    assert.equal(b.errors.length, 0, b.errors.join('|'));
+  } finally {
+    b.close();
   }
 });

@@ -1,0 +1,75 @@
+{
+  "label": "after",
+  "generated": "2026-11-11T11:07:45.844Z",
+  "base": "http://127.0.0.1:7962",
+  "tasks": [
+    {
+      "name": "T8 团队模板：预览数据 → 新建模板 → 发布（需同事审批）",
+      "clicks": 12,
+      "texts": 2,
+      "pages": 2,
+      "shells": 0,
+      "dialogs": 2,
+      "deadEnds": 0,
+      "seconds": 4.9,
+      "log": [
+        "page page-workspace → page-library",
+        "dialog +1",
+        "page page-library → page-documents",
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T9 同事：登录 → 团队模板 → 打开 → 发布（审批）",
+      "clicks": 12,
+      "texts": 1,
+      "pages": 5,
+      "shells": 0,
+      "dialogs": 1,
+      "deadEnds": 1,
+      "seconds": 5.5,
+      "log": [
+        "page page-documents → page-workspace",
+        "page page-workspace → page-library",
+        "page page-library → page-workspace",
+        "page page-workspace → page-library",
+        "page page-library → page-documents",
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T10 操作记录：找到这次审批",
+      "clicks": 1,
+      "texts": 0,
+      "pages": 1,
+      "shells": 0,
+      "dialogs": 0,
+      "deadEnds": 0,
+      "seconds": 0.7,
+      "log": [
+        "page page-documents → page-audit"
+      ]
+    }
+  ],
+  "totals": {
+    "clicks": 25,
+    "texts": 3,
+    "pages": 8,
+    "shells": 0,
+    "dialogs": 3,
+    "deadEnds": 1
+  },
+  "log": [
+    "page page-workspace → page-library",
+    "dialog +1",
+    "page page-library → page-documents",
+    "dialog +1",
+    "page page-documents → page-workspace",
+    "page page-workspace → page-library",
+    "page page-library → page-workspace",
+    "page page-workspace → page-library",
+    "page page-library → page-documents",
+    "dialog +1",
+    "page page-documents → page-audit"
+  ]
+}

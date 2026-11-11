@@ -327,8 +327,8 @@
 | 区域 | 控件 | 函数 |
 |---|---|---|
 | 应用栏（`nav.app-rail`，56 px，所有壳子） | 品牌方块（→ 报表工作台）；报表、看板、模板、文档、任务，隔开后是能力（S07-H 起去掉概览与数据，ADR 0011）；活动项 `aria-current="page"`；任务数是角标；底部连接状态点 | `data-page` 按钮 → `openPage`（与 S06-C 的导航列同一机制）；角标 = `nav-datasets`、`task-count` |
-| 数据芯片 | 控制台页眉 `#sh-data-chip`；模板中心页眉 `#lib-data`；看板工作室上下文条“参数与筛选”（`#bd-ctx-data`）、起始卡“选择数据…”（`#bd-start-open`）、数据面板“选择数据…”（`#bd-data-open`） | 文字 = `dataSummary()`（`state.query` + `state.lastResult` + `state.snapshot`）：`数据集@版本 · 公司范围 · 时点` 加 查询预览 / 冻结快照 徽标，无结果时 `未选择数据`（虚线框）；点击 = `drawer.open` |
-| 数据抽屉（`#sh-d-data`） | 标题“当前数据”；主体是工作台的查询面板（搬入 `#sh-query-slot`，关闭时放回原位，`park/unpark`），下方“数据集字段”（`#sh-fields`，S07-H：所选数据集的字段表、编号 · 版本、维度与指标数、刷新目录）；页脚说明与关闭 | `role="dialog"` `aria-modal`，`.shell` 置 `inert`，焦点进入公司范围字段（已填则进入“查询预览”），Tab 循环，Esc 关闭并还焦点；`renderResult` 到来时自动关闭 |
+| 数据芯片 | 控制台页眉 `#sh-data-chip`；模板中心页眉 `#lib-data`；看板工作室上下文条“参数与筛选”（`#bd-ctx-data`）、起始卡“选择数据…”（`#bd-start-open`）、数据面板“选择数据…”（`#bd-data-open`） | 文字 = `dataSummary()`（`state.query` + `state.lastResult` + `state.snapshot`）：`数据集名 · 公司 · 时点` 加 查询预览 / 冻结快照 徽标（S09-C 起数据集写名字；S09-D 起公司写来源名单里的名字，两家用、连接，更多写“第一家 · 共 N 家”，来源没有名单时仍写 ID），无结果时 `未选择数据`（虚线框）；点击 = `drawer.open` |
+| 数据抽屉（`#sh-d-data`） | 标题“当前数据”；主体是工作台的查询面板（搬入 `#sh-query-slot`，关闭时放回原位，`park/unpark`），下方“数据集字段”（`#sh-fields`，S07-H：所选数据集的字段表、编号 · 版本、维度与指标数、刷新目录）；页脚说明与关闭 | `role="dialog"` `aria-modal`，`.shell` 置 `inert`，焦点进入公司范围（S09-D：还没选公司时在要选的公司或筛选框，来源没有名单时在空的文本框；已选或已填则进入“查询预览”），Tab 循环，Esc 关闭并还焦点；`renderResult` 到来时自动关闭 |
 | 模板中心的拒绝行 | “先选择数据集并预览或冻结快照：设计器需要当前授权的数据集。”+ 选择数据… | `reason(null)` + `ports.data` |
 
 ## 偏离与决定

@@ -36,6 +36,7 @@
     product: '',
     datasets: [],
     catalogs: new Map(),
+    companies: new Map(), // S09-D: each product's verified company directory, asked once per product and session (ADR 0015)
     roles: null,
     audit: {events: [], more: '', scope: ''},
     schedules: {list: [], loaded: false, off: false, runsOf: '', runs: []},
@@ -487,9 +488,10 @@
     return api;
   }
   const drawers = [];
-  const drawer = makeDrawer('sh-d-data', [['.query-panel', 'sh-query-slot']], () =>
-    $('query-companies').value ? $('preview') : $('query-companies')
-  );
+  // The company scope (S09-D, ADR 0015 decision 4; companies.js): the source's directory as a picker when the product lists the companies,
+  // the text field of ids otherwise. A change of the selection is a change of the query, as a typed id is.
+  const companies = window.createReportingCompanyPicker({changed: () => queryChanged()});
+  const drawer = makeDrawer('sh-d-data', [['.query-panel', 'sh-query-slot']], () => companies.focus());
   // The tasks panel (S07-B): the tasks page's restore row, list and refresh button, reachable from every shell through the rail.
   const tasksPanel = makeDrawer(
     'sh-d-tasks',
@@ -527,10 +529,12 @@
     if (!state.lastResult || !state.query) return null;
     const q = state.query;
     const dataset = q.dataset.id + '@' + q.dataset.version;
-    const text = datasetName(q.dataset) + ' · ' + q.company_ids.join('、') + ' · ' + q.as_of;
+    // The companies by name where the product's directory names them (S09-D), by id otherwise; more than two: the first and the count.
+    const scope = companies.text(q.company_ids, q.integration_id);
+    const text = datasetName(q.dataset) + ' · ' + scope + ' · ' + q.as_of;
     return {
       dataset,
-      scope: q.company_ids.join('、'),
+      scope,
       date: q.as_of,
       kind: state.snapshot ? '冻结快照' : '查询预览',
       text,
@@ -635,6 +639,7 @@
     $('page-size').disabled = blocked || !state.snapshot;
     for (const id of ['query-dataset', 'query-companies', 'query-date', 'refresh-catalog'])
       $(id).disabled = !state.session || state.catalogLoading;
+    companies.disable(!state.session || state.catalogLoading);
     // The centre tells what can be opened from whether the console is idle: a result that arrives while it is on screen (from the data drawer, S07-H) is shown once the work is done.
     if (change < 0 && !state.busy && library && library.data && !$('page-library').hidden) library.data();
   }
@@ -706,6 +711,8 @@
     state.product = '';
     state.datasets = [];
     state.catalogs.clear();
+    state.companies.clear();
+    companies.clear();
     state.connections.clear();
     state.roles = null;
     for (const role of ['designer', 'publisher', 'issuer', 'administrator'])
@@ -1600,7 +1607,12 @@
     }
     const q = state.query;
     $('sc-query').textContent =
-      '数据：' + datasetName(q.dataset) + ' · ' + q.company_ids.join('、') + ' · 当前数据时点 ' + q.as_of;
+      '数据：' +
+      datasetName(q.dataset) +
+      ' · ' +
+      companies.text(q.company_ids, q.integration_id) +
+      ' · 当前数据时点 ' +
+      q.as_of;
     $('sc-name').value = datasetName(q.dataset);
     $('sc-timezone').value = q.timezone || 'Asia/Shanghai';
     $('sc-error').hidden = true;
@@ -1742,6 +1754,17 @@
     state.admin = v;
     renderAdmin();
   }
+  // The company directory of a product (ADR 0015 decision 3): the verified answer, {supported: false} for a product without the capability,
+  // or null when the route failed (the source's 503 among them) or answered anything but the documented shape; each of the last two leaves
+  // the text field for the session. Only a lost session is passed on.
+  async function askCompanies(id) {
+    try {
+      return companies.check(await request('/companies?integration_id=' + encodeURIComponent(id)));
+    } catch (error) {
+      if (error instanceof Stale) throw error;
+      return null;
+    }
+  }
   async function loadProduct(id, refresh) {
     const epoch = state.epoch,
       operation = ++state.catalogOperation;
@@ -1754,14 +1777,25 @@
     state.datasets = [];
     renderCatalog();
     $('query-dataset').replaceChildren();
+    // The companies belong to the product: the field starts over as the text field until the product's directory has answered.
+    companies.show(id, null);
     const active = () => epoch === state.epoch && operation === state.catalogOperation && id === state.product;
     try {
-      let datasets = state.catalogs.get(id);
-      if (!datasets || refresh) datasets = await request('/catalog?integration_id=' + encodeURIComponent(id));
+      let datasets = state.catalogs.get(id),
+        directory = state.companies.get(id);
+      const asks = [];
+      if (!datasets || refresh)
+        asks.push(request('/catalog?integration_id=' + encodeURIComponent(id)).then(v => (datasets = v)));
+      // S09-D (ADR 0015 decisions 3 and 4): the product's company directory, asked with the catalogue, once per product and session
+      // (刷新目录 asks again). It is advisory and fails closed: whatever does not verify leaves the text field.
+      if (directory === undefined || refresh) asks.push(askCompanies(id).then(v => (directory = v)));
+      await Promise.all(asks);
       if (!active()) throw new Stale();
       if (!Array.isArray(datasets) || datasets.length > 100 || !datasets.every(validDataset))
         throw new Failure(0, 'INVALID_RESPONSE');
       state.catalogs.set(id, datasets);
+      state.companies.set(id, directory);
+      companies.show(id, directory);
       state.datasets = datasets;
       $('query-dataset').replaceChildren();
       for (const d of datasets) {
@@ -2244,16 +2278,14 @@
   }
   function buildQuery() {
     const d = selected();
-    const companies = $('query-companies')
-      .value.split(/[,，]/)
-      .map(s => s.trim())
-      .filter(Boolean);
+    // The chosen companies (S09-D): the picker's and the typed ids, or the typed ids alone; the wire carries ids either way.
+    const scope = companies.ids();
     if (
       !d ||
-      !companies.length ||
-      companies.length > 16 ||
-      new Set(companies).size !== companies.length ||
-      companies.some(s => s.length > 128) ||
+      !scope.length ||
+      scope.length > companies.limit ||
+      new Set(scope).size !== scope.length ||
+      scope.some(s => s.length > 128) ||
       !$('query-date').value
     )
       throw new Failure(400, 'INVALID_REQUEST');
@@ -2261,7 +2293,7 @@
       schema_version: '1.0',
       integration_id: state.product,
       dataset: copy(d.dataset),
-      company_ids: companies,
+      company_ids: scope,
       metrics: copy(d.metrics),
       dimensions: copy(d.dimensions),
       filters: [],

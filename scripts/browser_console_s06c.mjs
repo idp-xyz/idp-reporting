@@ -197,6 +197,22 @@ const typeInto = async (sel, text) => {
   await sleep(120);
 };
 const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'the console is idle', 40000);
+// S09-D (ADR 0015 decision 4): the company scope is the source's directory as a picker when the product lists the companies (the demo
+// lists 演示公司, chosen already as the one company), the text field of ids otherwise: whichever the page shows is driven.
+const chooseCompany = async () => {
+  const state = await evalJs(
+    `(()=>{const p=document.getElementById('query-companies-picker');if(!p||p.hidden)return 'text';const boxes=[...p.querySelectorAll('input[type=checkbox]')];return boxes.some(b=>b.checked)?'chosen':'listed';})()`
+  );
+  if (state === 'chosen') return;
+  if (state === 'listed')
+    await clickExpr(
+      `[...document.querySelectorAll('#query-companies-picker .company-option label')].find(l=>l.textContent.includes('company_demo'))`,
+      '演示公司'
+    );
+  else await typeInto('#query-companies', 'company_demo');
+};
+// The picker as the page shows it: the one company by name with its id as secondary text, chosen, no typed line and no filter.
+const PICKER = `(()=>{const p=document.getElementById('query-companies-picker');if(!p||p.hidden)return null;const o=p.querySelector('.company-option'),b=p.getBoundingClientRect();return {name:o&&o.querySelector('.company-name').textContent,id:o&&o.querySelector('.company-id').textContent,chosen:!!o&&o.querySelector('input').checked,typedHidden:document.getElementById('query-companies').hidden,filterHidden:document.getElementById('query-companies-filter').hidden,count:p.querySelectorAll('.company-option').length,left:b.left,right:b.right,width:b.width,inner:innerWidth};})()`;
 // A studio or the centre hides the console's navigation: the way out is their own wordmark, as a person would take it.
 // S07-A: the application rail is on every shell, so a page is one click away from anywhere.
 const nav = async page => {
@@ -424,11 +440,13 @@ async function main() {
   await click('#bd-start-open');
   await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer');
   await sleep(250);
+  // S09-D: the demo lists one company, chosen already, so the drawer's first focus is 查询预览 (the company to choose when none is).
   check(
-    "the start card opens the data drawer with the workbench's query panel inside, focus on the company field",
+    "the start card opens the data drawer with the workbench's query panel inside, focus on 查询预览 as the one company is chosen (the company field otherwise)",
     await evalJs(
-      `document.getElementById('sh-query-slot').contains(document.querySelector('.query-panel'))&&document.activeElement.id==='query-companies'&&document.querySelector('.shell').inert`
-    )
+      `(()=>{const chosen=[...document.querySelectorAll('#query-companies-picker input[type=checkbox]')].some(b=>b.checked);const f=document.activeElement;return document.getElementById('sh-query-slot').contains(document.querySelector('.query-panel'))&&(chosen?f.id==='preview':f.id==='query-companies'||!!f.closest('#query-companies-picker'))&&document.querySelector('.shell').inert;})()`
+    ),
+    await evalJs(`document.activeElement.id`)
   );
   await shot('console-05b-data-drawer');
   await key('Escape');
@@ -451,7 +469,25 @@ async function main() {
       `document.getElementById('query-dataset').value==='receivables.aging@1.0.0'&&document.querySelector('.app-rail [aria-current="page"]').dataset.page==='workspace'`
     )
   );
-  await typeInto('#query-companies', 'company_demo');
+  // S09-D (ADR 0015 decision 4): the company scope is the source's directory as a picker, open on the page: 演示公司 by name with company_demo
+  // as secondary text, chosen as the one company listed; a complete directory has no typed line, one company no filter.
+  const picker1440 = await evalJs(PICKER);
+  check(
+    'the company picker at 1440: 演示公司 by name, company_demo as secondary text, chosen; no typed line, no filter for one company',
+    !!picker1440 &&
+      picker1440.name === '演示公司' &&
+      picker1440.id === 'company_demo' &&
+      picker1440.chosen &&
+      picker1440.typedHidden &&
+      picker1440.filterHidden &&
+      picker1440.count === 1 &&
+      picker1440.width > 0,
+    picker1440
+  );
+  await shot('console-03a-company-picker');
+  await contrast('company picker 1440 light');
+  check('no horizontal overflow with the picker at 1440', !(await overflow()).over, await overflow());
+  await chooseCompany();
   await clickBtn('#page-workspace', '查询预览');
   await waitFor(
     `!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`,
@@ -463,6 +499,13 @@ async function main() {
     await evalJs(
       `document.getElementById('result-kind').textContent==='查询预览'&&document.querySelectorAll('#result-table tbody tr').length===3&&document.querySelector('#result-summary strong').textContent==='9007199254740993.01'`
     )
+  );
+  check(
+    'the data chip names the company (S09-D), the id in the title only',
+    await evalJs(
+      `/^应收余额 · 演示公司 · \\d{4}-\\d{2}-\\d{2}$/.test(document.getElementById('sh-data-text').textContent)&&!/company_demo/.test(document.getElementById('sh-data-text').textContent)`
+    ),
+    await evalJs(`document.getElementById('sh-data-text').textContent`)
   );
   await clickBtn('#page-workspace', '创建快照');
   await waitFor(
@@ -852,8 +895,84 @@ async function main() {
       await key('Escape');
       await sleep(250);
     }
+    if (w === 390) {
+      // S09-D: the company picker at 390, where it goes with the query panel: the data drawer. It fits the drawer, no overflow, contrast.
+      await nav('workspace');
+      await click('#sh-data-chip');
+      await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer at 390');
+      await sleep(300);
+      const picker390 = await evalJs(PICKER);
+      check(
+        'the company picker at 390 is in the data drawer and fits it: 演示公司 with company_demo, chosen',
+        !!picker390 &&
+          picker390.name === '演示公司' &&
+          picker390.chosen &&
+          picker390.width > 0 &&
+          picker390.left >= 0 &&
+          picker390.right <= picker390.inner + 1 &&
+          (await evalJs(
+            `document.getElementById('sh-query-slot').contains(document.getElementById('query-companies-picker'))`
+          )),
+        picker390
+      );
+      const o390 = await overflow();
+      check('no horizontal overflow with the picker open at 390', !o390.over, o390);
+      await contrast('company picker 390 light');
+      await shot('console-390-company-picker');
+      await key('Escape');
+      await sleep(250);
+    }
   }
   await viewport(1440, 900, 'light');
+
+  // ---- S09-D: the picker with many companies. The demo lists one; a directory of twenty, partial, is answered by a stub of the page's
+  // fetch for the route alone, in a new session: the filter above eight, the typed line of a partial list, the bound of sixteen, the
+  // layout and the contrast of it all. The DOM tests hold the behaviour; this is the real browser's look at it.
+  await nav('workspace');
+  await clickBtn('.console-header', '退出工作区');
+  await waitFor(`!document.getElementById('connection-overlay').hidden`, 'signed out before the stubbed directory');
+  await evalJs(
+    `(()=>{window.__realFetch=window.fetch;window.fetch=(url,o)=>String(url).includes('/companies?')?Promise.resolve(new Response(JSON.stringify({supported:true,partial:true,companies:Array.from({length:20},(_,i)=>({id:'c'+(i+1),name:'公司'+(i+1)}))}),{status:200,headers:{'Content-Type':'application/json'}})):window.__realFetch(url,o);})()`
+  );
+  await typeInto('#access-token', token);
+  await clickBtn('.connection-card', '连接工作区');
+  await waitFor(
+    `document.getElementById('connection-overlay').hidden&&document.querySelectorAll('#query-companies-picker .company-option').length===20&&!document.getElementById('preview').disabled`,
+    'the picker with twenty companies',
+    30000
+  );
+  await sleep(300);
+  const many = await evalJs(PICKER);
+  check(
+    'twenty companies: the filter above eight, the typed line of a partial list, nothing chosen for the person, the list inside its cell',
+    !!many && many.count === 20 && !many.filterHidden && !many.typedHidden && !many.chosen && many.width > 0,
+    many
+  );
+  await typeInto('#query-companies-filter', '公司2');
+  check(
+    'the filter narrows the list by name',
+    await evalJs(
+      `[...document.querySelectorAll('#query-companies-picker .company-option:not([hidden])')].map(o=>o.querySelector('.company-name').textContent).join()==='公司2,公司20'`
+    ),
+    await evalJs(
+      `[...document.querySelectorAll('#query-companies-picker .company-option:not([hidden])')].map(o=>o.querySelector('.company-name').textContent)`
+    )
+  );
+  await evalJs(
+    `(()=>{const f=document.getElementById('query-companies-filter');f.value='';f.dispatchEvent(new Event('input',{bubbles:true}));})()`
+  );
+  for (let i = 1; i <= 16; i++) await click(`#query-companies-picker input[value="c${i}"]`);
+  check(
+    'the sixteenth chosen disables the rest, and the line under the list says why',
+    await evalJs(
+      `[...document.querySelectorAll('#query-companies-picker input[type=checkbox]')].filter(b=>b.disabled).length===4&&document.getElementById('query-companies-note').textContent.startsWith('已选 16 家')&&!document.getElementById('query-companies-note').hidden`
+    ),
+    await evalJs(`document.getElementById('query-companies-note').textContent`)
+  );
+  await shot('console-03b-company-picker-many');
+  await contrast('company picker with twenty companies 1440 light');
+  check('no horizontal overflow with twenty companies at 1440', !(await overflow()).over, await overflow());
+  await evalJs(`window.fetch=window.__realFetch`);
 
   // ---- sign out --------------------------------------------------------------------------------------------------------------------------
   await nav('workspace');
