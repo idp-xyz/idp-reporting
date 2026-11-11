@@ -52,7 +52,7 @@
 <li><strong>看结果、导出。</strong>报表工作台显示表格与服务端合计；有了冻结快照就能导出 Excel / PDF，下载前会校验文件摘要。</li>
 <li><strong>组一个看板。</strong>看板工作室：添加指标卡、明细表、柱状图，点"发布"——有未保存修改时它会先保存为新版本再发布。</li>
 <li><strong>从样例做一张单据。</strong>模板中心的 37 个示例模板任选一个"复制到我的模板"，把示例字段对应到你的数据集字段，进入文档工作室调整后发布。</li>
-<li><strong>正式出具。</strong>用"打开已发布版本"打开一个已发布模板，在"检查与发布 → 正式出具"里按冻结快照的某一行出具，来源产品确认后拿到编号（如 <code>AR-000001</code>）并下载。</li>
+<li><strong>正式出具。</strong>在应用栏的“出具”页选一张已发布模板，按冻结快照的某一行出具（文档工作室的“检查与发布 → 正式出具”也通向这一页），来源产品确认后拿到编号（如 <code>AR-000001</code>）并下载。</li>
 <li><strong>随时看任务。</strong>应用栏的"任务"在任何页面上拉开任务面板：快照、导出、出具任务的状态、取消、下载、查看结果，以及按任务 ID 恢复。</li>
 </ol>
 <div class="pair">
@@ -67,7 +67,7 @@
 <li><strong>工作室</strong>（文档工作室、模板中心、看板工作室）：在页眉下方、应用栏右侧占满其余空间，各有自己的工具栏（面包屑、标题与状态、版本、保存、发布等）、侧栏、检查器与状态栏，按设计原型的样式。</li>
 </ul>
 <figure><img src="img/02-home.png" alt="登录后的报表工作台"><figcaption><b>登录后</b>左侧应用栏（任务带角标）、页眉（数据芯片、环境标记、身份、退出）、报表工作台：还没有结果时，空状态里是三步工作流程。</figcaption></figure>
-<figure><img src="img/24-studio.png" alt="文档工作室"><figcaption><b>文档工作室</b>顶栏（模板名、状态徽标、版本、保存版本、预览与导出、发布）、五个功能区页签、组件库、A4 画布、页面属性检查器、状态栏。应用栏仍在最左侧。</figcaption></figure>
+<figure><img src="img/24-studio.png" alt="文档工作室"><figcaption><b>文档工作室</b>顶栏（模板名、状态徽标、保存、预览与导出、发布、历史）、五个功能区页签、组件库、A4 画布、页面属性检查器、状态栏。应用栏仍在最左侧。</figcaption></figure>
 <div class="pair">
 <figure><img src="img/34-dark-workbench.png" alt="暗色主题"><figcaption><b>暗色</b>跟随系统偏好；嵌入页由产品页面指定。</figcaption></figure>
 <figure><img src="img/35-dark-dashboard.png" alt="暗色看板工作室"><figcaption><b>暗色看板工作室</b>同一套令牌推导。</figcaption></figure>
@@ -94,8 +94,8 @@
 <tr><td>创建快照</td><td>后台任务生成冻结结果；分页稳定；可导出、可出具。</td></tr>
 <tr><td>重新校验</td><td>重新读取当前快照页或重新预览。</td></tr>
 <tr><td>导出 Excel / PDF</td><td>导出任务完成后下载；下载前校验内容类型、文件头与 SHA-256。PDF 仅在服务端启用渲染器时出现。</td></tr>
-<tr><td>报表布局设计器</td><td>折叠区：选择列、顺序、对齐。顶部一条和两个工作室相同的工具栏：版本、保存版本、发布，左边的徽标说明草稿 / 已保存 / 已发布。有未保存修改时“发布”给出“保存并发布”。只影响屏幕显示，Excel 仍导出完整列。</td></tr></table>
-<figure><img src="img/09-layout-designer.png" alt="布局版本与发布指针"><figcaption><b>布局 · 版本</b>保存版本列表与发布指针：把某个版本恢复到编辑器（未保存的修改），或发布某个保存版本（发布历史版本就是回退）；刷新发布状态、打开已发布版本、另存为新布局也在这里。</figcaption></figure>
+<tr><td>报表布局设计器</td><td>折叠区：选择列、顺序、对齐。顶部一条和两个工作室相同的工具栏：保存、发布、历史，左边的徽标说明草稿 / 已保存 / 已发布。有未保存修改时“发布”给出“保存并发布”或“取消”。只影响屏幕显示，Excel 仍导出完整列。</td></tr></table>
+<figure><img src="img/09-layout-designer.png" alt="布局的历史"><figcaption><b>布局 · 历史</b>每次保存是一个版本；列表标出“已发布”与“当前打开”，页脚写“当前发布”。每个版本可以“打开”（载入编辑器，是未保存的修改；打开后保存会成为下一个版本）或“发布此版本”（发布较早的版本就是回退）；已发布的版本上有“撤回发布”；“复制为新布局”在页脚。（截图是 S09-F 之前的，词已改。）</figcaption></figure>
 <div class="pair">
 <figure><img src="img/10-refused-company.png" alt="越权公司被拒"><figcaption><b>越权</b>输入的 <code>company_other</code> 被来源拒绝，不显示任何行（它不在演示列出的公司里，只能在来源没有名单或名单不完整时输入）。</figcaption></figure>
 <figure><img src="img/11-shipment-preview.png" alt="第二个产品连接"><figcaption><b>第二个产品连接</b>运单数据集：整数 <code>9007199254740993</code> 原样显示，无币种。</figcaption></figure>
@@ -106,16 +106,16 @@
 <figure><img src="img/12-dashboard-widgets.png" alt="看板组件"><figcaption><b>三种组件</b>指标卡（服务端原范围合计）、明细表（当前结果页）、当前页柱状图（前 50 行，中央零线，负数向左，精确值见标签）。左侧组件库，右侧检查器，底部状态栏。</figcaption></figure>
 <div class="pair">
 <figure><img src="img/13-dashboard-structure.png" alt="结构面板"><figcaption><b>组件与顺序</b>上移 / 下移 / 移除，与卡片上的按钮同一功能。</figcaption></figure>
-<figure><img src="img/14-dashboard-save-publish.png" alt="保存并发布"><figcaption><b>发布前确认</b>有未保存修改时按钮是"保存并发布"：先保存为下一版本，再把发布指针移过去。</figcaption></figure>
+<figure><img src="img/14-dashboard-save-publish.png" alt="保存并发布"><figcaption><b>发布前确认</b>有未保存修改时按钮是“保存并发布”：先保存为下一个版本，再发布它；“取消”什么也不发布。</figcaption></figure>
 </div>
-<figure><img src="img/15-dashboard-versions.png" alt="看板版本与发布指针"><figcaption><b>看板 · 版本</b>顶栏的“版本”打开与文档工作室相同的对话框：保存版本列表、恢复到编辑器、发布此保存版本、撤回发布；刷新发布状态与历史、打开已发布看板、另存为新看板，以及“打开其他看板或指定版本”。</figcaption></figure>
+<figure><img src="img/15-dashboard-versions.png" alt="看板的历史"><figcaption><b>看板 · 历史</b>顶栏的“历史”打开与文档工作室相同的对话框：版本卡片（标出“已发布”与“当前打开”）、打开、发布此版本、已发布版本上的撤回发布；页脚是“当前发布”与“复制为新看板”。“打开其他看板或指定版本”在检查器“文件”页签的“高级”里。（截图是 S09-F 之前的，词已改。）</figcaption></figure>
 <h3>状态徽标</h3>
 <table><tr><th>徽标</th><th>含义</th></tr>
 <tr><td><span class="pill b">未查询</span></td><td>没有当前数据。</td></tr>
 <tr><td><span class="pill b">草稿</span></td><td>有数据，尚未保存到服务器。</td></tr>
 <tr><td><span class="pill b">已保存 vN</span></td><td>与服务器第 N 版一致。</td></tr>
-<tr><td><span class="pill g">已发布 vN</span></td><td>发布指针指向第 N 版（需读过发布状态）。</td></tr>
-<tr><td><span class="pill a">… · 有未保存修改</span></td><td>画布与保存版本不同；"发布"会先保存。</td></tr></table>
+<tr><td><span class="pill g">已发布 vN</span></td><td>当前发布是第 N 版（需读过发布状态：打开“历史”或按“发布”都会读）。</td></tr>
+<tr><td><span class="pill a">… · 有未保存修改</span></td><td>画布与已保存的版本不同；“发布”会先保存。</td></tr></table>
 <div class="note">看板只保存组件与字段绑定，不含数据、令牌或公司范围；每个看板至多 12 个组件，配置至多 64 KiB；"文件"页签可导出 / 导入 JSON。</div>
 
 <h2 id="p-library">模板中心</h2>
@@ -139,7 +139,7 @@
 </div>
 <div class="pair">
 <figure><img src="img/27-studio-check.png" alt="边界样本检查"><figcaption><b>检查</b>边界样本：用模板检查快照的首行、末行与最长 / 最短值的行，不渲染 PDF。</figcaption></figure>
-<figure><img src="img/28-studio-versions.png" alt="版本历史"><figcaption><b>版本历史与发布指针</b>预览此版本、恢复到编辑器（恢复 ≠ 重新发布）、撤回发布、发布此保存版本。</figcaption></figure>
+<figure><img src="img/28-studio-versions.png" alt="历史"><figcaption><b>历史</b>每个版本：预览此版本、打开（打开 ≠ 发布；打开后保存会成为下一个版本）、发布此版本；已发布的版本上有撤回发布。（截图是 S09-F 之前的，词已改。）</figcaption></figure>
 </div>
 <div class="pair">
 <figure><img src="img/29-studio-publish.png" alt="发布前确认"><figcaption><b>发布前确认</b>版本、名称、数据集、元素数、校验状态；有未保存修改时按钮为"保存并发布"。</figcaption></figure>
@@ -147,7 +147,7 @@
 </div>
 <h3>正式出具</h3>
 <div class="pair">
-<figure><img src="img/31-studio-issue-dialog.png" alt="正式出具对话框"><figcaption><b>正式出具与出具记录</b>只接受"打开已发布版本"后未改动的发布版本，按冻结快照的行（2.0 模板按分组）生成。</figcaption></figure>
+<figure><img src="img/31-studio-issue-dialog.png" alt="正式出具对话框"><figcaption><b>正式出具与出具记录</b>（嵌入页的对话框；控制台用“出具”页）只接受当前发布版本且编辑器未改动，按冻结快照的行（2.0 模板按分组）生成。</figcaption></figure>
 <figure><img src="img/32-issued.png" alt="出具完成"><figcaption><b>出具完成</b>来源产品确认编号 <code>No. AR-000001</code>，PDF 通过摘要校验后下载为 <code>issued-AR-000001.pdf</code>。</figcaption></figure>
 </div>
 <div class="note warn">编号由来源产品分配、文件由来源产品确认，平台不自己编号。排队中的出具任务可取消，执行中的不能；失败时任务列表写明原因（<code>AUTH_SCOPE_DENIED</code> 来源拒绝、<code>ISSUE_UNRECONCILED</code> 未能作废预留，需联系管理员）。</div>
@@ -217,9 +217,9 @@
 <div class="case"><h4><span class="id">C10</span>示例预览与复制</h4><dl><dt>前置</dt><dd>有当前数据（预览即可）</dd><dt>步骤</dt><dd>① 任一示例 → 预览 → 生成 PDF 预览 ② 复制 → 映射（客户 → customer.id，金额 → ar.open_balance）→ 复制并进入设计器</dd><dt>预期</dt><dd>① PDF 带 PREVIEW，用示例自带行；② 副本是 2.1 模板版本 1，在工作室打开；没有数据时拒绝行提供"选择数据…"</dd><dt>自动化</dt><dd>DOM、基线</dd></dl></div>
 <div class="case"><h4><span class="id">C11</span>新建向导到标签预设</h4><dl><dt>前置</dt><dd>有当前数据</dd><dt>步骤</dt><dd>新建模板 → 空白模板 → 预设 <code>label_100x100</code> → 下一步 → 名称 → 创建</dd><dt>预期</dt><dd>画布按 100 × 100 mm 画，仍有印章条；列取结果前几列</dd><dt>自动化</dt><dd>DOM、浏览器</dd></dl></div>
 <div class="case"><h4><span class="id">C12</span>文档工作室：边界样本与预览</h4><dl><dt>前置</dt><dd>冻结快照，打开一张模板</dd><dt>步骤</dt><dd>① 检查与发布 → 边界样本 ② 预览与导出</dd><dt>预期</dt><dd>① 检查页签列出首行、末行、最长 / 最短值的行与结论（图 27）；② PDF 预览带 PREVIEW，页码器显示页数</dd><dt>自动化</dt><dd>DOM（有 Typst 时）</dd></dl></div>
-<div class="case"><h4><span class="id">C13</span>版本、恢复与撤回</h4><dl><dt>前置</dt><dd>保存两版（造数据里"客户往来对账单"有 v1、v2）</dd><dt>步骤</dt><dd>版本对话框：预览 v1 → 恢复到编辑器 → 发布 v2 → 撤回发布</dd><dt>预期</dt><dd>恢复只是未保存修改，不改发布指针；撤回后"当前发布 无"</dd><dt>自动化</dt><dd>DOM（S06-A）</dd></dl></div>
+<div class="case"><h4><span class="id">C13</span>版本、恢复与撤回</h4><dl><dt>前置</dt><dd>保存两版（造数据里"客户往来对账单"有 v1、v2）</dd><dt>步骤</dt><dd>“历史”：预览 v1 → 打开 → 发布 v2 → 撤回发布</dd><dt>预期</dt><dd>打开只是未保存修改，不改变当前发布；撤回后“当前发布：无”</dd><dt>自动化</dt><dd>DOM（S06-A）</dd></dl></div>
 <div class="case"><h4><span class="id">C14</span>保存并发布（文档）</h4><dl><dt>前置</dt><dd>模板有未保存修改</dd><dt>步骤</dt><dd>发布</dd><dt>预期</dt><dd>按钮"保存并发布"、脚注"先保存为新版本，再发布它"；确认后徽标 已发布 vN</dd><dt>自动化</dt><dd>DOM（S07-B）</dd></dl></div>
-<div class="case"><h4><span class="id">C15</span>正式出具（按行）</h4><dl><dt>前置</dt><dd>已发布 1.x 模板（如"演示 · 出库装箱单"）、冻结快照、<code>normal</code> 模式</dd><dt>步骤</dt><dd>① 模板中心 → 编辑 ② 打开已发布版本 ③ 检查与发布 → 正式出具 ④ 出具第 1 行</dd><dt>预期</dt><dd>任务先"编号待来源产品确认"，成功后 <code>No. AR-0000NN</code>，下载 <code>issued-AR-0000NN.pdf</code>（图 31、32）；改动画布后再出具被拒</dd><dt>自动化</dt><dd>DOM（S03-G/H）</dd></dl></div>
+<div class="case"><h4><span class="id">C15</span>正式出具（按行）</h4><dl><dt>前置</dt><dd>已发布 1.x 模板（如"演示 · 出库装箱单"）、冻结快照、<code>normal</code> 模式</dd><dt>步骤</dt><dd>① 创建快照 ② 应用栏“出具” ③ 选模板 → 正式出具 ④ 确认出具（第 1 行）</dd><dt>预期</dt><dd>任务先"编号待来源产品确认"，成功后 <code>No. AR-0000NN</code>，下载 <code>issued-AR-0000NN.pdf</code>（图 31、32）；改动画布后再出具被拒</dd><dt>自动化</dt><dd>DOM（S03-G/H）</dd></dl></div>
 <div class="case"><h4><span class="id">C16</span>正式出具（按分组）</h4><dl><dt>前置</dt><dd>已发布 2.0 分带模板，分组字段 = 客户</dd><dt>步骤</dt><dd>出具面板选分组 <code>customer_c</code></dd><dt>预期</dt><dd>任务标题带分组键；运单数据集前缀 <code>SH</code></dd><dt>自动化</dt><dd>DOM（S03-K）</dd></dl></div>
 <div class="case"><h4><span class="id">C17</span>任务面板与按 ID 恢复</h4><dl><dt>前置</dt><dd>造数据脚本打印的任务 ID</dd><dt>步骤</dt><dd>① 在看板工作室里打开任务面板 ② 粘贴 ID → 打开任务 ③ 查看结果 ④ 伪造一个 ID</dd><dt>预期</dt><dd>① 面板盖在当前页上，Esc 放回；② 任务出现在列表；③ 落到工作台并关面板；④ "未找到"</dd><dt>自动化</dt><dd>DOM（S07-B）、基线</dd></dl></div>
 <div class="case"><h4><span class="id">C18</span>排队任务的取消</h4><dl><dt>前置</dt><dd><code>paused</code> 模式</dd><dt>步骤</dt><dd>创建快照 → 任务面板 → 取消</dd><dt>预期</dt><dd>任务停在"排队中"，取消后"已取消"，没有结果可查看</dd><dt>自动化</dt><dd>DOM（恢复夹具）、手工</dd></dl></div>
@@ -236,14 +236,14 @@
 <tr><td>"发布"按钮显示"保存并发布"</td><td>画布有未保存修改，确认即先保存为新版本再发布；不想保存就取消。</td></tr>
 <tr><td>模板中心里"编辑"是灰的</td><td>没有当前数据，或模板绑定的数据集与当前数据集不同；提示里写了原因。</td></tr>
 <tr><td>导出 PDF 按钮不见了 / 样例预览被拒</td><td>服务端未启用 PDF 渲染器（<code>nopdf</code> 模式）；能力页会显示导出格式只有 xlsx。</td></tr>
-<tr><td>出具按钮不出现</td><td>只有"打开已发布版本"后未改动的模板才能出具；需要冻结快照。</td></tr>
+<tr><td>出具按钮不出现</td><td>出具在应用栏的“出具”页：需要冻结快照和一张当前数据集的已发布模板。嵌入页的对话框只接受当前发布版本且未改动的模板。</td></tr>
 <tr><td>只有一个身份</td><td>演示只有 <code>user_a</code>；"另一个身份看不到我的东西"在服务端测试里验证。</td></tr>
 <tr><td>来源拒绝 / 不可用 / 出具未对账</td><td>本机 UI 无法触发，属于服务端测试夹具。</td></tr></table>
 
 <h2 id="keys">快捷键与术语</h2>
 <table><tr><th>快捷键</th><th>作用（文档工作室）</th></tr>
 <tr><td><kbd>Ctrl/⌘ K</kbd></td><td>搜索命令（命令面板）</td></tr>
-<tr><td><kbd>Ctrl/⌘ S</kbd></td><td>保存版本</td></tr>
+<tr><td><kbd>Ctrl/⌘ S</kbd></td><td>保存</td></tr>
 <tr><td><kbd>Ctrl/⌘ D</kbd></td><td>创建所选元素的副本</td></tr>
 <tr><td><kbd>Ctrl/⌘ C / X / V</kbd></td><td>复制 / 剪切 / 粘贴元素（模板内剪贴板）</td></tr>
 <tr><td><kbd>方向键</kbd> / <kbd>Shift</kbd> + 点击 / <kbd>Space</kbd> + 拖动</td><td>微调 0.1 mm / 多选 / 平移画布</td></tr>
@@ -251,8 +251,8 @@
 <table><tr><th>术语</th><th>含义</th></tr>
 <tr><td>查询预览</td><td>实时结果，可能是有界预览；不能导出、不能出具。</td></tr>
 <tr><td>冻结快照</td><td>服务端固定的一份结果；分页稳定；可导出、可出具；有保留期。</td></tr>
-<tr><td>保存版本</td><td>模板 / 看板 / 布局在服务端的不可变版本（v1、v2 …）。</td></tr>
-<tr><td>发布</td><td>把发布指针移到某个保存版本；撤回是单独操作；恢复到编辑器不是发布。</td></tr>
+<tr><td>版本</td><td>每次保存在服务端留下的一个版本（v1、v2 …），之后不再改变；“历史”列出它们。</td></tr>
+<tr><td>发布</td><td>让某个版本成为当前发布版本；撤回发布是单独操作；“历史”里的“打开”不是发布。</td></tr>
 <tr><td>正式出具</td><td>按已发布模板与冻结快照的行（或分组）生成带编号的正式文件，编号由来源产品分配。</td></tr>
 <tr><td>示例模板</td><td>随平台提供的 37 个只读样例；复制后才是你的模板。</td></tr>
 <tr><td>页面预设</td><td>A4 / A4 横 / A5 / 4×6 in / 100×150 / 100×100 标签。</td></tr></table>

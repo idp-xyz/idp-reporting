@@ -421,7 +421,7 @@ async function main() {
   await idle();
   await click('#st-versions');
   await waitFor(
-    `document.querySelectorAll('#st-version-list .version-card').length>=1&&document.getElementById('doc-release-status').textContent.includes('发布修订')`,
+    `document.querySelectorAll('#st-version-list .version-card').length>=1&&document.getElementById('st-version-note').textContent.startsWith('当前发布：')`,
     'versions'
   );
   await sleep(300);
@@ -618,7 +618,7 @@ async function main() {
   await sleep(200);
   await shot('studio-15-publish-confirm');
   await click('#st-pub-confirm');
-  await waitFor(`document.getElementById('doc-release-status').textContent.includes('已发布版本 2')`, 'published v2');
+  await waitFor(`document.getElementById('st-state').textContent==='已发布 v2'`, 'published v2');
   await idle();
   check(
     'the badge says 已发布 v2 after the confirmation',
@@ -631,9 +631,9 @@ async function main() {
   await idle();
   await sleep(200);
   check(
-    'the versions dialog marks the published pointer',
+    '历史 marks the published version, which is the one open in the editor (S09-F)',
     await evalJs(
-      `[...document.querySelectorAll('#st-version-list .pill')].map(e=>e.textContent).join()==='已发布,已保存'`
+      `[...document.querySelectorAll('#st-version-list .pill')].map(e=>e.textContent).join()==='已发布,当前打开'`
     )
   );
   await shot('studio-16-versions-published');

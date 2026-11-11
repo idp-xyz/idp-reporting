@@ -294,7 +294,7 @@ async function coreTasks() {
     await sleep(400);
     if (await evalJs(`document.getElementById('bd-d-publish').hidden`)) {
       await evalJs(`window.__ux.deadEnd()`);
-      await clickBtn('#bd-studio .topbar', '保存版本');
+      await clickBtn('#bd-studio .topbar', '保存');
       await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'saved', 30000);
       await idle();
       await clickBtn('#bd-studio .topbar', '发布');
@@ -397,7 +397,7 @@ async function coreTasks() {
       '上移'
     );
     await waitFor(`document.getElementById('layout-status').textContent.startsWith('布局已应用')`, 'the column moved');
-    const published = `document.getElementById('layout-release-info').textContent.startsWith('已发布版本')`;
+    const published = `document.getElementById('layout-state').textContent.startsWith('已发布 v')`;
     const confirm = `(${btnIn('[role=dialog]', '保存并发布')}||${btnIn('[role=dialog]', '确认发布')})`;
     for (let refusals = 0; ; refusals++) {
       await clickBtn('#report-designer', '发布');

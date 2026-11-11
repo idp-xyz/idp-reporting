@@ -107,7 +107,6 @@ window.createReportingDocuments = function (ports) {
     saved = null,
     release = null,
     backgrounds = [],
-    publishedOpen = false,
     past = [],
     future = [],
     scope = '',
@@ -874,8 +873,6 @@ window.createReportingDocuments = function (ports) {
   const validID = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
   function resetRelease() {
     release = null;
-    $('doc-release-status').textContent = '请先读取发布状态。';
-    $('doc-release-history').replaceChildren();
     touch();
   }
   function serverEntry(v, id, version) {
@@ -899,7 +896,7 @@ window.createReportingDocuments = function (ports) {
   function cleanSaved() {
     const id = savedID();
     if (JSON.stringify(canonical(config)) !== JSON.stringify(canonical(saved.config)))
-      throw Error('请先保存当前修改，再发布或按保存版本预览。');
+      throw Error('请先保存当前修改，再发布或按已保存的版本预览。');
     return id;
   }
   function showRelease(v) {
@@ -929,18 +926,8 @@ window.createReportingDocuments = function (ports) {
         throw Error('无法验证发布历史。');
       published = e.action === 'publish' ? e.version : 0;
     }
-    if (published !== v.published_version) throw Error('发布历史与指针不一致。');
+    if (published !== v.published_version) throw Error('模板的发布状态与发布记录不一致。');
     release = v;
-    $('doc-release-status').textContent =
-      '发布修订 ' + v.revision + ' · ' + (v.published_version ? '已发布版本 ' + v.published_version : '当前未发布');
-    $('doc-release-history').replaceChildren();
-    for (const e of v.history)
-      $('doc-release-history').append(
-        node(
-          'li',
-          '修订 ' + e.revision + ' · ' + (e.action === 'publish' ? '发布版本 ' + e.version : '撤回') + ' · ' + e.at
-        )
-      );
     touch();
   }
   function saveServer(fresh, then) {
@@ -956,7 +943,6 @@ window.createReportingDocuments = function (ports) {
           serverEntry(v, prior?.id, (prior?.version || 0) + 1);
           if (JSON.stringify(canonical(v.config)) !== JSON.stringify(document)) throw Error('服务器保存内容不一致。');
           saved = v;
-          publishedOpen = false;
           resetRelease();
           if (then) setTimeout(then, 0);
           $('doc-server-status').textContent = '已保存模板 ' + v.id + ' · 版本 ' + v.version;
@@ -1038,13 +1024,14 @@ window.createReportingDocuments = function (ports) {
       );
     });
   }
-  $('doc-release-read').addEventListener('click', () => readRelease());
-  // pick: a saved version other than the one open in the editor (the versions dialog); the editor's own content then does not matter.
-  function changeRelease(name, pick) {
+  // pick: a version picked in 历史, published as it is (the editor's own content then does not matter; an older one is a rollback); without
+  // it the editor's version, which must be saved as it is. conflict: told when the server refused because the release state had changed
+  // since it was read (S09-F: the studio's 发布前确认 reads it again and offers 重试).
+  function changeRelease(name, pick, conflict) {
     action(() => {
-      const other = name === 'publish' && pick && pick !== saved?.version,
-        id = name === 'publish' && !other ? cleanSaved() : savedID();
-      if (!release) throw Error('请先刷新发布状态，冲突或结果未确认时必须重新读取。');
+      const picked = name === 'publish' && !!pick,
+        id = name === 'publish' && !picked ? cleanSaved() : savedID();
+      if (!release) throw Error('尚未读取到发布状态，请重试。');
       if (name === 'withdraw' && !release.published_version) throw Error('当前没有发布版本。');
       const expected = release.revision,
         version = name === 'publish' ? pick || saved.version : 0;
@@ -1053,46 +1040,41 @@ window.createReportingDocuments = function (ports) {
         window.reportingTemplateSpace.path('/document-templates/') + id + '/release',
         {method: 'POST', body: {action: name, version, expected_revision: expected}},
         v => {
-          if (v.revision !== expected + 1 || v.published_version !== version) throw Error('意外发布修订，请刷新核对。');
+          if (v.revision !== expected + 1 || v.published_version !== version)
+            throw Error('服务器返回了意外的发布状态，请打开“历史”核对。');
           showRelease(v);
         },
-        '模板发布变更'
+        '模板发布变更',
+        name === 'publish' ? conflict : undefined
       );
     });
   }
-  $('doc-release-publish').addEventListener('click', () => changeRelease('publish'));
   $('doc-release-withdraw').addEventListener('click', () => changeRelease('withdraw'));
-  function openPublishedOf(id) {
-    action(() => {
-      if (!validID(id)) throw Error('请选择有效模板。');
-      resetRelease();
-      ports.exchange(
-        window.reportingTemplateSpace.path('/document-templates/') + id + '/published',
-        undefined,
-        v => {
-          serverEntry(v, id);
-          replaceTemplate(v.config);
-          saved = v;
-          publishedOpen = true;
-          resetRelease();
-          $('doc-server-status').textContent = '已打开发布模板 ' + id + ' · 版本 ' + v.version;
-        },
-        '发布模板打开'
-      );
-    });
-  }
-  $('doc-published-open').addEventListener('click', () => action(() => openPublishedOf(savedID())));
   // The number is the source product's (1..32 of A-Za-z0-9._-, starting with a letter or digit): a string, present only on a succeeded record.
   const validNumber = n => typeof n === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(n);
   function issuance() {
     previews();
     if (!ports.issuance()) throw Error('服务端未启用正式出具。');
   }
+  // The dialog's issue (the embed page; the console has the 出具 page, S09-G) takes the published version only: the editor must hold the
+  // saved version the release state names, unchanged. The state is read here when this session has not read it yet (S09-F: there is no
+  // 打开已发布模板 ritual; a version is opened as it is through 高级 · 打开指定版本, or by the address the embed was given).
   $('doc-issue').addEventListener('click', () =>
     action(() => {
       issuance();
       const id = cleanSaved();
-      if (!publishedOpen) throw Error('正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。');
+      if (!release) {
+        readRelease(() => $('doc-issue').click());
+        return;
+      }
+      if (release.published_version !== saved.version)
+        throw Error(
+          '正式出具只接受当前发布版本' +
+            (release.published_version ? '（v' + release.published_version + '）' : '（尚未发布）') +
+            '：编辑器打开的是 v' +
+            saved.version +
+            '。'
+        );
       const row = Number($('doc-row').value);
       if (!ports.snapshot() || !Number.isSafeInteger(row) || row < 1 || row > 1000)
         throw Error('请先打开冻结快照并填写有效行号。');
@@ -1280,14 +1262,12 @@ window.createReportingDocuments = function (ports) {
       future = [];
     }
     config = next;
-    publishedOpen = false;
     showChecks(null);
     render();
     $('doc-status').textContent = '模板已更新；配置不含业务数据。';
   }
   const apply = (d, label) => install(d, label || '修改'),
     replaceTemplate = d => install(d);
-  // Undo and redo never restore "opened published, unedited": publishedOpen stays false, so issuing needs the published version opened again.
   function stepBack(from, to, verb) {
     const step = from.pop();
     try {
@@ -1300,7 +1280,6 @@ window.createReportingDocuments = function (ports) {
     }
     to.push({config, label: step.label});
     config = step.config;
-    publishedOpen = false;
     showChecks(null);
     render();
     $('doc-status').textContent = verb + '：' + step.label + '。';
@@ -3091,8 +3070,8 @@ window.createReportingDocuments = function (ports) {
     sameBinding(saved.config) &&
     JSON.stringify(canonical(config)) !== JSON.stringify(canonical(saved.config));
   const own = () => !!saved && sameBinding(saved.config);
-  // The published version as far as this session knows: the release pointer once it was read, or the published version the editor opened.
-  const pointer = () => (!own() ? 0 : publishedOpen ? saved.version : release ? release.published_version : 0);
+  // The published version as far as this session knows: the release state once it was read (历史 and 发布 read it; S09-F).
+  const pointer = () => (!own() ? 0 : release ? release.published_version : 0);
   function badge() {
     if (!own()) return '草稿';
     const pub = pointer(),
@@ -3511,7 +3490,7 @@ window.createReportingDocuments = function (ports) {
     fetchVersion(n, v =>
       action(() => {
         apply(v.config, '恢复到版本 v' + n);
-        status('已把保存版本 v' + n + ' 载入编辑器，是未保存的修改；发布指针不变。');
+        status('已打开 v' + n + '，是未保存的修改；保存会成为下一个版本，当前发布不变。');
       })
     );
   }
@@ -3676,7 +3655,6 @@ window.createReportingDocuments = function (ports) {
         saved: own() ? saved : null,
         release,
         pointer: pointer(),
-        published: publishedOpen,
         dirty: dirty(),
         badge: badge(),
         slot: slot(),
@@ -3720,10 +3698,9 @@ window.createReportingDocuments = function (ports) {
     restoreVersion,
     loadChooser,
     readRelease,
-    openPublishedOf,
     listServer,
     previewVersion: n => action(() => previewSaved(n)),
-    publish: n => changeRelease('publish', n),
+    publish: (n, conflict) => changeRelease('publish', n, conflict),
     // 保存并发布 (S07-B): a save that calls back once the server has the version, so the studio can read the release and publish it in one go.
     save: then => saveServer(false, then),
     withdraw: () => changeRelease('withdraw'),
@@ -3808,7 +3785,6 @@ window.createReportingDocuments = function (ports) {
       $('doc-background-status').textContent = '尚无当前授权模板。';
       $('doc-pdf').hidden = $('doc-saved-pdf').hidden = true;
       $('doc-issue').hidden = true;
-      publishedOpen = false;
       $('doc-issues-body').replaceChildren();
       $('doc-issues-wrap').hidden = true;
       $('doc-issue-status').textContent = '正式出具需要已发布模板、冻结快照与行号。';

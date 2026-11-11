@@ -66,14 +66,25 @@
     changed: () => {
       if (board) board.sync();
     },
-    exchange: (path, options, apply, label) =>
+    // conflict (S09-F): told when a publish was refused because the release state had changed, so the studio's 发布前确认 can offer 重试.
+    exchange: (path, options, apply, label, conflict) =>
       perform(
         async m => {
-          const value = await request(path, options);
+          let value;
+          try {
+            value = await request(path, options);
+          } catch (error) {
+            if (conflict && releaseConflict(error) && current(m)) setTimeout(conflict, 0);
+            throw error;
+          }
           if (!current(m)) throw new Stale();
           apply(value);
         },
-        {label: label, uncertain: '操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'}
+        {
+          label: label,
+          uncertain: '操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请打开“历史”核对当前发布。',
+          conflict: conflict ? releaseConflictText : undefined,
+        }
       ),
   });
   const documentsPorts = {
@@ -190,15 +201,26 @@
       ),
     issued: (id, number, sha256) =>
       perform(m => download(id, m, 'pdf', issuedName(number), sha256), {label: '出具下载'}),
-    exchange: (path, options, apply, label) =>
+    // conflict (S09-F): told when a publish was refused because the release state had changed, so the studio's 发布前确认 can offer 重试.
+    exchange: (path, options, apply, label, conflict) =>
       perform(
         async m => {
-          const value = await request(path, options);
+          let value;
+          try {
+            value = await request(path, options);
+          } catch (error) {
+            if (conflict && releaseConflict(error) && current(m)) setTimeout(conflict, 0);
+            throw error;
+          }
           if (!current(m)) throw new Stale();
           apply(value);
           if (embedded) announce(path, options, value);
         },
-        {label, uncertain: '写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。'}
+        {
+          label,
+          uncertain: '写入结果未确认；保存请刷新模板列表，发布请打开“历史”核对当前发布。',
+          conflict: conflict ? releaseConflictText : undefined,
+        }
       ),
     check: (body, apply) =>
       perform(
@@ -695,8 +717,6 @@
     for (const c of state.controllers) c.abort();
     state.controllers.clear();
     state.releaseView = null;
-    $('layout-release-info').textContent = '尚未读取发布状态。';
-    $('layout-release-history').replaceChildren();
     state.savedLayout = null;
     state.layoutLatest = 0;
     $('layout-server-listing').replaceChildren();
@@ -799,6 +819,10 @@
       schedules: '已达到每个身份的定时报表上限，请删除不再需要的定时报表后再试',
     }[name];
   }
+  // S09-F (ADR 0014 decision 11): a publish the server refused because the release state had changed since it was read (another publish
+  // or withdrawal; the server's IDEMPOTENCY_CONFLICT). The designer's 发布前确认 reads the state again and offers 重试.
+  const releaseConflict = error => !!error && error.status === 409 && error.code === 'IDEMPOTENCY_CONFLICT';
+  const releaseConflictText = '发布状态已改变（另一处发布或撤回过）：已重新读取，可在发布前确认里重试。';
   function errorMessage(error) {
     if (error.code === 'QUOTA_EXCEEDED' && error.status === 429 && refusalQuotas.includes(error.quota))
       return quotaMessage(error.quota);
@@ -818,7 +842,7 @@
     if (error.status === 503) return '当前授权来源不可用，请稍后重试。';
     if (error.code === 'INTEGRITY_FAILURE') return '资源完整性校验失败，内容已停止显示。';
     if (error.code === 'TEMPLATE_NOT_PUBLISHED')
-      return '只能正式出具当前已发布的模板版本；请刷新发布状态、打开已发布模板后重试。';
+      return '只能正式出具当前已发布的模板版本；当前发布可能刚改变，请核对后重试。';
     if (error.status === 409) return '请求冲突、资源失效或完整性检查未通过，请重新查询。';
     if (error.status === 413) return '结果超过当前限额，请缩小范围。';
     if (error.code === 'IMAGE_INVALID')
@@ -858,9 +882,11 @@
       clearResult();
     notify(
       (context ? context.label + '：' : '') +
-        (context?.uncertain && !error.status && error.code !== 'INVALID_RESPONSE'
-          ? context.uncertain
-          : errorMessage(error)),
+        (context?.conflict && releaseConflict(error)
+          ? context.conflict
+          : context?.uncertain && !error.status && error.code !== 'INVALID_RESPONSE'
+            ? context.uncertain
+            : errorMessage(error)),
       'error'
     );
     // A quota refusal is the caller's own limit, not an error of the frame: the host is not told.
@@ -2404,8 +2430,6 @@
     if (state.savedLayout && !savedBindingMatches(state.savedLayout)) {
       state.savedLayout = null;
       state.releaseView = null;
-      $('layout-release-info').textContent = '尚未关联当前数据集的服务器布局。';
-      $('layout-release-history').replaceChildren();
       $('layout-server-status').textContent = '首次保存会为当前数据集创建新布局。';
     }
     if (!matchingLayout() || !state.layout.columns.every(c => state.lastResult.columns.some(k => k.id === c.id)))
@@ -2622,8 +2646,6 @@
     if (state.savedLayout?.id !== entry.id) {
       state.releaseView = null;
       state.layoutLatest = 0;
-      $('layout-release-info').textContent = '尚未读取此布局的发布状态。';
-      $('layout-release-history').replaceChildren();
     }
     state.savedLayout = entry;
     state.layoutLatest = Math.max(state.layoutLatest || 0, entry.version);
@@ -2664,65 +2686,50 @@
       throw new Failure(0, 'INVALID_RESPONSE');
     state.releaseView = {id: id, revision: value.revision, published: value.published_version};
     renderLayoutState();
-    $('layout-release-info').textContent = value.published_version
-      ? '已发布版本 ' + value.published_version + ' · 发布修订 ' + value.revision
-      : '未发布 · 发布修订 ' + value.revision;
-    $('layout-release-history').replaceChildren();
-    for (const event of value.history)
-      $('layout-release-history').append(
-        node(
-          'li',
-          event.at +
-            ' · ' +
-            (event.action === 'publish' ? '发布版本 ' + event.version : '撤回发布') +
-            ' · 修订 ' +
-            event.revision
-        )
-      );
   }
-  $('layout-release-status').addEventListener('click', () =>
-    layoutAction(() => {
-      const saved = releaseTarget();
-      perform(
-        async m => {
-          const value = await request('/layouts/' + saved.id + '/release');
-          if (!current(m)) throw new Stale();
-          showRelease(saved.id, value);
-        },
-        {label: '发布状态'}
-      );
-    })
-  );
-  // pick: a historical version from the version dialog, published as it is (a rollback); without it the editor's saved version, which must match the editor.
+  // pick: a version picked in 历史, published as it is (an older one is a rollback); without it the editor's saved version, which must
+  // match the editor. A publish the server refuses because the release state changed (409) hands the confirmation back for a 重试.
   function changeRelease(action, pick) {
     layoutAction(() => {
       const saved = releaseTarget(),
         release = state.releaseView,
-        other = action === 'publish' && pick && pick !== saved.version;
-      if (other && (!Number.isSafeInteger(pick) || pick < 1 || pick > state.layoutLatest))
-        refuse('请选择有效的保存版本。');
-      if (!release || release.id !== saved.id) refuse('请先刷新发布状态；冲突或结果未确认时必须重新读取。');
-      if (action === 'publish' && !other && !sameColumns(state.layout, saved.layout))
-        refuse('列或对齐有未保存的修改：请先保存版本，或用“发布”的保存并发布。');
+        picked = action === 'publish' && !!pick;
+      if (picked && (!Number.isSafeInteger(pick) || pick < 1 || pick > state.layoutLatest))
+        refuse('请选择有效的版本。');
+      if (!release || release.id !== saved.id) refuse('尚未读取到发布状态，请重试。');
+      if (action === 'publish' && !picked && !sameColumns(state.layout, saved.layout))
+        refuse('列或对齐有未保存的修改：请先保存，或用“发布”的保存并发布。');
       if (action === 'withdraw' && !release.published) refuse('当前没有已发布版本。');
       perform(
         async m => {
-          const value = await request('/layouts/' + saved.id + '/release', {
-            method: 'POST',
-            body: {
-              action: action,
-              version: action === 'publish' ? (other ? pick : saved.version) : 0,
-              expected_revision: release.revision,
-            },
-          });
+          let value;
+          try {
+            value = await request('/layouts/' + saved.id + '/release', {
+              method: 'POST',
+              body: {
+                action: action,
+                version: action === 'publish' ? (picked ? pick : saved.version) : 0,
+                expected_revision: release.revision,
+              },
+            });
+          } catch (error) {
+            if (action === 'publish' && releaseConflict(error) && current(m)) {
+              state.releaseView = null;
+              setTimeout(() => layoutVersions.conflict(), 0);
+            }
+            throw error;
+          }
           if (!current(m)) throw new Stale();
           showRelease(saved.id, value);
         },
-        {label: action === 'publish' ? '布局发布' : '撤回发布', uncertain: '操作结果尚未确认，请重新读取发布状态核对。'}
+        {
+          label: action === 'publish' ? '布局发布' : '撤回发布',
+          uncertain: '操作结果尚未确认，请打开“历史”核对当前发布。',
+          conflict: releaseConflictText,
+        }
       );
     });
   }
-  $('layout-release-publish').addEventListener('click', () => changeRelease('publish'));
   $('layout-release-withdraw').addEventListener('click', () => changeRelease('withdraw'));
   // ---- S07-G (ADR 0011): the layout designer's bar, its version dialog and 发布前确认, as the document studio has them ----
   // The saved layout of the current data set, and its release state once it was read (another layout's does not count).
@@ -2777,29 +2784,28 @@
   function restoreLayoutVersion(version) {
     layoutAction(() => {
       const saved = releaseTarget();
-      if (!Number.isSafeInteger(version) || version < 1 || version > state.layoutLatest)
-        refuse('请选择有效的保存版本。');
+      if (!Number.isSafeInteger(version) || version < 1 || version > state.layoutLatest) refuse('请选择有效的版本。');
       perform(
         async m => {
           const entry = await request('/layouts/' + saved.id + '?version=' + version);
           if (!current(m)) throw new Stale();
           if (entry.id !== saved.id || entry.version !== version) throw new Failure(0, 'INVALID_RESPONSE');
           applyLayout(entry.layout, true);
-          $('layout-status').textContent = '已把保存版本 v' + version + ' 载入编辑器，是未保存的修改；发布指针不变。';
+          $('layout-status').textContent =
+            '已打开 v' + version + '，是未保存的修改；保存会成为下一个版本，当前发布不变。';
           renderLayoutState();
         },
         {label: '布局版本'}
       );
     });
   }
-  // The confirmed publish (S07-G): a saved version is published as it is; unsaved changes, or no saved version yet, become the next
-  // version first (保存并发布, as the studios since S07-B).
+  // The confirmed publish (S07-G): a saved version is published as it is (the picked one, or the editor's); unsaved changes, or no saved
+  // version yet, become the next version first (保存并发布, as the studios since S07-B).
   function publishLayout(plan) {
     layoutAction(() => {
-      const fresh = !state.savedLayout || !savedBindingMatches(state.savedLayout),
-        historical = plan.historical;
+      const fresh = !state.savedLayout || !savedBindingMatches(state.savedLayout);
       if (!plan.saveFirst) {
-        changeRelease('publish', historical || undefined);
+        changeRelease('publish', plan.version || undefined);
         return;
       }
       // Save, read the new version's release state, publish it: the same three requests a person would make, in order, as one step.
@@ -2820,30 +2826,39 @@
           const state0 = await request('/layouts/' + entry.id + '/release');
           if (!current(m)) throw new Stale();
           showRelease(entry.id, state0);
-          const value = await request('/layouts/' + entry.id + '/release', {
-            method: 'POST',
-            body: {action: 'publish', version: entry.version, expected_revision: state0.revision},
-          });
+          let value;
+          try {
+            value = await request('/layouts/' + entry.id + '/release', {
+              method: 'POST',
+              body: {action: 'publish', version: entry.version, expected_revision: state0.revision},
+            });
+          } catch (error) {
+            if (releaseConflict(error) && current(m)) {
+              state.releaseView = null;
+              setTimeout(() => layoutVersions.conflict(), 0);
+            }
+            throw error;
+          }
           if (!current(m)) throw new Stale();
           showRelease(entry.id, value);
           renderLayoutState();
         },
         {
           label: '布局保存并发布',
-          uncertain: '保存或发布的结果尚未确认：请打开“版本”核对保存版本与发布状态，再决定是否重试。',
+          uncertain: '保存或发布的结果尚未确认：请打开“历史”核对版本与当前发布，再决定是否重试。',
+          conflict: releaseConflictText,
         }
       );
     });
   }
-  // The version dialog and 发布前确认 are the shared component (versions.js, S09-E); these ports are the layout designer's state,
-  // requests and words. Opening reads the list and the release state; 刷新发布状态 stays as the retry after a conflict.
+  // 历史 and 发布前确认 are the shared component (versions.js, S09-E; the words of S09-F); these ports are the layout designer's state,
+  // requests and words. Opening 历史 reads the list and the release state; a publish that finds the state changed comes back as a 重试.
   const layoutVersions = window.createReportingVersions({
     prefix: 'ly',
     ids: {withdraw: 'layout-release-withdraw', versionsButton: 'layout-versions', publishButton: 'layout-publish'},
     dialogs: lyDialogs,
     texts: {
       thing: '布局',
-      opened: '打开已发布版本',
       content: '列',
       dirty: '列或对齐有未保存的修改',
       count: ['列', '列'],
@@ -2887,23 +2902,6 @@
     restore: restoreLayoutVersion,
     publish: publishLayout,
   });
-  $('layout-release-open').addEventListener('click', () =>
-    layoutAction(() => {
-      const saved = releaseTarget();
-      perform(
-        async m => {
-          const entry = await request('/layouts/' + saved.id + '/published');
-          if (!current(m)) throw new Stale();
-          if (entry.id !== saved.id || !Number.isSafeInteger(entry.version) || entry.version < 1 || entry.version > 20)
-            throw new Failure(0, 'INVALID_RESPONSE');
-          applyLayout(entry.layout, true);
-          setSavedLayout(entry);
-          $('layout-server-status').textContent = '已打开发布版本 ' + entry.version + '；当前数据仍来自授权查询。';
-        },
-        {label: '打开发布版本'}
-      );
-    })
-  );
   function renderResult(result, query, meta) {
     checkResult(result);
     state.lastResult = result;

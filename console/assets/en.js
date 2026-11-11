@@ -14,8 +14,6 @@ window.reportingEnglish = {
   任务工作区: 'Tasks',
   操作记录: 'Audit log',
   能力与环境: 'Capabilities & environment',
-  '操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。':
-    'The result of the operation is not yet confirmed. For a save, refresh the server dashboard list; for a publish, refresh the publish status to check.',
   '图片超过512KiB。': 'Image exceeds 512KiB.',
   '文件读取长度不一致。': 'File read length mismatch.',
   图片上传: 'Image upload',
@@ -29,8 +27,6 @@ window.reportingEnglish = {
   '出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。':
     'Issue task submission not confirmed; refresh the issue records to check, and do not simply submit again (a pending submission reuses its original request ID).',
   出具下载: 'Issue download',
-  '写入结果未确认；保存请刷新模板列表，发布请刷新发布状态核对。':
-    'Write result not confirmed; for a save, refresh the template list; for a publish, refresh the publish status to check.',
   样本检查: 'Sample check',
   'PDF预览已通过摘要校验，下载已发起。': 'PDF preview passed digest verification; download started.',
   PDF预览: 'PDF preview',
@@ -59,7 +55,6 @@ window.reportingEnglish = {
   尚未查询: 'Not queried yet',
   查询结果: 'Query results',
   '选择数据集并填写公司范围后开始查询。': 'Select a dataset and enter the company scope to start querying.',
-  '尚未读取发布状态。': 'Publish status not loaded yet.',
   '尚未关联服务器布局。': 'No server layout linked yet.',
   选择数据集后显示批准组合: 'Approved combinations appear after selecting a dataset',
   未连接: 'Not connected',
@@ -82,8 +77,6 @@ window.reportingEnglish = {
   '服务繁忙，请稍后再试': 'Service busy; try again later',
   '当前授权来源不可用，请稍后重试。': 'The current authorisation source is unavailable; try again later.',
   '资源完整性校验失败，内容已停止显示。': 'Resource integrity check failed; the content is no longer shown.',
-  '只能正式出具当前已发布的模板版本；请刷新发布状态、打开已发布模板后重试。':
-    'Only the currently published template version can be issued officially; refresh the publish status, open the published template and try again.',
   '请求冲突、资源失效或完整性检查未通过，请重新查询。':
     'Request conflict, expired resource or failed integrity check; please query again.',
   '结果超过当前限额，请缩小范围。': 'The result exceeds the current limit; narrow the scope.',
@@ -195,7 +188,6 @@ window.reportingEnglish = {
   '此视图只能由产品页面以框架嵌入。': 'This view can only be embedded in a frame by a product page.',
   '布局已应用；数据和授权范围保持当前查询。':
     'Layout applied; data and authorisation scope remain from the current query.',
-  '尚未关联当前数据集的服务器布局。': 'No server layout linked to the current dataset yet.',
   '首次保存会为当前数据集创建新布局。': 'The first save creates a new layout for the current dataset.',
   '显示 {0}': 'Show {0}',
   上移: 'Move up',
@@ -217,40 +209,21 @@ window.reportingEnglish = {
   '正在编辑 {0} · 版本 {1}；旧版本保存若已过期会返回冲突。':
     'Editing {0} · version {1}; saving from an outdated version returns a conflict.',
   布局打开: 'Layout open',
-  '尚未读取此布局的发布状态。': 'Publish status of this layout not loaded yet.',
   '请先保存或打开当前数据集的服务器布局。': 'Save or open a server layout for the current dataset first.',
-  '已发布版本 {0} · 发布修订 {1}': 'Published version {0} · publish revision {1}',
-  '未发布 · 发布修订 {0}': 'Unpublished · publish revision {0}',
-  '{0} · {1} · 修订 {2}': '{0} · {1} · revision {2}',
-  '发布版本 {0}': 'Publish version {0}',
   撤回发布: 'Withdraw publication',
   发布状态: 'Publish status',
-  '请选择有效的保存版本。': 'Select a valid saved version.',
-  '请先刷新发布状态；冲突或结果未确认时必须重新读取。':
-    'Refresh the publish status first; it must be reloaded after a conflict or an unconfirmed result.',
-  '列或对齐有未保存的修改：请先保存版本，或用“发布”的保存并发布。':
-    'Columns or alignment have unsaved changes: save a version first, or use save and publish under “Publish”.',
   '当前没有已发布版本。': 'There is no published version.',
   布局发布: 'Layout publish',
-  '操作结果尚未确认，请重新读取发布状态核对。': 'Result not yet confirmed; reload the publish status to check.',
   未查询: 'Not queried',
   草稿: 'Draft',
   '已发布 v': 'Published v',
   '已保存 v': 'Saved v',
   '· 有未保存修改': ' · unsaved changes',
-  '已把保存版本 v{0} 载入编辑器，是未保存的修改；发布指针不变。':
-    'Saved version v{0} loaded into the editor as unsaved changes; the published pointer is unchanged.',
   布局版本: 'Layout versions',
   布局保存并发布: 'Layout save and publish',
-  '保存或发布的结果尚未确认：请打开“版本”核对保存版本与发布状态，再决定是否重试。':
-    'Save or publish result not yet confirmed: open “Versions” to check the saved versions and publish status before deciding whether to retry.',
   布局: 'Layout',
-  打开已发布版本: 'Open published version',
   列: 'Columns',
   列或对齐有未保存的修改: 'Columns or alignment have unsaved changes',
-  '已打开发布版本 {0}；当前数据仍来自授权查询。':
-    'Opened published version {0}; the data still comes from the authorised query.',
-  打开发布版本: 'Open published version',
   '{0} · 原范围合计{1}': '{0} · total for original scope{1}',
   当前授权范围没有结果: 'No results in the current authorised scope',
   '请检查数据时点与公司选择。': 'Check the as-of date and company selection.',
@@ -363,26 +336,11 @@ window.reportingEnglish = {
   '正在编辑看板 {0} · 版本 {1}；旧版本保存可能冲突。':
     'Editing dashboard {0} · version {1}; saving an older version may conflict.',
   看板打开: 'Dashboard open',
-  '请读取当前看板发布状态后再操作。': 'Load the current dashboard publish status before continuing.',
   '请先保存或打开当前数据集的服务器看板。': 'First save or open a server dashboard for the current dataset.',
   '无法验证看板发布状态。': 'Could not verify the dashboard publish status.',
   '无法验证看板发布历史。': 'Could not verify the dashboard publish history.',
-  '看板发布指针与历史不一致。': 'The dashboard publish pointer does not match its history.',
-  '发布修订 {0} · {1}': 'Publish revision {0} · {1}',
-  '已发布版本 {0}': 'Published version {0}',
-  当前未发布: 'Not currently published',
-  '修订 {0} · {1} · {2}': 'Revision {0} · {1} · {2}',
-  撤回: 'Withdraw',
   看板发布状态: 'Dashboard publish status',
-  '请先刷新看板发布状态；发生冲突或结果不确定时需要重新读取。':
-    'Refresh the dashboard publish status first; reload it after a conflict or an uncertain result.',
-  '请先保存当前修改，再发布该保存版本。': 'Save your current changes first, then publish that saved version.',
-  '服务器返回了意外发布修订，请刷新状态核对。':
-    'The server returned an unexpected publish revision; refresh the status to check.',
   看板发布变更: 'Dashboard publish change',
-  '已打开发布看板 {0} · 版本 {1}；数据来自当前授权查询。':
-    'Opened published dashboard {0} · version {1}; data comes from the current authorised query.',
-  发布看板打开: 'Published dashboard open',
   '查询当前授权结果后可使用服务器看板。': 'Query the current authorised results to use server dashboards.',
   '0 / 12 个组件': '0 / 12 components',
   尚无当前授权结果: 'No current authorised results yet',
@@ -567,12 +525,7 @@ window.reportingEnglish = {
   'pdf preview 预览': 'pdf preview',
   检查样本: 'Check samples',
   'check samples boundary 边界 样本': 'check samples boundary sample check',
-  保存模板版本: 'Save template version',
-  'save version 保存': 'save version',
-  发布当前保存版本: 'Publish current saved version',
   'publish 发布': 'publish',
-  打开已发布模板: 'Open published template',
-  'open published 已发布': 'open published',
   'issue 出具': 'issue',
   命令面板: 'Command palette',
   '没有匹配的命令。': 'No matching commands.',
@@ -585,40 +538,17 @@ window.reportingEnglish = {
   '预览或检查指出的位置已描出轮廓{0}{1}{2}。': 'Positions reported by the preview or check are outlined{0}{1}{2}.',
   '，列 {0}': ', column {0}',
   // ---- versions.js
-  '编辑器打开的版本。': 'Version open in the editor.',
-  '编辑器打开的版本，有未保存的修改；发布它会先保存为下一个版本。':
-    'Version open in the editor, with unsaved changes; publishing it saves it as the next version first.',
-  '（发布状态未读取）': ' (publish status not loaded)',
   已发布: 'Published',
   已保存: 'Saved',
-  '编辑器打开的版本{0}': 'Version open in the editor{0}',
-  '（有未保存修改）': ' (unsaved changes)',
-  保存版本: 'Saved version',
-  '恢复该版本只改变当前草稿；发布指针仍指向 {0}。':
-    'Restoring this version only changes the current draft; the publish pointer still points to {0}.',
   未发布: 'Unpublished',
-  '保存版本不可变；当前发布指针：{0}': 'Saved versions are immutable; current publish pointer: {0}',
-  尚未保存任何版本: 'No versions saved yet',
   '新{0}': 'New {0}',
   将发布的版本: 'Version to publish',
   '先保存为版本 {0}，再发布它': 'Save as version {0} first, then publish it',
-  '保存版本 {0}{1}': 'Saved version {0}{1}',
   '（历史版本）': ' (earlier version)',
   数据集: 'Dataset',
   当前发布: 'Currently published',
   '版本 {0}': 'Version {0}',
   保存后读取: 'Loaded after saving',
-  发布修订: 'Publish revision',
-  '{0}：先保存为新的不可变版本，再把发布指针移到它。':
-    '{0}: they are saved first as a new immutable version, then the publish pointer moves to it.',
-  '这个{0}还没有保存版本：先保存为版本 1，再发布它。':
-    'This {0} has no saved version yet: it is saved as version 1 first, then published.',
-  '发布历史版本是一次明确的回退：{0}得到 v{1}；编辑器里的{2}不变。':
-    'Publishing an earlier version is an explicit rollback: {0} gives v{1}; the {2} in the editor is unchanged.',
-  '这个保存版本已经是当前发布版本；再次发布会记一次新的发布修订。':
-    'This saved version is already the published version; publishing again records a new publish revision.',
-  '发布后，{0}得到的就是这个版本；之后的保存不改变发布指针。':
-    'Once published, {0} gives this version; later saves do not change the publish pointer.',
   保存并发布: 'Save and publish',
   确认发布: 'Confirm publish',
   // ---- studio.js
@@ -652,16 +582,11 @@ window.reportingEnglish = {
   '历史版本回退 ·': 'Rollback to an earlier version ·',
   待保存: 'Unsaved',
   需要先保存当前修改: 'Save the current changes first',
-  已明确引用不可变保存版本: 'Explicitly references an immutable saved version',
-  '画布存在未保存的修改，自动草稿不等于保存版本。':
-    'The canvas has unsaved changes; an autosaved draft is not a saved version.',
   '先保存第一个版本。': 'Save the first version first.',
-  '本次发布固定引用 v{0}。': 'This publish pins v{0}.',
   '{0} 项检查未通过': '{0} checks failed',
   版式与数据绑定检查通过: 'Layout and data binding checks passed',
   '设计器的校验与最近一次边界样本检查均无问题；PDF 预览另行确认。':
     "No issues from the designer's validation or the latest edge-case sample check; confirm the PDF preview separately.",
-  '该版本的组件数见“版本”对话框': "See the “Versions” dialogue for this version's component count",
   '正在读取发布状态…': 'Reading publish status…',
   '先保存为新版本，再发布它': 'Save as a new version first, then publish it',
   '模板超过64KiB。': 'The template exceeds 64 KiB.',
@@ -729,7 +654,6 @@ window.reportingEnglish = {
   当前版式与绑定检查通过: 'Current layout and binding checks passed',
   '已检查字段、纸张范围、分带与明细规则。边界样本见下。':
     'Checked fields, paper bounds, bands and detail rules. Edge-case samples below.',
-  '发布指针：v{0}': 'Published pointer: v{0}',
   '{0} 条示例': '{0} sample rows',
   '版式检查未通过 · {0} 项': 'Layout check failed · {0} issues',
   版式检查通过: 'Layout check passed',
@@ -745,10 +669,8 @@ window.reportingEnglish = {
   当前: 'Current',
   打开: 'Open',
   '打开 {0} 的最新版本': 'Open the latest version of {0}',
-  '打开 {0} 的已发布版本': 'Open the published version of {0}',
   正在读取: 'Reading',
   绑定的数据集与当前冻结快照不同: 'The bound dataset differs from the current frozen snapshot',
-  尚无已发布版本: 'No published version yet',
   '当前身份有 {0} 个服务器模板。': 'The current identity has {0} server templates.',
   '正在读取模板信息…': 'Reading template information…',
   '尚无服务器模板，或尚未读取。': 'No server templates yet, or not yet read.',
@@ -831,9 +753,7 @@ window.reportingEnglish = {
   '已归档「{0}」；可在“归档”里恢复。': 'Archived “{0}”; you can restore it from “Archive”.',
   编辑: 'Edit',
   '编辑 {0}': 'Edit {0}',
-  在设计器中打开最新保存版本: 'Open the latest saved version in the designer',
   '集合：{0}': 'Collection: {0}',
-  '{0} 个保存版本{1}': '{0} saved versions{1}',
   '示例 {0}': 'Sample {0}',
   '示例 · 只读': 'Sample · read-only',
   '{0} 个元素 · {1} 个字段': '{0} elements · {1} fields',
@@ -859,8 +779,6 @@ window.reportingEnglish = {
   '正在读取示例模板…': 'Reading sample templates…',
   '选择数据…': 'Select data…',
   '分类 · {0}': 'Categories · {0}',
-  '修改检索信息，不改变模板版式、数据绑定或保存版本':
-    'Changes search information only, not the template layout, data binding or saved versions',
   业务流程: 'Business process',
   未指定: 'Not specified',
   '新集合名称（1–40 个字符）': 'New collection name (1–40 characters)',
@@ -959,8 +877,6 @@ window.reportingEnglish = {
   新建模板: 'New template',
   '空白（不属于任何流程）': 'Blank (not part of any process)',
   '空白模板 · {0}': 'Blank template · {0}',
-  '创建后是您自己的普通模板（保存版本 1），可在设计器里修改与发布。':
-    'Once created, it is your own regular template (saved version 1), which you can edit and publish in the designer.',
   '请选择一个业务流程，或选择空白模板。': 'Select a business process or a blank template.',
   '模板不被接受。': 'Template not accepted.',
   '当前身份无权使用所选的数据集。': 'The current identity is not authorised to use the selected dataset.',
@@ -1003,11 +919,7 @@ window.reportingEnglish = {
   状态: 'Status',
   排序: 'Sort',
   视图: 'View',
-  '分类不改变模板内容或保存版本；示例模板只读，复制后才是您的模板。':
-    'Categories do not change template content or saved versions; sample templates are read-only and become yours only once copied.',
   '当前数据：{0} · {1}（点击修改）': 'Current data: {0} · {1} (click to change)',
-  '创建后是团队模板（保存版本 1）：团队成员都能看到与修改；发布须由另一位发布者完成。':
-    'It is created as a team template (saved version 1): team members can see and change it; another publisher must publish it.',
   // ---- documents.js
   '放不下：值比所在的框、列或页更宽或更高': 'Does not fit: value is wider or taller than its box, column or page',
   '无法按原样打印：含字体不支持的字符、控制字符或预览横幅文字；条码与二维码的值还须在其字符集内（Code 128 只含 ASCII 32–126）且不能为空':
@@ -1077,14 +989,10 @@ window.reportingEnglish = {
   '页眉、单据头与页脚的高度加上明细表的最小高度超出安全区。':
     "Page header, document header and page footer heights plus the detail table's minimum height exceed the safe area.",
   '套印偏移使元素或明细表超出安全区。': 'Print-on-form offset puts elements or the detail table outside the safe area.',
-  '请先读取发布状态。': 'Read the publish status first.',
   '无法验证服务器模板版本。': 'Could not verify the server template version.',
   '请先保存或打开当前数据集的服务器模板。': 'Save or open the server template for the current dataset first.',
-  '请先保存当前修改，再发布或按保存版本预览。':
-    'Save your current changes before publishing or previewing by saved version.',
   '无法验证模板发布状态。': 'Could not verify the template publish status.',
   '无法验证发布历史。': 'Could not verify the publish history.',
-  '发布历史与指针不一致。': 'Publish history does not match the pointer.',
   '服务器保存内容不一致。': 'Saved content on the server does not match.',
   '已保存模板 {0} · 版本 {1}': 'Saved template {0} · version {1}',
   模板保存: 'Template save',
@@ -1093,17 +1001,9 @@ window.reportingEnglish = {
   '正在编辑模板 {0} · 版本 {1}': 'Editing template {0} · version {1}',
   模板打开: 'Template open',
   模板发布状态: 'Template publish status',
-  '请先刷新发布状态，冲突或结果未确认时必须重新读取。':
-    'Refresh the publish status first; after a conflict or an unconfirmed result it must be read again.',
   '当前没有发布版本。': 'There is no published version.',
-  '意外发布修订，请刷新核对。': 'Unexpected publish revision; refresh and check.',
   模板发布变更: 'Template publish change',
-  '请选择有效模板。': 'Select a valid template.',
-  '已打开发布模板 {0} · 版本 {1}': 'Opened published template {0} · version {1}',
-  发布模板打开: 'Published template open',
   '服务端未启用正式出具。': 'Official issue is not enabled on the server.',
-  '正式出具只接受当前发布版本：请先“打开已发布模板”，不改动后再出具。':
-    'Official issue only accepts the current published version: first “Open published template”, then issue without changes.',
   '请先打开冻结快照并填写有效行号。': 'Open a frozen snapshot and enter a valid row number first.',
   '正在提交正式出具：模板 {0} · 版本 {1}{2}': 'Submitting official issue: template {0} · version {1}{2}',
   '· 第 {0} 行所在分组（由服务端按模板的分组字段在冻结快照中确定）。':
@@ -1400,7 +1300,6 @@ window.reportingEnglish = {
   '· 看板 {0} · 版本 {1}': '· Dashboard {0} · version {1}',
   '· 尚未保存到服务器': '· Not yet saved to the server',
   组件: 'Blocks',
-  打开已发布看板: 'Open published dashboard',
   画布有未保存的修改: 'The canvas has unsaved changes',
   // ---- index.html
   'IDP Reporting · 报表工作区': 'IDP Reporting · Reporting workspace',
@@ -1445,7 +1344,6 @@ window.reportingEnglish = {
     'Publishing only fixes your own layout version and shares no data; editing the draft does not change the published version.',
   '尚未关联服务器布局；首次保存会创建新布局。': 'No server layout linked yet; the first save creates a new layout.',
   恢复全部列: 'Restore all columns',
-  '高级 · JSON 导入与导出': 'Advanced · JSON import and export',
   生成布局文件: 'Generate layout file',
   '布局 JSON（可复制保存，或粘贴重新打开）': 'Layout JSON (copy to save, or paste to reopen)',
   打开布局: 'Open layout',
@@ -1496,33 +1394,15 @@ window.reportingEnglish = {
   '配置不含数据、令牌或公司范围。服务器看板保存需显式启用 -dashboard-directory；报表列布局与看板使用独立接口和目录。':
     'The configuration contains no data, tokens or company scope. Saving server dashboards requires -dashboard-directory to be enabled explicitly; report column layouts and dashboards use separate interfaces and directories.',
   发布前确认: 'Confirm before publishing',
-  '发布把指针移到当前保存版本；数据仍来自每次查询':
-    'Publishing moves the pointer to the current saved version; data still comes from each query',
   '发布版本仅当前身份私有，不冻结数据或授予访问权限。':
     'The published version is private to the current identity; it does not freeze data or grant access.',
-  看板版本与发布指针: 'Dashboard versions and publish pointer',
-  '保存版本不可变；恢复编辑与重新发布是两个明确操作':
-    'Saved versions are immutable; restoring to the editor and republishing are two explicit actions',
-  '先保存一个版本，再管理发布与恢复。': 'Save a version first, then manage publishing and restoring.',
-  恢复到编辑器: 'Restore to editor',
-  发布此保存版本: 'Publish this saved version',
-  刷新发布状态与历史: 'Refresh publish status and history',
-  另存为新看板: 'Save as new dashboard',
-  打开其他看板或指定版本: 'Open another dashboard or a specific version',
   刷新我的看板: 'Refresh my dashboards',
   打开服务器看板版本: 'Open server dashboard version',
-  '保存版本不可变；发布只把指针移到某个保存版本，撤回是单独的操作，打开已发布看板不等于重新发布。':
-    'Saved versions are immutable; publishing only moves the pointer to a saved version, withdrawing is a separate action, and opening the published dashboard is not republishing.',
   看板说明与操作帮助: 'Dashboard notes and help',
   看板工作室的工作方式与边界: 'How Dashboard studio works and its limits',
   工作方式: 'How it works',
   '看板组合当前授权查询的结果：指标卡显示服务端原范围合计，明细表与图表显示当前结果页或有界预览。看板只保存组件和字段绑定，不含数据、令牌或公司范围。':
     'A dashboard composes the results of the current authorised query: metric cards show server-side totals over the original scope, detail tables and charts show the current results page or a bounded preview. The dashboard saves only components and field bindings, with no data, tokens or company scope.',
-  保存与版本: 'Saving and versions',
-  '保存版本在服务端创建不可变的新版本；“版本”列出这个看板的保存版本，可把某个版本恢复到编辑器（未保存的修改），或发布某个保存版本；另存为新看板创建新的看板。':
-    "Saving a version creates a new immutable version on the server; “Versions” lists this dashboard's saved versions, from which you can restore a version to the editor (as unsaved changes) or publish a saved version; Save as new dashboard creates a new dashboard.",
-  '发布只把发布指针移到一个保存版本；有未保存的修改时，“发布”先保存为下一个版本再发布它（保存并发布）；撤回是单独的操作；打开已发布看板不等于重新发布。发布版本仅当前身份私有，不冻结数据或授予访问权限。':
-    'Publishing only moves the publish pointer to a saved version; with unsaved changes, “Publish” first saves them as the next version and then publishes it (save and publish); withdrawing is a separate action; opening the published dashboard is not republishing. The published version is private to the current identity; it does not freeze data or grant access.',
   限制: 'Limits',
   '每个看板至多 12 个组件；配置至多 64 KiB；柱状图与折线图取当前页前 50 行、饼图取前 12 行，按原顺序逐行显示，不分组、不汇总；条长、折线与扇区为近似比例，精确值见每行标签。标题 1–64 个字符，宽度半宽或全宽。':
     "At most 12 components per dashboard; configuration at most 64 KiB; bar and line charts take the first 50 rows of the current page and a pie the first 12, shown row by row in the original order, without grouping or aggregation; bar lengths, the line and the slices are approximately proportional, exact values are in each row's label. A title is 1–64 characters; a width is half or full.",
@@ -1559,7 +1439,6 @@ window.reportingEnglish = {
   '纸张固定为 A4': 'Paper is fixed to A4',
   运行版式检查: 'Run layout check',
   边界样本: 'Edge samples',
-  版本与回退: 'Versions and rollback',
   导出模板JSON: 'Export template JSON',
   导入模板JSON: 'Import template JSON',
   '检查不渲染 PDF；PDF 预览为准': 'The check does not render PDF; the PDF preview is authoritative',
@@ -1652,8 +1531,6 @@ window.reportingEnglish = {
   '毫米定位 / 0.1 mm': 'Millimetre positioning / 0.1 mm',
   设计说明与操作帮助: 'Design notes and help',
   '文档工作室的操作方式、快捷键与边界': 'How Document studio works: actions, shortcuts and limits',
-  '画布显示版面；数据来自当前冻结快照，PDF 预览与发布都由服务端完成。模板只保存版式与字段绑定，不含业务数据。保存是新的不可变版本，发布是对某个保存版本的单独操作。':
-    'The canvas shows the layout; data comes from the current frozen snapshot, and PDF preview and publishing are both done on the server. A template stores only layout and field bindings, no business data. Saving creates a new immutable version; publishing is a separate action on a saved version.',
   快捷键: 'Keyboard shortcuts',
   '撤销 / 重做': 'Undo / redo',
   '复制 / 剪切 / 粘贴': 'Copy / cut / paste',
@@ -1726,9 +1603,6 @@ window.reportingEnglish = {
   '数据（冻结快照）': 'Data (frozen snapshot)',
   最近一次预览页数: 'Page count of last preview',
   '冻结快照全局行号（从 1 开始）': 'Frozen snapshot global row number (starting at 1)',
-  按保存版本生成PDF: 'Generate PDF from saved version',
-  'PDF 预览每次从当前有权访问的冻结快照生成，并在返回前复核授权与摘要；下载由浏览器发起。需要服务端启用 PDF 渲染。按保存版本预览不代表该版本当前仍已发布，也不是正式出具。':
-    'Each PDF preview is generated from a frozen snapshot you are currently authorised to access, with authorisation and digest rechecked before returning; the download is started by the browser. Requires PDF rendering to be enabled on the server. Previewing a saved version does not mean that version is still published, nor is it an official issue.',
   '预览只在服务端生成，浏览器不渲染正式文件':
     'Previews are generated only on the server; the browser does not render official files',
   模板JSON: 'Template JSON',
@@ -1751,19 +1625,8 @@ window.reportingEnglish = {
   '快照与行/分组': 'Snapshot and row/group',
   'PDF SHA-256 · 页数': 'PDF SHA-256 · pages',
   '确认引用 · 确认时间': 'Confirmation reference · confirmation time',
-  '正式出具只接受“打开已发布模板”后未改动的发布版本，按预览与导出中的行号对应的冻结快照行生成（2.0 分带模板按该行所在的分组生成一份文档，记录与任务显示分组字段与键值，不显示行号），不带 PREVIEW 标记而带编号印章 ISSUED No.、出具时间与记录 ID。编号和出具时间由来源产品分配，平台渲染后由来源产品确认文件；来源产品拒绝（无权限或未获批准）或确认失败时不会生成正式文件，平台自己不编号。任务由服务器后台执行并永久记录：排队中的出具任务可以取消，已开始执行的不能取消（它会完成，或失败并通知来源产品作废预留）。记录列出编号、来源产品的确认引用与确认时间、模板版本摘要、快照摘要与 PDF 摘要；PDF 随来源快照授权到期而不可下载，记录永久保留。':
-    "Official issue accepts only a published version opened with “Open published template” and left unchanged, and generates from the frozen snapshot row matching the row number in Preview and export (2.0 banded templates generate one document for the group containing that row, and records and tasks show the group fields and key values rather than the row number); it carries no PREVIEW mark but an ISSUED No. number stamp, the issue time and the record ID. The number and issue time are assigned by the source product, and after the platform renders the file the source product confirms it; if the source product refuses (no permission or not approved) or confirmation fails, no official file is generated, and the platform never assigns numbers itself. Tasks run in the server background and are recorded permanently: a queued issue task can be cancelled, but one that has started cannot (it will complete, or fail and notify the source product to void the reservation). Records list the number, the source product's confirmation reference and time, the template version digest, the snapshot digest and the PDF digest; the PDF can no longer be downloaded once the source snapshot's authorisation expires, but the record is kept permanently.",
-  版本历史与发布指针: 'Version history and publish pointer',
   预览此版本: 'Preview this version',
-  刷新发布状态: 'Refresh publish status',
-  另存为新模板: 'Save as new template',
-  '保存版本不可变：恢复到编辑器只把该版本载入为未保存的修改，不改变发布指针；撤回发布与发布某个保存版本是单独的服务端操作。模板与发布仅当前身份私有，发布不冻结数据或授予权限。':
-    'Saved versions are immutable: restoring to the editor only loads that version as unsaved changes and does not move the publish pointer; unpublishing and publishing a saved version are separate server actions. Templates and publications are private to the current identity, and publishing neither freezes data nor grants permissions.',
-  '发布固定的保存版本，后续编辑不会改变已发布的配置':
-    'Publish a fixed saved version; later edits do not change the published configuration',
   将发布的内容: 'Content to be published',
-  '发布只更新发布指针；正式出具仍只接受已发布版本，且不改动。':
-    'Publishing only updates the publish pointer; official issue still accepts only the published version, unchanged.',
   '当前身份的服务器模板；完整的模板中心页面在后续阶段提供':
     'Server templates of the current identity; the full Template centre page comes in a later phase',
   新建: 'New',
@@ -1772,7 +1635,6 @@ window.reportingEnglish = {
   版本数: 'Versions',
   已发布版本: 'Published version',
   '尚未读取模板列表。': 'Template list not loaded yet.',
-  打开指定版本: 'Open specific version',
   刷新我的模板: 'Refresh my templates',
   打开模板版本: 'Open template version',
   打开模板会替换编辑器中未保存的修改: 'Opening a template replaces unsaved changes in the editor',
@@ -1831,15 +1693,9 @@ window.reportingEnglish = {
   '当前身份的快照、导出与出具任务；用任务 ID 打开列表之外的私有任务':
     'Snapshot, export and issue tasks of the current identity; use a task ID to open a private task not in the list',
   '服务器上最近的 50 项；打开面板时重新读取。': 'The 50 most recent on the server; reloaded when the panel opens.',
-  布局版本与发布指针: 'Layout versions and publish pointer',
-  另存为新布局: 'Save as new layout',
   打开其他布局或指定版本: 'Open another layout or a specific version',
   刷新我的布局: 'Refresh my layouts',
   打开服务器版本: 'Open server version',
-  '保存版本不可变：恢复到编辑器只把该版本载入为未保存的修改，不改变发布指针；撤回发布与发布某个保存版本是单独的服务端操作。布局与发布仅当前身份私有。':
-    'Saved versions are immutable: restoring to the editor only loads that version as unsaved changes and does not move the publish pointer; unpublishing and publishing a saved version are separate server actions. Layouts and publications are private to the current identity.',
-  '发布把指针移到一个保存版本；屏幕表格的数据仍来自每次查询':
-    'Publishing moves the pointer to a saved version; on-screen table data still comes from each query',
   进入报表工作区: 'Enter the reporting workspace',
   '连接当前独立服务，查看授权数据与私有任务。':
     'Connect to the current standalone service to view authorised data and private tasks.',
@@ -1869,7 +1725,6 @@ window.reportingEnglish = {
   打开属性面板: 'Open properties panel',
   收起属性面板: 'Collapse properties panel',
   属性面板: 'Properties panel',
-  看板发布历史: 'Dashboard publish history',
   我的服务器看板: 'My server dashboards',
   打开的看板版本: 'Opened dashboard version',
   打开模板中心: 'Open Template centre',
@@ -1935,11 +1790,9 @@ window.reportingEnglish = {
   样本检查结果: 'Sample check results',
   转换说明: 'Conversion notes',
   明细表字段: 'Detail table fields',
-  模板发布历史: 'Template publish history',
   我的服务器模板: 'My server templates',
   '粘贴完整任务 ID': 'Paste the full task ID',
   筛选任务: 'Filter tasks',
-  布局发布历史: 'Layout publish history',
   我的服务器布局: 'My server layouts',
   打开的布局版本: 'Opened layout version',
   粘贴当前环境的访问令牌: 'Paste an access token for the current environment',
@@ -2186,4 +2039,120 @@ window.reportingEnglish = {
   '输入其他公司 ID，多个以逗号分隔': 'Enter other company IDs, separated by commas',
   '输入其他公司 ID': 'Enter other company IDs',
   '共 {0} 家': '{0} companies',
+  // S09-F (ADR 0014 decision 11): the one save / publish / history pattern of the three designers.
+  '操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请打开“历史”核对当前发布。':
+    'The result was not confirmed: after a save, refresh the server dashboard list; after a publish, open “History” and check the current publication.',
+  '写入结果未确认；保存请刷新模板列表，发布请打开“历史”核对当前发布。':
+    'The write was not confirmed; after a save, refresh the template list; after a publish, open “History” and check the current publication.',
+  '发布状态已改变（另一处发布或撤回过）：已重新读取，可在发布前确认里重试。':
+    'The publish state has changed (another publish or withdrawal): it was read again; retry from the publish confirmation.',
+  '只能正式出具当前已发布的模板版本；当前发布可能刚改变，请核对后重试。':
+    'Only the currently published template version can be issued; the publication may have just changed, check and retry.',
+  '请选择有效的版本。': 'Select a valid version.',
+  '尚未读取到发布状态，请重试。': 'The publish state has not been read yet; retry.',
+  '列或对齐有未保存的修改：请先保存，或用“发布”的保存并发布。':
+    'Columns or alignment have unsaved changes: save first, or use “Publish” → Save and publish.',
+  '操作结果尚未确认，请打开“历史”核对当前发布。':
+    'The result was not confirmed; open “History” and check the current publication.',
+  '已打开 v{0}，是未保存的修改；保存会成为下一个版本，当前发布不变。':
+    'v{0} is open as an unsaved change; saving makes the next version, the current publication is unchanged.',
+  '保存或发布的结果尚未确认：请打开“历史”核对版本与当前发布，再决定是否重试。':
+    'The save or publish was not confirmed: open “History”, check the versions and the current publication, then decide whether to retry.',
+  '看板的发布状态与发布记录不一致。': "The dashboard's publish state does not match its publish record.",
+  '尚未读取到看板的发布状态，请重试。': "The dashboard's publish state has not been read yet; retry.",
+  '请先保存当前修改，或用“发布”的保存并发布。': 'Save your current changes first, or use “Publish” → Save and publish.',
+  '服务器返回了意外的发布状态，请打开“历史”核对。':
+    'The server returned an unexpected publish state; open “History” and check.',
+  保存: 'Save',
+  'save version 保存 版本': 'save version',
+  历史: 'History',
+  'history versions 版本 历史': 'history versions',
+  '读取中…': 'Reading…',
+  '修订 {0}': 'Revision {0}',
+  当前打开: 'Open in editor',
+  有未保存的修改: 'Unsaved changes',
+  '当前打开的版本，有未保存的修改；发布它会先保存为下一个版本。':
+    'The version open in the editor, with unsaved changes; publishing it saves the next version first.',
+  '当前打开的版本。': 'The version open in the editor.',
+  '当前发布版本。打开后保存会成为下一个版本（v{0}）。':
+    'The currently published version. Saving after opening it makes the next version (v{0}).',
+  '打开后保存会成为下一个版本（v{0}）；发布此版本会让它成为当前发布版本。':
+    'Saving after opening it makes the next version (v{0}); “Publish this version” makes it the current publication.',
+  编辑器已经打开这个版本: 'The editor already holds this version',
+  打开后保存会成为下一个版本: 'Saving after opening makes the next version',
+  '当前发布：{0}': 'Current publication: {0}',
+  '尚未保存：保存后这里列出每个版本。': 'Nothing saved yet: once saved, every version is listed here.',
+  '版本 {0}{1}': 'Version {0}{1}',
+  '发布状态已改变（另一处发布或撤回过）：{0}': 'The publish state has changed (another publish or withdrawal): {0}',
+  '正在重新读取…': 'reading it again…',
+  '已重新读取，请核对后重试。': 'it was read again; check and retry.',
+  '{0}：先保存为版本 {1}，再发布它。': '{0}: it is saved as version {1} first, then published.',
+  '这个{0}还没有保存过：先保存为版本 1，再发布它。':
+    'This {0} has not been saved yet: it is saved as version 1 first, then published.',
+  '发布历史版本是一次回退：当前发布从 {0} 变为 v{1}；编辑器里的{2}不变。':
+    'Publishing a historical version is a rollback: the current publication goes from {0} to v{1}; the {2} in the editor stay as they are.',
+  '发布的是已保存的 v{0}；编辑器里未保存的修改不在其中。':
+    'The saved v{0} is published; the unsaved changes in the editor are not part of it.',
+  '这个版本已经是当前发布版本；再次发布不改变发布的内容。':
+    'This version is already the current publication; publishing it again changes nothing that is published.',
+  '发布后这个版本就是当前发布版本；之后的保存不改变它，直到再次发布。':
+    'After publishing, this version is the current publication; later saves do not change it until the next publish.',
+  重试: 'Retry',
+  '（读取中）': '(reading)',
+  发布的是一个保存过的版本: 'A saved version is published',
+  '画布有未保存的修改：先保存为下一个版本，再发布它。':
+    'The canvas has unsaved changes: they are saved as the next version first, then published.',
+  '发布的是已保存的 v{0}；画布上未保存的修改不在其中。':
+    'The saved v{0} is published; the unsaved changes on the canvas are not part of it.',
+  '本次发布的是 v{0}，之后的编辑不改变它。': 'This publishes v{0}; later edits do not change it.',
+  '该版本的组件数见“历史”': 'The component count of that version is in “History”',
+  '当前发布：v{0}': 'Current publication: v{0}',
+  在设计器中打开最新版本: 'Open the latest version in the designer',
+  '{0} 个版本{1}': '{0} versions{1}',
+  '修改检索信息，不改变模板版式、数据绑定或版本':
+    "Changes the catalog information, not the template's layout, data binding or versions",
+  '创建后是团队模板（版本 1）：团队成员都能看到与修改；发布须由另一位发布者完成。':
+    'Created as a team template (version 1): every team member can see and change it; another publisher must publish it.',
+  '创建后是您自己的普通模板（版本 1），可在设计器里修改与发布。':
+    'Created as your own ordinary template (version 1), to change and publish in the designer.',
+  '分类不改变模板内容或版本；示例模板只读，复制后才是您的模板。':
+    'Categories change neither the template nor its versions; sample templates are read-only until copied.',
+  '请先保存当前修改，再发布或按已保存的版本预览。':
+    'Save your current changes first, then publish or preview the saved version.',
+  '模板的发布状态与发布记录不一致。': "The template's publish state does not match its publish record.",
+  '正式出具只接受当前发布版本{0}：编辑器打开的是 v{1}。':
+    'Only the currently published version can be issued{0}: the editor holds v{1}.',
+  '（尚未发布）': ' (nothing is published)',
+  '高级 · JSON 导入与导出、打开指定版本': 'Advanced · JSON import and export, open a specific version',
+  '高级 · 打开其他看板或指定版本': 'Advanced · Open another dashboard or a specific version',
+  '让一个保存过的版本成为当前发布版本；数据仍来自每次查询':
+    'Makes a saved version the current publication; the data still comes from each query',
+  '每次保存是一个版本：打开一个继续编辑，或发布一个':
+    'Every save is a version: open one to keep editing, or publish one',
+  发布此版本: 'Publish this version',
+  复制为新看板: 'Copy as new dashboard',
+  保存与历史: 'Save and history',
+  '每次保存在服务端创建一个新版本；“历史”列出这个看板的版本，可以打开一个（打开后保存会成为下一个版本）或发布一个；复制为新看板创建新的看板。':
+    'Every save creates a new version on the server; “History” lists the versions of this dashboard, to open one (saving after that makes the next version) or publish one; “Copy as new dashboard” creates a new dashboard.',
+  '发布让一个保存过的版本成为当前发布版本；有未保存的修改时，“发布”先保存为下一个版本再发布它（保存并发布）；撤回发布是单独的操作。发布版本仅当前身份私有，不冻结数据或授予访问权限。':
+    'Publishing makes a saved version the current publication; with unsaved changes, “Publish” saves the next version first and publishes it (Save and publish); withdrawal is a separate action. The published version is private to the current identity and neither freezes data nor grants access.',
+  '画布显示版面；数据来自当前冻结快照，PDF 预览与发布都由服务端完成。模板只保存版式与字段绑定，不含业务数据。每次保存是一个新版本；发布让其中一个成为当前发布版本。':
+    'The canvas shows the layout; data comes from the current frozen snapshot, and PDF preview and publishing are both done on the server. A template stores only layout and field bindings, no business data. Every save is a new version; publishing makes one of them the current publication.',
+  按已保存的版本生成PDF: 'Generate PDF from the saved version',
+  'PDF 预览每次从当前有权访问的冻结快照生成，并在返回前复核授权与摘要；下载由浏览器发起。需要服务端启用 PDF 渲染。按已保存的版本预览不代表该版本当前已发布，也不是正式出具。':
+    'Each PDF preview is generated from a frozen snapshot you are currently authorised to access, with authorisation and digest rechecked before returning; the download is started by the browser. Requires PDF rendering to be enabled on the server. Previewing the saved version does not mean that version is currently published, nor is it an official issue.',
+  '正式出具只接受当前发布版本（编辑器打开的须是它，且未改动），按预览与导出中的行号对应的冻结快照行生成（2.0 分带模板按该行所在的分组生成一份文档，记录与任务显示分组字段与键值，不显示行号），不带 PREVIEW 标记而带编号印章 ISSUED No.、出具时间与记录 ID。编号和出具时间由来源产品分配，平台渲染后由来源产品确认文件；来源产品拒绝（无权限或未获批准）或确认失败时不会生成正式文件，平台自己不编号。任务由服务器后台执行并永久记录：排队中的出具任务可以取消，已开始执行的不能取消（它会完成，或失败并通知来源产品作废预留）。记录列出编号、来源产品的确认引用与确认时间、模板版本摘要、快照摘要与 PDF 摘要；PDF 随来源快照授权到期而不可下载，记录永久保留。':
+    "Official issue accepts only the currently published version (the editor must hold it, unchanged), and generates from the frozen snapshot row matching the row number in Preview and export (2.0 banded templates generate one document for the group containing that row, and records and tasks show the group fields and key values rather than the row number); it carries no PREVIEW mark but an ISSUED No. number stamp, the issue time and the record ID. The number and issue time are assigned by the source product, and after the platform renders the file the source product confirms it; if the source product refuses (no permission or not approved) or confirmation fails, no official file is generated, and the platform never assigns numbers itself. Tasks run in the server background and are recorded permanently: a queued issue task can be cancelled, but one that has started cannot (it will complete, or fail and notify the source product to void the reservation). Records list the number, the source product's confirmation reference and time, the template version digest, the snapshot digest and the PDF digest; the PDF can no longer be downloaded once the source snapshot's authorisation expires, but the record is kept permanently.",
+  复制为新模板: 'Copy as new template',
+  '让一个保存过的版本成为当前发布版本；之后的编辑不改变它':
+    'Makes a saved version the current publication; later edits do not change it',
+  '发布不改变编辑器里的内容；正式出具只用当前发布版本。':
+    'Publishing does not change what is in the editor; official issue uses the current publication only.',
+  '高级 · 打开指定版本': 'Advanced · Open a specific version',
+  复制为新布局: 'Copy as new layout',
+  '让一个保存过的版本成为当前发布版本；屏幕表格的数据仍来自每次查询':
+    'Makes a saved version the current publication; the on-screen table still comes from each query',
+  把编辑器里的内容保存为一个新的看板: 'Saves what is in the editor as a new dashboard',
+  把编辑器里的内容保存为一个新的模板: 'Saves what is in the editor as a new template',
+  把编辑器里的内容保存为一个新的布局: 'Saves what is in the editor as a new layout',
 };

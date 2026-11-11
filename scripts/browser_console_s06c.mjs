@@ -526,9 +526,9 @@ async function main() {
   await click('#report-designer > summary');
   await sleep(200);
   check(
-    "the layout designer's bar: 版本, 保存版本, 发布 and the 草稿 badge",
+    "the layout designer's bar: 保存, 发布, 历史 (S09-F) and the 草稿 badge",
     await evalJs(
-      `[...document.querySelectorAll('#report-designer .designer-bar button')].map(b=>b.textContent.trim()).join(',')==='版本,保存版本,发布'&&document.getElementById('layout-state').textContent==='草稿'`
+      `[...document.querySelectorAll('#report-designer .designer-bar button')].map(b=>b.textContent.trim()).join(',')==='保存,发布,历史'&&document.getElementById('layout-state').textContent==='草稿'`
     )
   );
   await clickBtn('#report-designer .designer-bar', '发布');
@@ -546,14 +546,14 @@ async function main() {
   await waitFor(`document.getElementById('layout-state').textContent==='已发布 v1'`, 'the layout published', 30000);
   await idle();
   await sleep(200);
-  await clickBtn('#report-designer .designer-bar', '版本');
+  await clickBtn('#report-designer .designer-bar', '历史');
   await waitFor(`document.getElementById('ly-version-list').children.length===1`, 'the layout version dialog', 20000);
   await idle();
   await sleep(250);
   check(
-    "the layout's version dialog lists v1 as published",
+    "the layout's 历史 lists v1 as 已发布 and 当前打开, and says the current publication (S09-F)",
     await evalJs(
-      `document.querySelector('#ly-version-list .pill').textContent==='已发布'&&document.getElementById('ly-version-note').textContent==='保存版本不可变；当前发布指针：v1'`
+      `[...document.querySelectorAll('#ly-version-list .pill')].map(p=>p.textContent).join(',')==='已发布,当前打开'&&document.getElementById('ly-version-note').textContent==='当前发布：v1'&&document.getElementById('ly-ver-restore').textContent==='打开'&&document.getElementById('layout-server-new').textContent==='复制为新布局'`
     )
   );
   await shot('console-04b-layout-versions');
@@ -662,20 +662,20 @@ async function main() {
     )
   );
   await click('#bd-rail-components');
-  await clickBtn('#bd-studio .topbar', '保存版本');
+  await clickBtn('#bd-studio .topbar', '保存');
   await waitFor(`document.getElementById('bd-state').textContent==='已保存 v1'`, 'saved', 30000);
   await idle();
   check(
-    '保存版本 in the topbar saves on the server: the badge says 已保存 v1, the inspector names the dashboard',
+    '保存 in the topbar saves on the server: the badge says 已保存 v1, the inspector names the dashboard',
     await evalJs(`/看板 [a-f0-9]{8} · 版本 1/.test(document.getElementById('bd-insp-meta').textContent)`),
     await evalJs(`document.getElementById('bd-insp-meta').textContent`)
   );
-  await clickBtn('#bd-studio .topbar', '版本');
+  await clickBtn('#bd-studio .topbar', '历史');
   await waitFor(`document.getElementById('bd-version-list').children.length===1`, 'the version dialog', 20000);
   await idle();
   await sleep(250);
   check(
-    '版本 opens the version dialog (S07-G): v1 listed and picked, the focus inside, the studio inert',
+    '历史 opens the version dialog (S07-G; the word of S09-F): v1 listed and picked, the focus inside, the studio inert',
     await evalJs(
       `!document.getElementById('bd-d-versions').hidden&&document.getElementById('bd-version-list').children[0].getAttribute('aria-current')==='true'&&!!document.activeElement.closest('#bd-d-versions')&&document.getElementById('bd-studio').inert`
     )
@@ -685,7 +685,7 @@ async function main() {
   await key('Escape');
   await sleep(150);
   check(
-    'Esc closes the version dialog and returns the focus to 版本',
+    'Esc closes the version dialog and returns the focus to 历史',
     await evalJs(`document.getElementById('bd-d-versions').hidden&&document.activeElement.id==='bd-versions'`)
   );
   await clickBtn('#bd-sidebar', '添加指标卡');
@@ -707,7 +707,7 @@ async function main() {
   await shot('console-09a-dashboard-save-publish');
   await key('Escape');
   await sleep(200);
-  await clickBtn('#bd-studio .topbar', '保存版本');
+  await clickBtn('#bd-studio .topbar', '保存');
   await waitFor(`document.getElementById('bd-state').textContent==='已保存 v2'`, 'saved v2', 30000);
   await idle();
   await clickBtn('#bd-studio .topbar', '发布');
@@ -718,7 +718,8 @@ async function main() {
   );
   check(
     'the confirmation names the saved version, the dataset, the widgets and the current pointer, and holds the focus',
-    summary['将发布的版本'] === '保存版本 2' &&
+    summary['将发布的版本'] === '版本 2' &&
+      summary['发布修订'] === undefined &&
       summary['数据集'] === 'receivables.aging@1.0.0' &&
       summary['组件'] === '6 个' &&
       summary['当前发布'] === '未发布' &&
@@ -737,7 +738,7 @@ async function main() {
   check(
     'Esc closes the confirmation, publishes nothing and returns the focus to 发布',
     await evalJs(
-      `document.getElementById('bd-d-publish').hidden&&document.activeElement.id==='bd-publish'&&!document.getElementById('bd-studio').inert&&document.getElementById('board-release-status').textContent==='发布修订 0 · 当前未发布'`
+      `document.getElementById('bd-d-publish').hidden&&document.activeElement.id==='bd-publish'&&!document.getElementById('bd-studio').inert&&document.getElementById('bd-state').textContent==='已保存 v2'`
     )
   );
   await clickBtn('#bd-studio .topbar', '发布');
@@ -747,10 +748,8 @@ async function main() {
   await idle();
   await sleep(200);
   check(
-    '确认发布 publishes the saved version: 已发布 v2 in the badge and the status bar, the release history has the entry',
-    await evalJs(
-      `document.getElementById('bd-status-state').textContent.trim()==='已发布 v2'&&document.getElementById('board-release-status').textContent==='发布修订 1 · 已发布版本 2'&&document.getElementById('board-release-history').children.length===1`
-    )
+    '确认发布 publishes the saved version: 已发布 v2 in the badge and the status bar',
+    await evalJs(`document.getElementById('bd-status-state').textContent.trim()==='已发布 v2'`)
   );
   await shot('console-10-dashboard-published');
   const boards = (await api('GET', '/dashboards')).body;

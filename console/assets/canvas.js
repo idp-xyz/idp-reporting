@@ -2050,9 +2050,9 @@ window.createReportingCanvas = function (ports) {
     ['重做', 'doc-redo', 'redo'],
     ['生成PDF预览', 'doc-pdf', 'pdf preview 预览'],
     ['检查样本', 'doc-check', 'check samples boundary 边界 样本'],
-    ['保存模板版本', 'doc-server-save', 'save version 保存'],
-    ['发布当前保存版本', 'doc-release-publish', 'publish 发布'],
-    ['打开已发布模板', 'doc-published-open', 'open published 已发布'],
+    ['保存', 'doc-server-save', 'save version 保存 版本'],
+    ['发布', 'st-publish', 'publish 发布'],
+    ['历史', 'st-versions', 'history versions 版本 历史'],
     ['正式出具', 'doc-issue', 'issue 出具'],
   ];
   const listed = () =>

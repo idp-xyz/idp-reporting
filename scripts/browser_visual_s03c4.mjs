@@ -206,17 +206,9 @@ const insetFacts = ids =>
   const p=e.closest('.panel').getBoundingClientRect(),b=e.getBoundingClientRect(),s=getComputedStyle(e),text=['P','LABEL'].includes(e.tagName);
   return {id,left:Math.round(b.left-p.left+(text?parseFloat(s.paddingLeft):0)),right:Math.round(p.right-b.right+(text?parseFloat(s.paddingRight):0))};
 }))()`);
-const DASHBOARD_INSET = [
-  'board-server-status',
-  'board-release-status',
-  'board-status',
-  'board-json',
-  'board-save',
-  'board-open',
-];
+const DASHBOARD_INSET = ['board-server-status', 'board-status', 'board-json', 'board-save', 'board-open'];
 const DESIGNER_INSET = [
   'layout-server-status',
-  'layout-release-info',
   'layout-status',
   'layout-json',
   'layout-save',
