@@ -6,6 +6,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"idp.local/reporting/delivery/email"
 	"idp.local/reporting/delivery/webhook"
 	"idp.local/reporting/embedding"
 	"idp.local/reporting/identity/signin"
@@ -117,13 +119,15 @@ func (s *SignInConfig) Client(secret string) signin.Config {
 	return signin.Config{AuthorizationEndpoint: s.AuthorizationEndpoint, TokenEndpoint: s.TokenEndpoint, ClientID: s.ClientID, RedirectURI: s.RedirectURI, Scope: s.Scope, PasteFallback: s.PasteFallback, CA: s.CAFile, LoopbackHTTP: s.LoopbackHTTP, Timeout: seconds(s.Timeout), ClientSecret: secret}
 }
 
-// SchedulesConfig is S16-A's section. The webhook's signing secret is the environment's (REPORTING_WEBHOOK_SECRET), never the file's.
+// SchedulesConfig is S16-A's section. The webhook's signing secret is the environment's (REPORTING_WEBHOOK_SECRET), never the file's, and so is
+// the SMTP password of the email (REPORTING_SMTP_PASSWORD, S16-B). Either deliverer, both or neither may be configured.
 type SchedulesConfig struct {
 	// PollInterval is the seconds between two passes of the scheduler: 0 (the default, 30) or 5..300.
 	PollInterval int `json:"poll_interval"`
 	// PerIdentity is the schedules one identity may hold: 0 (the default, 20) or 1..200.
 	PerIdentity int            `json:"per_identity"`
 	Webhook     *WebhookConfig `json:"webhook"`
+	Email       *EmailConfig   `json:"email"`
 }
 
 // WebhookConfig is the one endpoint every run's end is delivered to (delivery/webhook): https, or plain http to a loopback IP address with
@@ -132,6 +136,31 @@ type WebhookConfig struct {
 	URL          string `json:"url"`
 	Timeout      int    `json:"timeout"`
 	LoopbackHTTP bool   `json:"loopback_http"`
+}
+
+// EmailConfig is the mail every run's end is sent by to its owner's address of the bindings file (delivery/email, S16-B): the SMTP host (a
+// name or an IP address) and port (0: 587), the sender's address, an optional username whose password is the environment's, STARTTLS (nil or
+// true: required; false only to a loopback IP address with loopback_plain, tests), the timeout of one attempt in seconds, 0 (the default, 10)
+// or 1..30, and the console's base URL the links use (https; plain http only to a loopback IP address with loopback_plain).
+type EmailConfig struct {
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	From          string `json:"from"`
+	Username      string `json:"username"`
+	StartTLS      *bool  `json:"starttls"`
+	LoopbackPlain bool   `json:"loopback_plain"`
+	Timeout       int    `json:"timeout"`
+	ConsoleURL    string `json:"console_url"`
+}
+
+// startTLS is the field with its default: on unless the file says false.
+func (e *EmailConfig) startTLS() bool { return e.StartTLS == nil || *e.StartTLS }
+
+// Mailer is the delivery/email configuration of the section, with the password given (from the environment) and the server's two readers:
+// the owner's addresses in the bindings in force, and a schedule's name.
+func (e *EmailConfig) Mailer(password string, recipients func(r.Identity) []string, names func(context.Context, r.Identity, string) (string, error)) email.Config {
+	return email.Config{Host: e.Host, Port: e.Port, From: e.From, Username: e.Username, Password: password, StartTLS: e.startTLS(), LoopbackPlain: e.LoopbackPlain,
+		Timeout: seconds(e.Timeout), ConsoleURL: e.ConsoleURL, Recipients: recipients, Names: names}
 }
 
 // The bounds of the schedules section.
@@ -578,6 +607,36 @@ func (c *Config) Validate() error {
 			}
 			if h.Timeout < 0 || h.Timeout > int(webhook.MaxTimeout/time.Second) {
 				return configProblem("schedules.webhook.timeout must be 0 (the default, %d seconds) or between 1 and %d", int(webhook.DefaultTimeout/time.Second), int(webhook.MaxTimeout/time.Second))
+			}
+		}
+		if m := sc.Email; m != nil {
+			if m.Host == "" || m.From == "" || m.ConsoleURL == "" {
+				return configProblem("schedules.email needs host, from and console_url")
+			}
+			if !email.ValidHost(m.Host) {
+				return configProblem("schedules.email.host must be a host name or an IP address without a port")
+			}
+			if m.Port < 0 || m.Port > 65535 {
+				return configProblem("schedules.email.port must be 0 (the default, %d) or between 1 and 65535", email.DefaultPort)
+			}
+			if !email.ValidAddress(m.From) {
+				return configProblem("schedules.email.from must be one address (an RFC 5322 addr-spec of printable ASCII, at most %d characters, no display name)", email.MaxAddressBytes)
+			}
+			if m.Username != "" && (len(m.Username) > 256 || strings.ContainsFunc(m.Username, func(c rune) bool { return c < 0x21 || c > 0x7e })) {
+				return configProblem("schedules.email.username is 1 to 256 printable ASCII characters without a space")
+			}
+			loopback := false
+			if ip := net.ParseIP(m.Host); ip != nil {
+				loopback = ip.IsLoopback()
+			}
+			if !m.startTLS() && !(m.LoopbackPlain && loopback) {
+				return configProblem("schedules.email.starttls false is only for a loopback IP address host with loopback_plain (tests); a server that offers no STARTTLS gets no mail")
+			}
+			if m.Timeout < 0 || m.Timeout > int(email.MaxTimeout/time.Second) {
+				return configProblem("schedules.email.timeout must be 0 (the default, %d seconds) or between 1 and %d", int(email.DefaultTimeout/time.Second), int(email.MaxTimeout/time.Second))
+			}
+			if !email.ValidConsoleURL(m.ConsoleURL, m.LoopbackPlain) {
+				return configProblem("schedules.email.console_url must be the console's https base URL without user information, query or fragment (plain http only to a loopback IP address, with loopback_plain)")
 			}
 		}
 	}

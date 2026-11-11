@@ -52,6 +52,22 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 	}
 	issuer := func(d map[string]any) map[string]any { return d["issuer"].(map[string]any) }
 	conn := func(d map[string]any) map[string]any { return d["connections"].([]map[string]any)[0] }
+	// email is a valid schedules section with an email, with the changes given.
+	email := func(changes map[string]any) map[string]any {
+		m := map[string]any{"host": "smtp.example.com", "from": "reporting@example.com", "console_url": "https://reporting.example.com"}
+		for k, v := range changes {
+			m[k] = v
+		}
+		return map[string]any{"email": m}
+	}
+	if _, err := ParseConfig(with(func(d map[string]any) { d["schedules"] = email(nil) })); err != nil {
+		t.Fatalf("a valid email section: %v", err)
+	}
+	if c, err := ParseConfig(with(func(d map[string]any) {
+		d["schedules"] = email(map[string]any{"host": "127.0.0.1", "port": 2525, "starttls": false, "loopback_plain": true, "console_url": "http://127.0.0.1:8443", "username": "sender", "timeout": 5})
+	})); err != nil || c.Schedules.Email.startTLS() || c.Schedules.Email.Port != 2525 {
+		t.Fatalf("a loopback email section: %v", err)
+	}
 	cases := map[string][]byte{
 		"an unknown field":          with(func(d map[string]any) { d["listn"] = secret }),
 		"a field in the wrong case": with(func(d map[string]any) { d["Listen"] = d["listen"]; delete(d, "listen") }),
@@ -117,6 +133,28 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 		"an inline webhook secret": with(func(d map[string]any) {
 			d["schedules"] = map[string]any{"webhook": map[string]any{"url": "https://hooks.example/", "secret": secret}}
 		}),
+		"an email without a from":        with(func(d map[string]any) { d["schedules"] = email(map[string]any{"from": ""}) }),
+		"an email without a console url": with(func(d map[string]any) { d["schedules"] = email(map[string]any{"console_url": ""}) }),
+		"an email host with a port":      with(func(d map[string]any) { d["schedules"] = email(map[string]any{"host": "smtp.example:" + secret}) }),
+		"an email port over 65535":       with(func(d map[string]any) { d["schedules"] = email(map[string]any{"port": 65536}) }),
+		"an email from with a display name": with(func(d map[string]any) {
+			d["schedules"] = email(map[string]any{"from": secret + " <reporting@example.com>"})
+		}),
+		"an email username with a space": with(func(d map[string]any) { d["schedules"] = email(map[string]any{"username": "a " + secret}) }),
+		"an email timeout over 30 s":     with(func(d map[string]any) { d["schedules"] = email(map[string]any{"timeout": 31}) }),
+		"an email console url over plain http": with(func(d map[string]any) {
+			d["schedules"] = email(map[string]any{"console_url": "http://reporting.example/" + secret})
+		}),
+		"an email console url with a query": with(func(d map[string]any) {
+			d["schedules"] = email(map[string]any{"console_url": "https://reporting.example/?k=" + secret})
+		}),
+		"an email without STARTTLS to a real host": with(func(d map[string]any) {
+			d["schedules"] = email(map[string]any{"starttls": false, "loopback_plain": true})
+		}),
+		"an email without STARTTLS to loopback without the option": with(func(d map[string]any) {
+			d["schedules"] = email(map[string]any{"host": "127.0.0.1", "starttls": false})
+		}),
+		"an inline smtp password":       with(func(d map[string]any) { d["schedules"] = email(map[string]any{"password": secret}) }),
 		"a certificate without its key": with(func(d map[string]any) { delete(d, "tls_key_file") }),
 		"plain and TLS together":        with(func(d map[string]any) { d["allow_plain_loopback"] = true }),
 		"neither TLS nor plain":         with(func(d map[string]any) { delete(d, "tls_cert_file"); delete(d, "tls_key_file") }),

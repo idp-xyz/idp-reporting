@@ -109,7 +109,7 @@ the rule and never repeats a value of the file.
 | `issuer.issuer` | required | `https://` URL. |
 | `issuer.audience`, `.required_scope` | required | Exact match. |
 | `issuer.max_token_lifetime` | required | 1..3600 seconds. |
-| `issuer.jwks_file`, `.bindings_file` | required | The public keys (at most 64 KiB, 16 RSA keys of 2048..4096 bits, e=65537) and the list of `{subject, client_id, tenant, integrations[, roles]}` (`roles`, S12-A, ADR 0018: 1..5 of `viewer`, `designer`, `publisher`, `issuer`, `administrator`; absent: `viewer, designer, publisher, issuer`, the rights before roles) (strict, at most 4096). Re-read by a reload. |
+| `issuer.jwks_file`, `.bindings_file` | required | The public keys (at most 64 KiB, 16 RSA keys of 2048..4096 bits, e=65537) and the list of `{subject, client_id, tenant, integrations[, roles][, email]}` (`roles`, S12-A, ADR 0018: 1..5 of `viewer`, `designer`, `publisher`, `issuer`, `administrator`; absent: `viewer, designer, publisher, issuer`, the rights before roles; `email`, S16-B: one address, an RFC 5322 addr-spec of printable ASCII, at most 254 characters, where the person's scheduled runs' ends are mailed when `schedules.email` is configured; absent: no mail) (strict, at most 4096). Re-read by a reload. |
 | `cursor_key_files` | required | 1..4 files, newest first; each holds one key, hex or base64 (a text valid as both is read as hex), 32..64 bytes; two files may not hold the same key. |
 | `connections` | required | 1..256 entries `{tenant, integration, source_tenant, adapter, options}`; `(tenant, integration)` unique; `adapter` names a registry entry (`http` in the shipped command; "Connecting a source product over HTTP" below for its `options`). |
 | `quotas.*` | 8, 64, 120, 4 | `jobs_in_flight` 1..1000, `stored_results` 1..100000, `admissions_per_hour` 1..100000, `queries_in_flight` 1..64; 0 is the default of each. |
@@ -131,6 +131,11 @@ the rule and never repeats a value of the file.
 | `schedules` | none (off) | S16-A (docs/S16A_SCOPE.md): present, the routes under `/schedules` and the scheduler in this server are on. Every server on the store may run it: the store gives each run to one of them. |
 | `schedules.poll_interval`, `.per_identity` | 30, 20 | `poll_interval` 0 (default) or 5..300 seconds between two passes; `per_identity` 0 (default) or 1..200 schedules an identity may hold. |
 | `schedules.webhook.url`, `.timeout`, `.loopback_http` | none, 10, `false` | The one endpoint every run's end is delivered to: `https://` without user information or fragment (`loopback_http` allows `http://` to a loopback IP address, for tests only); `timeout` 0 (default) or 1..30 seconds per attempt. The secret is `REPORTING_WEBHOOK_SECRET`. |
+| `schedules.email.host`, `.port`, `.from` | none, 587, none | S16-B (docs/S16B_SCOPE.md, ADR 0020's amendment): every run's end is also mailed to its owner, at the `email` of the owner's bindings (none: no mail, and nothing recorded of it). `host` is the SMTP server, a name or an IP address without a port; `from` the sender, one address (RFC 5322 addr-spec, printable ASCII, at most 254 characters, no display name). Either deliverer, both or neither may be configured; with both, one attempt tries both and a failure of either is retried. |
+| `schedules.email.username` | none | The SMTP user (SASL PLAIN, sent only over TLS or to a loopback IP address): 1..256 printable ASCII characters without a space. Its password is `REPORTING_SMTP_PASSWORD`, required with it and refused without it. |
+| `schedules.email.starttls`, `.loopback_plain` | `true`, `false` | STARTTLS is required: a server that does not offer it gets no mail (the attempt is `unreachable`), and the certificate is checked against the host's roots for `host`. `starttls: false` sends in the clear and is accepted only with `loopback_plain: true` and a loopback IP `host`, for tests. |
+| `schedules.email.timeout` | 10 | 0 (default) or 1..30 seconds for one attempt, the connection to the server's last reply. |
+| `schedules.email.console_url` | required with the section | The console's base the mail links to (`<console_url>/console/#schedules`, where the owner downloads the file with their own access): `https://host[:port][/path]`, no user information, query or fragment; `http://` only to a loopback IP address, with `loopback_plain`. |
 
 ## Secrets
 
@@ -147,6 +152,7 @@ tenant, cursor key, connection-string password and object store keys and looks f
 | Sign-in client secret | environment `REPORTING_SIGN_IN_CLIENT_SECRET`, only for a confidential client; absent for a public client (the recommended registration, PKCE alone) | 1..512 printable ASCII characters without a space; sent as HTTP Basic (`client_secret_basic`) to the token endpoint only. |
 | Source credential (S19-A) | environment variable named by a connection's `options.auth_env` (one per product, e.g. `REPORTING_SOURCE_ERP_AUTH`), and/or the client key file `options.client_key_file` | Set and 1..4096 printable characters without a space; sent only as `Authorization: Bearer` to that connection's `base_url`. The key file: regular, not a link, mode 0600 or 0400, at most 64 KiB. |
 | Webhook signing secret (S16-A) | environment `REPORTING_WEBHOOK_SECRET`, required when `schedules.webhook` is configured | 32..1024 bytes (generate with `openssl rand -hex 32`); give the receiver the same value. Never shown; rotating it is a restart, rolled, with the receiver accepting both for the while. |
+| SMTP password (S16-B) | environment `REPORTING_SMTP_PASSWORD`, required when `schedules.email.username` is set, refused when it is not | 1..1024 bytes without control characters; sent as SASL PLAIN only over TLS or to a loopback IP address, to `schedules.email.host` alone. Never shown; rotating it is a restart, rolled. |
 
 A symbolic link is refused for the file itself (it is opened with `O_NOFOLLOW`); a link in a directory above it is the operator's layout and is not checked.
 
@@ -179,11 +185,11 @@ is a restart, rolled one server at a time, with the product accepting the old an
 
 Each failure is a refusal whose text is fixed and names the step (`reporting-server: start refused at step "store": …`) and is logged as `start_refused` with the step only:
 **configuration** (the file's own rules, including a ring of five, plain HTTP on a public address) → **secrets** (cursor keys, the connection string's presence, the object store keys, the
-TLS pair) → **issuer** (the access-token profile; then every product of every binding must be a connection of the binding's tenant, ADR 0016) → **sign in** (the `sign_in` section with the client secret of the environment, the CA file read) → **adapters** (an unregistered or unknown adapter name, a factory that fails, a simulator without the allowance) → **store**
+webhook's secret and the SMTP password when their sections ask for them, the TLS pair) → **issuer** (the access-token profile; then every product of every binding must be a connection of the binding's tenant, ADR 0016) → **sign in** (the `sign_in` section with the client secret of the environment, the CA file read) → **adapters** (an unregistered or unknown adapter name, a factory that fails, a simulator without the allowance) → **store**
 (`OpenProduction`; its own refusals keep their text, any other error, a connection failure, is reduced to a fixed text because it may name the host or the user) → **object store**
 (`HEAD bucket`) → **pdf**, **private directories** → **service** → workers and sweep → **listen** (`the listen address cannot be bound`). A refused start releases everything it
 opened and stops the workers it started. The start line (`start`) carries the binary's version, the ledger's version, the number of cursor keys, the connections and workers, the trusted `kid`s,
-and whether TLS, an object store, PDF, issuance, embedding and the browser sign-in (`sign_in`) are on, and (ADR 0016) `connections_sha256`, `bindings` and `bindings_sha256`: the digests of
+and whether TLS, an object store, PDF, issuance, embedding, the browser sign-in (`sign_in`), the scheduled reports (`schedules`) and their deliverers (`webhook`, `email`) are on, and (ADR 0016) `connections_sha256`, `bindings` and `bindings_sha256`: the digests of
 what is in force, the same that `check-config` prints, so that a reviewed file can be matched to a running server.
 
 **Adding a product** (ADR 0016): add the connection to the configuration file and restart (rolled), then add the product to the bindings and reload. A
@@ -241,7 +247,7 @@ authentication, so a scraper on another host reaches them through an agent or a 
 | `reporting_worker_failures_total` | counter | `code` (the platform's error code, as in `worker_failed`) |
 | `reporting_sweeps_total`, `reporting_reloads_total` | counter | `outcome`: `ok` or the code of the failure or refusal |
 | `reporting_schedule_passes_total` | counter | `outcome`: `ok` or the code of a failed pass of the scheduler (S16-A) |
-| `reporting_deliveries_total` | counter | `outcome`: `delivered`, `rejected`, `redirected`, `throttled`, `server_error`, `unreachable` |
+| `reporting_deliveries_total` | counter | `outcome`: `delivered`, `rejected`, `redirected`, `throttled`, `server_error`, `unreachable` (one per attempt as a whole: with a webhook and an email both configured, the fan-out's result) |
 | `reporting_http_in_flight`, `reporting_workers_busy`, `reporting_draining` | gauge | none |
 | `reporting_ready` | gauge | `reason`: `none`, or the word `/readyz` would answer |
 | `reporting_build_info` | gauge | `version` |
@@ -253,7 +259,7 @@ who uses it. Counters start at zero with the process. Alert on `reporting_ready 
 ## Logging
 
 One JSON object per line on stderr (the journal): `ts`, `level`, `event` and counts and codes only. Events: `start`, `start_refused`, `reload` (outcome `ok` with the trusted `kid`s and the binding count, or `refused` with a code),
-`sweep` (counts) and `sweep_failed` (a code), `schedule` (counts of runs started, advanced and whose lease was lost) and `schedule_failed` (a code), `delivery` (S16-A: the attempt's outcome word, the HTTP status, the attempt's number, the delivery's state and the run's and schedule's platform ids; never the endpoint or the secret), `sign_in` (one per code exchange, S15-A: `outcome` `ok` at info, else `replayed`, `busy`, `provider_refused`, `provider_client_refused`, `provider_status`, `timeout`, `unreachable`, `oversized`, `malformed` or `nonce_mismatch` at warn; never the code, the verifier, a token or the provider's text), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
+`sweep` (counts) and `sweep_failed` (a code), `schedule` (counts of runs started, advanced and whose lease was lost) and `schedule_failed` (a code), `delivery` (S16-A, S16-B: one line per deliverer and attempt: `deliverer` (`webhook` or `email`), its outcome word and status (an HTTP status, an SMTP reply code), the attempt's number, the delivery's state after the attempt as a whole and the run's and schedule's platform ids; never the endpoint, the secret, an address, a schedule's name or a mail's body), `sign_in` (one per code exchange, S15-A: `outcome` `ok` at info, else `replayed`, `busy`, `provider_refused`, `provider_client_refused`, `provider_status`, `timeout`, `unreachable`, `oversized`, `malformed` or `nonce_mismatch` at warn; never the code, the verifier, a token or the provider's text), `worker_failed` (a code: the platform's own, else `EXECUTION_FAILED`), `drain_begin`, `drain_end`, `http_server_error` (a panic in a handler or a failed handshake, with
 neither the panic's value nor the client's address), and one `access` line per request: `method`, `route` (the mux pattern, e.g. `GET /api/reporting/v1/jobs/{id}`, `unmatched` for a 404), `status`, `duration_ms` and a random
 `request_id` (also the `X-Request-Id` of the answer), and the request's `trace_id` and `span_id`. No query string, body, header, subject, tenant, path or error text is logged.
 

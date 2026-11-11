@@ -581,9 +581,11 @@ no server ran is run once when one runs again; one missed while the schedule was
 
 When the deployment configures a webhook, each run's end is POSTed to it, signed (`X-Reporting-Signature: sha256=<hex HMAC-SHA256 of the body>`,
 `X-Reporting-Delivery: <run_id>`, `X-Reporting-Event: schedule.run.finished`), with the run's ids and outcome and never a value of the report;
-a run's `delivery` says `pending`, `delivered` or `failed` (`none` without a webhook). The endpoint is the deployment's: no route writes it,
-and an administrator sees only its host (`GET /admin/configuration`). An official issue is never scheduled. The console's 定时报表 page (S18-A)
-makes a schedule from the current query and lists the runs.
+a run's `delivery` says `pending`, `delivered` or `failed` (`none` without a deliverer). The endpoint is the deployment's: no route writes it,
+and an administrator sees only its host (`GET /admin/configuration`). With `schedules.email` (S16-B, docs/S16B_SCOPE.md) the same end is also
+mailed to the owner, at the `email` of the owner's binding in the bindings file (no route reads or writes it): the schedule's name, the
+outcome, the ids and a link to the console's 定时报表 page, never a row, a query, an attachment or the file; `delivery` is the attempt as a
+whole. An official issue is never scheduled. The console's 定时报表 page (S18-A) makes a schedule from the current query and lists the runs.
 
 ## The configuration in force (S18-B, docs/S18_SCOPE.md)
 

@@ -202,7 +202,7 @@ const (
 	RunCancelled = "cancelled"
 )
 
-// The states of a run's delivery: none (no webhook is configured, or the run is not over), pending, delivered, or failed (refused by the
+// The states of a run's delivery: none (no deliverer is configured, or the run is not over), pending, delivered, or failed (refused by the
 // receiver, or its attempts used up).
 const (
 	DeliveryNone      = "none"
