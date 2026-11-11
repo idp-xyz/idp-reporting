@@ -124,7 +124,14 @@
 - 要成立的：定时运行以所有者当时生效的绑定提交与本人相同的快照/导出作业（同一准入、配额与来源产品授权）；绑定被移除、产品被移除、缺少 `viewer` 角色或来源拒绝时运行被拒绝；同一触发时刻在多台服务器上只运行一次；投递只含编号与结果，不含报表数据，用环境变量中的密钥做 HMAC-SHA256 签名，只投 https（测试可用回环 http），不跟随重定向；投递端点由部署配置，没有任何接口可以读写它；定时任务从不正式出具。
 - 代码：`reporting/schedule.go`、`reporting/scheduler.go`、`delivery/webhook/webhook.go`、`identity/accessjwt`（`Bound`）、`storage/postgres/schedules.go`、迁移 013（行级安全同 007）、`transport/httpapi/schedules.go`。
 - 测试：`TestAScheduledRunActsAsItsOwnerNow`、`TestSchedulersOnOneStoreRunAnOccurrenceOnce`、`TestPostgresScheduleContract`、行级安全测试 `schedules_and_runs_are_their_identitys_and_the_schedulers`、`delivery/webhook` 的签名与重定向测试、`TestTheServerRunsSchedulesAndDeliversThem`（日志中不出现端点、密钥与报表名称）。
-- 已知不覆盖：投递至少一次（接收方按运行编号去重）；运行记录的保留期（S16-B）；邮件与按租户的端点（S16-B）。
+- 已知不覆盖：投递至少一次（接收方按运行编号去重）；运行记录的保留期（后续切片）；按租户的端点（后续切片）。邮件见下一节（S16-B）。
+
+## 邮件投递（S16-B，ADR 0020 修订）
+
+- 要成立的：邮件与 webhook 携带同一通知，只是写给人看：计划名称（收件人就是写下它的所有者）、触发时刻、结果与代码、运行与计划编号、控制台链接；不含任何行、查询、附件或文件内容——文件只能在平台内以本人权限读取。收件地址只来自绑定文件的 `email`（一个地址，加载时验证；没有就不寄，也不记录异常；同一身份多条绑定的不同地址至多四个），没有任何接口能读写它，通知里也不带它。SMTP 密码只来自环境变量 `REPORTING_SMTP_PASSWORD`（有 `username` 才要求，没有则拒绝），只经 TLS 或回环地址以 PLAIN 发送；STARTTLS 为必需，不提供 STARTTLS 的服务器什么也收不到（`starttls: false` 只允许配合 `loopback_plain` 寄到回环 IP，供测试）。主题整体按 RFC 2047 编码、正文 base64，所以人写的名称不会原样进入任何邮件头。日志只有投递者的字、结果与编号，不出现地址、名称、正文或密码。两个投递者都配置时，一次尝试两者都试、任一失败即按同一策略重试，所以邮件也可能收到两次（运行编号在 `X-Reporting-Delivery` 头里）。
+- 代码：`delivery/email/email.go`、`delivery/delivery.go`（`Multi`）、`identity/accessjwt`（`Binding.Email`、`Emails`）、`server/files.go`（`email` 字段）、`server/config.go`（`schedules.email`）、`server/lifecycle.go`（按投递者记日志）。
+- 测试：`TestEmailsAreTheBindingsAddresses`、`delivery/email` 的配置、报文、收件人、STARTTLS 与凭据、回复码测试（进程内伪 SMTP 服务器）、`delivery` 的扇出测试、`TestTheServerMailsARunsEndToTheOwnersAddressFromTheBindings`（日志中不出现地址、名称、端点与密钥）、`TestTheEmailAloneAndWithoutAnAddressAndItsPassword`。
+- 已知不覆盖：SMTP 服务器证书按主机的系统根证书校验，没有 `ca_file`；不支持 SMTPUTF8 地址；管理员视图不显示邮件配置与地址。
 
 ## 管理员只读视图（S18-B）
 

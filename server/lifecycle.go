@@ -4,11 +4,36 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
+	"idp.local/reporting/delivery"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/tracecontext"
 )
+
+// attempts collects what the deliverers report during a pass of the scheduler (delivery.Multi's report), so that each deliverer's attempt
+// is logged with the delivery's state the scheduler decided after it (S16-B). One pass at a time runs in a server, on the loop's goroutine;
+// the guard is for the race detector's peace of mind.
+type attempts struct {
+	mu   sync.Mutex
+	list []delivery.Attempt
+}
+
+func (a *attempts) record(x delivery.Attempt) {
+	a.mu.Lock()
+	a.list = append(a.list, x)
+	a.mu.Unlock()
+}
+
+// take hands out what was reported since the last take.
+func (a *attempts) take() []delivery.Attempt {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	list := a.list
+	a.list = nil
+	return list
+}
 
 // codeOf is the code a worker failure is logged by: the platform's own codes, else EXECUTION_FAILED. The error itself is never logged.
 func codeOf(err error) string {
@@ -69,14 +94,29 @@ func (s *Server) scheduleOnce() {
 	s.busy.Add(1)
 	defer s.busy.Add(-1)
 	res, err := s.schedules.Tick(s.workCtx)
+	// One delivery line per deliverer and attempt (S16-B): the deliverer's word, its outcome and status, and the delivery's state the
+	// scheduler recorded after the attempt as a whole. The metric counts the attempt as a whole, as before.
+	reported := s.attempts.take()
+	logged := make([]bool, len(reported))
 	for _, d := range res.Deliveries {
-		fields := map[string]any{"outcome": d.Outcome, "status": d.Status, "attempt": d.Attempt, "delivery": d.Delivery, "run_id": d.RunID, "schedule_id": d.ScheduleID}
-		if d.Outcome == r.DeliveryOutcomeDelivered {
-			s.log.info("delivery", fields)
-		} else {
-			s.log.warn("delivery", fields)
+		matched := false
+		for i, a := range reported {
+			if a.RunID != d.RunID || a.Attempt != d.Attempt {
+				continue
+			}
+			matched, logged[i] = true, true
+			s.logDelivery(map[string]any{"deliverer": a.Deliverer, "outcome": a.Outcome, "status": a.Status, "attempt": d.Attempt, "delivery": d.Delivery, "run_id": d.RunID, "schedule_id": d.ScheduleID})
+		}
+		if !matched {
+			s.logDelivery(map[string]any{"outcome": d.Outcome, "status": d.Status, "attempt": d.Attempt, "delivery": d.Delivery, "run_id": d.RunID, "schedule_id": d.ScheduleID})
 		}
 		s.metrics.delivered(d.Outcome)
+	}
+	// An attempt the pass could not record (the drain ended it after the attempt): the lease runs out and the run is claimed again.
+	for i, a := range reported {
+		if !logged[i] {
+			s.logDelivery(map[string]any{"deliverer": a.Deliverer, "outcome": a.Outcome, "status": a.Status, "attempt": a.Attempt, "run_id": a.RunID, "schedule_id": a.ScheduleID})
+		}
 	}
 	fields := map[string]any{"started": res.Started, "advanced": res.Advanced, "lost": res.Lost}
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -89,6 +129,15 @@ func (s *Server) scheduleOnce() {
 		s.log.info("schedule", fields)
 	}
 	s.metrics.scheduled("ok")
+}
+
+// logDelivery is one delivery line: at info when the outcome is delivered, at warn otherwise.
+func (s *Server) logDelivery(fields map[string]any) {
+	if fields["outcome"] == r.DeliveryOutcomeDelivered {
+		s.log.info("delivery", fields)
+		return
+	}
+	s.log.warn("delivery", fields)
 }
 
 // worker claims and runs jobs until the drain begins. A job it holds runs to its end on the work context. Each claim runs in the root span of a

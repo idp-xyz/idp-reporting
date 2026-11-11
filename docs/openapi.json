@@ -6417,7 +6417,7 @@
               "delivered",
               "failed"
             ],
-            "description": "The webhook delivery of the run's end; none when the deployment configures no webhook."
+            "description": "The delivery of the run's end to the deployment's deliverers (the webhook, the owner's email; S16-B: with both, the attempt as a whole); none when the deployment configures neither."
           },
           "finished_at": {
             "type": "string",

@@ -625,8 +625,18 @@ as an idempotency key (a delivery may come twice), answers 2xx quickly and fetch
 after 30 s, 1, 2, 4 and 8 minutes; a 3xx or another 4xx is not (the run's `delivery` says `failed`, the log `rejected` or `redirected`). Alert on
 `reporting_deliveries_total{outcome!="delivered"}` and `reporting_schedule_passes_total{outcome!="ok"}`.
 
-Deleted schedules stay as rows (the application role never deletes) and runs accumulate, a few hundred bytes each; until S16-B adds them to the
-retention, remove old ones with the migrator if they grow (`DELETE FROM reporting_s01.schedule_runs WHERE finished_at < now() - interval '400 days'`).
+With `schedules.email` (S16-B, docs/S16B_SCOPE.md) each run's end is also mailed to the owner, at the `email` of the owner's bindings
+(docs/DEPLOYMENT.md; a binding without one gets no mail, and nothing is recorded of it): the schedule's name, the occurrence, the outcome
+and its code, the ids and a link to the console's 定时报表 page, where the owner downloads the file with their own access; never a row, a
+file or an attachment. The relay is spoken to with STARTTLS (a relay that offers none gets nothing: `unreachable`) and, with a `username`,
+SASL PLAIN under `REPORTING_SMTP_PASSWORD`. An SMTP 4yz reply is `throttled` and retried with the webhook's waits; a 5yz reply (the sender
+or a recipient refused, a wrong password) is `rejected` and not: fix the relay or the address and the next run is mailed. With both
+deliverers configured one attempt tries both and a failure of either is retried for both: the receiver's idempotency by run id covers the
+webhook, and a person may get the same mail twice. The `delivery` log line names the deliverer (`webhook`, `email`) and never an address.
+Changing a person's address is a change of the bindings file and a reload.
+
+Deleted schedules stay as rows (the application role never deletes) and runs accumulate, a few hundred bytes each; until a later slice adds them
+to the retention, remove old ones with the migrator if they grow (`DELETE FROM reporting_s01.schedule_runs WHERE finished_at < now() - interval '400 days'`).
 Migration 013 down drops both tables and the audit's schedule events.
 
 ## Backup and restore (S04-F)

@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"idp.local/reporting/delivery/email"
 	"idp.local/reporting/identity/accessjwt"
 	r "idp.local/reporting/reporting"
 )
@@ -141,6 +142,8 @@ type bindingEntry struct {
 	Tenant       string   `json:"tenant"`
 	Integrations []string `json:"integrations"`
 	Roles        []string `json:"roles"`
+	// Email is where the person's scheduled runs' ends are mailed (S16-B): absent for none.
+	Email string `json:"email"`
 }
 
 // issuerFiles are the two files a reload re-reads. digest is the SHA-256 of the bindings file as read (ADR 0016: what is in force).
@@ -253,8 +256,8 @@ func bindingChanges(before, after []accessjwt.Binding) (added, removed, changed 
 	return
 }
 
-// parseBindings reads the bindings file strictly: a JSON list of {subject, client_id, tenant, integrations}, no unknown or repeated field,
-// nothing after the list.
+// parseBindings reads the bindings file strictly: a JSON list of {subject, client_id, tenant, integrations[, roles][, email]}, no unknown or
+// repeated field, nothing after the list.
 func parseBindings(raw []byte) ([]accessjwt.Binding, error) {
 	bad := func(rule string) ([]accessjwt.Binding, error) {
 		return nil, &fileProblem{"issuer.bindings_file", rule}
@@ -278,7 +281,7 @@ func parseBindings(raw []byte) ([]accessjwt.Binding, error) {
 	if len(list) > 4096 {
 		return bad("the file holds more than 4096 bindings")
 	}
-	allowed := map[string]bool{"subject": true, "client_id": true, "tenant": true, "integrations": true, "roles": true}
+	allowed := map[string]bool{"subject": true, "client_id": true, "tenant": true, "integrations": true, "roles": true, "email": true}
 	for _, item := range list {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -302,7 +305,10 @@ func parseBindings(raw []byte) ([]accessjwt.Binding, error) {
 		if e.Roles != nil && len(e.Roles) == 0 {
 			return bad("a binding's roles name at least one role (leave the field out for the default rights)")
 		}
-		out = append(out, accessjwt.Binding{Subject: e.Subject, ClientID: e.ClientID, Tenant: e.Tenant, Integrations: e.Integrations, Roles: e.Roles})
+		if e.Email != "" && !email.ValidAddress(e.Email) {
+			return bad(fmt.Sprintf("a binding's email must be one address: an RFC 5322 addr-spec of printable ASCII, at most %d characters, without a display name (leave the field out for no mail)", accessjwt.MaxEmailBytes))
+		}
+		out = append(out, accessjwt.Binding{Subject: e.Subject, ClientID: e.ClientID, Tenant: e.Tenant, Integrations: e.Integrations, Roles: e.Roles, Email: e.Email})
 	}
 	return out, nil
 }
@@ -326,7 +332,7 @@ func newVerifier(c IssuerConfig, conns []ConnectionConfig) (*accessjwt.Verifier,
 	}
 	v, err := accessjwt.New(issuerConfig(c, files))
 	if err != nil {
-		return nil, issuerFiles{}, &fileProblem{"issuer", "the issuer, the audience, the scope, the lifetime, the keys or the bindings are refused by the access-token profile (https issuer; RSA 2048-4096 keys with e=65537, at most 16; unique kids; bindings with unique subject and client, at most 32 integrations each)"}
+		return nil, issuerFiles{}, &fileProblem{"issuer", "the issuer, the audience, the scope, the lifetime, the keys or the bindings are refused by the access-token profile (https issuer; RSA 2048-4096 keys with e=65537, at most 16; unique kids; bindings with unique subject and client, at most 32 integrations each, an email that is one address)"}
 	}
 	if n := unservedBindings(files.bindings, conns); n > 0 {
 		return nil, issuerFiles{}, unservedProblem(n)

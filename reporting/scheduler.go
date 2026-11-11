@@ -45,7 +45,7 @@ func NewSchedules(svc *Service, o ScheduleOptions) (*Schedules, error) {
 // Limit is the schedules one identity may hold.
 func (s *Schedules) Limit() int { return s.limit }
 
-// Delivers says whether runs that end are delivered to a webhook.
+// Delivers says whether runs that end are delivered (a webhook, an email, or both behind one fan-out: delivery.Multi).
 func (s *Schedules) Delivers() bool { return s.deliver != nil }
 
 // ScheduleView is what the API shows of a schedule: the definition as the person wrote it, its state and its next occurrence.
@@ -307,7 +307,8 @@ func (d DeliveryResult) Retry() bool {
 	return d.Outcome == DeliveryOutcomeThrottled || d.Outcome == DeliveryOutcomeServerError || d.Outcome == DeliveryOutcomeUnreachable
 }
 
-// Deliverer delivers a notification (delivery/webhook is the one of S16-A). It is the deployment's: no route configures one.
+// Deliverer delivers a notification: delivery/webhook (S16-A), delivery/email (S16-B, to the owner's address of the bindings), and
+// delivery.Multi, which gives one notification to each of them and answers one result. It is the deployment's: no route configures one.
 type Deliverer interface {
 	Deliver(ctx context.Context, n Notification) DeliveryResult
 }

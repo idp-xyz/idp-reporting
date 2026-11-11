@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"slices"
 	"strings"
@@ -46,7 +47,16 @@ type Binding struct {
 	Integrations              []string
 	// Roles are the binding's roles (S12-A, ADR 0018): nil for none named (the default rights), else 1..5 distinct known names.
 	Roles []string
+	// Email is where the end of this person's scheduled runs is mailed (S16-B, ADR 0020's amendment): "" for none, else one address, an RFC
+	// 5322 addr-spec of printable ASCII, at most MaxEmailBytes. It is the operator's, as every field here: no token claim and no route writes it.
+	Email string
 }
+
+// The bounds of a binding's email (S16-B): one address, and the addresses one identity's bindings are mailed at together.
+const (
+	MaxEmailBytes = 254
+	MaxEmails     = 4
+)
 
 // Config is one issuer's explicit trust and identity map. JWKS contains public
 // keys obtained out of band from that issuer. No URL in a JWT is ever fetched.
@@ -58,11 +68,18 @@ type Config struct {
 }
 
 type subjectClient struct{ subject, clientID string }
+
+// binding is one provisioned binding as the configuration keeps it: the principal a token of it is, and the address its runs are mailed at.
+type binding struct {
+	principal r.Principal
+	email     string
+}
+
 type configuration struct {
 	issuer, audience, requiredScope string
 	maxLifetime                     int64
 	keys                            map[string]*rsa.PublicKey
-	bindings                        map[subjectClient]r.Principal
+	bindings                        map[subjectClient]binding
 }
 
 // Verifier has an immutable configuration snapshot per authentication. Its zero
@@ -95,10 +112,13 @@ func (v *Verifier) Replace(c Config) error {
 	if err != nil {
 		return ErrInvalidConfig
 	}
-	next := &configuration{issuer: c.Issuer, audience: c.Audience, requiredScope: c.RequiredScope, maxLifetime: int64(c.MaxTokenLifetime / time.Second), keys: keys, bindings: make(map[subjectClient]r.Principal)}
+	next := &configuration{issuer: c.Issuer, audience: c.Audience, requiredScope: c.RequiredScope, maxLifetime: int64(c.MaxTokenLifetime / time.Second), keys: keys, bindings: make(map[subjectClient]binding)}
 	for _, b := range c.Bindings {
 		p := r.Principal{Identity: r.Identity{Tenant: b.Tenant, Issuer: c.Issuer, Subject: b.Subject}, Integrations: slices.Clone(b.Integrations), Roles: slices.Clone(b.Roles)}
 		if b.Roles != nil && !r.ValidRoles(b.Roles) {
+			return ErrInvalidConfig
+		}
+		if b.Email != "" && !validEmail(b.Email) {
 			return ErrInvalidConfig
 		}
 		if b.Subject == r.TeamSubject {
@@ -118,10 +138,26 @@ func (v *Verifier) Replace(c Config) error {
 			}
 			seen[product] = true
 		}
-		next.bindings[id] = p
+		next.bindings[id] = binding{principal: p, email: b.Email}
 	}
 	v.current.Store(next)
 	return nil
+}
+
+// validEmail is one address as a binding may name it: an RFC 5322 addr-spec as net/mail reads it, written bare (no display name, angle
+// brackets or comment), of printable ASCII (SMTP without SMTPUTF8 carries nothing else), at most MaxEmailBytes. delivery/email.ValidAddress
+// is the same rule for the addresses the mailer is configured with.
+func validEmail(s string) bool {
+	if s == "" || len(s) > MaxEmailBytes {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x21 || s[i] > 0x7e {
+			return false
+		}
+	}
+	a, err := mail.ParseAddress(s)
+	return err == nil && a.Name == "" && a.Address == s
 }
 
 // Authenticate implements transport/httpapi.Authenticate without importing the
@@ -154,7 +190,8 @@ func (v *Verifier) Bound(i r.Identity) (r.Principal, bool) {
 	}
 	var out r.Principal
 	found := false
-	for _, p := range c.bindings {
+	for _, b := range c.bindings {
+		p := b.principal
 		if p.Identity != i {
 			continue
 		}
@@ -173,6 +210,31 @@ func (v *Verifier) Bound(i r.Identity) (r.Principal, bool) {
 		out.Roles = []string{}
 	}
 	return out, true
+}
+
+// Emails lists the addresses the bindings in force name for an identity (S16-B): where the end of the identity's scheduled runs is mailed.
+// As Bound, it is of the identity whatever its client and of this issuer alone; the addresses are distinct and sorted, at most MaxEmails (the
+// first in that order), none when no binding of the identity names one. It does not ask whether the bindings still share a product: a run
+// refused for that reason is still the person's to hear of.
+func (v *Verifier) Emails(i r.Identity) []string {
+	if v == nil {
+		return nil
+	}
+	c := v.current.Load()
+	if c == nil || i.Issuer != c.issuer || !i.Valid() {
+		return nil
+	}
+	var out []string
+	for _, b := range c.bindings {
+		if b.principal.Identity == i && b.email != "" && !slices.Contains(out, b.email) {
+			out = append(out, b.email)
+		}
+	}
+	slices.Sort(out)
+	if len(out) > MaxEmails {
+		out = out[:MaxEmails]
+	}
+	return out
 }
 
 // KeyIDs lists the kids of the issuer keys in force, sorted: nothing of the keys themselves, no modulus and no exponent. It is what an
@@ -264,7 +326,7 @@ func (c *configuration) authenticate(req *http.Request) (r.Principal, error) {
 			return denied()
 		}
 	}
-	p, exists := c.bindings[subjectClient{stringValue(claims["sub"]), stringValue(claims["client_id"])}]
+	b, exists := c.bindings[subjectClient{stringValue(claims["sub"]), stringValue(claims["client_id"])}]
 	if !exists {
 		return denied()
 	}
@@ -275,6 +337,7 @@ func (c *configuration) authenticate(req *http.Request) (r.Principal, error) {
 	if !allowed {
 		return r.Principal{}, ErrInsufficientScope
 	}
+	p := b.principal
 	p.Integrations = slices.Clone(p.Integrations)
 	return p, nil
 }

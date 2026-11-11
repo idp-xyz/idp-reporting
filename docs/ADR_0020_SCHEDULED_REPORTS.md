@@ -46,3 +46,38 @@ Four things had to be decided: what a run is, as whom it acts, what a delivery c
   (`QUOTA_EXCEEDED`) and runs again at its next occurrence.
 - The application role never deletes (S04-A): a deleted schedule is a tombstone, and runs accumulate. Their retention is S16-B's.
 - The webhook's secret is a deployment secret like the store's connection string: rotating it is a restart, rolled.
+
+## Amendment 2026-11-11 (S16-B): email as a second deliverer
+
+Decision 3 left email to a later slice, "another `Deliverer` behind the same notification". S16-B (docs/S16B_SCOPE.md) builds it, and the
+decision holds as written; what follows fixes what it left open.
+
+1. **An email carries the same notification, written for a person.** `delivery/email` sends, when a run ends, one text/plain mail with the
+   subject `[IDP Reporting] 定时报表 <schedule name> · <outcome>` and a body that says the schedule's name, the occurrence, the outcome and
+   its code, the run's and the schedule's ids, and a link to the console (`<console_url>/console/#schedules`), where the owner downloads the
+   file with their own access, the source authority asked again. The name may appear here, unlike in the webhook: the recipient is the owner,
+   who wrote it. **No row, no query, no attachment, no artifact content**: the file is read through the platform under the owner's authority,
+   as decision 3 says of the receiver. The subject is RFC 2047 encoded and the body base64, so nothing the person wrote reaches a header as it is.
+2. **The recipient comes from the bindings file, and from nowhere else.** A binding gets an optional `email`: one address, an RFC 5322
+   addr-spec of printable ASCII, at most 254 characters, validated at load as the other fields of a binding are (`identity/accessjwt`), read
+   through the verifier in force (`Verifier.Emails`), so that a reload changes it as it changes what a run acts as. No route writes it (ADR
+   0016's rule) and no notification carries it. A run whose owner's bindings name no address gets no mail, and the scheduler records nothing
+   special for it: the delivery is `delivered` without a mail, and the webhook, if configured, still goes. With several bindings of the
+   identity, the mail goes to each distinct address they name, at most four (sorted, the first four).
+3. **Configuration under `schedules.email`**: `host` (required), `port` (default 587), `from` (required, an addr-spec), `username`
+   (optional), `starttls` (default `true`; `false` only together with `loopback_plain: true`, which allows plain SMTP to a loopback IP address
+   for tests, as the webhook's `loopback_http`), `timeout` (default 10 s, at most 30), `console_url` (required: the https base the links use;
+   `http://` only to a loopback IP address with `loopback_plain`). The password is the environment's `REPORTING_SMTP_PASSWORD`, required
+   with a username and refused without one, never in the file. The implementation is the standard library's `net/smtp`: STARTTLS through
+   `smtp.Client.StartTLS` with `tls.Config{ServerName: host}` (a server that does not offer it gets nothing, and the attempt is `unreachable`),
+   SASL PLAIN only over TLS or to loopback. One `Deliver` is one SMTP session and one attempt; the scheduler's policy retries it as it retries
+   the webhook: a 4yz reply is `throttled`, no reply (the connection, TLS, the timeout) `unreachable`, both retried; a 5yz reply (the sender,
+   a recipient or the credentials refused) is `rejected` and not.
+4. **Composition.** When both `schedules.webhook` and `schedules.email` are configured, the scheduler gets one fan-out deliverer
+   (`delivery.Multi`) that attempts each, every one of them whatever the others answered, and reports failure if any failed (the outcome that
+   is retried, when there is one), so that the scheduler's one retry covers both; a retry repeats every deliverer, and a delivery stays at
+   least once by the run's id, to each of them. A deliverer that is not configured is simply absent. Nothing else in the scheduler changes.
+5. **Logging**: one `delivery` line per deliverer and attempt, with the run's and the schedule's ids, the deliverer's word (`webhook`, `email`),
+   its outcome and status, and the delivery's state after the attempt as a whole; never the address, the name or the body.
+
+The runs' retention, which the consequences above gave to S16-B, is a later slice's, as is a per-tenant endpoint.

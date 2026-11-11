@@ -155,24 +155,36 @@ func TestPublicFilesMustNotBeWritableByOthers(t *testing.T) {
 
 func TestBindingsFileIsAStrictList(t *testing.T) {
 	for name, doc := range map[string]string{
-		"an object":          `{"subject":"a"}`,
-		"an unknown field":   `[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"role":"admin"}]`,
-		"a wrong-case field": `[{"Subject":"a","client_id":"c","tenant":"t","integrations":["i"]}]`,
-		"a duplicate key":    `[{"subject":"a","subject":"b","client_id":"c","tenant":"t","integrations":["i"]}]`,
-		"trailing data":      `[] []`,
-		"a wrong type":       `[{"subject":1,"client_id":"c","tenant":"t","integrations":["i"]}]`,
-		"a null":             `[null]`,
-		"not JSON":           `subject: a`,
+		"an object":                    `{"subject":"a"}`,
+		"an unknown field":             `[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"role":"admin"}]`,
+		"a wrong-case field":           `[{"Subject":"a","client_id":"c","tenant":"t","integrations":["i"]}]`,
+		"a duplicate key":              `[{"subject":"a","subject":"b","client_id":"c","tenant":"t","integrations":["i"]}]`,
+		"trailing data":                `[] []`,
+		"a wrong type":                 `[{"subject":1,"client_id":"c","tenant":"t","integrations":["i"]}]`,
+		"a null":                       `[null]`,
+		"not JSON":                     `subject: a`,
+		"an email with a display name": `[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"email":"A <a@example.com>"}]`,
+		"an email of two addresses":    `[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"email":"a@example.com, b@example.com"}]`,
+		"an email that is not one":     `[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"email":"zhang.san"}]`,
+		"an email of a list":           `[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"email":["a@example.com"]}]`,
 	} {
-		if _, err := parseBindings([]byte(doc)); err == nil {
+		err := func() error { _, err := parseBindings([]byte(doc)); return err }()
+		if err == nil {
 			t.Errorf("%s: accepted", name)
+		} else if strings.Contains(err.Error(), "example.com") || strings.Contains(err.Error(), "zhang") {
+			t.Errorf("%s: the refusal carries the address: %v", name, err)
 		}
 	}
 	if list, err := parseBindings([]byte(`[]`)); err != nil || len(list) != 0 {
 		t.Errorf("an empty list denies everyone and is valid: %v", err)
 	}
 	list, err := parseBindings([]byte(`[{"subject":"a","client_id":"c","tenant":"t","integrations":["i","j"]}]`))
-	if err != nil || len(list) != 1 || list[0].Subject != "a" || len(list[0].Integrations) != 2 {
+	if err != nil || len(list) != 1 || list[0].Subject != "a" || len(list[0].Integrations) != 2 || list[0].Email != "" {
+		t.Errorf("%+v %v", list, err)
+	}
+	// S16-B: an email is one address, kept as written; absent is none.
+	list, err = parseBindings([]byte(`[{"subject":"a","client_id":"c","tenant":"t","integrations":["i"],"email":"zhang.san@example.com"},{"subject":"b","client_id":"c","tenant":"t","integrations":["i"]}]`))
+	if err != nil || len(list) != 2 || list[0].Email != "zhang.san@example.com" || list[1].Email != "" {
 		t.Errorf("%+v %v", list, err)
 	}
 }

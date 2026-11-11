@@ -16,6 +16,8 @@ import (
 
 	"idp.local/reporting/console"
 	"idp.local/reporting/dashboards"
+	"idp.local/reporting/delivery"
+	"idp.local/reporting/delivery/email"
 	"idp.local/reporting/delivery/webhook"
 	"idp.local/reporting/doctemplates"
 	"idp.local/reporting/export/pdf"
@@ -129,11 +131,14 @@ type Server struct {
 	issuer   issuerFiles // the bindings in force and their digest (ADR 0016); replaced by a successful reload under reloadMu
 	store    Store
 	svc      *r.Service
-	// schedules is the scheduled reports' service when the configuration has a schedules section (S16-A); nil otherwise.
-	schedules *r.Schedules
-	objects   *objects.S3
-	srv       *http.Server
-	listener  net.Listener
+	// schedules is the scheduled reports' service when the configuration has a schedules section (S16-A); nil otherwise. webhook and email say
+	// which deliverers of a run's end are configured (S16-B); attempts collects what they report during a pass, for the log.
+	schedules      *r.Schedules
+	webhook, email bool
+	attempts       attempts
+	objects        *objects.S3
+	srv            *http.Server
+	listener       net.Listener
 	// metricsListener is the loopback listener of GET /metrics, when metrics_listen is set.
 	metricsListener net.Listener
 	tls             bool
@@ -284,6 +289,22 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		hook, err = webhook.New(webhook.Config{URL: sc.Webhook.URL, Secret: []byte(secret), Timeout: seconds(sc.Webhook.Timeout), LoopbackHTTP: sc.Webhook.LoopbackHTTP, Transport: s.opts.webhookRT})
 		if err != nil {
 			return refuse(StepSecrets, webhook.SecretEnv+" must hold 32 to 1024 bytes (the secret is not shown)")
+		}
+	}
+	// The email of the scheduled reports (S16-B): the owner's address is the bindings' in force (read when a run ends, through the verifier),
+	// the schedule's name the store's, the password the environment's, with a username and never without one.
+	var mail *email.Mailer
+	if sc := cfg.Schedules; sc != nil && sc.Email != nil {
+		password := getenv(email.PasswordEnv)
+		switch {
+		case sc.Email.Username != "" && password == "":
+			return refuse(StepSecrets, email.PasswordEnv+" must be set when schedules.email.username is configured")
+		case sc.Email.Username == "" && password != "":
+			return refuse(StepSecrets, email.PasswordEnv+" is set but schedules.email names no username")
+		}
+		mail, err = email.New(sc.Email.Mailer(password, s.ownerEmails, s.scheduleName))
+		if err != nil {
+			return refuse(StepSecrets, email.PasswordEnv+" must hold 1 to 1024 bytes without control characters (the password is not shown)")
 		}
 	}
 	var tlsConfig *tls.Config
@@ -482,8 +503,23 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 	}
 	if sc := cfg.Schedules; sc != nil {
 		o := r.ScheduleOptions{Store: s.store, Resolve: verifier.Bound, Limit: sc.PerIdentity, Audit: s.store}
+		// The deliverers the deployment configured, behind one fan-out (S16-B): the scheduler's one retry covers each, and each attempt is
+		// reported for the log under the deliverer's word.
+		var deliverers []delivery.Named
 		if hook != nil {
-			o.Deliver = hook
+			deliverers = append(deliverers, delivery.Named{Name: "webhook", Deliverer: hook})
+			s.webhook = true
+		}
+		if mail != nil {
+			deliverers = append(deliverers, delivery.Named{Name: "email", Deliverer: mail})
+			s.email = true
+		}
+		if len(deliverers) > 0 {
+			multi, err := delivery.NewMulti(s.attempts.record, deliverers...)
+			if err != nil {
+				return refuse(StepService, "the scheduled reports could not be composed")
+			}
+			o.Deliver = multi
 		}
 		if s.schedules, err = r.NewSchedules(svc, o); err != nil {
 			return refuse(StepService, "the scheduled reports could not be composed")
@@ -631,8 +667,22 @@ func (s *Server) logStart(ledger, ring, connections int, embed bool) {
 		"metrics":            s.metricsListener != nil,
 		"sign_in":            c.SignIn != nil,
 		"schedules":          s.schedules != nil,
-		"webhook":            s.schedules != nil && s.schedules.Delivers(),
+		"webhook":            s.webhook,
+		"email":              s.email,
 	})
+}
+
+// ownerEmails is where a run's owner is mailed (S16-B): the addresses of the bindings in force that name the identity, through the verifier,
+// so that a reload changes them as it changes what a run acts as.
+func (s *Server) ownerEmails(i r.Identity) []string { return s.verifier.Emails(i) }
+
+// scheduleName is the name a mail calls a schedule by: the owner's own row, read as the owner.
+func (s *Server) scheduleName(ctx context.Context, owner r.Identity, id string) (string, error) {
+	v, err := s.store.Schedule(ctx, owner, id)
+	if err != nil {
+		return "", err
+	}
+	return v.Name, nil
 }
 
 // Addr is the address the server listens on.
