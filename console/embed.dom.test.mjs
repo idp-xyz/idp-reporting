@@ -1184,6 +1184,13 @@ test('the embed page is the console\'s own views and scripts, byte for byte, and
     'tasks-more-button',
     'tasks-more-note',
     'page-library',
+    'page-issue',
+    's-stamp',
+    'sh-d-issue',
+    'sh-d-issue-title',
+    'issue-summary',
+    'issue-confirm-note',
+    'issue-confirm',
     'page-tasks',
     'page-system',
     'page-schedules',
@@ -1433,7 +1440,7 @@ test('the embedded studio: the query form is in its start card, the wordmark is 
 // S06-B part 3: the template centre is a page of the console only. The embed page has no page for it, loads none of its code, shares no new section
 // (the sections above are still byte for byte the console's), and its studio keeps the template chooser as the crumb's way to other templates.
 test('the embed page is not touched by the template centre: no page, no script, no stylesheet, and the crumb still opens the chooser', async () => {
-  assert.equal(/page-library|library\.(js|css)/.test(embedHtml), false);
+  assert.equal(/page-library|library\.(js|css)|page-issue|issue\.js/.test(embedHtml), false);
   assert.equal(/library\.(js|css)/.test(indexHtml), true);
   assert.match(indexHtml, /id="page-library"/);
   const section = (html, id) => {

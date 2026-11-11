@@ -548,7 +548,11 @@ window.createReportingStudio = function (api) {
     grouping: () => open('bands'),
     'print-settings': () => open('print'),
     'insert-options': () => open('insert'),
-    issue: () => open('issue'),
+    // S09-G: in the console the ribbon's 正式出具 leads to the issue page with this template (the port says whether it did); the embed page,
+    // which has no pages, keeps the dialog.
+    issue: () => {
+      if (!(api.issuePage && api.issuePage())) open('issue');
+    },
     'export-template': () => {
       $('doc-json-save').click();
       open('json');
@@ -1244,6 +1248,9 @@ window.createReportingStudio = function (api) {
       timer = setTimeout(() => el.classList.remove('show'), 6500);
     }).observe(el, {childList: true, characterData: true, subtree: true});
   }
+  // S09-G: the ribbon's 正式出具 says where it leads when the console has the issue page.
+  if (api.issuePage && $('st-tool-issue'))
+    $('st-tool-issue').title = '在“出具”页用这个模板的已发布版本出具；出具记录也在那里';
   if (window.matchMedia) {
     const m = window.matchMedia('(max-width:950px)');
     if (m.addEventListener)

@@ -1794,6 +1794,122 @@ tbody tr:last-child td {
   overflow-wrap: anywhere;
 }
 
+/* ---- the issue page (S09-G, ADR 0014 decision 12): the shell's components; the templates as a radio list, the register as a table ---- */
+#page-issue .restore-panel label {
+  margin-right: 4px;
+}
+#page-issue .restore-panel .help {
+  max-width: none;
+  flex: 1;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.issue-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 20px 0;
+}
+.issue-template {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--panel);
+}
+.issue-template:hover {
+  background: var(--hover);
+}
+.issue-template:has(input:checked) {
+  border-color: var(--blue);
+  background: var(--sel-bg);
+}
+.issue-template input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--blue);
+}
+.issue-template-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* The space the template is in (S12-C): 我的 or 团队, a pill before the identifier. */
+.issue-template .pill {
+  flex: 0 0 auto;
+}
+.issue-template b {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.issue-template small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.issue-template code {
+  font: 11px/1.6 var(--mono);
+  color: var(--faint);
+  flex: 0 0 auto;
+}
+#issue-templates-note {
+  padding: 10px 20px 4px;
+  overflow-wrap: anywhere;
+}
+.issue-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 12px 20px 16px;
+}
+.issue-row label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.issue-row input {
+  width: 110px;
+}
+#page-issue .query-actions {
+  margin-top: 0;
+}
+#page-issue .panel {
+  margin-bottom: 20px;
+}
+/* The register: the number, the state and the time stay on one line; the identifiers and digests may wrap. */
+#page-issue .tasks-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 280px;
+}
+#page-issue .tasks-table td:nth-child(-n + 3) {
+  white-space: nowrap;
+}
+#page-issue .tasks-table td:nth-child(4),
+#page-issue .tasks-table td:nth-child(5),
+#page-issue .tasks-table td:nth-child(6),
+#page-issue .tasks-table td:nth-child(7) {
+  font: 11px/1.6 var(--mono);
+  color: var(--muted);
+}
+@media (max-width: 700px) {
+  .issue-template {
+    flex-wrap: wrap;
+  }
+  .issue-template code {
+    flex-basis: 100%;
+    padding-left: 28px;
+  }
+}
+
 /* ---- sign-in: the connection card (no counterpart in the prototype: docs/STUDIO.md) ---- */
 .connection-overlay {
   position: fixed;
@@ -3969,6 +4085,7 @@ body.no-publisher #st-tool-publish,
 body.no-publisher #st-ver-publish,
 body.no-issuer #doc-issue,
 body.no-issuer #st-tool-issue,
+body.no-issuer .needs-issuer,
 body.no-administrator .needs-administrator {
   display: none !important;
 }

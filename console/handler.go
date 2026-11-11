@@ -16,7 +16,7 @@ import (
 	r "idp.local/reporting/reporting"
 )
 
-//go:embed assets/index.html assets/embed.html assets/en.js assets/lang.js assets/app.js assets/dashboard.js assets/documents.js assets/canvas.js assets/versions.js assets/studio.js assets/library.js assets/board.js assets/embed.js assets/styles.css assets/studio.css assets/library.css assets/embed.css
+//go:embed assets/index.html assets/embed.html assets/en.js assets/lang.js assets/app.js assets/dashboard.js assets/documents.js assets/canvas.js assets/versions.js assets/studio.js assets/library.js assets/issue.js assets/board.js assets/embed.js assets/styles.css assets/studio.css assets/library.css assets/embed.css
 var assets embed.FS
 
 // manualPath is what of the manual is served: the page (as the directory, so that its relative links resolve), the stylesheet, a
@@ -64,7 +64,7 @@ func HandlerWithEmbedding(api http.Handler, embed *embedding.Config) (http.Handl
 	})
 	mux.HandleFunc("GET /console/", func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/console/", "/console/index.html", "/console/en.js", "/console/lang.js", "/console/app.js", "/console/dashboard.js", "/console/documents.js", "/console/canvas.js", "/console/versions.js", "/console/studio.js", "/console/library.js", "/console/board.js", "/console/embed.js", "/console/styles.css", "/console/studio.css", "/console/library.css", "/console/embed.css":
+		case "/console/", "/console/index.html", "/console/en.js", "/console/lang.js", "/console/app.js", "/console/dashboard.js", "/console/documents.js", "/console/canvas.js", "/console/versions.js", "/console/studio.js", "/console/library.js", "/console/issue.js", "/console/board.js", "/console/embed.js", "/console/styles.css", "/console/studio.css", "/console/library.css", "/console/embed.css":
 			w.Header().Set("Content-Security-Policy", policy("'none'"))
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
