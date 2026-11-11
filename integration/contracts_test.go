@@ -115,6 +115,30 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 			}
 		}
 	})
+	t.Run("the_evidence_says_the_adapters_data_class", func(t *testing.T) {
+		// S08-A (ADR 0012 decision 6): the evidence says where the data comes from in the adapter's word. The simulators say
+		// contract-simulator, in process and behind the reference source alike; a preview, the snapshot as the store keeps it and a
+		// page of it all say that word, in either store.
+		v := envVia(t, through, factory(t))
+		for i, q := range []r.QuerySpec{contractsim.FinancialQuery(), contractsim.ShipmentQuery()} {
+			if class, e := v.s.DataClass(v.p, q.Integration); e != nil || class != "contract-simulator" {
+				t.Fatal(q.Integration, class, e)
+			}
+			res, e := v.s.Query(ctx, v.p, q)
+			if e != nil || res.Evidence.DataClass != "contract-simulator" {
+				t.Fatal(q.Integration, res.Evidence, e)
+			}
+			j := freeze(t, v, q, fmt.Sprint(i))
+			stored, e := v.repo.Snapshot(ctx, v.p.Identity, j.SnapshotID)
+			if e != nil || stored.Result.Evidence.DataClass != "contract-simulator" {
+				t.Fatal(q.Integration, stored.Result.Evidence, e)
+			}
+			page, e := v.s.Rows(ctx, v.p, j.SnapshotID, 1, "")
+			if e != nil || page.Evidence.DataClass != "contract-simulator" {
+				t.Fatal(q.Integration, page.Evidence, e)
+			}
+		}
+	})
 	t.Run("admission_does_not_read", func(t *testing.T) {
 		v := envVia(t, through, factory(t))
 		j, e := v.s.SubmitSnapshot(ctx, v.p, contractsim.FinancialQuery(), "same")

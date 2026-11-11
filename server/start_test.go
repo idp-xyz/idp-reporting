@@ -69,6 +69,27 @@ func TestStartRefusalsNameTheStepAndCarryNoSecret(t *testing.T) {
 			w.cfg.AllowSimulator = false
 			return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) { return selfDeclared{w.sim}, nil }}, w.getenv, []Option{memoryOnly()}
 		}},
+		// S08-A (ADR 0012 decision 6): the data class is the adapter's other word, and the two agree or the server does not start.
+		{"a simulator by its data class alone", StepAdapters, "allow_simulator", func(w *world) (Registry, func(string) string, []Option) {
+			w.cfg.AllowSimulator = false
+			return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) {
+				return worded{w.sim, r.DataClassSimulator}, nil
+			}}, w.getenv, []Option{memoryOnly()}
+		}},
+		{"a simulator that hides the simulator's data class, even when simulators are allowed", StepAdapters, "without the data class contract-simulator", func(w *world) (Registry, func(string) string, []Option) {
+			return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) { return halfDeclared{w.sim}, nil }}, w.getenv, []Option{memoryOnly()}
+		}},
+		{"a simulator that says another data class", StepAdapters, "without the data class contract-simulator", func(w *world) (Registry, func(string) string, []Option) {
+			return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) { return misworded{w.sim}, nil }}, w.getenv, []Option{memoryOnly()}
+		}},
+		{"an adapter that says a data class outside the set", StepAdapters, "a data class the platform does not know", func(w *world) (Registry, func(string) string, []Option) {
+			return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) {
+				return worded{w.sim, "real-data-Zq7"}, nil
+			}}, w.getenv, []Option{memoryOnly()}
+		}},
+		{"an adapter that says no data class at all", StepAdapters, "a data class the platform does not know", func(w *world) (Registry, func(string) string, []Option) {
+			return Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) { return worded{w.sim, ""}, nil }}, w.getenv, []Option{memoryOnly()}
+		}},
 		{"the connection string missing", StepSecrets, StoreDSNEnv, func(w *world) (Registry, func(string) string, []Option) {
 			return w.registry(), func(string) string { return "" }, nil
 		}},
@@ -184,10 +205,30 @@ func TestStartRefusalsNameTheStepAndCarryNoSecret(t *testing.T) {
 	}
 }
 
-// selfDeclared is an adapter of a real-looking name that says it is a simulator.
+// selfDeclared is an adapter of a real-looking name that says it is a simulator, in both of an adapter's words (S08-A).
 type selfDeclared struct{ r.Adapter }
 
 func (selfDeclared) IsSimulator() bool { return true }
+func (selfDeclared) DataClass() string { return r.DataClassSimulator }
+
+// halfDeclared says it is a simulator and hides the data class of what it wraps: its data would be labelled a source product's.
+type halfDeclared struct{ r.Adapter }
+
+func (halfDeclared) IsSimulator() bool { return true }
+
+// misworded says it is a simulator and says a source product's data class.
+type misworded struct{ r.Adapter }
+
+func (misworded) IsSimulator() bool { return true }
+func (misworded) DataClass() string { return r.DataClassBusiness }
+
+// worded is an adapter that says a data class, and nothing of being a simulator.
+type worded struct {
+	r.Adapter
+	class string
+}
+
+func (w worded) DataClass() string { return w.class }
 
 // The steps are taken in the order the scope gives, so a start with two problems names the earlier one.
 func TestStartStepsAreTakenInOrder(t *testing.T) {
@@ -230,6 +271,7 @@ type closingAdapter struct {
 
 func (c closingAdapter) Close() error      { c.closed.Add(1); return nil }
 func (c closingAdapter) IsSimulator() bool { return true }
+func (c closingAdapter) DataClass() string { return r.DataClassSimulator }
 
 // A start that fails after the adapters were made gives them back, and one that fails at listen stops the workers it had started.
 func TestARefusedStartUnwindsWhatItOpened(t *testing.T) {

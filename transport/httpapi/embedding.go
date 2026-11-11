@@ -59,9 +59,14 @@ func Secured(next http.Handler) http.Handler { return secured(next) }
 
 // The values of X-Reporting-Data-Class. The core API and every mount say DataClassSimulator, as they always did; a production server
 // (S05-A) wraps its whole handler in WithDataClass so that its answers say DataClassBusiness, and a server that allows simulators keeps the first.
+//
+// The header says what kind of server answers, on every answer, a 404 included. It does not say where one dataset comes from: that is
+// the data class of a result's evidence and of a catalog entry (S08-A, ADR 0012 decision 6), the word of the connection's adapter, which
+// has a third value, manual-entry. The two meet in one rule: a server whose header says business-data has no connection whose data
+// class is contract-simulator (it refuses to start with one); a server whose header says contract-simulator may serve data of any class.
 const (
-	DataClassSimulator = "contract-simulator"
-	DataClassBusiness  = "business-data"
+	DataClassSimulator = r.DataClassSimulator
+	DataClassBusiness  = r.DataClassBusiness
 )
 
 // WithDataClass makes every answer of next carry exactly one X-Reporting-Data-Class, the given class, whatever the routes beneath set: the API's

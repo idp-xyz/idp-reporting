@@ -23,7 +23,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | POST /schedules/{id}/pause, POST /schedules/{id}/resume, DELETE /schedules/{id} | No body. The schedule after the change (`paused` without `next_run_at`; `active` from the next occurrence after now, the catalog checked again; `deleted`, then 404). Each is `schedule.change` in the audit. |
 | GET /schedules/{id}/runs?limit=N&before=ID | The schedule's runs, newest occurrence first: `{run_id, schedule_id, due_at, state, as_of, snapshot_job_id?, export_job_id?, snapshot_id?, artifact_id?, export_format?, error_code?, delivery, finished_at?}`. The jobs and results are read through their own routes, as the owner. |
 | GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
-| GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal. Each dataset version carries, when it declares any, `filters: [{field, operators, values?, required?}]` and `sorts: [{field, directions}]` (S20-A, ADR 0023): the columns a query may narrow by and order by, with their operators, an optional closed list of values and whether a filter on the field is required |
+| GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal. Each dataset version carries, when it declares any, `filters: [{field, operators, values?, required?}]` and `sorts: [{field, directions}]` (S20-A, ADR 0023): the columns a query may narrow by and order by, with their operators, an optional closed list of values and whether a filter on the field is required. Each entry also carries `data_class` (S08-A, ADR 0012 decision 6, "Data class" below): where the data of that connection comes from, `contract-simulator`, `manual-entry` or `business-data` |
 | GET /companies?integration_id=… | S19-B (ADR 0015): the companies the principal may choose in that product, under the catalog's authority and refusals (`integration_id` exactly once, else 400; a product the principal does not hold 403). Exactly `{"supported": true, "partial": false, "companies": [{"id", "name"}, …]}`: at most 1000 entries in the product's order, each id and name 1–128 characters, no id twice; for an adapter without the capability `{"supported": false, "partial": false, "companies": []}` (200, not an error); `partial` true when the product cut the list, and the person may still type an id. The list is advisory: a read still names company ids and the source authorizes it as before; nothing of it is stored, cached across requests or logged, and the answer carries the API's `Cache-Control: no-store`. The source's failure is the catalogue's 503; a list outside the bounds is 409 `INTEGRITY_FAILURE` and none of it is shown. A `viewer`'s |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence. `filters` and `sort` within what the catalog entry declares (below); the rows and the totals are the narrowed scope's |
 | POST /snapshot-jobs | QuerySpec + one Idempotency-Key; 202 queued, Location header; no row reads during admission. The filters and the sort are validated at admission, frozen in the job's query and bound by its `query_hash` |
@@ -71,6 +71,30 @@ decimal), scale, currency and unit. No float64 business conversion. Totals cover
 the full original authorized result. A truncated preview says `preview`; a
 partial snapshot page says `page`; all rows says `complete`. Snapshot paging does
 not reread the source. Cursor alone confers no access.
+
+**Data class** (S08-A, ADR 0012 decision 6, docs/S08A_SCOPE.md). `evidence.data_class` of every result says where its data comes from, in
+the word of the adapter the connection reads through, one of a closed set of three:
+
+| `data_class` | What it says | PDF footer | Workbook `Metadata`, row `data_class` |
+|---|---|---|---|
+| `contract-simulator` | a contract simulator's synthetic data, never real business data | `合同模拟器 / 合成数据（非真实业务数据）` | `CONTRACT SIMULATOR / NOT REAL BUSINESS DATA` |
+| `manual-entry` | data people typed in or pasted (the manual source, ADR 0012), not a source product's | `手工录入（非来源产品数据）` | `MANUAL ENTRY / NOT FROM A SOURCE PRODUCT` |
+| `business-data` | a source product's data: what every adapter that says nothing serves, the generic `http` adapter among them | `来源产品数据` | `SOURCE PRODUCT DATA` |
+
+The word says where the data comes from and nothing of whether it is true: the platform cannot know that, so a source product's data is
+called that and nothing more. A client learns it before it reads a row from `data_class` on each entry of `GET /catalog`
+(`[{"dataset": {…}, "columns": […], …, "data_class": "business-data"}]`; the word is the platform's about the connection, not a field a
+source publishes: the source protocol carries none); the evidence of a preview and of every page of a frozen snapshot says the same word,
+and both exports print it. A frozen snapshot keeps the word it was frozen with, whatever the connection's adapter says later. A stored
+snapshot whose evidence holds another word, or none, is 409 `INTEGRITY_FAILURE` wherever it is read, and no export prints it. The simulator's
+texts are what every export printed before the class was the adapter's word: a simulator's PDF is byte for byte what it was, and its workbook
+cell for cell.
+
+`data_class` is not the `X-Reporting-Data-Class` header. The header says what kind of **server** answers, on every answer, a 404 included
+(below): `contract-simulator` for the demo and for a production server whose configuration allows simulators, `business-data` for a
+production server. `data_class` says where **one connection's data** comes from. They meet in one rule: a server whose header says
+`business-data` has no connection whose data class is `contract-simulator` (it refuses to start with one), so its results are
+`business-data` or `manual-entry`; a server whose header says `contract-simulator` may serve data of any class.
 
 The workbook has Data/Totals/Metadata sheets. Since S23-A (ADR 0024 decision 3) a `decimal` or
 `integer` column of the Data sheet is numeric cells with an Excel number format derived from the

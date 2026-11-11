@@ -168,6 +168,11 @@ func ValidatePublication(j Job, p Publication) error {
 		if v == nil || p.Artifact != nil || !validID(v.ID) || v.Owner != j.Owner || !reflect.DeepEqual(v.Query, j.Query) || !reflect.DeepEqual(v.Prepared, j.Prepared) || !reflect.DeepEqual(v.Result.Columns, j.Columns) || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || v.SHA256 != Digest(v.Result) || v.Result.Completeness != "complete" || v.Result.Evidence.QueryHash != j.Prepared.QueryHash || v.Result.Evidence.SourceRef != j.Prepared.Ref || v.Result.Evidence.Watermark != j.Prepared.Watermark {
 			return ErrIntegrity
 		}
+		// The evidence says where the data comes from in one of the three words (S08-A, ADR 0012 decision 6): a snapshot is never
+		// stored with another, or with none.
+		if !ValidDataClass(v.Result.Evidence.DataClass) {
+			return ErrIntegrity
+		}
 		if len(v.Result.Rows) > MaxRows || validateRows(v.Result.Rows, j.Columns) != nil || validateTotals(v.Result.Totals, j.Query, j.Columns) != nil {
 			return ErrIntegrity
 		}

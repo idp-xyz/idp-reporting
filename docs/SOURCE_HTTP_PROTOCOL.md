@@ -279,6 +279,9 @@ platform's together.
 ## 8. Not in version 1
 
 - A health probe of a source (ADR 0016 left it open).
+- A data class (ADR 0012 decision 6, S08-A). The protocol has no field for it and a source cannot send one (an unknown field of the
+  catalog is refused, as ever): to the platform, whatever answers this protocol is a source product, and every result read through it
+  says `data_class: "business-data"` in its evidence, 来源产品数据 in the footer of a PDF and `SOURCE PRODUCT DATA` in a workbook.
 
 A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes and optional fields
 only, each a minor revision of this page (1.1: the `companies` route, S19-B; a dataset's `filters` and `sorts` and a query's filters and

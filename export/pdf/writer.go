@@ -253,7 +253,7 @@ var probe = r.Snapshot{
 		Columns:  []r.Column{{ID: "d", Label: "项目", Type: "string"}, {ID: "m", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}},
 		Rows:     [][]string{{"中文 Latin 0123456789", "-1234567.89"}},
 		Totals:   map[string]string{"m": "-1234567.89"},
-		Evidence: r.Evidence{DataClass: "contract-simulator"},
+		Evidence: r.Evidence{DataClass: r.DataClassSimulator},
 	},
 }
 

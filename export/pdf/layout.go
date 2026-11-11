@@ -50,7 +50,15 @@ var labels = map[string]string{
 	"empty":        "无数据行",
 }
 
-var dataClasses = map[string]string{"contract-simulator": "合同模拟器 / 合成数据（非真实业务数据）"}
+// dataClasses is what the footer of every page prints for the snapshot's data class (S08-A, ADR 0012 decision 6): where the data comes
+// from, in the word of the adapter it was read through, one text for each of reporting.DataClasses. The simulator's text is what every
+// export printed before the class was the adapter's word. A source product's data is called that and nothing more: the platform cannot
+// know more of it. A stored word outside the set is an integrity failure (buildTable), never printed as it is.
+var dataClasses = map[string]string{
+	r.DataClassSimulator: "合同模拟器 / 合成数据（非真实业务数据）",
+	r.DataClassManual:    "手工录入（非来源产品数据）",
+	r.DataClassBusiness:  "来源产品数据",
+}
 
 // document is data.json. Every printed string in it was checked against the fonts: the values
 // by measurer.segment, the labels by measurer.width.
@@ -254,6 +262,11 @@ func buildTable(s r.Snapshot, p *r.Presentation, m *measurer, created time.Time)
 	if len(cols) == 0 || len(cols) != len(s.Query.Dimensions)+len(s.Query.Metrics) {
 		return nil, r.ErrIntegrity
 	}
+	// The data class the footer prints (S08-A): the snapshot's own word, which must be one of the three.
+	class, ok := dataClasses[s.Result.Evidence.DataClass]
+	if !ok {
+		return nil, fmt.Errorf("pdf: the snapshot's data class is not one the platform knows: %w", r.ErrIntegrity)
+	}
 	var t *shown
 	var err error
 	if p == nil {
@@ -320,10 +333,6 @@ func buildTable(s r.Snapshot, p *r.Presentation, m *measurer, created time.Time)
 		if _, err := m.width(v+"0123456789", footSize, false); err != nil {
 			return nil, fmt.Errorf("pdf: label %s: %w", k, err)
 		}
-	}
-	class := s.Result.Evidence.DataClass
-	if label, ok := dataClasses[class]; ok {
-		class = label
 	}
 	dataset := s.Query.Dataset.ID + "@" + s.Query.Dataset.Version
 	meta := fmt.Sprintf("%s · 截至 %s（%s）· 公司 %s · %d 行 · 生成于 %s UTC", dataset, s.Query.AsOf, s.Query.Timezone, strings.Join(s.Query.Companies, "、"), len(s.Result.Rows), created.UTC().Format("2006-01-02 15:04:05")) + t.meta

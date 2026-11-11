@@ -29,6 +29,16 @@ const (
 	PrecisionNote = "Decimal and integer columns are numeric cells for arithmetic when their exact digits survive a float64 (else text, counted in inexact_cells); the （精确） text columns beside them hold the exact frozen strings for reconciliation. Subtotal rows are values; no formulas generated."
 )
 
+// DataClassNotes is what the `data_class` row of the Metadata sheet says for the snapshot's data class (S08-A, ADR 0012 decision 6): where
+// the data comes from, in the word of the adapter it was read through, one note for each of reporting.DataClasses. The simulator's note
+// is what every workbook said before the class was the adapter's word. A source product's data is called that and nothing more: the
+// platform cannot know more of it. A stored word outside the set is an integrity failure, never written as it is.
+var DataClassNotes = map[string]string{
+	r.DataClassSimulator: "CONTRACT SIMULATOR / NOT REAL BUSINESS DATA",
+	r.DataClassManual:    "MANUAL ENTRY / NOT FROM A SOURCE PRODUCT",
+	r.DataClassBusiness:  "SOURCE PRODUCT DATA",
+}
+
 // The rows of the query's scope at the end of the Metadata sheet (S20-C). The scope row is `query_scope | filters | <n> | sort_keys | <m>`:
 // its third cell counts the query's filters and its fifth the sort keys, as text like every cell of the sheet. The n rows after it are
 // the filters, `filter_<i> | <words> | <field> | <operator> | <value>`, and the m rows after those the sort keys,
@@ -96,6 +106,11 @@ func (s *styles) of(k styleKey) (int, error) {
 func (Writer) write(ctx context.Context, s r.Snapshot, p r.Presentation) ([]byte, error) {
 	if len(s.Result.Rows) > r.MaxRows {
 		return nil, r.ErrBudget
+	}
+	// The data class the Metadata sheet says (S08-A): the snapshot's own word, which must be one of the three.
+	dataClass, known := DataClassNotes[s.Result.Evidence.DataClass]
+	if !known {
+		return nil, fmt.Errorf("xlsx: the snapshot's data class is not one the platform knows: %w", r.ErrIntegrity)
 	}
 	table, e := present.Build(s, p)
 	if e != nil {
@@ -278,7 +293,7 @@ func (Writer) write(ctx context.Context, s r.Snapshot, p r.Presentation) ([]byte
 		}
 	}
 	metadata := [][]string{
-		{"data_class", "CONTRACT SIMULATOR / NOT REAL BUSINESS DATA"},
+		{"data_class", dataClass},
 		{"snapshot_id", s.ID},
 		{"integration_id", s.Owner.Integration},
 		{"dataset", s.Query.Dataset.ID + "@" + s.Query.Dataset.Version},

@@ -5,7 +5,7 @@ which a real product's adapter needs too); **the rest proposed**. Engineering ha
 the owner's general delegation ("按你的建议全面开始吧"); what the platform stores of business data and who may see it are the owner's
 own decisions (CODING_STANDARDS.md), and, asked that evening, the owner chose to build S08-A alone and to wait with the manual
 source for the outcome of the real-source discovery. The answers to the open questions at the end are engineering's recommendations
-until the owner gives them. Implementation: S08-A (the data class) now; S08-B (the manual source) and S08-C (the editor) once the
+until the owner gives them. Implementation: S08-A (the data class: built, docs/S08A_SCOPE.md); S08-B (the manual source) and S08-C (the editor) once the
 rest is accepted. ADR 0013 decides issuing from these datasets (S08-D). Written before ADR 0018 gave the platform roles; the
 decisions below say how the two meet.
 

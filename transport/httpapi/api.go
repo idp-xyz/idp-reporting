@@ -277,7 +277,20 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		if e != nil {
 			return e
 		}
-		return send(w, 200, v)
+		// S08-A (ADR 0012 decisions 6 and 9): each entry says the data class of the connection it comes from, the word every result
+		// of that connection carries in its evidence.
+		class, e := service.DataClass(p, values.Get("integration_id"))
+		if e != nil {
+			return e
+		}
+		var entries []catalogEntry
+		if v != nil {
+			entries = make([]catalogEntry, len(v))
+			for i, d := range v {
+				entries[i] = catalogEntry{Dataset: d, DataClass: class}
+			}
+		}
+		return send(w, 200, entries)
 	})
 	// S19-B (ADR 0015): the companies the principal may choose in one product, under the catalog's authority and refusals; exactly
 	// {supported, partial, companies}. An adapter without the capability answers supported false and an empty list (200). Never cached
@@ -466,6 +479,15 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 	return secured(mux), nil
 }
 
+// catalogEntry is one dataset of GET /catalog's answer (S08-A, ADR 0012 decisions 6 and 9): the dataset as the source published it, and
+// the data class of the connection it comes from, so that a client knows what it is looking at before it reads a row (the evidence of
+// every result of the connection says the same word). The class is the platform's word about the connection's adapter
+// (reporting.Service.DataClass): it is no field of reporting.Dataset and no part of the source protocol, so a source cannot send it.
+type catalogEntry struct {
+	r.Dataset
+	DataClass string `json:"data_class"`
+}
+
 // listingLimit is the one query parameter a listing takes: limit, once, 1..most, or absent (fallback). Any other query is ErrInvalid.
 func listingLimit(req *http.Request, fallback, most int) (int, error) {
 	values := req.URL.Query()
@@ -535,7 +557,7 @@ func secured(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Reporting-Data-Class", "contract-simulator")
+		w.Header().Set("X-Reporting-Data-Class", DataClassSimulator)
 		// No answer of the API can be shown in a frame (ADR 0006): only the embed pages of the console package can, and only for an
 		// origin the deployment lists. A route that sets a policy of its own includes the same frame-ancestors source in it.
 		w.Header().Set("X-Frame-Options", "DENY")

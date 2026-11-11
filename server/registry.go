@@ -31,12 +31,26 @@ func DefaultRegistry() Registry {
 // simulated is implemented by an adapter that is a test fixture. The contract simulators implement it; an adapter of a real product does not.
 type simulated interface{ IsSimulator() bool }
 
-// isSimulator says whether an adapter reports itself as a contract simulator. It is the adapter's own word: a wrapper that hides the method
-// (embedding the Adapter interface rather than the simulator) is not found, which is why the shipped command registers only the platform's
-// own generic adapter and a host's registry is its own code to review.
+// isSimulator says whether an adapter reports itself as a contract simulator: by IsSimulator, or by saying the data class
+// contract-simulator (reporting.ClassedAdapter, S08-A). It is the adapter's own word: a wrapper that hides the methods (embedding the
+// Adapter interface rather than the simulator) is not found, which is why the shipped command registers only the platform's own generic
+// adapter and a host's registry is its own code to review.
 func isSimulator(a r.Adapter) bool {
 	s, ok := a.(simulated)
-	return ok && s.IsSimulator()
+	return ok && s.IsSimulator() || r.DataClassOf(a) == r.DataClassSimulator
+}
+
+// classAgrees holds an adapter's two words to each other (S08-A, ADR 0012 decision 6): its data class must be one of the closed set, and
+// an adapter that reports itself a simulator through IsSimulator must say the data class contract-simulator, so that the data of a
+// simulator is never labelled a source product's. With it, a server that does not allow simulators (whose answers say
+// X-Reporting-Data-Class: business-data) has no connection whose results say contract-simulator.
+func classAgrees(a r.Adapter) bool {
+	class := r.DataClassOf(a)
+	if !r.ValidDataClass(class) {
+		return false
+	}
+	s, ok := a.(simulated)
+	return !(ok && s.IsSimulator()) || class == r.DataClassSimulator
 }
 
 // buildAdapters makes one adapter per connection, in the order of the configuration. The errors are fixed texts naming the connection's
@@ -64,6 +78,9 @@ func buildAdapters(c *Config, reg Registry, getenv func(string) string) ([]r.Con
 			closers = append(closers, cl)
 		} else if cl, ok := a.(interface{ Close() }); ok {
 			closers = append(closers, closerFunc(cl.Close))
+		}
+		if !classAgrees(a) {
+			return fail(fmt.Errorf("the adapter %q of integration %q says a data class the platform does not know, or says it is a contract simulator without the data class contract-simulator", v.Adapter, v.Integration))
 		}
 		if isSimulator(a) && !c.AllowSimulator {
 			return fail(fmt.Errorf("the adapter %q of integration %q is a contract simulator; the configuration must say allow_simulator to run it", v.Adapter, v.Integration))

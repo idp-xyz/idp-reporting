@@ -150,7 +150,7 @@
 - 代码：`adapters/httpsource/httpsource.go`（`call`、`refusal`、`validDataset`、`PrepareRead`、`ReadPage`、`Authority`）、`adapters/httpsource/protocol`、`reporting/validation.go`（`ValidateSourcePage`）、`server/registry.go`（`DefaultRegistry`，`http` 不是模拟器）。
 - 测试：`TestEveryStatusMapsToItsPlatformError`、`TestAnswersThatDoNotVerifyAreIntegrityFailures`、`TestARedirectIsNeverFollowed`、`TestAnAnswerOverTheBoundIsRefused`、`TestASlowSourceIsUnavailableWithinTheTimeout`、`TestMutualTLSAndAPinnedCA`（含 TLS 1.1 被拒）、`TestTheConfigurationIsCheckedAndNeverShown`、`TestAReadOfAnotherContextIsNeverSent`、`TestTheRequestCarriesTheContextTheCredentialAndARequestID`、`TestMemoryContractOverHTTP` 与 `TestPostgresContract/over_http`（整套合同经协议运行）、`TestDocumentAuthorityOverHTTP`（出具授权一致性套件经协议运行）、`TestTheShippedRegistryServesAnHTTPSourceEndToEnd` 与 `TestABadHTTPConnectionRefusesTheStartAndIsNeverShown`（日志与拒绝中不出现凭据与地址）、`cmd/reporting-source-check` 的测试。
 - 审查时看：协议只证明“这是平台”，代表谁看 context——来源产品必须在服务端映射 subject 并以自己的当前授权判断（`reporting-source-check` 的 C3、C4、R7–R10 检查，但只能抽查）；服务凭据泄露等于可以以平台身份为任意 context 发请求，所以凭据只给这一个产品、按产品分开、经 mTLS 更好。
-- 已知不覆盖：没有对真实产品端点测过；没有请求签名或防重放（依赖 TLS 与短时读取）；来源侧的限速与配额是产品自己的；`Evidence.DataClass` 仍是 `contract-simulator`（核心固定值，与适配器无关，另行处理）。
+- 已知不覆盖：没有对真实产品端点测过；没有请求签名或防重放（依赖 TLS 与短时读取）；来源侧的限速与配额是产品自己的。（`Evidence.DataClass` 曾是核心固定值 `contract-simulator`；S08-A 起它是适配器自己的说法，经本协议读取的结果标注为 `business-data`，见“数据类别”一节。）
 
 ## 公司目录（S19-B，ADR 0015，docs/S19B_SCOPE.md）
 
@@ -178,6 +178,15 @@
 - 测试：`TestScopeOfRefusesWhatAFrozenQueryCannotHold`（错误不带取值）、`TestTheMetadataSheetSaysTheScopeOfTheQuery`（文本单元格、无公式）、`TestAScopeTheWorkbookCannotSayIsRefused`、`TestAWorkbookWithoutFiltersOrSortIsWhatItWasButForTheScopeRow`、`TestTheScopeLinesAreBoundAndSayWhenTheyContinue`、`TestTheScopeIsCheckedAgainstTheFontsAndTheColumns`、`TestLinesFillGreedilyAndLoseNothing`、`TestTypstLaysOutDocuments`（`plain_golden` 与 `filtered_*`：CI 的检查脚本从 PDF 读回范围文字，veraPDF 校验）、`TestAFilteredSnapshotsWorkbookSaysItsScope`。
 - 审查时看：取值在 PDF 里是页面文字、在工作簿里是文本单元格，两处都不经过任何解释器；`template.typ` 对 `scope` 只做换行拼接，没有 `eval`。
 - 已知不覆盖：控制台的筛选文字（S20-B）；经布局导出的 PDF 的范围文字只由 veraPDF 与构建数据的测试覆盖（检查脚本没有布局模式）；没有接口返回快照的查询，PDF 里“见本快照的查询”目前只能在同一快照的工作簿导出里读到全部条件。
+
+## 数据类别（S08-A，ADR 0012 决定 6，docs/S08A_SCOPE.md）
+
+- 要成立的：结果的数据类别（`evidence.data_class`）说明数据从哪里来，只有三个取值：`contract-simulator`、`manual-entry`、`business-data`；它是连接的适配器自己的说法，不是平台的固定值，也不是来源经协议能声明的；模拟器或手工录入的数据不会被标成来源产品数据，来源产品的数据不会被标成模拟数据；已冻结的快照保留冻结时的类别；存储里出现集合之外的词即完整性失败，绝不原样印出。
+- 做法：可选接口 `reporting.ClassedAdapter`（`DataClass() string`，与 `DocumentAuthority`、`CompanyDirectory` 同一模式），不实现即 `business-data`。`NewService` 在建立时读一次并拒绝集合之外的词；`collect` 把该连接的词写进证据；`ValidatePublication`（两个存储的发布都调用）与每次读取快照（`Service.snapshot`：分页、导出、出具、预览用的快照）都要求证据里的词在集合内，否则 `INTEGRITY_FAILURE`。导出：PDF 页脚与工作簿 `Metadata` 的 `data_class` 行按类别取固定文字（模拟器的文字与之前逐字相同），集合之外的词在排版与写表之前就被拒绝。目录：`GET /catalog` 的每个条目带 `data_class`，由平台按连接填写；它不是 `reporting.Dataset` 的字段，来源协议也没有这个字段（`http` 适配器严格解码，未知字段即完整性失败），所以来源无法自己声明。生产服务器：自称模拟器（`IsSimulator()`）或类别为 `contract-simulator` 的适配器都需要 `allow_simulator`；自称模拟器却不说 `contract-simulator` 的适配器、以及说出集合之外的词的适配器，都拒绝启动（固定文字，只带配置里的连接与适配器名）。因此响应头为 `X-Reporting-Data-Class: business-data` 的服务器没有类别为 `contract-simulator` 的连接。
+- 代码：`reporting/dataclass.go`、`reporting/service.go`（`NewService`、`collect`、`DataClass`、`snapshot`）、`reporting/repository_contract.go`（`ValidatePublication`）、`adapters/contractsim`（`Simulator.DataClass`、`pgsource.Source.DataClass`）、`adapters/httpsource/sourcetest/remote.go`、`server/registry.go`（`isSimulator`、`classAgrees`）、`export/pdf/layout.go`（`dataClasses`）、`export/xlsx/writer.go`（`DataClassNotes`）、`transport/httpapi/api.go`（`catalogEntry`）。
+- 测试：`TestTheDataClassIsTheAdaptersWord`、`TestNewServiceRefusesAnAdapterThatSaysAnotherWord`、`TestAStoredSnapshotKeepsTheWordItWasFrozenWith`、`TestStoredEvidenceIsHeldToTheClosedSet`、`TestTheFooterPrintsTheDataClassOfTheSnapshot`、`TestTheMetadataSheetSaysTheDataClassOfTheSnapshot`、`TestTheCatalogAndTheEvidenceSayTheDataClassOfTheConnection`、`TestAResultSaysItsAdaptersDataClassUnderTheServersHeader`、`TestStartRefusalsNameTheStepAndCarryNoSecret`（适配器的两种说法不一致或类别未知时拒绝启动）、`TestTheAdapterSaysNoDataClassAndTheReferenceCompositionPassesTheWrappedOneOn`、`TestTheShippedRegistryServesAnHTTPSourceEndToEnd`（经协议读取即 `business-data`）、合同场景 `the_evidence_says_the_adapters_data_class`（内存、经协议、PostgreSQL）、`TestTypstLaysOutDocuments`（`plain_golden`：模拟器的 PDF 逐字节不变；`class_manual`、`class_business`：CI 的检查脚本从页脚读回类别文字）。
+- 审查时看：类别是适配器的自我声明，平台无法验证其真实性。只包住 `reporting.Adapter` 接口的包装会隐藏被包装者的说法（与隐藏 `IsSimulator` 相同），数据随之被标为 `business-data`；所以随发行版注册的只有平台自己的 `http` 适配器，宿主注册表里的适配器及其包装是宿主自己要审查的代码。`business-data` 的文字只说“来源产品数据”，不声称数据真实。
+- 已知不覆盖：`manual-entry` 目前没有适配器（S08-B）；控制台的“数据类别”仍是固定文字“合同模拟器 / 合成数据”，还不读取 `data_class`（S08-C）；单据模板的预览与正式出具的文件不印数据类别（此前也不印）。
 
 ## 已知没有覆盖的
 

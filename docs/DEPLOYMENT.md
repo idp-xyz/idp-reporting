@@ -41,6 +41,14 @@ host chooses, and its error is never shown (the start line says which connection
 simulators (`IsSimulator()`), and `Run` refuses a registry entry that returns one unless the configuration says `"allow_simulator": true`, which the example below
 does not contain; with it, `/capabilities` states the profile as `simulated:<profile_label>`.
 
+**The data class of an adapter** (S08-A, ADR 0012 decision 6). Every result says where its data comes from (`evidence.data_class`, the catalog's entries, the
+footer of a PDF, the `Metadata` sheet of a workbook) in the word of the connection's adapter: `contract-simulator`, `manual-entry` or `business-data`. An adapter of
+a source product needs to do nothing: one that says no class serves `business-data`, as the `http` adapter does. An adapter says another class by implementing
+`DataClass() string` (`reporting.ClassedAdapter`); the word is read once, at start, and a word outside the three refuses the start. An adapter that reports itself a
+simulator, by `IsSimulator()` or by the class `contract-simulator`, needs `allow_simulator`; one that says `IsSimulator()` without the class `contract-simulator`
+refuses the start, so that a simulator's data is never labelled a source product's. A wrapper around an adapter (one that embeds only `reporting.Adapter`) hides the
+word of what it wraps, like every other optional capability, and must say it itself.
+
 Exit codes of `run`: **0** a clean drain, **1** a refused start (or a runtime failure of the listener), **2** a drain that ran out of `shutdown_grace`.
 
 ## The configuration file

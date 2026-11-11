@@ -34,6 +34,7 @@ func newGate(a r.Adapter) *gate {
 }
 
 func (g *gate) IsSimulator() bool { return true }
+func (g *gate) DataClass() string { return r.DataClassSimulator } // the wrapper hides the simulator's word (S08-A) and says it itself
 func (g *gate) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedRead, cursor string, limit int) (r.SourcePage, error) {
 	if g.panicWith != "" {
 		panic(g.panicWith)
