@@ -232,4 +232,9 @@ func sum(values []string, scale int) (string, error) {
 // explicitly (S05-A). An adapter of a real product does not have this method, or answers false.
 func (s *Simulator) IsSimulator() bool { return true }
 
+// DataClass says what the simulator serves (reporting.ClassedAdapter, S08-A, ADR 0012 decision 6): synthetic data, never real business
+// data. Every result read through it carries the word in its evidence, and the exports print it.
+func (s *Simulator) DataClass() string { return r.DataClassSimulator }
+
 var _ r.Adapter = (*Simulator)(nil)
+var _ r.ClassedAdapter = (*Simulator)(nil)

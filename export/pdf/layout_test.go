@@ -268,7 +268,6 @@ func TestBuildRefusesCharactersTheFontsDoNotCover(t *testing.T) {
 		"company":   func(s *r.Snapshot) { s.Query.Companies = []string{m} },
 		"watermark": func(s *r.Snapshot) { s.Prepared.Watermark = m },
 		"dataset":   func(s *r.Snapshot) { s.Query.Dataset.ID = m },
-		"class":     func(s *r.Snapshot) { s.Result.Evidence.DataClass = m },
 		"timezone":  func(s *r.Snapshot) { s.Query.Timezone = m },
 	} {
 		s := table(1, 1, []string{"a", "1.00"})

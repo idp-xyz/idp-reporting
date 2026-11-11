@@ -28,6 +28,7 @@ type tracing struct {
 }
 
 func (a *tracing) IsSimulator() bool { return true }
+func (a *tracing) DataClass() string { return r.DataClassSimulator } // the wrapper hides the simulator's word (S08-A) and says it itself
 func (a *tracing) seen(ctx context.Context, into *[]tracecontext.Span) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

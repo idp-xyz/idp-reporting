@@ -101,6 +101,18 @@
   "footer_page": 4,
   "pages": 4
  },
+ "class_business.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "class_manual.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
  "coded_images.pdf": {
   "first_rows": [
    0

@@ -159,6 +159,17 @@ func TestDurablePostgresContract(t *testing.T) {
 		if v.source.ReadCalls() != 1 {
 			t.Fatal(v.source.ReadCalls())
 		}
+		// S08-A (ADR 0012 decision 6): the durable fixture says the simulators' data class, and the snapshot the durable store keeps
+		// carries it.
+		if class := r.DataClassOf(v.source); class != "contract-simulator" {
+			t.Fatal(class)
+		}
+		if j, e = v.s.Job(ctx, v.p, j.ID); e != nil || j.SnapshotID == "" {
+			t.Fatal(j, e)
+		}
+		if stored, e := v.repo.Snapshot(ctx, v.p.Identity, j.SnapshotID); e != nil || stored.Result.Evidence.DataClass != "contract-simulator" {
+			t.Fatal(stored.Result.Evidence, e)
+		}
 	})
 	t.Run("durable_handles_and_old_source_version", func(t *testing.T) {
 		v := newDurable(t)

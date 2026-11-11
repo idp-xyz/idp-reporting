@@ -274,3 +274,44 @@ func TestDataClassFollowsTheProfile(t *testing.T) {
 		}
 	}
 }
+
+// The header says what kind of server answers; the data class of a result is another word, the adapter's (S08-A, ADR 0012 decision 6): a
+// result's evidence and the catalog's entries say where the data of that connection comes from. A production server labels the data of
+// an adapter that says nothing a source product's, and typed-in data as that, under a header that says business-data; a server that
+// allows simulators labels a simulator's data as that, and still says of typed-in data what its adapter says.
+func TestAResultSaysItsAdaptersDataClassUnderTheServersHeader(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		simulators    bool
+		adapter       func(*world) r.Adapter
+		class, header string
+	}{
+		{"a simulator where simulators are allowed", true, func(w *world) r.Adapter { return w.sim }, "contract-simulator", "contract-simulator"},
+		{"typed-in data where simulators are allowed", true, func(w *world) r.Adapter { return worded{w.sim, r.DataClassManual} }, "manual-entry", "contract-simulator"},
+		{"typed-in data on a production server", false, func(w *world) r.Adapter { return worded{w.sim, r.DataClassManual} }, "manual-entry", "business-data"},
+		{"an adapter that says nothing on a production server", false, func(w *world) r.Adapter { return struct{ r.Adapter }{w.sim} }, "business-data", "business-data"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t)
+			w.cfg.AllowSimulator = c.simulators
+			w.reg = Registry{"sim": func(json.RawMessage, func(string) string) (r.Adapter, error) { return c.adapter(w), nil }}
+			s := startWorld(t, w)
+			good := mint(t, w.keys[0], claims{})
+			status, h, body := s.do(t, "POST", api+"/queries", good, contractsim.FinancialQuery())
+			var result r.Result
+			if status != 200 || json.Unmarshal(body, &result) != nil || result.Evidence.DataClass != c.class {
+				t.Fatalf("query: %d %s, want the data class %q", status, body, c.class)
+			}
+			if got := h.Values("X-Reporting-Data-Class"); len(got) != 1 || got[0] != c.header {
+				t.Errorf("the header of the query's answer is %q, want exactly %q", got, c.header)
+			}
+			status, h, body = s.do(t, "GET", api+"/catalog?integration_id="+w.finance, good, nil)
+			if status != 200 || !strings.Contains(string(body), `"data_class":"`+c.class+`"`) || strings.Count(string(body), `"data_class"`) != 1 {
+				t.Errorf("catalog: %d %s, want one entry of the data class %q", status, body, c.class)
+			}
+			if got := h.Values("X-Reporting-Data-Class"); len(got) != 1 || got[0] != c.header {
+				t.Errorf("the header of the catalog's answer is %q, want exactly %q", got, c.header)
+			}
+		})
+	}
+}

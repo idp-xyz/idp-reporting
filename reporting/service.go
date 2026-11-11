@@ -19,6 +19,7 @@ import (
 type Service struct {
 	repo        Repository
 	connections map[[2]string]Connection
+	classes     map[[2]string]string      // the data class of each connection: its adapter's word, read once (S08-A)
 	keys        [][]byte                  // the cursor key ring, newest first (S04-H): the first signs, every one verifies
 	writers     map[string]WorkbookWriter // by format; "" is the workbook
 	issuer      Issuer                    // nil: issuing is unsupported
@@ -37,7 +38,7 @@ func NewService(c Config) (*Service, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Service{quotas: quotas, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, keys: ring, writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
+	s := &Service{quotas: quotas, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, classes: map[[2]string]string{}, keys: ring, writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -58,7 +59,14 @@ func NewService(c Config) (*Service, error) {
 		if _, exists := s.connections[k]; exists {
 			return nil, ErrInvalid
 		}
+		// The data class is the adapter's word (S08-A, ADR 0012 decision 6): read once, here, and one of the closed set, or the
+		// service is not made. Every result of the connection carries it in its evidence.
+		class := DataClassOf(v.Adapter)
+		if !ValidDataClass(class) {
+			return nil, ErrInvalid
+		}
 		s.connections[k] = v
+		s.classes[k] = class
 	}
 	return s, nil
 }
@@ -120,6 +128,17 @@ func (s *Service) Catalog(ctx context.Context, p Principal, integration string) 
 		return nil, e
 	}
 	return c.Adapter.DescribeCatalog(ctx, sc)
+}
+
+// DataClass is the data class of one of the principal's products (S08-A, ADR 0012 decision 6): the word of the connection's adapter as
+// NewService read it, which every result of the connection carries in its evidence. The connection is resolved as Catalog resolves it,
+// with the same refusal for a product the principal does not hold; the adapter is not asked again.
+func (s *Service) DataClass(p Principal, integration string) (string, error) {
+	c, _, e := s.source(p, integration)
+	if e != nil {
+		return "", e
+	}
+	return s.classes[[2]string{c.Tenant, c.Integration}], nil
 }
 
 // ListCompanies is the company directory of ADR 0015 (S19-B) for one of the principal's products: the connection is resolved as Catalog
@@ -214,7 +233,8 @@ func (s *Service) collect(ctx context.Context, o Owner, q QuerySpec, p PreparedR
 		return out, e
 	}
 	c, sc, _ := s.sourceOwner(o)
-	out = Result{Columns: cols, Rows: [][]string{}, Completeness: "complete", Issues: []string{}, Evidence: Evidence{QueryHash: p.QueryHash, SourceRef: p.Ref, Watermark: p.Watermark, DataClass: "contract-simulator"}}
+	// The evidence says where the data comes from in the word of the connection's adapter (S08-A): never a constant of the platform.
+	out = Result{Columns: cols, Rows: [][]string{}, Completeness: "complete", Issues: []string{}, Evidence: Evidence{QueryHash: p.QueryHash, SourceRef: p.Ref, Watermark: p.Watermark, DataClass: s.classes[[2]string{o.Tenant, o.Integration}]}}
 	cursor := ""
 	seen := map[string]bool{}
 	for n := 0; n <= MaxRows; n++ {
@@ -317,7 +337,9 @@ func (s *Service) snapshot(ctx context.Context, p Principal, id string) (Snapsho
 	if _, _, e = s.source(p, v.Owner.Integration); e != nil {
 		return Snapshot{}, e
 	}
-	if !s.now().Before(v.ExpiresAt) || v.SHA256 != Digest(v.Result) {
+	// A stored snapshot keeps the data class it was frozen with (S08-A); a word outside the closed set is a store that does not agree
+	// with itself, and nothing of the snapshot is served, exported or issued.
+	if !s.now().Before(v.ExpiresAt) || v.SHA256 != Digest(v.Result) || !ValidDataClass(v.Result.Evidence.DataClass) {
 		return Snapshot{}, ErrIntegrity
 	}
 	if e = s.current(ctx, v.Owner, v.Query, v.Prepared); e != nil {

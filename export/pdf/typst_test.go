@@ -110,8 +110,12 @@ func scopedEvidence(t *testing.T, name string, pdf []byte, d *document, s r.Snap
 	q := s.Query
 	e := expectation{File: name + ".pdf", Landscape: d.Landscape, Margin: marginX, Inset: insetX, MinPages: minPages,
 		Title: q.Dataset.ID, Dimensions: len(q.Dimensions), Rows: s.Result.Rows, Totals: []string{},
-		Meta:   append([]string{q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, q.Timezone, strings.Join(q.Companies, "、"), strconv.Itoa(len(s.Result.Rows)) + " 行", "生成于 2026-10-27 08:30:00 UTC"}, scope...),
-		Footer: []string{"合同模拟器 / 合成数据（非真实业务数据）", "快照 " + s.ID + mark, q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, "来源水位 " + s.Prepared.Watermark}}
+		Meta: append([]string{q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, q.Timezone, strings.Join(q.Companies, "、"), strconv.Itoa(len(s.Result.Rows)) + " 行", "生成于 2026-10-27 08:30:00 UTC"}, scope...),
+		// The text of the snapshot's data class (S08-A), as the test says it (footerClasses), not as the writer made it.
+		Footer: []string{footerClasses[s.Result.Evidence.DataClass], "快照 " + s.ID + mark, q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, "来源水位 " + s.Prepared.Watermark}}
+	if e.Footer[0] == "" {
+		t.Fatalf("%s: the snapshot's data class %q has no text the checker could look for", name, s.Result.Evidence.DataClass)
+	}
 	if e.Rows == nil {
 		e.Rows = [][]string{}
 	}
@@ -545,6 +549,49 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 			t.Errorf("%d scope lines: %q", len(d.Scope), d.Scope)
 		}
 	})
+	// S08-A (ADR 0012 decision 6): the footer says the snapshot's data class. The simulator's documents are the plain ones above,
+	// byte for byte what they were (plain_golden); a snapshot of typed-in data and one of a source product's data print their own
+	// texts, with the pinned fonts. Each is rendered twice to the same bytes and written as evidence with its expectation: the checker
+	// reads the text of the class back from the footer of the page, and veraPDF validates the file.
+	for _, c := range []struct{ name, class, text string }{
+		{"class_manual", "manual-entry", "手工录入（非来源产品数据）"},
+		{"class_business", "business-data", "来源产品数据"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := table(1, 1, []string{"华东", "1.00"}, []string{"华西", "-2.50"})
+			s.Result.Evidence.DataClass = c.class
+			b, err := w.Write(t.Context(), s)
+			if err != nil {
+				var re *RenderError
+				if errors.As(err, &re) {
+					t.Fatalf("%v\n%s", err, re.output())
+				}
+				t.Fatal(err)
+			}
+			again, err := w.Write(t.Context(), s)
+			if err != nil || !bytes.Equal(b, again) {
+				t.Fatalf("two renders with the same clock differ (%v)", err)
+			}
+			// The same snapshot as a simulator's is another file: the class is printed.
+			s.Result.Evidence.DataClass = "contract-simulator"
+			simulator, err := w.Write(t.Context(), s)
+			if err != nil || bytes.Equal(simulator, b) {
+				t.Fatalf("the document of the %s class is the simulator's (%v)", c.class, err)
+			}
+			s.Result.Evidence.DataClass = c.class
+			d, err := build(s, newMeasurer(w.fonts), created)
+			if err != nil || !strings.HasPrefix(flatten(d.Footer), c.text+" · 快照 "+s.ID+" · ") {
+				t.Fatalf("footer %q (%v)", flatten(d.Footer), err)
+			}
+			evidence(t, c.name, b, d, s, 1)
+		})
+	}
+	// A stored word outside the set is refused before Typst is asked for anything.
+	odd := table(1, 1, []string{"华东", "1.00"})
+	odd.Result.Evidence.DataClass = "real-data"
+	if _, err := w.Write(t.Context(), odd); !errors.Is(err, r.ErrIntegrity) {
+		t.Errorf("a snapshot with a data class outside the set: %v; want an integrity failure", err)
+	}
 }
 
 // plainGolden holds the SHA-256 of each plain table export TestTypstLaysOutDocuments renders, with the pinned Typst binary and fonts at

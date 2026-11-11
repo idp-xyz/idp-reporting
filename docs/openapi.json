@@ -251,7 +251,7 @@
           "core"
         ],
         "summary": "The published datasets of one integration",
-        "description": "Only a product explicitly allowed for the principal. Each entry carries the filters and sorts its version declares (S20-A, ADR 0023), when it declares any.",
+        "description": "Only a product explicitly allowed for the principal. Each entry carries the filters and sorts its version declares (S20-A, ADR 0023), when it declares any, and `data_class` (S08-A, ADR 0012 decision 6): where the data of the integration's connection comes from, in its adapter's word, so that a client knows what it is looking at before it reads a row.",
         "x-reporting-mount": "core",
         "parameters": [
           {
@@ -4411,6 +4411,10 @@
             },
             "maxItems": 8,
             "description": "S20-A (ADR 0023): the columns a query of this version may order by, each with its directions. Omitted when the version declares none: then a query carries no sort."
+          },
+          "data_class": {
+            "$ref": "#/components/schemas/DataClass",
+            "description": "S08-A (ADR 0012 decision 6): where the data of this dataset comes from, the word of the adapter of the connection it is read through. It is the platform's word about the connection, not a field the source publishes; the evidence of every result of the dataset says the same word."
           }
         },
         "required": [
@@ -4418,10 +4422,20 @@
           "columns",
           "metrics",
           "dimensions",
-          "timezone"
+          "timezone",
+          "data_class"
         ],
         "additionalProperties": false,
-        "description": "A published catalog entry (reporting.Dataset). The filters and sorts it declares are part of the version, as the columns are."
+        "description": "An entry of the catalog: a published dataset version (reporting.Dataset) and the data class of its connection. The filters and sorts it declares are part of the version, as the columns are."
+      },
+      "DataClass": {
+        "type": "string",
+        "enum": [
+          "contract-simulator",
+          "manual-entry",
+          "business-data"
+        ],
+        "description": "S08-A (ADR 0012 decision 6): where data comes from, in the word of the adapter it is read through. `contract-simulator`: a contract simulator's synthetic data, never real business data. `manual-entry`: data people typed in or pasted (the manual source), not a source product's. `business-data`: a source product's data, which is what every adapter that says nothing serves (the generic `http` adapter among them). The set is closed. It is not the `X-Reporting-Data-Class` header, which says what kind of server answers."
       },
       "FilterSpec": {
         "type": "object",
@@ -4752,7 +4766,7 @@
                 "type": "string"
               },
               "data_class": {
-                "type": "string"
+                "$ref": "#/components/schemas/DataClass"
               }
             },
             "required": [
@@ -4834,7 +4848,7 @@
                 "type": "string"
               },
               "data_class": {
-                "type": "string"
+                "$ref": "#/components/schemas/DataClass"
               }
             },
             "required": [

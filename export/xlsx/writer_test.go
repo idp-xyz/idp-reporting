@@ -33,6 +33,8 @@ func ledger() r.Snapshot {
 				{"=SUM(A1)", "2025", "0.00", "1"},
 			},
 			Totals: map[string]string{"amount": "9007199254741093.02", "count": "9007199254740997"},
+			// The data class is the snapshot's own word since S08-A; the fixture is a simulator's, as every workbook was labelled before.
+			Evidence: r.Evidence{DataClass: r.DataClassSimulator},
 		},
 	}
 }

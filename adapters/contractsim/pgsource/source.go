@@ -120,8 +120,14 @@ func migrate(ctx context.Context, p *pgxpool.Pool) error {
 
 // IsSimulator says the source is a fixture of the contract simulators (see contractsim.Simulator.IsSimulator).
 func (s *Source) IsSimulator() bool { return true }
-func (s *Source) Close()            { s.pool.Close() }
-func (s *Source) ReadCalls() int    { return int(s.reads.Load()) }
+
+// DataClass says what the durable fixture serves (reporting.ClassedAdapter, S08-A): the contract simulators' synthetic data.
+func (s *Source) DataClass() string { return r.DataClassSimulator }
+
+var _ r.ClassedAdapter = (*Source)(nil)
+
+func (s *Source) Close()         { s.pool.Close() }
+func (s *Source) ReadCalls() int { return int(s.reads.Load()) }
 func (s *Source) ResetFixture(ctx context.Context) error {
 	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_source_s01.prepared,reporting_source_s01.grants,reporting_source_s01.heads,reporting_source_s01.versions,reporting_source_s01.issue_numbers,reporting_source_s01.issues")
 	return e

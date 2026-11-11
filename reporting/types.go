@@ -308,6 +308,8 @@ type Evidence struct {
 	QueryHash string `json:"query_hash"`
 	SourceRef string `json:"source_snapshot_ref"`
 	Watermark string `json:"source_watermark"`
+	// DataClass says where the data comes from, in the word of the connection's adapter (S08-A, ADR 0012 decision 6, dataclass.go): one
+	// of DataClasses. A frozen snapshot keeps the word it was frozen with.
 	DataClass string `json:"data_class"`
 }
 type Snapshot struct {
