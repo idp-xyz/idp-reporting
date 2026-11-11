@@ -38,8 +38,8 @@ returns the platform's `http` adapter of it.
 A6 · **The checker** `cmd/reporting-source-check` (library `adapters/httpsource/conformance`): 20 rules through the platform's own adapter
 (P1, A1, C1–C4, R1–R13, I1 with `-issue`), `PASS`/`FAIL`/`SKIP` with fixed texts, exit 0/1/2 (docs/SOURCE_HTTP_PROTOCOL.md section 7).
 
-A7 · Not done: the company directory (ADR 0015 is not in the core yet; S19-B adds `POST /reporting-source/v1/companies`); a demo flag that
-puts the demo's simulator behind the protocol (not needed: the tests do it); a health probe of a source.
+A7 · Not done: the company directory (ADR 0015 was not in the core yet; S19-B added it, with `POST /reporting-source/v1/companies`,
+docs/S19B_SCOPE.md); a demo flag that puts the demo's simulator behind the protocol (not needed: the tests do it); a health probe of a source.
 
 ## Evidence
 

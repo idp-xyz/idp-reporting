@@ -72,7 +72,7 @@ the rule and never repeats a value of the file.
   "cursor_key_files": ["/etc/reporting/keys/cursor-2026-11.key", "/etc/reporting/keys/cursor-2026-08.key"],
   "connections": [
     { "tenant": "acme", "integration": "erp-finance", "source_tenant": "acme-prod", "adapter": "http",
-      "options": { "base_url": "https://erp.internal/reporting", "ca_file": "/etc/reporting/tls/erp-ca.pem", "auth_env": "REPORTING_SOURCE_ERP_AUTH", "issuance": "rows" } }
+      "options": { "base_url": "https://erp.internal/reporting", "ca_file": "/etc/reporting/tls/erp-ca.pem", "auth_env": "REPORTING_SOURCE_ERP_AUTH", "issuance": "rows", "companies": true } }
   ],
   "quotas": { "jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120, "queries_in_flight": 4 },
   "retention": { "sweep_interval": 0 },
@@ -165,12 +165,14 @@ strictly (an unknown field, `null` or a repeated key refuses the start; the erro
 | `auth_env` | none | The **name** of the environment variable that holds the bearer credential (`A-Z 0-9 _`); the variable must be set. |
 | `max_response_bytes` | 1048576 | 0 (default) or 4096..1048576. |
 | `issuance` | `none` | `none` (issuing through the connection is unsupported), `rows` (the document authority of ADR 0003, one row per document) or `groups` (contract version 2, a row group per document, S03-K). |
+| `companies` | `false` | `true` declares that the product implements the company directory of ADR 0015 (`POST /reporting-source/v1/companies`, protocol revision 1.1, S19-B): the platform then asks it for `GET /companies` and the console can offer a picker. Without it the route is never asked and the platform answers `supported: false`. Declare it only after `reporting-source-check -companies` passes. |
 
 A connection needs a credential: `auth_env`, a client certificate, or both (`loopback_http` alone is accepted for tests). The adapter follows no redirect,
 uses TLS 1.2 or later and no proxy from the environment, and verifies every answer before it is used (an answer that does not verify is
 `INTEGRITY_FAILURE`, a product that cannot be reached, is too slow or answers 5xx is `AUTHORITY_UNAVAILABLE`, 503 to the caller). Each request carries a
 random `X-Request-Id` and the request's `traceparent`; the product logs them. **Before** a connection is added the product passes `reporting-source-check`
-(docs/SOURCE_HTTP_PROTOCOL.md section 7) against the endpoint the platform will use, with the credential and CA the connection will use. Rotating the credential
+(docs/SOURCE_HTTP_PROTOCOL.md section 7) against the endpoint the platform will use, with the credential and CA the connection will use, and with
+`-companies` when the connection will declare `companies`. Rotating the credential
 is a restart, rolled one server at a time, with the product accepting the old and the new credential for the while.
 
 ## What a start does, in order

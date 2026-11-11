@@ -3,9 +3,9 @@
   "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
   "info": {
     "title": "Reporting source protocol",
-    "version": "1",
-    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A).",
-    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups."
+    "version": "1.1",
+    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A; revision 1.1 adds the optional companies route, S19-B).",
+    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups; the companies route only for a connection with companies true (ADR 0015)."
   },
   "servers": [
     {
@@ -96,6 +96,102 @@
           },
           "422": {
             "description": "Error code unsupported or integrity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error code budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error code unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reporting-source/v1/companies": {
+      "post": {
+        "operationId": "listCompanies",
+        "summary": "The companies the context may choose now, each with its name (ADR 0015; optional: asked only of a connection with companies true).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompaniesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompaniesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The service credential is missing or wrong (no body needed). The platform treats it as unavailable."
+          },
+          "400": {
+            "description": "Error code invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error code denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Error code expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error code unsupported (a source without the directory) or integrity.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1206,6 +1302,64 @@
             "maxItems": 100
           }
         }
+      },
+      "Company": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The value a query names in company_ids: 1..128 bytes of UTF-8 text without control characters, no id twice in a list.",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "description": "What a person reads: 1..128 bytes of UTF-8 text without control characters, not blank. The platform never stores it.",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "description": "One company the context may choose (ADR 0015)."
+      },
+      "CompaniesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          }
+        }
+      },
+      "CompaniesResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "companies",
+          "partial"
+        ],
+        "properties": {
+          "companies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Company"
+            },
+            "description": "The companies the context may choose now, in the product's order; at most 1000. Empty is an answer: nothing may be chosen.",
+            "maxItems": 1000
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "True when the product cut the list (more than 1000, or its own bound); the person may still type an id."
+          }
+        },
+        "description": "The directory's answer. The list is advisory: reads and authorize decide every read as without it."
       },
       "PrepareRequest": {
         "type": "object",

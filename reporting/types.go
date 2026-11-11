@@ -674,6 +674,46 @@ type IssueReceipt struct {
 	ConfirmedAt time.Time // the product's time: a whole second between IssuedAt and 9999-12-31T23:59:59Z
 }
 
+// CompanyDirectory is the optional capability of an adapter whose source product can list the companies
+// the principal may currently choose (ADR 0015, S19-B). The list is advisory: PrepareRead and AuthorizeCurrent
+// authorize every read as they do without it. The platform never stores the list, never caches it across
+// requests and never logs a name; a frozen read keeps company ids (PreparedRead.Companies), never names.
+type CompanyDirectory interface {
+	// ListCompanies returns the companies the principal of the context may choose now, in the product's
+	// order, each with the id the query names and the name a person reads. Partial is true when the
+	// product cut the list (the platform accepts at most 1000 entries); then the person may still type
+	// an id. An empty list is an answer: nothing may be chosen.
+	ListCompanies(context.Context, SourceContext) (CompanyList, error)
+}
+
+// Company is one entry of the directory.
+type Company struct {
+	ID   string `json:"id"`   // 1–128 characters, the value PrepareRead receives in Companies
+	Name string `json:"name"` // 1–128 characters, what the console shows; never stored by the platform
+}
+
+// CompanyList is a directory's answer.
+type CompanyList struct {
+	Companies []Company `json:"companies"`
+	Partial   bool      `json:"partial"`
+}
+
+// CompanyDirectoryAnswer is what the platform answers for GET /companies (ADR 0015 decision 3): whether the product can list, whether
+// it cut the list, and the list, exactly these three keys. An adapter without the capability answers supported false and an empty list;
+// it is not an error.
+type CompanyDirectoryAnswer struct {
+	Supported bool      `json:"supported"`
+	Partial   bool      `json:"partial"`
+	Companies []Company `json:"companies"`
+}
+
+// The bounds of a company directory's answer (ADR 0015): at most MaxCompanies entries, each id and name 1..MaxCompanyBytes bytes of
+// UTF-8 text without control characters (ValidateCompanyList).
+const (
+	MaxCompanies    = 1000
+	MaxCompanyBytes = 128
+)
+
 // ValidIssueNumber: 1..32 characters of A-Z a-z 0-9 . _ -, starting with a letter or a digit,
 // so that a number prints on one line and names a file.
 func ValidIssueNumber(n string) bool {

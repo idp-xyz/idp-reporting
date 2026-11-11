@@ -4,9 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	// The zone database is in the binary, so that a server without the system's zoneinfo judges and computes a zone as every other does
 	// (S16-A): a recurrence names an IANA zone, and its next run is a function of that name alone.
@@ -174,18 +172,8 @@ type ScheduleInput struct {
 	Recurrence Recurrence `json:"recurrence"`
 }
 
-// ValidScheduleName: 1..120 bytes of UTF-8 text without control characters, not blank, as the person wrote it.
-func ValidScheduleName(n string) bool {
-	if n == "" || len(n) > MaxScheduleNameBytes || !utf8.ValidString(n) || strings.TrimSpace(n) == "" {
-		return false
-	}
-	for _, c := range n {
-		if c < 0x20 || c == 0x7f || c == 0xFFFE || c == 0xFFFF {
-			return false
-		}
-	}
-	return true
-}
+// ValidScheduleName: 1..120 bytes of UTF-8 text without control characters, not blank, as the person wrote it (plainText).
+func ValidScheduleName(n string) bool { return plainText(n, MaxScheduleNameBytes) }
 
 // ValidateSchedule is what a store holds every schedule to before it keeps one: its own fields and its definition, never the source's view of
 // the query (the service checks that against the catalog when the schedule is made, and the source product at every run).

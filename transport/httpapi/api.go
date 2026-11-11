@@ -264,6 +264,20 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		return send(w, 200, v)
 	})
+	// S19-B (ADR 0015): the companies the principal may choose in one product, under the catalog's authority and refusals; exactly
+	// {supported, partial, companies}. An adapter without the capability answers supported false and an empty list (200). Never cached
+	// (secured), never stored, never logged: a name reaches the caller and nothing else.
+	bind("GET "+base+"/companies", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		values := req.URL.Query()
+		if len(values) != 1 || len(values["integration_id"]) != 1 {
+			return r.ErrInvalid
+		}
+		v, e := service.ListCompanies(req.Context(), p, values.Get("integration_id"))
+		if e != nil {
+			return e
+		}
+		return send(w, 200, v)
+	})
 	bind("POST "+base+"/queries", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		var q r.QuerySpec
 		if e := decode(w, req, &q, bodyQuery); e != nil {
@@ -465,7 +479,7 @@ func capabilities(service *r.Service, embedding bool) map[string]any {
 // capabilitiesLabelled is the capability document with the given profile label. production_approved is never a parameter: it is false in
 // this code until a code change after the admission decision says otherwise.
 func capabilitiesLabelled(service *r.Service, embedding bool, profile string) map[string]any {
-	view := map[string]any{"profile": profile, "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
+	view := map[string]any{"profile": profile, "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "GET /companies", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
 	view["embedding"] = embedding
 	q := service.Quotas()
 	view["quotas"] = map[string]int{r.QuotaJobsInFlight: q.JobsInFlight, r.QuotaStoredResults: q.StoredResults, r.QuotaAdmissionsPerHour: q.AdmissionsPerHour, r.QuotaQueriesInFlight: q.QueriesInFlight}

@@ -281,6 +281,39 @@ func ValidateSourcePage(rows [][]string, totals map[string]string, d Dataset) er
 	}
 	return validateTotals(totals, QuerySpec{Metrics: d.Metrics, Dimensions: d.Dimensions}, d.Columns)
 }
+
+// ValidateCompanyList holds a company directory's answer to ADR 0015 (ErrIntegrity otherwise): at most MaxCompanies entries, each id and
+// name 1..MaxCompanyBytes bytes of UTF-8 text without control characters and not blank (plainText, the rule of every text a person
+// reads), and no id twice. The service applies it to every answer of an in-process adapter before it is passed on; an adapter that reaches
+// its product over a network (adapters/httpsource, S19-B) applies it to the product's answer first, with the same rule. A nil list is
+// the empty answer: nothing may be chosen.
+func ValidateCompanyList(l CompanyList) error {
+	if len(l.Companies) > MaxCompanies {
+		return ErrIntegrity
+	}
+	seen := make(map[string]bool, len(l.Companies))
+	for _, c := range l.Companies {
+		if !plainText(c.ID, MaxCompanyBytes) || !plainText(c.Name, MaxCompanyBytes) || seen[c.ID] {
+			return ErrIntegrity
+		}
+		seen[c.ID] = true
+	}
+	return nil
+}
+
+// plainText: 1..max bytes of valid UTF-8 a person reads on one line, not blank, without control characters (C0, DEL) or the two
+// noncharacters U+FFFE and U+FFFF; a schedule's name, a company's id and name.
+func plainText(s string, max int) bool {
+	if s == "" || len(s) > max || !utf8.ValidString(s) || strings.TrimSpace(s) == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < 0x20 || c == 0x7f || c == 0xFFFE || c == 0xFFFF {
+			return false
+		}
+	}
+	return true
+}
 func validKey(key string) bool {
 	return len(key) > 0 && len(key) <= 128 && !strings.ContainsAny(key, "\r\n\x00")
 }
