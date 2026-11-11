@@ -1,6 +1,11 @@
-# Checks every pull request to main and every push to main. Third-party actions are pinned to
+# Checks every pull request to main, every push to main, and main once a night. Third-party actions are pinned to
 # full commit SHAs (tag in the trailing comment), the token is read-only and nothing runs with
 # repository secrets, because the repository is public.
+#
+# The pdf job is the long one (about 25 minutes: Typst, the checker's corpus and negative controls, veraPDF). On a
+# pull request it renders and checks only when the change reaches the PDF path (the paths named in its first step);
+# otherwise it reports success at once. Every push to main and the nightly run render and check everything, so main
+# always carries the whole evidence, and a drift in the pinned tools is seen within a day.
 name: ci
 
 on:
@@ -8,6 +13,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: '30 19 * * *' # 03:30 Asia/Shanghai, on main
 
 permissions:
   contents: read
@@ -207,17 +214,48 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A pull request that touches nothing on the PDF path (what renders, issues or previews a document, what the
+      # evidence is produced through, the checker and its pins) skips the rendering, the checker and veraPDF: the job
+      # reports success in under a minute. Everything else (a push to main, the nightly run) renders and checks it all.
+      - name: Does the change reach the PDFs?
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "pdf=true" >> "$GITHUB_OUTPUT"
+            echo "not a pull request: everything renders and is checked"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          changed="$(git diff --name-only "$BASE_SHA" HEAD)"
+          printf '%s\n' "$changed"
+          # What renders (export/, doctemplates/, issuance/, reporting/), what the evidence is produced through (transport/httpapi/, the demo
+          # server, the console and its DOM suite, the samples), the checker and its pins, the dependencies, and this file.
+          pattern='^(export/|doctemplates/|issuance/|reporting/|transport/httpapi/|console/|cmd/reporting-demo/|cmd/reporting-samples/|scripts/check_pdf_export\.py|scripts/fetch_pdf_tools\.py|scripts/requirements-pdfcheck\.txt|go\.mod|go\.sum|package\.json|package-lock\.json|\.github/workflows/ci\.yml)'
+          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
+            echo "pdf=true" >> "$GITHUB_OUTPUT"
+            echo "the change reaches the PDF path: everything renders and is checked"
+          else
+            echo "pdf=false" >> "$GITHUB_OUTPUT"
+            echo "nothing on the PDF path changed: the rendering, the checker and veraPDF are skipped for this pull request"
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.changes.outputs.pdf == 'true'
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.changes.outputs.pdf == 'true'
         with:
           node-version: 24.22.0
           cache: npm
       - name: Fetch the pinned Typst binary and fonts
+        if: steps.changes.outputs.pdf == 'true'
         run: python3 -I scripts/fetch_pdf_tools.py "$RUNNER_TEMP/pdf-tools" --github-env
       - name: Allow the user namespaces of the Typst sandbox
+        if: steps.changes.outputs.pdf == 'true'
         # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor. This changes only
         # the throwaway runner; export/pdf refuses to start without them.
         run: |
@@ -226,14 +264,24 @@ jobs:
           fi
           unshare --user --net true
       - name: Typst tests and documents
+        if: steps.changes.outputs.pdf == 'true'
         env:
           REPORTING_PDF_EVIDENCE: ${{ runner.temp }}/pdf-evidence
         run: |
           mkdir -p "$REPORTING_PDF_EVIDENCE"
           go test -count=1 -v ./export/pdf
+      # The race detector doubles the Typst tests' time; it runs on main and at night, where the result is kept, and the
+      # go job's race run already covers everything of export/pdf that does not need Typst.
+      - name: Typst tests under the race detector
+        if: steps.changes.outputs.pdf == 'true' && github.event_name != 'pull_request'
+        env:
+          REPORTING_PDF_EVIDENCE: ${{ runner.temp }}/pdf-evidence-race
+        run: |
+          mkdir -p "$REPORTING_PDF_EVIDENCE"
           go test -race -count=1 ./export/pdf
       # The whole DOM suite: PDF export and document previews render through the demo server.
       - name: Console with the Typst renderer
+        if: steps.changes.outputs.pdf == 'true'
         env:
           REPORTING_S03A_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
           REPORTING_DOCUMENT_EVIDENCE_DIR: ${{ runner.temp }}/console-evidence
@@ -253,6 +301,7 @@ jobs:
       # (TestTypstRendersEverySampleWithItsOwnRows), and --samples makes the checker hold the directory to the pack: every sample there, on its own preset,
       # with its codes decoded.
       - name: Check the documents, the negative controls and PDF/A-2b
+        if: steps.changes.outputs.pdf == 'true'
         run: |
           python3 -m venv "$RUNNER_TEMP/pdfcheck"
           "$RUNNER_TEMP/pdfcheck/bin/pip" install --require-hashes --only-binary :all: --no-deps -r scripts/requirements-pdfcheck.txt
