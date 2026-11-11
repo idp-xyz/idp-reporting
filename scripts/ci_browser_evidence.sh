@@ -74,7 +74,8 @@ if(over.length){console.error("== baseline: over the documented numbers: "+over.
 ' "$@"
 }
 # S09-G added task T8 (出具) to the core tasks: its own 5 clicks and 1 page switch are in these totals (T1–T7 measure 30 / 9 on the same run;
-# docs/UX_BASELINE_S07.md "T8：出具"). The dialogs and the texts are not held.
+# docs/UX_BASELINE_S07.md "T8：出具"). The dialogs and the texts are not held. S09-D (the company picker, ADR 0015) changed no held number:
+# T1 and T2 no longer type the company (texts 5 → 3), the one listed company being chosen already (docs/UX_BASELINE_S07.md "公司选择器").
 hold "$out/baseline.json" 35 10 0 0 || failed=1
 # S12-D: the team tasks. Their one dead end is the approver's: the studio needs their own authorized data before it opens a template.
 hold "$out/baseline-team.json" 25 8 0 1 || failed=1

@@ -19,6 +19,7 @@ const factories = {
   createReportingBoardStudio: 'readonly',
   createReportingEmbed: 'readonly',
   createReportingIssuePage: 'readonly',
+  createReportingCompanyPicker: 'readonly',
 };
 
 export default [

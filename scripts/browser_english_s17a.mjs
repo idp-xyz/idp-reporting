@@ -187,11 +187,16 @@ async function main() {
   data =
     await evalJs(`(async()=>{const ask=async p=>(await fetch('/api/reporting/v1'+p,{headers:{Authorization:'Bearer '+${JSON.stringify(token)}}})).json();
 const found=new Set();const c=v=>{if(typeof v==='string'){if(/[\\u3400-\\u9fff]/.test(v))found.add(v);}else if(v&&typeof v==='object')Object.values(v).forEach(c);};
-const s=await ask('/session');for(const id of s.integrations)c(await ask('/catalog?integration_id='+encodeURIComponent(id)));
+const s=await ask('/session');for(const id of s.integrations){c(await ask('/catalog?integration_id='+encodeURIComponent(id)));c(await ask('/companies?integration_id='+encodeURIComponent(id)));}
 const samples=await ask('/document-templates/samples');c(samples);for(const x of samples)c(await ask('/document-templates/samples/'+encodeURIComponent(x.kind)));
 return [...found].sort((a,b)=>b.length-a.length);})()`);
   await nav('workspace');
-  await typeInto('#query-companies', 'company_demo');
+  // S09-D: the company scope is the source's directory as a picker (the demo lists 演示公司, chosen already); the text field otherwise.
+  const company = await evalJs(
+    `(()=>{const p=document.getElementById('query-companies-picker');if(!p||p.hidden)return 'text';return [...p.querySelectorAll('input[type=checkbox]')].some(b=>b.checked)?'chosen':'listed';})()`
+  );
+  if (company === 'listed') await click('#query-companies-picker .company-option label');
+  else if (company === 'text') await typeInto('#query-companies', 'company_demo');
   await click('#preview');
   await waitFor(`!document.getElementById('result-table-wrap').hidden`, 'the preview');
   await click('#snapshot');

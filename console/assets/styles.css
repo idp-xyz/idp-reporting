@@ -1447,6 +1447,72 @@ html[lang="en"] #page-documents .toolrail button small {
   line-height: 1.6;
   margin-top: 6px;
 }
+/* The company picker (S09-D, ADR 0015 decision 4; companies.js): the source's companies by name with the id as secondary text
+   (ADR 0014 decision 7), a filter above eight, a line for the bound of sixteen or an incomplete list. It sits in the field's cell and
+   scrolls inside itself past a few rows, so the query panel keeps its height. */
+.company-picker {
+  border: 1px solid var(--field);
+  border-radius: 5px;
+  background: var(--panel);
+  padding: 6px;
+}
+.company-picker .company-filter {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 8px;
+  margin-bottom: 6px;
+}
+.company-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 168px;
+  overflow: auto;
+}
+.company-option label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  margin: 0;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink);
+  cursor: pointer;
+}
+.company-option label:hover {
+  background: var(--soft);
+}
+.company-option.is-disabled label {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.company-option input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  grid-row: 1 / span 2;
+}
+.company-option .company-name {
+  overflow-wrap: anywhere;
+}
+.company-option .company-id {
+  grid-column: 2;
+  margin: 0;
+  font: 11px/1.5 var(--mono);
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.company-none {
+  padding: 4px;
+}
+.company-picker .company-note {
+  margin: 6px 0 0;
+}
+.company-picker:not([hidden]) + input {
+  margin-top: 8px;
+}
 .query-meta {
   display: flex;
   flex-wrap: wrap;

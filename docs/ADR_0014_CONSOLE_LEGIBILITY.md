@@ -179,7 +179,8 @@ of the owner's judgement this ADR does not deliver, and the reason is a contract
   together.
 - **S09-C** — words: decision 7. The DOM tests' expected texts change with it, and so do the manual's text and screenshots.
 - **S09-D** — company picker, after its contract ADR: decisions 8 and 13. ADR 0015 is accepted (2026-11-06); the slice
-  starts once the contract simulator and the platform API implement the capability.
+  starts once the contract simulator and the platform API implement the capability. Done 2026-11-11, after S19-B
+  (docs/S09D_SCOPE.md): the picker in the console and the embed, the text field kept for a product without the directory.
 - **S09-E** — shared versions/publish component, CSS de-duplication and the declarative checker: decision 9's later part.
   No visible change; the DOM tests are the proof. Part 1 (the component) is done.
 - **S09-F** — one save / publish / history pattern: decision 11. After S09-G.
@@ -233,5 +234,5 @@ decided here as decisions 11 to 13, on the evidence above and on what people kno
     contract simulator implements it. T1's second typed text becomes a click; S09-D measures it.
 
 Order of the remaining work: S09-G, then S09-F; S09-D as soon as ADR 0015's capability exists in the contract simulator
-and the platform API, which is Go work before console work. The rest of S09-E (the dashboard studio's repeated CSS block,
-the declarative checker) has no visible effect and goes last.
+and the platform API, which is Go work before console work (S19-B did the Go work and S09-D the console's, both 2026-11-11).
+The rest of S09-E (the dashboard studio's repeated CSS block, the declarative checker) has no visible effect and goes last.

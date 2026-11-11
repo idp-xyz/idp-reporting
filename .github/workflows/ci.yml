@@ -180,6 +180,7 @@ jobs:
           node --check console/assets/canvas.js
           node --check console/assets/versions.js
           node --check console/assets/issue.js
+          node --check console/assets/companies.js
           node --check console/assets/embed.js
           node --check console/assets/en.js
           node --check console/assets/lang.js

@@ -48,7 +48,7 @@
 <h2 id="quick">十分钟上手</h2>
 <ol class="steps">
 <li><strong>登录。</strong>打开控制台，粘贴访问令牌（演示环境在 <code>idp-reporting-run/token</code>），点"连接工作区"。令牌只在内存里，退出即清除。</li>
-<li><strong>选择数据。</strong>登录后就在报表工作台，可以直接在查询面板里选。页眉右侧的"未选择数据"芯片，或任何页面上的"选择数据…"，都会拉开数据抽屉：选产品连接与数据集（下方列出它的字段、类型与币种），公司范围填 <code>company_demo</code>，点"查询预览"或"创建快照"。结果一到，抽屉自动关闭，芯片写出数据集、公司、时点与状态。</li>
+<li><strong>选择数据。</strong>登录后就在报表工作台，可以直接在查询面板里选。页眉右侧的"未选择数据"芯片，或任何页面上的"选择数据…"，都会拉开数据抽屉：选产品连接与数据集（下方列出它的字段、类型与币种），在公司范围里勾选来源产品列出的公司（演示里是"演示公司"，只有这一家时已经替你选好；来源没有名单时仍填公司 ID，如 <code>company_demo</code>），点"查询预览"或"创建快照"。结果一到，抽屉自动关闭，芯片写出数据集、公司、时点与状态。</li>
 <li><strong>看结果、导出。</strong>报表工作台显示表格与服务端合计；有了冻结快照就能导出 Excel / PDF，下载前会校验文件摘要。</li>
 <li><strong>组一个看板。</strong>看板工作室：添加指标卡、明细表、柱状图，点"发布"——有未保存修改时它会先保存为新版本再发布。</li>
 <li><strong>从样例做一张单据。</strong>模板中心的 37 个示例模板任选一个"复制到我的模板"，把示例字段对应到你的数据集字段，进入文档工作室调整后发布。</li>
@@ -88,7 +88,7 @@
 <h3>控件</h3>
 <table><tr><th>控件</th><th>作用</th></tr>
 <tr><td>产品连接 / 已发布数据集</td><td>当前授权目录里的组合；改动即清空结果。</td></tr>
-<tr><td>公司范围</td><td>公司 ID，多个以逗号分隔；仍由来源产品授权（演示里只有 <code>company_demo</code> 会通过）。</td></tr>
+<tr><td>公司范围</td><td>来源产品列出当前身份可选的公司时是一个选择器：按名字勾选，ID 是次要文字；超过八家有筛选框；一次查询最多 16 家，选满后其余不可选并说明；名单不完整时下方多一行"输入其他公司 ID…"。来源没有名单时仍是文本框：公司 ID，多个以逗号分隔。两种情形都仍由来源产品授权（演示列出的只有"演示公司" <code>company_demo</code>；<code>company_other</code> 不在名单里，输入它会被拒绝）。会话结束什么都不记住。</td></tr>
 <tr><td>数据时点</td><td>查询的 as-of 日期，默认按数据集时区的今天。</td></tr>
 <tr><td>查询预览</td><td>实时结果，可能是有界预览；不能导出。</td></tr>
 <tr><td>创建快照</td><td>后台任务生成冻结结果；分页稳定；可导出、可出具。</td></tr>
@@ -97,7 +97,7 @@
 <tr><td>报表布局设计器</td><td>折叠区：选择列、顺序、对齐。顶部一条和两个工作室相同的工具栏：版本、保存版本、发布，左边的徽标说明草稿 / 已保存 / 已发布。有未保存修改时“发布”给出“保存并发布”。只影响屏幕显示，Excel 仍导出完整列。</td></tr></table>
 <figure><img src="img/09-layout-designer.png" alt="布局版本与发布指针"><figcaption><b>布局 · 版本</b>保存版本列表与发布指针：把某个版本恢复到编辑器（未保存的修改），或发布某个保存版本（发布历史版本就是回退）；刷新发布状态、打开已发布版本、另存为新布局也在这里。</figcaption></figure>
 <div class="pair">
-<figure><img src="img/10-refused-company.png" alt="越权公司被拒"><figcaption><b>越权</b><code>company_other</code> 被来源拒绝，不显示任何行。</figcaption></figure>
+<figure><img src="img/10-refused-company.png" alt="越权公司被拒"><figcaption><b>越权</b>输入的 <code>company_other</code> 被来源拒绝，不显示任何行（它不在演示列出的公司里，只能在来源没有名单或名单不完整时输入）。</figcaption></figure>
 <figure><img src="img/11-shipment-preview.png" alt="第二个产品连接"><figcaption><b>第二个产品连接</b>运单数据集：整数 <code>9007199254740993</code> 原样显示，无币种。</figcaption></figure>
 </div>
 
@@ -171,7 +171,7 @@
 <tr><td><code>shipment-contract-demo</code></td><td><code>shipments.daily@1.0.0</code><br>无币种政策</td><td>目的国、服务（文本）<br>运单数 <code>shipment.count</code>（integer，单位 shipment）</td><td><code>CN / express / 9007199254740993</code><br><code>DE / standard / 7</code></td><td>整数超大值；无币种；第二个产品连接</td></tr></table>
 <ul>
 <li>每份数据各有一行 <code>secret</code>（<code>hidden / 999.99</code>、<code>US / hidden / 999</code>）<strong>不在授权行里</strong>：任何查询、快照、导出、出具都不应出现它。</li>
-<li>各有一行属于 <code>company_other</code>：公司范围填它会被来源拒绝。</li>
+<li>各有一行属于 <code>company_other</code>：它不在来源列出的公司里（名单只有"演示公司" <code>company_demo</code>），输入它会被来源拒绝。</li>
 <li>数据时点可以任填，模拟器不按日期过滤。</li>
 <li>每身份上限：模板 64、看板 16、布局 16、未过期结果 64、进行中任务 8、每小时提交 120、并发查询 4。</li>
 <li>出具合同版本 2（支持分组出具），编号前缀 <code>AR</code>（财务）/ <code>SH</code>（运单）。</li>
@@ -207,10 +207,10 @@
 
 <div class="case"><h4><span class="id">C01</span>登录与退出</h4><dl><dt>前置</dt><dd>令牌文件</dd><dt>步骤</dt><dd>① 粘贴错误令牌连接 ② 粘贴正确令牌连接 ③ 做一次查询 ④ 退出工作区</dd><dt>预期</dt><dd>① 卡片内红字、令牌框清空；② 连接点变绿、页眉 <code>user_a</code>、数据角标 1；④ 表格、任务、芯片、看板、模板中心全部清空，浏览器存储为空</dd><dt>自动化</dt><dd>DOM、浏览器</dd></dl></div>
 <div class="case"><h4><span class="id">C02</span>精度与合计</h4><dl><dt>前置</dt><dd>应收余额数据集，<code>company_demo</code></dd><dt>步骤</dt><dd>查询预览</dd><dt>预期</dt><dd>3 行；<code>9007199254740893.00</code> 与 <code>-0.24</code> 原样；合计卡 <code>9007199254740993.01</code>；数值列右对齐（图 <a href="#p-workbench">07</a>）</dd><dt>自动化</dt><dd>DOM、浏览器</dd></dl></div>
-<div class="case"><h4><span class="id">C03</span>越权公司与隐藏行</h4><dl><dt>前置</dt><dd>同上</dd><dt>步骤</dt><dd>① 公司范围 <code>company_other</code> 预览 ② 任何查询、快照、导出里找 <code>hidden</code></dd><dt>预期</dt><dd>① 提示"当前身份无权访问"，无行（图 10）；② 永远找不到 <code>hidden / 999.99</code></dd><dt>自动化</dt><dd>DOM、Go</dd></dl></div>
+<div class="case"><h4><span class="id">C03</span>越权公司与隐藏行</h4><dl><dt>前置</dt><dd>同上</dd><dt>步骤</dt><dd>① 在公司范围输入 <code>company_other</code>（来源没有名单或名单不完整时的输入行；演示的名单里没有它）预览 ② 任何查询、快照、导出里找 <code>hidden</code></dd><dt>预期</dt><dd>① 提示"当前身份无权访问"，无行（图 10）；② 永远找不到 <code>hidden / 999.99</code></dd><dt>自动化</dt><dd>DOM、Go</dd></dl></div>
 <div class="case"><h4><span class="id">C04</span>冻结快照、分页、导出</h4><dl><dt>前置</dt><dd>预览后</dd><dt>步骤</dt><dd>① 创建快照 ② 每页改为 2 行，下一页 ③ 导出 Excel ④ 导出 PDF</dd><dt>预期</dt><dd>① 徽标"冻结快照"；② 第 2 页内容与首页一致（同一快照）；③④ 下载并提示"已通过摘要校验"；<code>nopdf</code> 模式下④的按钮不出现</dd><dt>自动化</dt><dd>DOM、工作簿校验脚本</dd></dl></div>
 <div class="case"><h4><span class="id">C05</span>数据时点变化清空结果</h4><dl><dt>前置</dt><dd>有结果</dd><dt>步骤</dt><dd>改日期</dd><dt>预期</dt><dd>结果立刻清空；看板与设计器回到"未查询"</dd><dt>自动化</dt><dd>DOM</dd></dl></div>
-<div class="case"><h4><span class="id">C06</span>数据抽屉</h4><dl><dt>前置</dt><dd>刚登录，无结果</dd><dt>步骤</dt><dd>① 看板工作室起始卡"选择数据…" ② 填 <code>company_demo</code> 预览 ③ 页眉芯片再开一次 ④ Esc</dd><dt>预期</dt><dd>① 抽屉里是工作台的查询面板，焦点在公司范围；② 结果到来抽屉关闭、看板起始卡让位、页面不切换、芯片写出上下文；③ 焦点落在"查询预览"；④ 面板回到工作台，焦点回到芯片</dd><dt>自动化</dt><dd>DOM（S07-A）、基线</dd></dl></div>
+<div class="case"><h4><span class="id">C06</span>数据抽屉</h4><dl><dt>前置</dt><dd>刚登录，无结果</dd><dt>步骤</dt><dd>① 看板工作室起始卡"选择数据…" ② 公司范围已选好"演示公司"，预览 ③ 页眉芯片再开一次 ④ Esc</dd><dt>预期</dt><dd>① 抽屉里是工作台的查询面板，焦点在"查询预览"（公司已选好；还没有选公司时焦点在公司范围）；② 结果到来抽屉关闭、看板起始卡让位、页面不切换、芯片写出数据集、公司名字与时点；③ 焦点落在"查询预览"；④ 面板回到工作台，焦点回到芯片</dd><dt>自动化</dt><dd>DOM（S07-A）、基线</dd></dl></div>
 <div class="case"><h4><span class="id">C07</span>看板：组件、结构、保存并发布</h4><dl><dt>前置</dt><dd>有结果</dd><dt>步骤</dt><dd>① 添加指标卡、明细表、柱状图 ② 结构面板把第一个下移 ③ 发布 → 保存并发布 ④ 再添加一个组件，发布</dd><dt>预期</dt><dd>① 三张卡（图 12）；② 桌面顺序同步；③ 徽标 已发布 v1，发布历史 1 条；④ 徽标先 "已发布 v1 · 有未保存修改"，确认后 已发布 v2</dd><dt>自动化</dt><dd>DOM（S06-C、S07-B）、浏览器</dd></dl></div>
 <div class="case"><h4><span class="id">C08</span>看板配置的校验</h4><dl><dt>前置</dt><dd>有组件</dd><dt>步骤</dt><dd>文件页签 → 生成配置 → 改 JSON（字段改成 <code>unapproved</code>、类型改成 <code>html</code>、加第 13 个组件、填 65 KB）→ 打开</dd><dt>预期</dt><dd>每种改动都被拒绝并说明，桌面不变</dd><dt>自动化</dt><dd>DOM</dd></dl></div>
 <div class="case"><h4><span class="id">C09</span>模板中心：筛选、收藏、分类、归档</h4><dl><dt>前置</dt><dd>造数据脚本</dd><dt>步骤</dt><dd>① 快捷访问与业务域切换 ② 搜索"对账" ③ 星标一张 ④ 分类加集合 ⑤ 归档一张，到"归档"里恢复</dd><dt>预期</dt><dd>计数与服务端一致；归档的不在"全部"里；另一个标签页同时改会得到 409 并刷新</dd><dt>自动化</dt><dd>DOM（S06-B）、浏览器</dd></dl></div>

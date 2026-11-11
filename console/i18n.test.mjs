@@ -258,6 +258,7 @@ function english(intercept, search = '?lang=en') {
     'issue.js',
     'documents.js',
     'board.js',
+    'companies.js',
     'app.js',
   ])
     w.eval(scripts[name]);
@@ -277,8 +278,8 @@ function english(intercept, search = '?lang=en') {
 }
 
 // The Chinese that may stay is the data the server sends, never the console's own words: the names, fields and labels of the
-// datasets of the identity's product connections and the sample pack's names and descriptions, as the API answers them. Each is
-// taken out of a text before it is looked at.
+// datasets of the identity's product connections, the names of the companies its directories list (S09-D) and the sample pack's
+// names and descriptions, as the API answers them. Each is taken out of a text before it is looked at.
 async function serverData() {
   const ask = async path =>
     (await fetch(url + '/api/reporting/v1' + path, {headers: {Authorization: 'Bearer ' + token}})).json();
@@ -288,7 +289,10 @@ async function serverData() {
     else if (v && typeof v === 'object') Object.values(v).forEach(collect);
   };
   const session = await ask('/session');
-  for (const id of session.integrations) collect(await ask('/catalog?integration_id=' + encodeURIComponent(id)));
+  for (const id of session.integrations) {
+    collect(await ask('/catalog?integration_id=' + encodeURIComponent(id)));
+    collect(await ask('/companies?integration_id=' + encodeURIComponent(id)));
+  }
   const samples = await ask('/document-templates/samples');
   collect(samples);
   for (const sample of samples) collect(await ask('/document-templates/samples/' + encodeURIComponent(sample.kind)));
@@ -320,7 +324,16 @@ function chinese(w, data) {
 const settle = () => sleep(60);
 
 test('S17-A: the console in English, every page, shell, drawer and dialog: no Chinese but the data', async () => {
-  const a = english();
+  // S09-D: the demo's company directory is complete; marked partial here, the picker also shows its line for other ids and its note,
+  // and the refusal below can still be typed (ADR 0015 decision 5).
+  const a = english(async (path, options) => {
+    if (!/\/companies\?/.test(path)) return undefined;
+    const answer = await (await fetch(url + path, options)).json();
+    return new Response(JSON.stringify({...answer, partial: true}), {
+      status: 200,
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
   const seen = new Map(),
     data = await serverData();
   assert.ok(data.length > 20, 'the server sends Chinese data');
@@ -337,7 +350,12 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
     await a.login();
     await look('workspace');
     a.go('workspace');
-    a.input('query-companies', 'company_demo');
+    // S09-D: the company picker with the one company the demo lists (chosen already), its line for other ids and its note.
+    await until(() => !a.$('query-companies-picker').hidden, 'the company picker');
+    const company = () => a.$('query-companies-list').querySelector('input[type=checkbox]');
+    assert.equal(company().checked, true, 'the one listed company is chosen');
+    assert.equal(a.$('query-companies').hidden, false, 'the partial directory keeps the typed line');
+    await look('company picker');
     a.$('preview').click();
     await until(() => !a.$('result-table-wrap').hidden, 'preview');
     await look('preview');
@@ -358,13 +376,16 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
     for (const id of ['board-add-metric', 'board-add-table', 'board-add-bar', 'board-add-line', 'board-add-pie'])
       a.$(id).click();
     await look('dashboard with components');
-    // A refusal told in a notice: a company scope the identity may not read.
+    // A refusal told in a notice: a company scope the identity may not read, typed into the picker's line for other ids (S09-D).
     a.go('workspace');
+    company().click();
+    assert.equal(company().checked, false);
     a.input('query-companies', 'company_other');
     a.$('preview').click();
     await until(() => !a.$('notice').hidden, 'the refusal');
     await look('refusal');
-    a.input('query-companies', 'company_demo');
+    a.input('query-companies', '');
+    company().click();
     a.$('preview').click();
     await until(() => !a.$('result-table-wrap').hidden, 'preview again');
     // The template centre, its wizard, a sample's mapping dialog, and the copy open in the document studio.

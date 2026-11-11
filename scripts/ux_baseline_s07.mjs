@@ -163,6 +163,24 @@ const typeInto = async (sel, text) => {
   await sleep(120);
 };
 const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'idle', 60000);
+// S09-D (ADR 0015 decision 4): the company scope. With the source's directory (the demo lists 演示公司 since S19-B) the field is a picker of
+// the companies by name: the one company the demo lists is chosen already, so the person has nothing to do here; a listed company not yet
+// chosen is one click on its name; without the directory the field is the text field of ids, one typed text, as before S09-D. The task
+// pays what the page asks, as everywhere in this script.
+async function chooseCompany() {
+  const state = await evalJs(
+    `(()=>{const p=document.getElementById('query-companies-picker');if(!p||p.hidden)return document.getElementById('query-companies').value?'typed':'text';const boxes=[...p.querySelectorAll('input[type=checkbox]')];return boxes.some(b=>b.checked)?'chosen':boxes.length?'listed':'none';})()`
+  );
+  if (state === 'chosen' || state === 'typed') return;
+  if (state === 'listed') {
+    await clickExpr(
+      `[...document.querySelectorAll('#query-companies-picker .company-option label')].find(l=>l.textContent.includes('company_demo'))`,
+      '演示公司'
+    );
+    return;
+  }
+  await typeInto('#query-companies', 'company_demo');
+}
 
 const tasks = [];
 async function task(name, fn) {
@@ -262,7 +280,7 @@ async function coreTasks() {
         'the data drawer'
       );
     }
-    await typeInto('#query-companies', 'company_demo');
+    await chooseCompany();
     await clickBtn('.query-panel', '查询预览');
     await waitFor(
       `!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`,
@@ -434,8 +452,7 @@ async function coreTasks() {
         `[...document.querySelectorAll('#sh-fields .column-line code')].some(c=>c.textContent.includes('CNY'))`,
         'the columns with their currency in the drawer'
       );
-      if (!(await evalJs(`document.getElementById('query-companies').value`)))
-        await typeInto('#query-companies', 'company_demo');
+      await chooseCompany();
       await clickBtn('#sh-d-data', '查询预览');
       await waitFor(
         `document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled&&document.getElementById('sh-d-data').hidden`,
@@ -458,8 +475,7 @@ async function coreTasks() {
       `!document.getElementById('page-workspace').hidden&&document.getElementById('query-dataset').value==='receivables.aging@1.0.0'`,
       'the workbench with the dataset'
     );
-    if (!(await evalJs(`document.getElementById('query-companies').value`)))
-      await typeInto('#query-companies', 'company_demo');
+    await chooseCompany();
     await clickBtn('#page-workspace', '查询预览');
     await waitFor(
       `document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden&&!document.getElementById('preview').disabled`,
@@ -593,7 +609,7 @@ async function openTeamSpace() {
 }
 async function previewData() {
   await openPage('workspace');
-  await typeInto('#query-companies', 'company_demo');
+  await chooseCompany();
   await click('#preview');
   await waitFor(
     `document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden`,
@@ -619,7 +635,7 @@ async function teamTasks() {
   await task('T8 团队模板：预览数据 → 新建模板 → 发布（需同事审批）', async () => {
     await signIn();
     await openPage('workspace');
-    await typeInto('#query-companies', 'company_demo');
+    await chooseCompany();
     await click('#preview');
     await waitFor(
       `document.getElementById('result-kind').textContent==='查询预览'&&!document.getElementById('result-table-wrap').hidden`,

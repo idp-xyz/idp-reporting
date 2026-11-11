@@ -27,7 +27,7 @@
 | `brant-contract-demo` | `receivables.aging@1.0.0`（时区 Asia/Shanghai，币种政策 ledger_base@1.0.0） | 客户 `customer.id`（文本）、账龄区间 `aging.bucket`（文本）、应收余额 `ar.open_balance`（decimal，2 位，CNY） | `customer_a / current / 100.25`、`customer_b / 1_30 / -0.24`、`customer_c / 31_60 / 9007199254740893.00`；服务端合计 `9007199254740993.01` | 精度（超过 2^53 的金额必须原样显示）、负数、合计与分页、分组出具（合同版本 2） |
 | `shipment-contract-demo` | `shipments.daily@1.0.0`（无币种政策） | 目的国、服务、运单数 `shipment.count`（integer，单位 shipment） | `CN / express / 9007199254740993`、`DE / standard / 7` | 整数超大值、无币种的数据集、第二个产品连接的切换与目录刷新 |
 
-两份数据各有一行 `secret`（`hidden / 999.99`、`US / hidden / 999`）**不在授权行里**，任何查询、快照、导出、出具都不应出现它；各有一行属于 `company_other`，公司范围填 `company_other` 会被来源拒绝（控制台提示"当前身份无权访问"）。公司范围只接受 `company_demo`；多个公司以逗号分隔但只有它会通过。数据时点可以任填，模拟器不按日期过滤。
+两份数据各有一行 `secret`（`hidden / 999.99`、`US / hidden / 999`）**不在授权行里**，任何查询、快照、导出、出具都不应出现它；各有一行属于 `company_other`，输入 `company_other` 会被来源拒绝（控制台提示"当前身份无权访问"）。模拟器列出的公司名单（`GET /companies`，S19-B）只有 `company_demo`（名字"演示公司"），所以控制台的公司范围选择器（S09-D）只列它并已替人选好；`company_other` 只能在来源没有名单或名单不完整时的文本框里输入（DOM 测试拦截该路由做到这一点），多个公司以逗号分隔但只有 `company_demo` 会通过。数据时点可以任填，模拟器不按日期过滤。
 
 其他可用的"数据"：
 
