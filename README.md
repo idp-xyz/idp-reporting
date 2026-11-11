@@ -62,7 +62,7 @@ export REPORTING_DEMO_TOKEN="$(openssl rand -hex 32)"
 | Go | gofmt、vet、build、测试与 race；核心 `reporting/` 只依赖标准库 |
 | PostgreSQL | 合同与持久化测试（普通与 race），对一次性的 PostgreSQL 16 与 S3 兼容服务 |
 | Console | `node --check`、ESLint、DOM 测试（jsdom，经真实 Go 服务） |
-| PDF | 固定的 Typst 与字体：Go 的 Typst 测试、整套 DOM 测试、PDF 检查器（含反例与 37 个样例）、veraPDF（PDF/A-2b） |
+| PDF | 固定的 Typst 与字体：Go 的 Typst 测试、整套 DOM 测试、PDF 检查器（含反例与 37 个样例）、veraPDF（PDF/A-2b）。PR 只在改动触及 PDF 路径（渲染、出具、预览、控制台、检查器及其钉定）时全量运行，否则直接通过；推送到 main 与每日 03:30 的定时运行永远全量（race 版 Typst 测试也只在这两处跑） |
 | Browser | 真实 Chrome：控制台各页、模板中心，以及钉在 docs/UX_BASELINE_S07.md 的任务基线 |
 
 本机（Node 24.22.0，与 CI 相同）：
