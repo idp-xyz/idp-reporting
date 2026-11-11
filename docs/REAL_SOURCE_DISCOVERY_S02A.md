@@ -25,6 +25,10 @@
 
 ## 2. Parcel：查到真实设计文档，当前可访问实现以客户端及 mock 为主
 
+> 2026-11-11 更正：本节读到的 `idpxyz/idp-parcel` 提交 `1428542…` 不是现在的 IDP Parcel 后端仓库
+> （`idp-xyz/idp-parcel`）的对象，下面的结论不适用于它。Parcel 有一个 Go + PostgreSQL 的后端，
+> 见 docs/REAL_SOURCE_DISCOVERY_PARCEL.md。本节原文保留，作为当时读到什么的记录。
+
 核对了两个现有包：V3.0 RELEASE FINAL V37 与 Commercial Party UX V1.1。
 V37 的 prototype/db/schema.ts 明确为空；app/page.tsx 以 sessionStorage 保存
 演示状态，app/data.ts/enterprise-model.ts 提供演示订单与业务数据。
