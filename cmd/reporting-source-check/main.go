@@ -7,8 +7,10 @@
 //	    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue] [-companies] [-loopback-http] [-timeout 10]
 //
 // context.json is the protocol's context object (platform_tenant, issuer, subject, integration, source_tenant) of a subject the product has
-// granted; query.json a query of the platform (docs/API.md) inside that grant, with at least one row. -companies checks the company
-// directory (ADR 0015, S19-B) as a connection with `companies: true` would use it.
+// granted; query.json a query of the platform (docs/API.md) inside that grant, with at least one row. The rules F1–F6 (S20-A, ADR 0023)
+// exercise every filter and sort the query's dataset declares, with values of the query's own rows, and the refusal of what it does not
+// declare; a dataset that declares nothing skips F1, F2, F4 and F5. -companies checks the company directory (ADR 0015, S19-B) as a
+// connection with `companies: true` would use it.
 package main
 
 import (

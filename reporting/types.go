@@ -226,13 +226,36 @@ type Column struct {
 
 // Dataset is one published, approved query shape. Other shapes need a new
 // catalog entry/version; an arbitrary client SQL or expression is never accepted.
+//
+// Filters and Sorts (S20-A, ADR 0023) are the columns a query of this version may narrow by and order by, with the operators and
+// directions each takes: what a query's filters and sort are validated against (ValidateQuery), fail closed. A version without them is
+// what it always was: no filter, no sort. They are part of the version, as the columns are: a change is a new version.
 type Dataset struct {
-	Ref            Ref      `json:"dataset"`
-	Columns        []Column `json:"columns"`
-	Metrics        []Ref    `json:"metrics"`
-	Dimensions     []string `json:"dimensions"`
-	CurrencyPolicy *Ref     `json:"currency_policy,omitempty"`
-	Timezone       string   `json:"timezone"`
+	Ref            Ref          `json:"dataset"`
+	Columns        []Column     `json:"columns"`
+	Metrics        []Ref        `json:"metrics"`
+	Dimensions     []string     `json:"dimensions"`
+	CurrencyPolicy *Ref         `json:"currency_policy,omitempty"`
+	Timezone       string       `json:"timezone"`
+	Filters        []FilterSpec `json:"filters,omitempty"`
+	Sorts          []SortSpec   `json:"sorts,omitempty"`
+}
+
+// FilterSpec is one filter a dataset version publishes (ADR 0023 decision 1): Field a column of the dataset; Operators a non-empty subset
+// of FilterOperators that fit the column's type; Values, when set, the closed list of values the field accepts (1..MaxFilterValues, each
+// well formed for the column), which an `eq`, `ne` or `in` filter must take its values from; Required true when a query must carry exactly
+// one filter on the field (a mandatory parameter, such as a period).
+type FilterSpec struct {
+	Field     string   `json:"field"`
+	Operators []string `json:"operators"`
+	Values    []string `json:"values,omitempty"`
+	Required  bool     `json:"required,omitempty"`
+}
+
+// SortSpec is one sort key a dataset version publishes: Field a column of the dataset, Directions a non-empty subset of SortDirections.
+type SortSpec struct {
+	Field      string   `json:"field"`
+	Directions []string `json:"directions"`
 }
 type SourceContext struct {
 	Owner        Owner

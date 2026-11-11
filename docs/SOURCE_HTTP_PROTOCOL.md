@@ -1,11 +1,12 @@
-# The reporting source protocol, version 1 (S19-A; revision 1.1, S19-B)
+# The reporting source protocol, version 1 (S19-A; revision 1.1, S19-B and S20-A)
 
-2026-11-09; revision 1.1 on 2026-11-11 (S19-B) adds one optional route, `companies`, and changes nothing else: a source written to the
-first revision is served unchanged. What a source product implements so that the reporting platform reads it, through the platform's
-adapter `http` (`adapters/httpsource`), without the platform carrying Go code for the product. It is the adapter contract of
-docs/s00/INTERFACES.md (`DescribeCatalog`, `PrepareRead`, `ReadPage`, `AuthorizeCurrent`) and, optionally, the document authority of ADR
-0003 (`PrepareDocument`, `ConfirmIssue`, `VoidIssue`) and the company directory of ADR 0015 (`ListCompanies`), carried as JSON over
-HTTPS. The machine-readable description is docs/source-openapi.json
+2026-11-09; revision 1.1 on 2026-11-11 adds one optional route, `companies` (S19-B, ADR 0015), and, in `catalog`, a dataset's optional
+`filters` and `sorts` declarations, which a query of `reads` then carries (S20-A, ADR 0023; the checker gains F1–F6); it changes nothing
+else: a source written to the first revision is served unchanged, and gains nothing until it declares. What a source product implements
+so that the reporting platform reads it, through the platform's adapter `http` (`adapters/httpsource`), without the platform carrying Go
+code for the product. It is the adapter contract of docs/s00/INTERFACES.md (`DescribeCatalog`, `PrepareRead`, `ReadPage`,
+`AuthorizeCurrent`) and, optionally, the document authority of ADR 0003 (`PrepareDocument`, `ConfirmIssue`, `VoidIssue`) and the company
+directory of ADR 0015 (`ListCompanies`), carried as JSON over HTTPS. The machine-readable description is docs/source-openapi.json
 (`TestTheOpenAPIDescriptionIsTheProtocol` holds it to the bodies the adapter sends and accepts); this page wins where they differ. The
 obligations behind each call (what a stable read is, what "covers the frozen scope" means, how numbers are accounted for) are those of
 docs/REAL_SOURCE_ONBOARDING.md and ADR 0003; this page says how they travel.
@@ -81,12 +82,26 @@ The published, approved dataset versions the context may read now (docs/API.md "
   "columns": [{"id": "customer.id", "label": "客户", "type": "string"}, {"id": "aging.bucket", "label": "账龄区间", "type": "string"},
               {"id": "ar.open_balance", "label": "应收余额", "type": "decimal", "scale": 2, "currency": "CNY"}],
   "metrics": [{"id": "ar.open_balance", "version": "1.0.0"}], "dimensions": ["customer.id", "aging.bucket"],
-  "currency_policy": {"id": "ledger_base", "version": "1.0.0"}, "timezone": "Asia/Shanghai"}]}
+  "currency_policy": {"id": "ledger_base", "version": "1.0.0"}, "timezone": "Asia/Shanghai",
+  "filters": [{"field": "customer.id", "operators": ["eq", "ne", "in", "prefix"]},
+              {"field": "aging.bucket", "operators": ["eq", "in"], "values": ["current", "1_30", "31_60", "61_90", "90+"]},
+              {"field": "ar.open_balance", "operators": ["lt", "le", "gt", "ge", "between"]}],
+  "sorts": [{"field": "ar.open_balance", "directions": ["asc", "desc"]}, {"field": "customer.id", "directions": ["asc", "desc"]}]}]}
 ```
 
 The platform requires of each dataset: `columns` are the `dimensions` then the `metrics` (by id) in that order, 1..64 of them, unique ids, a
 label of 1..256 bytes, a type of `string`, `date`, `boolean`, `integer` (no scale) or `decimal` (scale 0..18), `currency`/`unit` at most 32
 bytes; `timezone` an IANA zone; ids and versions 1..128 printable ASCII. A dataset version is immutable: a change is a new version.
+
+**`filters` and `sorts`** (optional, revision 1.1, S20-A, ADR 0023) say what a query of the version may narrow by and order by; without
+them a query carries no filter and no sort, as before this revision. The platform requires: at most 16 `filters` and 8 `sorts`, a `field`
+at most once in each and a column id of the dataset; `operators` a non-empty set of `eq ne lt le gt ge in between prefix contains` that
+fit the column's type (`prefix` and `contains` for `string` columns only; `lt le gt ge between in` for `date`, `integer`, `decimal` and
+`string`; a `boolean` column takes `eq` and `ne` only); `values`, when present, 1..64 distinct values the field accepts, each well formed
+for the column (a string of 1..128 characters without control characters, else the column's exact form), which an `eq`, `ne` or `in`
+filter must take its values from; `required: true` when a query must carry exactly one filter on the field; `directions` a non-empty set
+of `asc desc`. A declaration outside these rules is an integrity failure, like a malformed column, and the catalog is not used. The lists
+are part of the version: a change is a new version.
 
 ### companies (optional; ADR 0015, revision 1.1, S19-B)
 
@@ -107,9 +122,11 @@ company ids, never names. A source without the capability answers `unsupported`;
 
 ### reads
 
-`query` is the platform's query exactly as docs/API.md defines it (companies sorted; `filters` and `sort` empty in version 1);
-`query_hash` is its digest (`reporting.QueryHash`: the SHA-256, lowercase hex, of the query's JSON without `page`). The source checks the
-query against the dataset and the context's current rights **in its own trusted transaction**, freezes the data version, and answers:
+`query` is the platform's query exactly as docs/API.md defines it (companies sorted; `filters` sorted by field, operator and value; `sort`
+in the order the keys apply; both empty for a query that narrows and orders nothing); `query_hash` is its digest (`reporting.QueryHash`:
+the SHA-256, lowercase hex, of the query's JSON without `page`), so a narrowed query has another hash than the plain one. The source
+checks the query against the dataset and the context's current rights **in its own trusted transaction**, freezes the data version, and
+answers:
 
 ```json
 {"read": {"ref": "r-7f3a", "scope_handle": "opaque-to-the-platform", "query_hash": "57ef…25", "dataset": {"id": "receivables.aging", "version": "1.0.0"},
@@ -124,6 +141,21 @@ ahead** (an already expired read is a refusal). The platform keeps the read and 
 request about it. A source answers `integrity` when `query_hash` is not the query's, `unsupported` for a dataset version or a combination
 it does not publish, `denied` for a company outside the actor's rights, `invalid` for a query that is not well formed.
 
+**The query's filters and sort** (S20-A, ADR 0023) arrive as the query carries them: each filter `{"field", "operator", "value"}` on a
+field the dataset declares with one of its operators, `value` a string well formed for the column (a date `YYYY-MM-DD`; an integer or a
+decimal as the column writes it, exactly its scale; `true` or `false`; a string of 1..128 characters without control characters; from the
+declared `values` when there is a list and the operator is `eq`, `ne` or `in`), and for `in` and `between` a JSON array of such strings
+**as text** (`"value": "[\"current\",\"1_30\"]"`: 1..32 values for `in`, exactly 2 in ascending order for `between`, the first not greater
+than the second as the column's type compares); the filters are a conjunction. Each sort key `{"field", "direction"}` is on a declared field in a declared direction, no field twice, at most three, in the
+order they apply. The platform has validated all of this against the catalog it read, but **the source checks it again against what it
+published** and refuses what it did not publish with `unsupported` (a field, an operator or a direction it did not declare, a value off
+its closed list, a required filter missing or doubled; a malformed value is `unsupported` or `invalid`): the platform's validation is not
+a substitute for the source's. The source applies the filters and the sort in its own trusted transaction, as it applies the company
+scope. **It must bind every filter value as data (a query parameter, a typed comparison), never as text of a statement**: a value is a
+string a person typed, and the platform's bounds on it are not an escape. An operator a source does not know, should the set ever grow, is
+`unsupported`, never a guess. A dataset without a declaration refuses every filter and sort with `unsupported`, as the platform does before
+asking.
+
 ### pages
 
 ```json
@@ -135,11 +167,13 @@ it does not publish, `denied` for a company outside the actor's rights, `invalid
 
 The source checks the `read` against its own record (the platform sends it back unchanged; a different field is `denied`), re-authorizes the
 actor (the same rule as `authorize`) and projects the **frozen** version: data that changed since the read was prepared does not reach a
-later page. The platform verifies: `ref`, `query_hash` and `watermark` are the read's; at most `limit` rows (1..100; the platform asks 50);
-every row has the dataset's columns and every cell its column's type; `totals` holds one total per metric, of the metric column's type, the
-**same on every page** (the totals of the whole read); `next_cursor` is `""` on the last page, otherwise 1..2048 printable ASCII, never the
-request's cursor and never after an empty page; a cursor that comes back is a loop. The whole read is at most 1000 rows and 1 MiB. A
-cursor the source did not give is `invalid`.
+later page. The rows are the read's query's scope: the companies, **narrowed by its filters and in its sort order**, the order stable
+across pages (two rows the sort does not tell apart keep one order from the first page to the last, and from one reading of the read to
+the next), and the `totals` are **the narrowed scope's**, not the dataset's. The platform verifies: `ref`, `query_hash` and `watermark`
+are the read's; at most `limit` rows (1..100; the platform asks 50); every row has the dataset's columns and every cell its column's
+type; `totals` holds one total per metric, of the metric column's type, the **same on every page** (the totals of the whole read);
+`next_cursor` is `""` on the last page, otherwise 1..2048 printable ASCII, never the request's cursor and never after an empty page; a
+cursor that comes back is a loop. The whole read is at most 1000 rows and 1 MiB. A cursor the source did not give is `invalid`.
 
 ### authorize
 
@@ -179,7 +213,7 @@ Every refusal is the status of its code with exactly this body: `{"code": "<code
 | `not_found` | 404 | `NOT_FOUND` | Issue routes only: a job the source never reserved. |
 | `conflict` | 409 | `IDEMPOTENCY_CONFLICT` | Issue routes only: another intent or digest under a job id, a voided job. |
 | `expired` | 410 | `AUTH_SCOPE_DENIED` | A read or a reservation the source no longer holds or that has expired. |
-| `unsupported` | 422 | `UNSUPPORTED_COMBINATION` | A dataset version or combination the source does not publish. |
+| `unsupported` | 422 | `UNSUPPORTED_COMBINATION` | A dataset version or combination the source does not publish: a filter or a sort outside the dataset's declaration, an operator the source does not know. |
 | `integrity` | 422 | `INTEGRITY_FAILURE` | The request contradicts itself (a query hash that is not the query's). |
 | `budget` | 429 | `BUDGET_EXCEEDED` | The source's own bound on prepared reads or work is reached. |
 | `unavailable` | 503 | `AUTHORITY_UNAVAILABLE` | The source's authority or data cannot be reached now. |
@@ -197,6 +231,9 @@ refusal (docs/API.md) and nothing of the source's.
 |---|---|
 | A request body, an answer | 1 MiB (an answer: the connection's `max_response_bytes`, 4096..1048576) |
 | Datasets in a catalog; columns of a dataset | 100; 1..64 |
+| Declared `filters`; `sorts`; closed `values` of one filter | 16; 8; 64, each 1..128 characters |
+| Filters of a query; sort keys; values of an `in`; of a `between` | 16; 3; 1..32; exactly 2 |
+| A filter value | a string of 1..128 characters without control characters, else the column's exact form (an integer or a decimal at most 128 characters) |
 | Companies in a directory; a company's `id` and `name` | 1000, no id twice; each 1..128 bytes of UTF-8 text without control characters, not blank |
 | `read.ref`; `scope_handle`; `watermark` | 1..128 of `A-Z a-z 0-9 . _ ~ -`; 1..1024 and 1..256 printable ASCII |
 | A read's lifetime | after now, at most 15 minutes ahead (the platform's clock) |
@@ -225,19 +262,24 @@ least one row. The command checks the connection the platform would make (P1), t
 catalog (C1–C4: it verifies, holds the query's dataset, refuses an unknown subject and another source tenant), the read (R1–R13: it
 verifies, is authorized, pages verify and end, a second reading gives the same rows and totals, a forged cursor is `invalid`, a read with
 another watermark or scope handle, a read the source never made and another subject's read are refused, a wrong query hash, a company
-outside the grant and an unpublished dataset version are refused), with `-companies` the company directory (D1–D2: the list verifies, at
-most 1000 companies with unique ids and texts within bounds; a read naming the listed companies, the first 100, is accepted and one naming
-a company the directory does not list is refused; skipped without the flag, as a connection without `companies: true` never asks) and, with
-`-issue`, the document authority (I1: a reservation, the same reservation again, `conflict` for another intent, a void, a second void,
-`conflict` after the void; **this reserves and voids one number: never against production**). It prints `PASS`, `FAIL` or `SKIP` per
-rule with a fixed text and exits 0 when nothing failed, 1 when a rule failed, 2 for a usage error. It never prints the credential, a URL or
-a byte of an answer. Passing it is necessary, not sufficient: the reconciliation of the product's data (go-live item 18) is the product's
-and the platform's together.
+outside the grant and an unpublished dataset version are refused), the published filters and sorts (F1–F6, S20-A: for every declared
+filter and each of its operators, a filter made from the read's own values narrows the rows to those that satisfy it, every row a row of
+the whole scope and the totals the sum of the narrowed rows where the whole read's totals were sums; for every declared sort and
+direction the rows come back in that order with the same rows and totals; a filter on an undeclared field, with an undeclared operator
+or with a malformed value, and an undeclared sort, are refused `unsupported` or `invalid`; F1, F2, F4 and F5 are skipped when the
+dataset declares nothing), with `-companies` the company directory (D1–D2: the list verifies, at most 1000 companies with unique ids and
+texts within bounds; a read naming the listed companies, the first 100, is accepted and one naming a company the directory does not list
+is refused; skipped without the flag, as a connection without `companies: true` never asks) and, with `-issue`, the document authority
+(I1: a reservation, the same reservation again, `conflict` for another intent, a void, a second void, `conflict` after the void; **this
+reserves and voids one number: never against production**): 28 rules in all. It prints `PASS`, `FAIL` or `SKIP` per rule with a fixed
+text and exits 0 when nothing failed, 1 when a rule failed, 2 for a usage error. It never prints the credential, a URL or a byte of an
+answer. Passing it is necessary, not sufficient: the reconciliation of the product's data (go-live item 18) is the product's and the
+platform's together.
 
 ## 8. Not in version 1
 
-- Filters and sorts beyond what the platform supports (none in query version 1).
 - A health probe of a source (ADR 0016 left it open).
 
-A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes only, each a minor
-revision of this page (1.1: `companies`, S19-B).
+A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes and optional fields
+only, each a minor revision of this page (1.1: the `companies` route, S19-B; a dataset's `filters` and `sorts` and a query's filters and
+sort, S20-A).

@@ -251,7 +251,7 @@
           "core"
         ],
         "summary": "The published datasets of one integration",
-        "description": "Only a product explicitly allowed for the principal.",
+        "description": "Only a product explicitly allowed for the principal. Each entry carries the filters and sorts its version declares (S20-A, ADR 0023), when it declares any.",
         "x-reporting-mount": "core",
         "parameters": [
           {
@@ -2490,7 +2490,7 @@
           "core"
         ],
         "summary": "Run a query of a published dataset",
-        "description": "A truncated preview says `completeness: preview`. Counts against `queries_in_flight`.",
+        "description": "A truncated preview says `completeness: preview`. Counts against `queries_in_flight`. The query may carry the filters and the sort its catalog entry declares (S20-A, ADR 0023): the source applies them and the totals are the narrowed scope's; anything the entry does not declare is 422 UNSUPPORTED_COMBINATION.",
         "x-reporting-mount": "core",
         "requestBody": {
           "required": true,
@@ -2586,7 +2586,7 @@
           "core"
         ],
         "summary": "Admit a snapshot job",
-        "description": "No row is read during admission.",
+        "description": "No row is read during admission. The query may carry the filters and the sort its catalog entry declares (S20-A, ADR 0023); they are validated at admission, frozen in the job's query and bound by its query hash; anything the entry does not declare is 422 UNSUPPORTED_COMBINATION.",
         "x-reporting-mount": "core",
         "parameters": [
           {
@@ -4395,6 +4395,22 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterSpec"
+            },
+            "maxItems": 16,
+            "description": "S20-A (ADR 0023): the columns a query of this version may narrow by, each with its operators, an optional closed list of values and whether a filter on it is required. Omitted when the version declares none: then a query carries no filter."
+          },
+          "sorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortSpec"
+            },
+            "maxItems": 8,
+            "description": "S20-A (ADR 0023): the columns a query of this version may order by, each with its directions. Omitted when the version declares none: then a query carries no sort."
           }
         },
         "required": [
@@ -4405,7 +4421,86 @@
           "timezone"
         ],
         "additionalProperties": false,
-        "description": "A published catalog entry (reporting.Dataset)."
+        "description": "A published catalog entry (reporting.Dataset). The filters and sorts it declares are part of the version, as the columns are."
+      },
+      "FilterSpec": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "A column id of the dataset."
+          },
+          "operators": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "eq",
+                "ne",
+                "lt",
+                "le",
+                "gt",
+                "ge",
+                "in",
+                "between",
+                "prefix",
+                "contains"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "The operators the field takes: `prefix` and `contains` for string columns only; `lt`, `le`, `gt`, `ge`, `between` and `in` for date, integer, decimal and string columns; a boolean column takes `eq` and `ne` only."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true,
+            "description": "Optional: the closed list of values the field accepts; an `eq`, `ne` or `in` filter must take its values from it."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "true: a query must carry exactly one filter on this field."
+          }
+        },
+        "required": [
+          "field",
+          "operators"
+        ],
+        "additionalProperties": false,
+        "description": "One filter a dataset version publishes (reporting.FilterSpec)."
+      },
+      "SortSpec": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "A column id of the dataset."
+          },
+          "directions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "field",
+          "directions"
+        ],
+        "additionalProperties": false,
+        "description": "One sort key a dataset version publishes (reporting.SortSpec)."
       },
       "Company": {
         "type": "object",
@@ -4504,19 +4599,39 @@
               "type": "object",
               "properties": {
                 "field": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "A field the dataset version declares a filter on (`filters` of the catalog entry)."
                 },
                 "operator": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "eq",
+                    "ne",
+                    "lt",
+                    "le",
+                    "gt",
+                    "ge",
+                    "in",
+                    "between",
+                    "prefix",
+                    "contains"
+                  ],
+                  "description": "One of the operators the entry declares for the field."
                 },
                 "value": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Well formed for the column: a date `YYYY-MM-DD`, an integer or a decimal as the column writes it (exactly its scale), `true` or `false`, a string of 1..128 characters without control characters; from the declared closed list when the field has one and the operator is `eq`, `ne` or `in`. For `in` and `between` a JSON array of such strings as text, `[\"a\",\"b\"]`: 1..32 values for `in`, exactly 2 in ascending order for `between`."
                 }
               },
+              "required": [
+                "field",
+                "operator",
+                "value"
+              ],
               "additionalProperties": false
             },
-            "maxItems": 0,
-            "description": "Unsupported in this slice: must be empty (else 422)."
+            "maxItems": 16,
+            "description": "S20-A (ADR 0023): at most 16 filters, a conjunction, each within what the catalog entry declares; a filter the entry does not declare (field, operator, a malformed value, a required field missing or filtered twice) is 422 UNSUPPORTED_COMBINATION. The source applies them and its totals are the narrowed scope's; the query hash and the frozen snapshot carry them. Empty narrows nothing, as before."
           },
           "sort": {
             "type": "array",
@@ -4524,16 +4639,25 @@
               "type": "object",
               "properties": {
                 "field": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "A field the dataset version declares a sort on (`sorts` of the catalog entry)."
                 },
                 "direction": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ]
                 }
               },
+              "required": [
+                "field",
+                "direction"
+              ],
               "additionalProperties": false
             },
-            "maxItems": 0,
-            "description": "Unsupported in this slice: must be empty (else 422)."
+            "maxItems": 3,
+            "description": "S20-A (ADR 0023): at most 3 sort keys in the order they apply, each on a declared field in a declared direction, no field twice; anything else is 422 UNSUPPORTED_COMBINATION. The source orders the rows, stable across its pages. Empty is the source's own order, as before."
           },
           "as_of": {
             "type": "string",
@@ -4573,7 +4697,7 @@
           "page"
         ],
         "additionalProperties": false,
-        "description": "A query of one published catalog entry (reporting.QuerySpec; examples in docs/s00/contracts/query-examples.json). A shape the entry does not declare is 422 UNSUPPORTED_COMBINATION."
+        "description": "A query of one published catalog entry (reporting.QuerySpec; examples in docs/s00/contracts/query-examples.json). A shape the entry does not declare is 422 UNSUPPORTED_COMBINATION; so is a filter or a sort outside the entry's `filters` and `sorts` (S20-A, ADR 0023)."
       },
       "QueryResult": {
         "type": "object",

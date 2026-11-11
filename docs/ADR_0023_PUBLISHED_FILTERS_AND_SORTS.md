@@ -3,7 +3,8 @@
 Date: 2026-11-11. Status: accepted, by the decision the product owner delegated to engineering on 2026-11-11 ("按你的建议全面开始吧",
 after the functional review of that day named this the largest gap). It amends one sentence of docs/s00/INTERFACES.md's catalogue row and
 docs/CONSOLE.md's "当前只有已发布查询组合，自定义筛选、排序、SQL、公式不开放"; it keeps every other rule of the baseline. Implementation:
-S20-A (the core, the protocol, the adapters, the API, the checker), S20-B (the console), S20-C (the exports' metadata).
+S20-A (the core, the protocol, the adapters, the API, the checker; docs/S20A_SCOPE.md, S20-A: this pull request), S20-B (the console),
+S20-C (the exports' metadata).
 
 ## Context
 

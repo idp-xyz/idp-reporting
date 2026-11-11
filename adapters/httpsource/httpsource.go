@@ -443,7 +443,8 @@ func validRef(v r.Ref) bool {
 }
 
 // validDataset holds a dataset to what the platform can run: the shape ValidateQuery accepts for a query of exactly its fields (columns are
-// the dimensions then the metrics, typed, labelled, unique, 1..64), bounded texts.
+// the dimensions then the metrics, typed, labelled, unique, 1..64; the declared filters and sorts within ADR 0023's rules, S20-A), bounded
+// texts.
 func validDataset(sc r.SourceContext, d r.Dataset) bool {
 	if !validRef(d.Ref) || d.Columns == nil || d.Metrics == nil || d.Dimensions == nil || (d.CurrencyPolicy != nil && !validRef(*d.CurrencyPolicy)) {
 		return false
@@ -496,7 +497,9 @@ func (a *Adapter) dataset(ctx context.Context, sc r.SourceContext, ref r.Ref) (r
 	return r.Dataset{}, fail("pages", "the read's dataset is not in the context's catalog", r.ErrDenied)
 }
 
-// PrepareRead asks the source to prepare a stable read of the query and verifies the read against it.
+// PrepareRead asks the source to prepare a stable read of the query and verifies the read against it. The query goes as it is, its
+// filters and sort included (S20-A): the service has validated them against the catalog this adapter verified, and the source applies
+// them and checks them again against what it published.
 func (a *Adapter) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QuerySpec, hash string) (r.PreparedRead, error) {
 	if !validContext(sc) {
 		return r.PreparedRead{}, fail("reads", "the source context is incomplete", r.ErrDenied)

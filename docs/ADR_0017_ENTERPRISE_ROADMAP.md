@@ -1,7 +1,7 @@
 # ADR 0017 · From a qualified single server to an enterprise reporting platform: the order of the work
 
 Date: 2026-11-09. Status: accepted. A plan of slices, each with its own scope document and pull request; this ADR is updated as they land.
-Progress: S11-A, S11-B, S11-C, S12-A, S12-A2, S12-B, S12-C, S12-D, S13-A, S14-A, S15-A, S16-A, S17-A merged (S15-A: ADR 0019; S16-A: ADR 0020); S18 written (docs/S18_SCOPE.md: the schedules page, the administrator's read-only view of data sources and bindings; ADR 0021 proposed); S19-A written (docs/S19A_SCOPE.md: the reporting source protocol and the generic adapter `http` in the shipped server, ADR 0022); S19-B written (docs/S19B_SCOPE.md: the company directory of ADR 0015 on the server and in the protocol); S16-B written (docs/S16B_SCOPE.md: email as a second deliverer of a scheduled run's notification, ADR 0020's amendment).
+Progress: S11-A, S11-B, S11-C, S12-A, S12-A2, S12-B, S12-C, S12-D, S13-A, S14-A, S15-A, S16-A, S17-A merged (S15-A: ADR 0019; S16-A: ADR 0020); S18 written (docs/S18_SCOPE.md: the schedules page, the administrator's read-only view of data sources and bindings; ADR 0021 proposed); S19-A written (docs/S19A_SCOPE.md: the reporting source protocol and the generic adapter `http` in the shipped server, ADR 0022); S19-B written (docs/S19B_SCOPE.md: the company directory of ADR 0015 on the server and in the protocol); S16-B written (docs/S16B_SCOPE.md: email as a second deliverer of a scheduled run's notification, ADR 0020's amendment); S20-A written (docs/S20A_SCOPE.md: published filters and sorts in the core, the protocol, the adapters, the API and the checker, ADR 0023; the console is S20-B, the exports' metadata S20-C).
 
 ## Context
 
@@ -36,6 +36,7 @@ The work goes in this order; a later slice may start while an earlier one is in 
 | S17-A | An English console: a catalog keyed by the Chinese source text, a 中文 / English switch (docs/S17A_SCOPE.md) | — |
 | S19-A | The reporting source protocol and the generic adapter `http`: a product implements the protocol and passes `reporting-source-check` instead of the platform writing an adapter for it (ADR 0022) | — |
 | S19-B | The company directory (ADR 0015) on the server: `reporting.CompanyDirectory`, the simulators, `GET /companies`, the protocol's optional route `companies` (revision 1.1); the console picker is S09-D | S19-A |
+| S20 | Published filters and sorts (ADR 0023): the catalogue declares what a query may narrow by and order by, the core validates, the source applies (S20-A: core, protocol revision 1.1, adapters, API, checker; S20-B: the console; S20-C: the exports' metadata) | S19-A |
 | — | Each product's implementation of the protocol, reconciliation, admission (items 17–19) | the source products |
 
 What does not change: the source's authority over every read; no write endpoint for connections or bindings (ADR 0016); the core stays

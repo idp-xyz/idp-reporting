@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"idp.local/reporting/adapters/contractsim"
@@ -44,6 +46,43 @@ type repetitive struct{ *contractsim.Simulator }
 
 func (repetitive) ListCompanies(context.Context, r.SourceContext) (r.CompanyList, error) {
 	return r.CompanyList{Companies: []r.Company{{ID: "company_demo", Name: "演示公司"}, {ID: "company_demo", Name: "又一次"}}}, nil
+}
+
+// deaf is a broken product that reads every query without its filters and sort (S20-A): it prepares the plain query under the narrowed
+// query's hash and answers the whole scope's rows and totals for a read that asked for less, and accepts what its catalog does not declare.
+type deaf struct {
+	*contractsim.Simulator
+	mu    sync.Mutex
+	plain map[string]string // the hash of the query as asked → the hash of the plain query it prepared instead
+}
+
+func (d *deaf) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QuerySpec, hash string) (r.PreparedRead, error) {
+	q.Filters, q.Sort = []r.Filter{}, []r.Sort{}
+	p, err := d.Simulator.PrepareRead(ctx, sc, q, r.QueryHash(q))
+	if err != nil {
+		return p, err
+	}
+	d.mu.Lock()
+	d.plain[hash] = p.QueryHash
+	d.mu.Unlock()
+	p.QueryHash = hash
+	return p, nil
+}
+func (d *deaf) inner(p r.PreparedRead) r.PreparedRead {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if h, ok := d.plain[p.QueryHash]; ok {
+		p.QueryHash = h
+	}
+	return p
+}
+func (d *deaf) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.PreparedRead) error {
+	return d.Simulator.AuthorizeCurrent(ctx, sc, d.inner(p))
+}
+func (d *deaf) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedRead, cursor string, limit int) (r.SourcePage, error) {
+	page, err := d.Simulator.ReadPage(ctx, sc, d.inner(p), cursor, limit)
+	page.QueryHash = p.QueryHash
+	return page, err
 }
 
 // files writes the CA of the server, the sample context and the query, and returns the common arguments.
@@ -100,18 +139,32 @@ func TestTheReferenceSourcePassesEveryRule(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	for _, id := range []string{"P1", "A1", "C1", "C2", "C3", "C4", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "D1", "D2", "I1"} {
+	for _, id := range []string{"P1", "A1", "C1", "C2", "C3", "C4", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "F1", "F2", "F3", "F4", "F5", "F6", "D1", "D2", "I1"} {
 		if !strings.Contains(out, "PASS "+id+" ") {
 			t.Fatalf("%s did not pass:\n%s", id, out)
 		}
 	}
-	if !strings.HasSuffix(out, "reporting-source-check: every rule passed (22)\n") {
+	if !strings.HasSuffix(out, "reporting-source-check: every rule passed (28)\n") {
 		t.Fatal(out)
+	}
+	// The rules are printed in their order: the connection, the credential, the catalog, the read, the published filters and sorts, the
+	// directory, the document authority.
+	if order := regexp.MustCompile(`(?m)^(?:PASS|SKIP|FAIL) ([A-Z]+\d+) `).FindAllStringSubmatch(out, -1); len(order) != 28 || order[18][1] != "R13" || order[19][1] != "F1" || order[24][1] != "F6" || order[25][1] != "D1" || order[26][1] != "D2" || order[27][1] != "I1" {
+		t.Fatal(out)
+	}
+	// A dataset that declares no filter and no sort skips the rules that need one and still refuses what is not declared (S20-A).
+	plain := contractsim.Financial().Fixture()
+	plain.Dataset.Filters, plain.Dataset.Sorts = nil, nil
+	bare := contractsim.New(plain.Dataset, plain.Records)
+	bare.Grant(contractsim.DemoOwner(contractsim.DemoPrincipal(), contractsim.FinanceIntegration), contractsim.DefaultGrant())
+	code, out = check(t, files(t, source(t, bare, sourcetest.Options{Token: token})))
+	if code != 0 || !strings.Contains(out, "SKIP F1 ") || !strings.Contains(out, "SKIP F2 ") || !strings.Contains(out, "PASS F3 ") || !strings.Contains(out, "SKIP F4 ") || !strings.Contains(out, "SKIP F5 ") || !strings.Contains(out, "PASS F6 ") {
+		t.Fatalf("exit %d\n%s", code, out)
 	}
 	// Without -issue the document authority is not touched; without -companies the directory is not asked (S19-B): a connection that does
 	// not declare the capability never asks the route, so a product without it passes.
 	code, out = check(t, files(t, source(t, muted(), sourcetest.Options{Token: token})))
-	if code != 0 || !strings.Contains(out, "SKIP I1 ") || !strings.Contains(out, "SKIP D1 ") || !strings.Contains(out, "SKIP D2 ") || !strings.HasSuffix(out, "reporting-source-check: every rule passed (22)\n") {
+	if code != 0 || !strings.Contains(out, "SKIP I1 ") || !strings.Contains(out, "SKIP D1 ") || !strings.Contains(out, "SKIP D2 ") || !strings.HasSuffix(out, "reporting-source-check: every rule passed (28)\n") {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	if strings.Contains(out, "D1 the directory answers and verifies (at most 1000 companies, each id and name 1..128 characters of text, no id twice): not asked (-companies: the connection declares the capability)") == false {
@@ -166,6 +219,25 @@ func TestABrokenSourceFailsTheRulesItBreaks(t *testing.T) {
 	code, out = check(t, files(t, srv))
 	if code != 1 || !strings.Contains(out, "FAIL C1 ") || !strings.Contains(out, "the source did not answer in time or could not be reached") {
 		t.Fatalf("exit %d\n%s", code, out)
+	}
+	// A source that ignores the filters and the sort of a query fails every rule of the declaration (S20-A): the rows it answers do not
+	// satisfy the filter, the order is not the one asked, and what its catalog does not declare is accepted.
+	code, out = check(t, files(t, source(t, &deaf{Simulator: granted(), plain: map[string]string{}}, sourcetest.Options{Token: token})))
+	if code != 1 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	for _, id := range []string{"F1", "F2", "F3", "F4", "F5", "F6"} {
+		if !strings.Contains(out, "FAIL "+id+" ") {
+			t.Fatalf("%s did not fail:\n%s", id, out)
+		}
+	}
+	for _, id := range []string{"C1", "C2", "R1", "R3", "R4"} {
+		if !strings.Contains(out, "PASS "+id+" ") {
+			t.Fatalf("%s did not pass:\n%s", id, out)
+		}
+	}
+	if !strings.Contains(out, "FAIL F1 "+"every declared filter, with each of its operators, narrows the rows to those that satisfy it (rows of the whole scope; totals agree where they are sums): filter customer.id eq: a row does not satisfy the filter: INTEGRITY_FAILURE\n") {
+		t.Fatal(out)
 	}
 }
 

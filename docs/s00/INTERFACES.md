@@ -18,7 +18,7 @@ OIDC 登录结果与访问令牌分开处理；平台资源接口验证签名、
 
 | 接口 | 行为与不变量 |
 |---|---|
-| DescribeCatalog | 提供已发布、版本化的数据集、字段、粒度、指标、维度和支持组合；不能暴露任意 SQL |
+| DescribeCatalog | 提供已发布、版本化的数据集、字段、粒度、指标、维度和支持组合，以及每个版本允许查询据以筛选和排序的字段与运算符（ADR 0023，S20-A）；不能暴露任意 SQL |
 | PrepareRead | 按可信主体和批准 QuerySpec 授权，返回稳定 source_snapshot_ref、query_hash、scope_handle、source_watermark、TTL |
 | ReadPage | 仅按同一来源快照读取；绑定租户、产品、主体、查询、版本和水位；禁止翻页变成新的实时结果 |
 | AuthorizeCurrent | 在准入、最终发布、结果访问和下载时确认当前权限覆盖原范围；未知范围关系或授权源不可用时拒绝披露 |

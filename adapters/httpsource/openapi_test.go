@@ -16,6 +16,7 @@ import (
 // The Go type of each schema of docs/source-openapi.json.
 var schemaTypes = map[string]reflect.Type{
 	"Context": reflect.TypeFor[protocol.Context](), "Ref": reflect.TypeFor[r.Ref](), "Column": reflect.TypeFor[r.Column](), "Dataset": reflect.TypeFor[r.Dataset](),
+	"FilterSpec": reflect.TypeFor[r.FilterSpec](), "SortSpec": reflect.TypeFor[r.SortSpec](),
 	"Filter": reflect.TypeFor[r.Filter](), "Sort": reflect.TypeFor[r.Sort](), "PageSpec": reflect.TypeFor[r.PageSpec](), "QuerySpec": reflect.TypeFor[r.QuerySpec](),
 	"Read": reflect.TypeFor[protocol.Read](), "CatalogRequest": reflect.TypeFor[protocol.CatalogRequest](), "CatalogResponse": reflect.TypeFor[protocol.CatalogResponse](),
 	"Company": reflect.TypeFor[r.Company](), "CompaniesRequest": reflect.TypeFor[protocol.CompaniesRequest](), "CompaniesResponse": reflect.TypeFor[protocol.CompaniesResponse](),

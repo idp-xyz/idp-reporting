@@ -4,8 +4,8 @@
   "info": {
     "title": "Reporting source protocol",
     "version": "1.1",
-    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A; revision 1.1 adds the optional companies route, S19-B).",
-    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups; the companies route only for a connection with companies true (ADR 0015)."
+    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A; revision 1.1 adds the optional companies route, S19-B, and a dataset's optional filters and sorts declarations with a query's filters and sort, S20-A, ADR 0023).",
+    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups; the companies route only for a connection with companies true (ADR 0015). A dataset may declare filters and sorts (S20-A); a query then carries them, and the source applies them as parameters."
   },
   "servers": [
     {
@@ -1082,8 +1082,104 @@
           "timezone": {
             "type": "string",
             "description": "An IANA zone."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterSpec"
+            },
+            "description": "The columns a query of this version may narrow by, with their operators (ADR 0023). A field at most once. Absent: no filter is accepted.",
+            "maxItems": 16
+          },
+          "sorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortSpec"
+            },
+            "description": "The columns a query of this version may order by, with their directions. A field at most once. Absent: no sort is accepted.",
+            "maxItems": 8
           }
-        }
+        },
+        "description": "A published dataset version. The lists of filters and sorts are part of the version, as the columns are: a change is a new version."
+      },
+      "FilterSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "operators"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "A column id of the dataset."
+          },
+          "operators": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "eq",
+                "ne",
+                "lt",
+                "le",
+                "gt",
+                "ge",
+                "in",
+                "between",
+                "prefix",
+                "contains"
+              ]
+            },
+            "description": "A non-empty set of the closed operators that fit the column's type: prefix and contains for string columns only; lt, le, gt, ge, between and in for date, integer, decimal and string; a boolean column takes eq and ne only.",
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "description": "Optional: the closed list of values the field accepts, each well formed for the column; an eq, ne or in filter must take its values from it.",
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true
+          },
+          "required": {
+            "type": "boolean",
+            "description": "true: a query must carry exactly one filter on this field (a mandatory parameter)."
+          }
+        },
+        "description": "One filter a dataset version publishes (reporting.FilterSpec)."
+      },
+      "SortSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "directions"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "A column id of the dataset."
+          },
+          "directions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "description": "One sort key a dataset version publishes (reporting.SortSpec)."
       },
       "Filter": {
         "type": "object",
@@ -1095,15 +1191,31 @@
         ],
         "properties": {
           "field": {
-            "type": "string"
+            "type": "string",
+            "description": "A field the dataset version declares a filter on."
           },
           "operator": {
-            "type": "string"
+            "type": "string",
+            "description": "One of the operators declared for the field.",
+            "enum": [
+              "eq",
+              "ne",
+              "lt",
+              "le",
+              "gt",
+              "ge",
+              "in",
+              "between",
+              "prefix",
+              "contains"
+            ]
           },
           "value": {
-            "type": "string"
+            "type": "string",
+            "description": "The value, well formed for the column (a date YYYY-MM-DD, an integer or a decimal as the column writes it, true or false, a string of 1..128 characters without control characters), from the declared closed list when there is one. For in and between a JSON array of such strings as text, [\"a\",\"b\"]: 1..32 values for in, exactly 2 in ascending order for between. The source binds it as a parameter, never as text of a statement."
           }
-        }
+        },
+        "description": "One filter of a query (reporting.Filter). A query's filters are a conjunction, sorted by field, operator and value in the normalized query."
       },
       "Sort": {
         "type": "object",
@@ -1114,12 +1226,18 @@
         ],
         "properties": {
           "field": {
-            "type": "string"
+            "type": "string",
+            "description": "A field the dataset version declares a sort on; no field twice in a query."
           },
           "direction": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
           }
-        }
+        },
+        "description": "One sort key of a query (reporting.Sort), in the order the keys apply."
       },
       "PageSpec": {
         "type": "object",
@@ -1189,14 +1307,16 @@
             "items": {
               "$ref": "#/components/schemas/Filter"
             },
-            "maxItems": 0
+            "description": "The query's filters, each on a field and with an operator the dataset version declares (ADR 0023); the platform has validated them against the catalog it read, and a source refuses what it did not publish with unsupported. Empty for a query that narrows nothing.",
+            "maxItems": 16
           },
           "sort": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Sort"
             },
-            "maxItems": 0
+            "description": "The query's sort keys, in the order they apply, each on a field and in a direction the dataset version declares; no field twice. Empty: the source's own order.",
+            "maxItems": 3
           },
           "as_of": {
             "type": "string",

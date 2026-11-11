@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -124,6 +126,89 @@ func TestTheProtocolCarriesTheContractSimulatorsBehaviour(t *testing.T) {
 	_, err = g.adapter.DescribeCatalog(ctx, g.sc)
 	want(t, err, r.ErrUnavailable, "an unavailable source")
 	noLeak(t, err, g.srv)
+}
+
+// TestTheProtocolCarriesTheDeclaredFiltersAndSorts (S20-A, ADR 0023): the catalog answer carries the lists the source declares and the
+// adapter verifies them; a read sends the query's filters and sort as they are and the pages are the narrowed, ordered scope's; what the
+// source does not declare comes back as unsupported.
+func TestTheProtocolCarriesTheDeclaredFiltersAndSorts(t *testing.T) {
+	g := newRig(t)
+	ds, err := g.adapter.DescribeCatalog(ctx, g.sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := g.sim.Fixture().Dataset
+	if !reflect.DeepEqual(ds[0].Filters, declared.Filters) || !reflect.DeepEqual(ds[0].Sorts, declared.Sorts) || len(ds[0].Filters) != 3 || !slices.Equal(ds[0].Filters[1].Values, contractsim.AgingBuckets) {
+		t.Fatalf("%+v", ds[0])
+	}
+	q, _ := query()
+	q.Filters = []r.Filter{{Field: "ar.open_balance", Operator: "ge", Value: "0.00"}, {Field: "customer.id", Operator: "in", Value: `["customer_c","customer_a"]`}}
+	q.Sort = []r.Sort{{Field: "ar.open_balance", Direction: "desc"}}
+	q = r.Normalize(q)
+	var mu sync.Mutex
+	var sent map[string]any
+	ref := sourcetest.New(g.sim, sourcetest.Options{Token: testToken})
+	observe := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		b, _ := io.ReadAll(req.Body)
+		if strings.HasSuffix(req.URL.Path, "/reads") {
+			m := map[string]any{}
+			_ = json.Unmarshal(b, &m)
+			mu.Lock()
+			sent = m
+			mu.Unlock()
+		}
+		req.Body = io.NopCloser(strings.NewReader(string(b)))
+		ref.ServeHTTP(w, req)
+	}))
+	defer observe.Close()
+	a := adapterOf(t, observe)
+	hash := r.QueryHash(q)
+	p, err := a.PrepareRead(ctx, g.sc, q, hash)
+	if err != nil || p.QueryHash != hash {
+		t.Fatalf("%+v %v", p, err)
+	}
+	mu.Lock()
+	wire, _ := json.Marshal(sent["query"])
+	mu.Unlock()
+	var carried r.QuerySpec
+	if err := json.Unmarshal(wire, &carried); err != nil || !reflect.DeepEqual(carried.Filters, q.Filters) || !reflect.DeepEqual(carried.Sort, q.Sort) {
+		t.Fatalf("the read did not carry the query as it is: %s %v", wire, err)
+	}
+	page, err := a.ReadPage(ctx, g.sc, p, "", 50)
+	if err != nil || len(page.Rows) != 2 || page.Rows[0][0] != "customer_c" || page.Rows[1][0] != "customer_a" || page.Totals["ar.open_balance"] != "9007199254740993.25" || page.NextCursor != "" {
+		t.Fatalf("%+v %v", page, err)
+	}
+	// The same read, one row a page, is the same order.
+	first, err := a.ReadPage(ctx, g.sc, p, "", 1)
+	if err != nil || len(first.Rows) != 1 || first.Rows[0][0] != "customer_c" || first.Totals["ar.open_balance"] != "9007199254740993.25" {
+		t.Fatalf("%+v %v", first, err)
+	}
+	second, err := a.ReadPage(ctx, g.sc, p, first.NextCursor, 1)
+	if err != nil || len(second.Rows) != 1 || second.Rows[0][0] != "customer_a" || second.NextCursor != "" {
+		t.Fatalf("%+v %v", second, err)
+	}
+	// The hash binds the narrowed scope: the plain query's hash is not this query's.
+	plain, plainHash := query()
+	if _, err = a.PrepareRead(ctx, g.sc, q, plainHash); !errors.Is(err, r.ErrIntegrity) {
+		t.Fatal(err)
+	}
+	// What the source does not declare is its refusal, unsupported, through the protocol.
+	for name, change := range map[string]func(q *r.QuerySpec){
+		"an undeclared field": func(q *r.QuerySpec) {
+			q.Filters = []r.Filter{{Field: "aging.bucket", Operator: "prefix", Value: "cur"}}
+		},
+		"a malformed value": func(q *r.QuerySpec) {
+			q.Filters = []r.Filter{{Field: "ar.open_balance", Operator: "ge", Value: "zero"}}
+		},
+		"an undeclared sort":   func(q *r.QuerySpec) { q.Sort = []r.Sort{{Field: "aging.bucket", Direction: "asc"}} },
+		"a value off the list": func(q *r.QuerySpec) { q.Filters = []r.Filter{{Field: "aging.bucket", Operator: "eq", Value: "91+"}} },
+	} {
+		bad := plain
+		change(&bad)
+		_, err := a.PrepareRead(ctx, g.sc, bad, r.QueryHash(bad))
+		want(t, err, r.ErrUnsupported, name)
+		noLeak(t, err, observe)
+	}
 }
 
 func TestTheRequestCarriesTheContextTheCredentialAndARequestID(t *testing.T) {
@@ -359,6 +444,49 @@ func TestAnswersThatDoNotVerifyAreIntegrityFailures(t *testing.T) {
 			d["columns"].([]any)[2].(map[string]any)["scale"] = 19
 		}},
 		{"a zone that does not exist", func(m map[string]any) { m["datasets"].([]any)[0].(map[string]any)["timezone"] = "Mars/Olympus" }},
+		// The declaration of filters and sorts (S20-A) is held to its rules like a column.
+		{"a filter on a column that is not", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[0].(map[string]any)["field"] = "customer.name"
+		}},
+		{"a filter field twice", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[1].(map[string]any)["field"] = "customer.id"
+		}},
+		{"an operator outside the set", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[0].(map[string]any)["operators"] = []string{"eq", "like"}
+		}},
+		{"prefix on a decimal", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[2].(map[string]any)["operators"] = []string{"prefix"}
+		}},
+		{"no operator", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[0].(map[string]any)["operators"] = []string{}
+		}},
+		{"17 filters", func(m map[string]any) {
+			d := m["datasets"].([]any)[0].(map[string]any)
+			filters := []any{}
+			for i := 0; i < 17; i++ {
+				filters = append(filters, map[string]any{"field": "customer.id", "operators": []string{"eq"}})
+			}
+			d["filters"] = filters
+		}},
+		{"65 closed values", func(m map[string]any) {
+			values := []string{}
+			for i := 0; i < 65; i++ {
+				values = append(values, fmt.Sprint("v", i))
+			}
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[1].(map[string]any)["values"] = values
+		}},
+		{"a closed value with a control character", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[1].(map[string]any)["values"] = []string{"cur\trent"}
+		}},
+		{"a sort direction that is not", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["sorts"].([]any)[0].(map[string]any)["directions"] = []string{"up"}
+		}},
+		{"a sort on a column that is not", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["sorts"].([]any)[0].(map[string]any)["field"] = "ar.due"
+		}},
+		{"a filter spec with an unknown field", func(m map[string]any) {
+			m["datasets"].([]any)[0].(map[string]any)["filters"].([]any)[0].(map[string]any)["default"] = "x"
+		}},
 		{"no datasets", func(m map[string]any) { delete(m, "datasets") }},
 		{"101 datasets", func(m map[string]any) {
 			ds := []any{}
