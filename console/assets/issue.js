@@ -275,9 +275,11 @@ window.createReportingIssuePage = function (ports) {
   function loadTemplates() {
     const q = ports.query();
     if (!q) {
+      generation++; // a reading in flight is dropped
       list = [];
       picked = '';
       loaded = '';
+      loading = false;
       render();
       return;
     }
@@ -287,7 +289,12 @@ window.createReportingIssuePage = function (ports) {
     render();
     Promise.all(spaces.map(s => ports.call(pathOf('/document-templates', s.space), undefined, '已发布模板')))
       .then(listings => {
-        if (reading !== generation || key !== datasetKey()) return;
+        if (reading !== generation) return;
+        if (key !== datasetKey()) {
+          // The data context moved while the list was read: this list is another dataset's; read the current one.
+          loadTemplates();
+          return;
+        }
         const own = [];
         listings.forEach((entries, i) => {
           if (!Array.isArray(entries) || entries.length > 1000) throw Error('无法验证模板列表。');
@@ -329,8 +336,10 @@ window.createReportingIssuePage = function (ports) {
         }
       })
       .finally(() => {
+        // The latest reading always settles the loading state (an earlier one left it to the later); a reading that started another
+        // (the context moved) has been superseded by then and leaves it to that one.
         if (reading !== generation) return;
-        if (key === datasetKey()) loading = false;
+        loading = false;
         render();
       });
   }

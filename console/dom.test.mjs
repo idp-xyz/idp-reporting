@@ -14709,284 +14709,319 @@ test('S07-F: the console header is the header of every page: the studios and the
 // S09-G (ADR 0014 decision 12): 正式出具 is a page of its own, reached from the rail; the studio's ribbon item leads there with its template; the
 // register is the page's table; the embed page keeps the dialog (S06-A A5 opens it without the page). The page lists the published templates
 // of both template spaces (S12-C) and issues each through the route of its space; the issue is an issuer's (S12-A2).
-test("S09-G G1: the issue page: the rail's 出具, what it says without data, the published templates of the dataset by name and space, 出具前确认, the issue with the product's number, the register, a team template through /team/issues, the way in from the studio, and a role that cannot issue", async () => {
-  // The server and its identity are shared by every test of this file and have one person: a published template of the tenant's shared
-  // space (another person's approval) is answered here for the team routes, and the team issue route answers a refusal, so that the route
-  // taken is what is checked.
-  const team = {id: 'e'.repeat(31) + '1', name: '团队出具模板'};
-  const element = {
-    id: 'n1',
-    source: 'literal',
-    field: '',
-    text: '出具页模板',
-    x: 10,
-    y: 25,
-    width: 190,
-    height: 12,
-    font_size: 18,
-    align: 'left',
-  };
-  let teamQuery = null;
-  const a = app(async (path, options) => {
-    const p = path.replace(/^.*\/api\/reporting\/v1/, '');
-    if (!teamQuery) return undefined;
-    if (p === '/team/document-templates')
-      return json([{id: team.id, name: team.name, versions: 1, published_version: 1, binding: teamQuery}]);
-    if (p === '/team/document-templates/' + team.id + '/published')
-      return json({
-        id: team.id,
-        version: 1,
-        config: {schema_version: '1.0', kind: 'document', name: team.name, binding: teamQuery, elements: [element]},
-      });
-    if (p === '/team/issues' && options?.method === 'POST') return problem(409, 'TEMPLATE_NOT_PUBLISHED');
-    return undefined;
-  });
-  try {
-    const d = a.w.document;
-    await a.login();
-    // The rail: 出具 after 文档, before 任务, an issuer's (needs-issuer); the page is labelled like the others.
-    assert.deepEqual(
-      [...d.querySelectorAll('.app-rail .nav-item')].map(b => b.dataset.page || 'panel:' + b.dataset.panel),
-      [
-        'workspace',
-        'dashboard',
-        'library',
-        'documents',
-        'issue',
-        'panel:tasks',
-        'schedules',
-        'audit',
-        'admin',
-        'system',
-      ]
-    );
-    assert.equal(d.querySelector('[data-page="issue"]').classList.contains('needs-issuer'), true);
-    assert.equal(d.body.classList.contains('no-issuer'), false, 'the default roles issue');
-    d.querySelector('[data-page="issue"]').click();
-    assert.equal(a.$('page-issue').hidden, false);
-    assert.equal(a.$('shell-label').textContent, '正式出具');
-    assert.equal(d.title, 'IDP Reporting · 正式出具');
-    assert.equal(d.querySelector('#page-issue h1').textContent, '正式出具');
-    // Without data the page says what it needs and offers the data drawer; nothing can be issued.
-    assert.equal(a.$('issue-state').textContent, '未选择数据');
-    assert.equal(a.$('issue-go').disabled, true);
-    assert.equal(a.$('issue-go').classList.contains('needs-issuer'), true);
-    assert.equal(a.$('issue-note').textContent, '出具需要冻结快照：先在“选择数据…”里创建快照。');
-    assert.equal(a.$('issue-templates-note').textContent, '先选择数据并冻结快照：出具按冻结快照的行进行。');
-    assert.equal(
-      a.$('issue-go').title,
-      a.$('issue-note').textContent,
-      'the disabled action says why (ADR 0014 decision 6)'
-    );
-    a.$('issue-data-open').click();
-    assert.equal(a.$('sh-d-data').hidden, false, 'the data drawer opens from the page');
-    assert.ok(a.$('sh-query-slot').contains(d.querySelector('.query-panel')));
-    a.input('query-companies', 'company_demo');
-    a.click('snapshot');
-    await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled, 'snapshot');
-    assert.equal(a.$('sh-d-data').hidden, true, 'the drawer closes with the result');
-    assert.equal(a.$('page-issue').hidden, false, 'the page stays');
-    assert.equal(a.$('issue-state').textContent, '冻结快照');
-    // A published template of the dataset and an unpublished one that must not be listed: made through the API as a designer would have.
-    const q = {
-      integration_id: a.$('query-product').value,
-      dataset: {id: a.$('query-dataset').value.split('@')[0], version: a.$('query-dataset').value.split('@')[1]},
-    };
-    const post = (path, body) =>
-      fetch(url + '/api/reporting/v1' + path, {
-        method: 'POST',
-        headers: {
-          ...authorized.headers,
-          'Content-Type': 'application/json',
-          'Idempotency-Key': randomBytes(8).toString('hex'),
-        },
-        body: JSON.stringify(body),
-      }).then(r => r.json());
-    const own = await post('/document-templates', {
-      id: '',
-      expected_version: 0,
-      config: {schema_version: '1.0', kind: 'document', name: '出具页模板', binding: q, elements: [element]},
-    });
-    await post('/document-templates/' + own.id + '/release', {action: 'publish', version: 1, expected_revision: 0});
-    const draft = await post('/document-templates', {
-      id: '',
-      expected_version: 0,
-      config: {schema_version: '1.0', kind: 'document', name: '未发布的模板', binding: q, elements: [element]},
-    });
-    assert.ok(draft.id, 'a saved, unpublished template');
-    // From here the team space answers its published template too (S12-C).
-    teamQuery = q;
-    // The server and its identity are shared by every test of this file, so other published templates of the dataset are listed too;
-    // the unpublished one is not. Both spaces are read, each card says which. (The listing the snapshot started settles first.)
-    await until(() => a.$('issue-templates-note').textContent !== '正在读取已发布模板…', 'the first listing settled');
-    a.click('issue-templates-refresh');
-    const radios = () => [...a.$('issue-templates').querySelectorAll('input[type=radio]')];
-    await until(
-      () => radios().some(r => r.value === own.id) && radios().some(r => r.value === team.id),
-      'both spaces listed'
-    );
-    assert.equal(
-      radios().some(r => r.value === draft.id),
-      false,
-      'an unpublished template is not offered'
-    );
-    assert.deepEqual(
-      a.trace
-        .filter(t => /\/(team\/)?document-templates$/.test(t.path))
-        .map(t => t.path.replace(/^.*\/v1/, ''))
-        .slice(-2)
-        .sort(),
-      ['/document-templates', '/team/document-templates'],
-      'one listing per space'
-    );
-    let label = radios()
-      .find(r => r.value === own.id)
-      .closest('label');
-    assert.equal(label.querySelector('b').textContent, '出具页模板', 'the template by its name');
-    assert.equal(label.querySelector('code').textContent, own.id, 'the id is secondary text');
-    assert.equal(label.querySelector('.pill').textContent, '我的', 'the own space');
-    const teamLabel = radios()
-      .find(r => r.value === team.id)
-      .closest('label');
-    assert.equal(teamLabel.querySelector('b').textContent, '团队出具模板');
-    assert.equal(teamLabel.querySelector('.pill').textContent, '团队', 'the team space');
-    assert.match(a.$('issue-templates-note').textContent, /^\d+ 个已发布模板；只有已发布版本可以出具。$/);
-    if (!label.querySelector('input').checked) label.querySelector('input').click();
-    // Picking reads the published version (through the space's route): the card then says how it issues, and 正式出具 is enabled.
-    await until(() => !a.$('issue-go').disabled, 'the published version read');
-    label = radios()
-      .find(r => r.value === own.id)
-      .closest('label');
-    assert.equal(label.querySelector('input').checked, true, 'the template is picked');
-    assert.equal(label.querySelector('small').textContent, '已发布 v1 · 单页模板 · 按行出具');
-    assert.ok(
-      a.trace.some(t => t.path.endsWith('/document-templates/' + own.id + '/published') && !t.path.includes('/team/')),
-      "the own template's published version from the own route"
-    );
-    // 出具前确认 names the template, its space, the data, the snapshot, the row and who gives the number; the issue runs the studio's request path.
-    a.click('issue-go');
-    assert.equal(a.$('sh-d-issue').hidden, false);
-    assert.equal(d.activeElement, a.$('issue-confirm'), 'the focus is on the confirmation');
-    const summary = () =>
-      Object.fromEntries(
-        [...a.$('issue-summary').querySelectorAll('dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent])
-      );
-    let rows = summary();
-    assert.equal(rows['模板'], '出具页模板 · 已发布 v1');
-    assert.equal(rows['空间'], '我的模板');
-    assert.match(rows['数据'], /^应收余额 · company_demo · \d{4}-\d{2}-\d{2}$/);
-    assert.equal(rows['行'], '第 1 行');
-    assert.equal(rows['编号'], '由来源产品分配并确认；任务成功后才有编号和文件');
-    a.click('issue-confirm');
-    assert.equal(a.$('sh-d-issue').hidden, true);
-    await until(() => a.downloads.length === 1 && !a.$('preview').disabled, 'issued and downloaded', 30000);
-    assert.match(a.downloads[0].name, /^issued-[A-Za-z0-9][A-Za-z0-9._-]*\.pdf$/);
-    assert.match(
-      a.$('notice').textContent,
-      /^来源产品已确认编号 No\. [A-Za-z0-9][A-Za-z0-9._-]*；PDF 已通过摘要校验，下载已发起。$/
-    );
-    const issues = () => a.trace.filter(t => /\/(team\/)?issues$/.test(t.path) && t.method === 'POST');
-    assert.equal(issues().length, 1, 'one POST /issues with its key');
-    assert.ok(issues()[0].path.endsWith('/v1/issues'), 'the own route');
-    assert.ok(issues()[0].key);
-    // The register follows: the record with its number, state and download (other tests' records of this identity may be there too).
-    const newest = () => a.$('issue-records-body').rows[0];
-    await until(
-      () => newest() && newest().cells[3].textContent === own.id + ' · 版本 1',
-      'the register with this issue'
-    );
-    const record = newest();
-    assert.match(record.cells[0].textContent, /^No\. /);
-    assert.equal(record.cells[1].textContent, '已出具');
-    assert.equal(record.cells[7].querySelector('button').textContent, '下载');
-    assert.match(a.$('issue-records-note').textContent, /^\d+ 条$/);
-    assert.equal(a.$('issue-records-wrap').hidden, false);
-    // A team template is issued through the team's route (S12-C), its published version read there, and the dialog says the space; the
-    // server's answer (here a refusal) is told as the studio tells it. (The list is drawn again at each change: the radio is looked up anew.)
-    radios()
-      .find(r => r.value === team.id)
-      .click();
-    await until(() => !a.$('issue-go').disabled, "the team template's published version read");
-    assert.ok(
-      a.trace.some(t => t.path.endsWith('/team/document-templates/' + team.id + '/published')),
-      "the team template's published version from the team route"
-    );
-    a.click('issue-go');
-    rows = summary();
-    assert.equal(rows['模板'], '团队出具模板 · 已发布 v1');
-    assert.equal(rows['空间'], '团队模板（租户共享空间）');
-    a.click('issue-confirm');
-    await until(() => issues().length === 2 && !a.$('preview').disabled, 'the team issue answered');
-    assert.ok(issues()[1].path.endsWith('/v1/team/issues'), 'the team route');
-    assert.match(a.$('notice').textContent, /只能正式出具当前已发布的模板版本/);
-    assert.equal(a.downloads.length, 1, 'nothing downloaded for the refusal');
-    // From the studio: the ribbon's 正式出具 leads here with the open template preselected, and says so.
-    d.querySelector('[data-page="library"]').click();
-    await until(
-      () =>
-        [...d.querySelectorAll('#page-library .catalog-card')].some(
-          c => c.getAttribute('aria-label') === '未发布的模板'
-        ),
-      'the centre lists the templates'
-    );
-    const card = [...d.querySelectorAll('#page-library .catalog-card')].find(
-      c => c.getAttribute('aria-label') === '出具页模板'
-    );
-    [...card.querySelectorAll('button')].find(b => b.textContent.trim() === '编辑').click();
-    await until(
-      () => !a.$('page-documents').hidden && a.$('doc-server-status').textContent.includes('正在编辑模板 ' + own.id),
-      'the studio'
-    );
-    assert.equal(a.$('st-tool-issue').title, '在“出具”页用这个模板的已发布版本出具；出具记录也在那里');
-    a.$('st-tab-check').click();
-    a.$('st-tool-issue').click();
-    assert.equal(a.$('page-issue').hidden, false, 'the issue page');
-    assert.equal(a.$('page-documents').hidden, true);
-    assert.equal(d.querySelector('#st-d-issue.open'), null, 'the studio dialog did not open');
-    await until(
-      () => a.$('issue-templates').querySelector('input:checked')?.value === own.id,
-      'the template preselected'
-    );
-    assert.equal(a.$('issue-templates').querySelector('input:checked').dataset.space, '', 'in its space');
-    // Sign-out clears the page.
-    a.click('logout');
-    assert.equal(a.$('issue-records-body').rows.length, 0);
-    assert.equal(a.$('issue-templates').children.length, 0);
-    assert.equal(a.$('issue-records-note').textContent, '尚未读取');
-    assert.equal(a.errors.length, 0, a.errors.join('|'));
-  } finally {
-    a.close();
-  }
-  // S12-A2: a session whose roles do not issue. The rail's 出具 is hidden with the stylesheet's rule (needs-issuer under no-issuer, as the
-  // administrator's 管理); the page, reached by its address, says the role cannot issue, offers no 正式出具 and still reads the register.
-  const viewer = app(async (path, options) => {
-    if (path.endsWith('/session')) {
-      const session = await (await fetch(url + path, options)).json();
-      return json({...session, roles: ['viewer', 'designer', 'publisher']});
+// Issuing needs the renderer (the server offers issuance only with PDF): without it the page says so, which G0 checks, and G1 is skipped as
+// every Typst test is.
+test(
+  'S09-G G0: without the renderer the issue page says the server does not issue, and nothing can be issued',
+  {skip: pdfConfigured && 'the renderer is configured: G1 covers the page'},
+  async () => {
+    const a = app();
+    try {
+      const d = a.w.document;
+      await a.login();
+      assert.equal(d.querySelector('[data-page="issue"]').classList.contains('needs-issuer'), true);
+      d.querySelector('[data-page="issue"]').click();
+      assert.equal(a.$('page-issue').hidden, false);
+      assert.equal(a.$('shell-label').textContent, '正式出具');
+      assert.equal(a.$('issue-state').textContent, '未选择数据');
+      assert.equal(a.$('issue-go').disabled, true);
+      assert.equal(a.$('issue-note').textContent, '服务端未启用正式出具（需要 PDF 渲染与来源产品的出具能力）。');
+      assert.equal(a.$('issue-go').title, a.$('issue-note').textContent, 'the disabled action says why');
+      assert.equal(a.$('issue-templates-note').textContent, '先选择数据并冻结快照：出具按冻结快照的行进行。');
+      assert.equal(a.errors.length, 0, a.errors.join('|'));
+    } finally {
+      a.close();
     }
-  });
-  try {
-    await viewer.login();
-    assert.equal(viewer.w.document.body.classList.contains('no-issuer'), true);
-    assert.equal(
-      viewer.w.document.querySelector('.app-rail [data-page="issue"]').classList.contains('needs-issuer'),
-      true
-    );
-    viewer.w.location.hash = '#issue';
-    viewer.w.dispatchEvent(new viewer.w.Event('hashchange'));
-    await until(() => !viewer.$('page-issue').hidden, 'the page by its address');
-    assert.equal(
-      viewer.$('issue-note').textContent,
-      '当前角色不能出具：正式出具需要“正式出具”角色，请联系平台运营方在身份绑定中授予；出具记录仍可查看。'
-    );
-    assert.equal(viewer.$('issue-go').disabled, true);
-    assert.equal(viewer.$('issue-go').title, viewer.$('issue-note').textContent);
-    await until(() => /^\d+ 条$/.test(viewer.$('issue-records-note').textContent), 'the register is read');
-    assert.equal(viewer.errors.length, 0, viewer.errors.join('|'));
-  } finally {
-    viewer.close();
   }
-});
+);
+
+test(
+  "S09-G G1: the issue page: the rail's 出具, what it says without data, the published templates of the dataset by name and space, 出具前确认, the issue with the product's number, the register, a team template through /team/issues, the way in from the studio, and a role that cannot issue",
+  {skip: !pdfConfigured && 'set REPORTING_TYPST, REPORTING_TYPST_SHA256 and REPORTING_PDF_FONTS'},
+  async () => {
+    // The server and its identity are shared by every test of this file and have one person: a published template of the tenant's shared
+    // space (another person's approval) is answered here for the team routes, and the team issue route answers a refusal, so that the route
+    // taken is what is checked.
+    const team = {id: 'e'.repeat(31) + '1', name: '团队出具模板'};
+    const element = {
+      id: 'n1',
+      source: 'literal',
+      field: '',
+      text: '出具页模板',
+      x: 10,
+      y: 25,
+      width: 190,
+      height: 12,
+      font_size: 18,
+      align: 'left',
+    };
+    let teamQuery = null;
+    const a = app(async (path, options) => {
+      const p = path.replace(/^.*\/api\/reporting\/v1/, '');
+      if (!teamQuery) return undefined;
+      if (p === '/team/document-templates')
+        return json([{id: team.id, name: team.name, versions: 1, published_version: 1, binding: teamQuery}]);
+      if (p === '/team/document-templates/' + team.id + '/published')
+        return json({
+          id: team.id,
+          version: 1,
+          config: {schema_version: '1.0', kind: 'document', name: team.name, binding: teamQuery, elements: [element]},
+        });
+      if (p === '/team/issues' && options?.method === 'POST') return problem(409, 'TEMPLATE_NOT_PUBLISHED');
+      return undefined;
+    });
+    try {
+      const d = a.w.document;
+      await a.login();
+      // The rail: 出具 after 文档, before 任务, an issuer's (needs-issuer); the page is labelled like the others.
+      assert.deepEqual(
+        [...d.querySelectorAll('.app-rail .nav-item')].map(b => b.dataset.page || 'panel:' + b.dataset.panel),
+        [
+          'workspace',
+          'dashboard',
+          'library',
+          'documents',
+          'issue',
+          'panel:tasks',
+          'schedules',
+          'audit',
+          'admin',
+          'system',
+        ]
+      );
+      assert.equal(d.querySelector('[data-page="issue"]').classList.contains('needs-issuer'), true);
+      assert.equal(d.body.classList.contains('no-issuer'), false, 'the default roles issue');
+      d.querySelector('[data-page="issue"]').click();
+      assert.equal(a.$('page-issue').hidden, false);
+      assert.equal(a.$('shell-label').textContent, '正式出具');
+      assert.equal(d.title, 'IDP Reporting · 正式出具');
+      assert.equal(d.querySelector('#page-issue h1').textContent, '正式出具');
+      // Without data the page says what it needs and offers the data drawer; nothing can be issued.
+      assert.equal(a.$('issue-state').textContent, '未选择数据');
+      assert.equal(a.$('issue-go').disabled, true);
+      assert.equal(a.$('issue-go').classList.contains('needs-issuer'), true);
+      assert.equal(a.$('issue-note').textContent, '出具需要冻结快照：先在“选择数据…”里创建快照。');
+      assert.equal(a.$('issue-templates-note').textContent, '先选择数据并冻结快照：出具按冻结快照的行进行。');
+      assert.equal(
+        a.$('issue-go').title,
+        a.$('issue-note').textContent,
+        'the disabled action says why (ADR 0014 decision 6)'
+      );
+      a.$('issue-data-open').click();
+      assert.equal(a.$('sh-d-data').hidden, false, 'the data drawer opens from the page');
+      assert.ok(a.$('sh-query-slot').contains(d.querySelector('.query-panel')));
+      a.input('query-companies', 'company_demo');
+      a.click('snapshot');
+      await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled, 'snapshot');
+      assert.equal(a.$('sh-d-data').hidden, true, 'the drawer closes with the result');
+      assert.equal(a.$('page-issue').hidden, false, 'the page stays');
+      assert.equal(a.$('issue-state').textContent, '冻结快照');
+      // A published template of the dataset and an unpublished one that must not be listed: made through the API as a designer would have.
+      const q = {
+        integration_id: a.$('query-product').value,
+        dataset: {id: a.$('query-dataset').value.split('@')[0], version: a.$('query-dataset').value.split('@')[1]},
+      };
+      const post = (path, body) =>
+        fetch(url + '/api/reporting/v1' + path, {
+          method: 'POST',
+          headers: {
+            ...authorized.headers,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': randomBytes(8).toString('hex'),
+          },
+          body: JSON.stringify(body),
+        }).then(r => r.json());
+      const own = await post('/document-templates', {
+        id: '',
+        expected_version: 0,
+        config: {schema_version: '1.0', kind: 'document', name: '出具页模板', binding: q, elements: [element]},
+      });
+      await post('/document-templates/' + own.id + '/release', {action: 'publish', version: 1, expected_revision: 0});
+      const draft = await post('/document-templates', {
+        id: '',
+        expected_version: 0,
+        config: {schema_version: '1.0', kind: 'document', name: '未发布的模板', binding: q, elements: [element]},
+      });
+      assert.ok(draft.id, 'a saved, unpublished template');
+      // From here the team space answers its published template too (S12-C).
+      teamQuery = q;
+      // The server and its identity are shared by every test of this file, so other published templates of the dataset are listed too;
+      // the unpublished one is not. Both spaces are read, each card says which. (The listing the snapshot started settles first.)
+      await until(() => a.$('issue-templates-note').textContent !== '正在读取已发布模板…', 'the first listing settled');
+      a.click('issue-templates-refresh');
+      const radios = () => [...a.$('issue-templates').querySelectorAll('input[type=radio]')];
+      await until(
+        () => radios().some(r => r.value === own.id) && radios().some(r => r.value === team.id),
+        'both spaces listed'
+      );
+      assert.equal(
+        radios().some(r => r.value === draft.id),
+        false,
+        'an unpublished template is not offered'
+      );
+      assert.deepEqual(
+        a.trace
+          .filter(t => /\/(team\/)?document-templates$/.test(t.path))
+          .map(t => t.path.replace(/^.*\/v1/, ''))
+          .slice(-2)
+          .sort(),
+        ['/document-templates', '/team/document-templates'],
+        'one listing per space'
+      );
+      let label = radios()
+        .find(r => r.value === own.id)
+        .closest('label');
+      assert.equal(label.querySelector('b').textContent, '出具页模板', 'the template by its name');
+      assert.equal(label.querySelector('code').textContent, own.id, 'the id is secondary text');
+      assert.equal(label.querySelector('.pill').textContent, '我的', 'the own space');
+      const teamLabel = radios()
+        .find(r => r.value === team.id)
+        .closest('label');
+      assert.equal(teamLabel.querySelector('b').textContent, '团队出具模板');
+      assert.equal(teamLabel.querySelector('.pill').textContent, '团队', 'the team space');
+      assert.match(a.$('issue-templates-note').textContent, /^\d+ 个已发布模板；只有已发布版本可以出具。$/);
+      if (!label.querySelector('input').checked) label.querySelector('input').click();
+      // Picking reads the published version (through the space's route): the card then says how it issues, and 正式出具 is enabled.
+      await until(() => !a.$('issue-go').disabled, 'the published version read');
+      label = radios()
+        .find(r => r.value === own.id)
+        .closest('label');
+      assert.equal(label.querySelector('input').checked, true, 'the template is picked');
+      assert.equal(label.querySelector('small').textContent, '已发布 v1 · 单页模板 · 按行出具');
+      assert.ok(
+        a.trace.some(
+          t => t.path.endsWith('/document-templates/' + own.id + '/published') && !t.path.includes('/team/')
+        ),
+        "the own template's published version from the own route"
+      );
+      // 出具前确认 names the template, its space, the data, the snapshot, the row and who gives the number; the issue runs the studio's request path.
+      a.click('issue-go');
+      assert.equal(a.$('sh-d-issue').hidden, false);
+      assert.equal(d.activeElement, a.$('issue-confirm'), 'the focus is on the confirmation');
+      const summary = () =>
+        Object.fromEntries(
+          [...a.$('issue-summary').querySelectorAll('dt')].map(dt => [
+            dt.textContent,
+            dt.nextElementSibling.textContent,
+          ])
+        );
+      let rows = summary();
+      assert.equal(rows['模板'], '出具页模板 · 已发布 v1');
+      assert.equal(rows['空间'], '我的模板');
+      assert.match(rows['数据'], /^应收余额 · company_demo · \d{4}-\d{2}-\d{2}$/);
+      assert.equal(rows['行'], '第 1 行');
+      assert.equal(rows['编号'], '由来源产品分配并确认；任务成功后才有编号和文件');
+      a.click('issue-confirm');
+      assert.equal(a.$('sh-d-issue').hidden, true);
+      await until(() => a.downloads.length === 1 && !a.$('preview').disabled, 'issued and downloaded', 30000);
+      assert.match(a.downloads[0].name, /^issued-[A-Za-z0-9][A-Za-z0-9._-]*\.pdf$/);
+      assert.match(
+        a.$('notice').textContent,
+        /^来源产品已确认编号 No\. [A-Za-z0-9][A-Za-z0-9._-]*；PDF 已通过摘要校验，下载已发起。$/
+      );
+      const issues = () => a.trace.filter(t => /\/(team\/)?issues$/.test(t.path) && t.method === 'POST');
+      assert.equal(issues().length, 1, 'one POST /issues with its key');
+      assert.ok(issues()[0].path.endsWith('/v1/issues'), 'the own route');
+      assert.ok(issues()[0].key);
+      // The register follows: the record with its number, state and download (other tests' records of this identity may be there too).
+      const newest = () => a.$('issue-records-body').rows[0];
+      await until(
+        () => newest() && newest().cells[3].textContent === own.id + ' · 版本 1',
+        'the register with this issue'
+      );
+      const record = newest();
+      assert.match(record.cells[0].textContent, /^No\. /);
+      assert.equal(record.cells[1].textContent, '已出具');
+      assert.equal(record.cells[7].querySelector('button').textContent, '下载');
+      assert.match(a.$('issue-records-note').textContent, /^\d+ 条$/);
+      assert.equal(a.$('issue-records-wrap').hidden, false);
+      // A team template is issued through the team's route (S12-C), its published version read there, and the dialog says the space; the
+      // server's answer (here a refusal) is told as the studio tells it. (The list is drawn again at each change: the radio is looked up anew.)
+      radios()
+        .find(r => r.value === team.id)
+        .click();
+      await until(() => !a.$('issue-go').disabled, "the team template's published version read");
+      assert.ok(
+        a.trace.some(t => t.path.endsWith('/team/document-templates/' + team.id + '/published')),
+        "the team template's published version from the team route"
+      );
+      a.click('issue-go');
+      rows = summary();
+      assert.equal(rows['模板'], '团队出具模板 · 已发布 v1');
+      assert.equal(rows['空间'], '团队模板（租户共享空间）');
+      a.click('issue-confirm');
+      await until(() => issues().length === 2 && !a.$('preview').disabled, 'the team issue answered');
+      assert.ok(issues()[1].path.endsWith('/v1/team/issues'), 'the team route');
+      assert.match(a.$('notice').textContent, /只能正式出具当前已发布的模板版本/);
+      assert.equal(a.downloads.length, 1, 'nothing downloaded for the refusal');
+      // From the studio: the ribbon's 正式出具 leads here with the open template preselected, and says so.
+      d.querySelector('[data-page="library"]').click();
+      await until(
+        () =>
+          [...d.querySelectorAll('#page-library .catalog-card')].some(
+            c => c.getAttribute('aria-label') === '未发布的模板'
+          ),
+        'the centre lists the templates'
+      );
+      const card = [...d.querySelectorAll('#page-library .catalog-card')].find(
+        c => c.getAttribute('aria-label') === '出具页模板'
+      );
+      [...card.querySelectorAll('button')].find(b => b.textContent.trim() === '编辑').click();
+      await until(
+        () => !a.$('page-documents').hidden && a.$('doc-server-status').textContent.includes('正在编辑模板 ' + own.id),
+        'the studio'
+      );
+      assert.equal(a.$('st-tool-issue').title, '在“出具”页用这个模板的已发布版本出具；出具记录也在那里');
+      a.$('st-tab-check').click();
+      a.$('st-tool-issue').click();
+      assert.equal(a.$('page-issue').hidden, false, 'the issue page');
+      assert.equal(a.$('page-documents').hidden, true);
+      assert.equal(d.querySelector('#st-d-issue.open'), null, 'the studio dialog did not open');
+      await until(
+        () => a.$('issue-templates').querySelector('input:checked')?.value === own.id,
+        'the template preselected'
+      );
+      assert.equal(a.$('issue-templates').querySelector('input:checked').dataset.space, '', 'in its space');
+      // Sign-out clears the page.
+      a.click('logout');
+      assert.equal(a.$('issue-records-body').rows.length, 0);
+      assert.equal(a.$('issue-templates').children.length, 0);
+      assert.equal(a.$('issue-records-note').textContent, '尚未读取');
+      assert.equal(a.errors.length, 0, a.errors.join('|'));
+    } finally {
+      a.close();
+    }
+    // S12-A2: a session whose roles do not issue. The rail's 出具 is hidden with the stylesheet's rule (needs-issuer under no-issuer, as the
+    // administrator's 管理); the page, reached by its address, says the role cannot issue, offers no 正式出具 and still reads the register.
+    const viewer = app(async (path, options) => {
+      if (path.endsWith('/session')) {
+        const session = await (await fetch(url + path, options)).json();
+        return json({...session, roles: ['viewer', 'designer', 'publisher']});
+      }
+    });
+    try {
+      await viewer.login();
+      assert.equal(viewer.w.document.body.classList.contains('no-issuer'), true);
+      assert.equal(
+        viewer.w.document.querySelector('.app-rail [data-page="issue"]').classList.contains('needs-issuer'),
+        true
+      );
+      viewer.w.location.hash = '#issue';
+      viewer.w.dispatchEvent(new viewer.w.Event('hashchange'));
+      await until(() => !viewer.$('page-issue').hidden, 'the page by its address');
+      assert.equal(
+        viewer.$('issue-note').textContent,
+        '当前角色不能出具：正式出具需要“正式出具”角色，请联系平台运营方在身份绑定中授予；出具记录仍可查看。'
+      );
+      assert.equal(viewer.$('issue-go').disabled, true);
+      assert.equal(viewer.$('issue-go').title, viewer.$('issue-note').textContent);
+      await until(() => /^\d+ 条$/.test(viewer.$('issue-records-note').textContent), 'the register is read');
+      assert.equal(viewer.errors.length, 0, viewer.errors.join('|'));
+    } finally {
+      viewer.close();
+    }
+  }
+);
 
 // S07-G (ADR 0011): the layout designer has the document studio's three controls and its two dialogs; the dashboard studio's 版本 is the same dialog.
 test('S07-G G1: the layout designer: 版本 · 保存版本 · 发布 in its bar, the badge, 发布前确认 with 保存并发布, the version dialog with restore and a rollback, refusals that say what is missing', async () => {
