@@ -1,7 +1,9 @@
 # ADR 0012 · Manually entered datasets: a source of their own, marked wherever they show
 
-Date: 2026-11-06. Status: proposed. Implementation: S08-A (the data class), S08-B (the manual source), S08-C (the
-editor). ADR 0013 decides issuing from these datasets (S08-D).
+Date: 2026-11-06. Status: accepted 2026-11-11, by the decision the product owner delegated to engineering that day ("按你的建议全面开始吧");
+the open questions are decided at the end. Implementation: S08-A (the data class), S08-B (the manual source), S08-C (the
+editor). ADR 0013 decides issuing from these datasets (S08-D). Written before ADR 0018 gave the platform roles; the decisions
+below say how the two meet.
 
 ## Context
 
@@ -73,7 +75,7 @@ What the code does that bears on this:
    security headers as the platform API, whose routes do not change. The server parses the CSV: UTF-8, a header row
    naming the columns, values in the platform's cell formats, and a bound on rows and bytes that S08-B measures. The
    console sends the pasted text and shows the server's answer. The editor page is reached from the data drawer
-   (新建手工数据集, and 编辑数据 on a manual dataset), not from a seventh rail entry, and exists only when a manual
+   (新建手工数据集, and 编辑数据 on a manual dataset), not from a new rail entry, and exists only when a manual
    connection is configured. The document studio's 导入样本 stays disabled: a template's sample is still not data.
 8. **Only for data that no product holds.** A manual dataset must not retype what an integrated product owns, such as
    the receivables of S02-A: that would be the second financial truth S02-A ruled out. The platform cannot check this.
@@ -81,8 +83,8 @@ What the code does that bears on this:
 9. **Three slices.** S08-A makes the data class the adapter's word in the core, both exports and the catalog; any real
    adapter needs this too. S08-B adds `adapters/manual`: both stores, the database's migrations and roles, the four
    calls and the connection's roles, registered in the demo, with versions made by tests and the seed script. S08-C
-   adds the editing API, the editor page, the manual's chapter, DOM tests and a baseline task, T8 (新建手工数据集 →
-   粘贴三行 → 确认 → 在工作台预览). Each slice adds what it changes to docs/SECURITY_REVIEW.md.
+   adds the editing API, the editor page, the manual's chapter, DOM tests and a baseline task, T10 (新建手工数据集 →
+   粘贴三行 → 确认 → 在工作台预览; T8 is S09-G's issue task and T9 ADR 0023's filtered export). Each slice adds what it changes to docs/SECURITY_REVIEW.md.
 
 ## Consequences
 
@@ -97,3 +99,15 @@ per query, as before), and it has no formulas and no attachments.
 
 - Should reports see draft versions? Proposed: no (decision 4). A draft is seen only in the editor.
 - Is one set of roles per connection enough (decision 5), or are roles per dataset needed from the start?
+
+## Decisions on the open questions (2026-11-11)
+
+- **Drafts are not reports.** Reports, snapshots, exports, dashboards and templates see the confirmed version only (decision 4 stands);
+  a draft is seen in the editor by those who may edit or confirm. A report built on a draft would be a report on data nobody has
+  answered for.
+- **Roles per connection, taken from the platform's roles.** ADR 0018 gave the platform five roles from the bindings file. The manual
+  source's four (decision 5) are not a second role system: `read` is the platform's `viewer`, `edit` is `designer`, `confirm` is
+  `publisher`, `issue` is `issuer`, for the subjects bound to the connection's integration; the connection's options may further
+  restrict each to a list of subjects, and may not widen it. Roles per dataset are not needed from the start: datasets with different
+  keepers go in different connections (decision 5's last sentence), and a per-dataset restriction can be added inside the connection
+  later without changing the contract. Every edit, confirmation and issue is an audit event of ADR 0018 decision 4.

@@ -1,7 +1,9 @@
 # ADR 0013 · Issuing from manual datasets: the operator numbers the documents and answers for them
 
-Date: 2026-11-06. Status: proposed. Amends ADR 0003 decisions 1 and 5, and the same rule in docs/s00/ARCHITECTURE.md and
-docs/s00/INTERFACES.md, for the datasets of a manual source (ADR 0012) and for nothing else. Implementation: S08-D.
+Date: 2026-11-06. Status: accepted 2026-11-11, by the decision the product owner delegated to engineering that day; the open
+questions are decided at the end. Amends ADR 0003 decisions 1 and 5, and the same rule in docs/s00/ARCHITECTURE.md and
+docs/s00/INTERFACES.md, for the datasets of a manual source (ADR 0012) and for nothing else. Implementation: S08-D, after
+S09-G (the issue page, where manual issuing is done from).
 
 ## Context
 
@@ -76,3 +78,15 @@ are numbered by its product or by a manual source, never by both, because a conn
   on a connection that issues?
 - Are the series of decision 2 enough: one prefix per connection, numbers that never restart, a new prefix for a new
   year?
+
+## Decisions on the open questions (2026-11-11)
+
+- **A second person confirms before anyone issues.** Decision 3 stands, and it is the same control ADR 0018 decision 3 gives publication
+  in the shared design space: the person who saved the version cannot be the one who confirms it, and only a confirmed version is issued
+  from. One person who may both confirm and issue may still not confirm their own version. A connection cannot switch this off: the
+  numbers of ADR 0013 are the operator's own, and the second pair of eyes is what the operator has in place of the source product's approval.
+- **Series per dataset, never restarting.** Decision 2 is amended in one respect: a series belongs to a dataset of the connection, not to
+  the connection, because a connection may hold several kinds of document (an invoice and a receipt do not share a sequence). The
+  dataset's options name its prefix (1 to 8 characters, A–Z and 0–9, starting with a letter); numbers are `<PREFIX>-<6 digits>` from one
+  locked row per series, consecutive, never reused, never restarted; a yearly restart is a new prefix (such as `AR26`), which is a new
+  series and a new locked row. Two datasets may not name the same prefix within a connection.

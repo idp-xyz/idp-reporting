@@ -82,7 +82,7 @@ npm run format:check                                           # Prettier（ADR 
 | 想知道 | 看 |
 |---|---|
 | 架构基线与接口合同 | docs/s00/ARCHITECTURE.md、docs/s00/INTERFACES.md |
-| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0015_COMPANY_DIRECTORY.md（0012、0013 为提案） |
+| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0015_COMPANY_DIRECTORY.md（0021 为提案） |
 | API | docs/API.md |
 | 控制台与设计器 | docs/CONSOLE.md、docs/STUDIO.md，用户手册 docs/manual/ |
 | 嵌入 | docs/EMBEDDING.md |
