@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"idp.local/reporting/export/present"
 	r "idp.local/reporting/reporting"
 )
 
@@ -53,41 +54,70 @@ var dataClasses = map[string]string{"contract-simulator": "合同模拟器 / 合
 
 // document is data.json. Every printed string in it was checked against the fonts: the values
 // by measurer.segment, the labels by measurer.width.
+//
+// A presented export (S23-A, ADR 0024) adds the keys that are absent otherwise: the footnote under the total row, the indices of the
+// subtotal rows (set in bold under a rule, as the total row is) and the mark fills, one colour or "" per cell of each row. Without a
+// presentation the data is what it always was, and so is the document.
 type document struct {
-	Title     string            `json:"title"` // PDF metadata
-	Fonts     []string          `json:"fonts"`
-	Landscape bool              `json:"landscape"`
-	Heading   any               `json:"heading"`
-	Meta      any               `json:"meta"`
-	Footer    any               `json:"footer"`
-	Labels    map[string]string `json:"labels"`
-	Widths    []float64         `json:"widths"`
-	Align     []string          `json:"align"`
-	Header    []any             `json:"header"`
-	Rows      [][]any           `json:"rows"`
-	TotalRow  []any             `json:"total_row"`
-	TotalList []any             `json:"total_list"`
-	Empty     bool              `json:"empty"`
+	Title        string            `json:"title"` // PDF metadata
+	Fonts        []string          `json:"fonts"`
+	Landscape    bool              `json:"landscape"`
+	Heading      any               `json:"heading"`
+	Meta         any               `json:"meta"`
+	Footer       any               `json:"footer"`
+	Labels       map[string]string `json:"labels"`
+	Widths       []float64         `json:"widths"`
+	Align        []string          `json:"align"`
+	Header       []any             `json:"header"`
+	Rows         [][]any           `json:"rows"`
+	TotalRow     []any             `json:"total_row"`
+	TotalList    []any             `json:"total_list"`
+	Empty        bool              `json:"empty"`
+	Footnote     any               `json:"footnote,omitempty"`
+	SubtotalRows []int             `json:"subtotal_rows,omitempty"`
+	Fills        [][]string        `json:"fills,omitempty"`
 }
 
-// pieces is a run too wide for its box, cut into pieces that each fit one line. Typst may
-// break between pieces, and nowhere else inside the run.
-type pieces struct {
-	Pieces []string `json:"pieces"`
+// shown is the table as it is printed, before it is measured: the header texts, the alignment and kind of each column, the rows (every
+// value already as its text), which rows are set in bold, the total row or the totals list, and what stands around the table. A plain
+// export (plainTable) is the snapshot in catalogue order; a presented one (presentedTable) is what export/present made of it.
+type shown struct {
+	header    []string
+	align     []string
+	numeric   []bool // a numeric column: a number's unbreakable run may be wider before it is broken
+	rows      [][]string
+	bold      []bool // rows set in bold (the subtotal rows)
+	totalRow  []string
+	totalList []string
+	fills     [][]string
+	heading   string
+	footnote  string
+	meta      string // appended to the meta line
 }
 
-// build turns a snapshot into the template's data. It refuses characters the fonts do not
-// cover and snapshots too wide for a page, and never computes or rounds a value.
-func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
-	cols := s.Result.Columns
-	if len(cols) == 0 || len(cols) != len(s.Query.Dimensions)+len(s.Query.Metrics) {
-		return nil, r.ErrIntegrity
+// headerText is a column's header: its label with its currency and unit, as every export prints it.
+func headerText(c r.Column) string {
+	label := printable(c.Label)
+	switch {
+	case c.Currency != "" && c.Unit != "":
+		label += "（" + printable(c.Currency) + " · " + printable(c.Unit) + "）"
+	case c.Currency != "":
+		label += "（" + printable(c.Currency) + "）"
+	case c.Unit != "":
+		label += "（" + printable(c.Unit) + "）"
 	}
+	return label
+}
+
+// plainTable is the whole snapshot in catalogue order: dimensions and non-numeric metrics verbatim, numeric metrics with grouped digits,
+// right-aligned, the total row after the rows when there are dimensions, the totals as a list when there are none.
+func plainTable(s r.Snapshot) (*shown, error) {
+	cols := s.Result.Columns
 	if len(cols) > MaxColumns {
 		return nil, fmt.Errorf("pdf: %d columns do not fit a page: %w", len(cols), r.ErrUnsupported)
 	}
 	dims := len(s.Query.Dimensions)
-	numeric := func(j int) bool { return cols[j].Type == "decimal" || cols[j].Type == "integer" }
+	numeric := func(j int) bool { return r.NumericColumnType(cols[j].Type) }
 	value := func(j int, v string) (string, error) {
 		if j < dims || !numeric(j) {
 			return printable(v), nil
@@ -97,28 +127,25 @@ func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
 		}
 		return groupDigits(v), nil
 	}
-
-	header := make([]string, len(cols))
+	t := &shown{heading: printable(s.Query.Dataset.ID)}
 	for j, c := range cols {
-		header[j] = printable(c.Label)
-		switch {
-		case c.Currency != "" && c.Unit != "":
-			header[j] += "（" + printable(c.Currency) + " · " + printable(c.Unit) + "）"
-		case c.Currency != "":
-			header[j] += "（" + printable(c.Currency) + "）"
-		case c.Unit != "":
-			header[j] += "（" + printable(c.Unit) + "）"
+		t.header = append(t.header, headerText(c))
+		t.numeric = append(t.numeric, numeric(j))
+		align := "left"
+		if numeric(j) {
+			align = "right"
 		}
+		t.align = append(t.align, align)
 	}
-	rows := make([][]string, len(s.Result.Rows))
+	t.rows = make([][]string, len(s.Result.Rows))
 	for i, row := range s.Result.Rows {
 		if len(row) != len(cols) {
 			return nil, r.ErrIntegrity
 		}
-		rows[i] = make([]string, len(cols))
+		t.rows[i] = make([]string, len(cols))
 		for j, v := range row {
 			var err error
-			if rows[i][j], err = value(j, v); err != nil {
+			if t.rows[i][j], err = value(j, v); err != nil {
 				return nil, err
 			}
 		}
@@ -135,41 +162,135 @@ func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
 		}
 		totals = append(totals, v)
 	}
-	var totalRow []string
 	if dims > 0 && len(totals) > 0 {
-		totalRow = make([]string, len(cols))
-		totalRow[0] = labels["total"]
-		copy(totalRow[dims:], totals)
+		t.totalRow = make([]string, len(cols))
+		t.totalRow[0] = labels["total"]
+		copy(t.totalRow[dims:], totals)
 	}
+	if dims == 0 {
+		for i, v := range totals {
+			t.totalList = append(t.totalList, t.header[dims+i]+"："+v)
+		}
+	}
+	return t, nil
+}
+
+// presentedTable is the snapshot as the presentation shows it (S23-A): the shown columns in their order under their labels (a label of the
+// presentation replaces the dataset's label and its currency and unit, as a 2.0 document table column's does), aligned and formatted as it
+// says, each subtotal group followed by its subtotal row in bold, the source's total row (or totals list, when every shown column is a
+// metric) unchanged, the marks as cell fills, the title as the heading and the footnote under the table.
+func presentedTable(s r.Snapshot, p r.Presentation) (*shown, error) {
+	table, err := present.Build(s, p)
+	if err != nil {
+		return nil, err
+	}
+	if len(table.Columns) > MaxColumns {
+		return nil, fmt.Errorf("pdf: %d columns do not fit a page: %w", len(table.Columns), r.ErrUnsupported)
+	}
+	t := &shown{heading: printable(s.Query.Dataset.ID), footnote: printable(table.Footnote), meta: fmt.Sprintf(" · 布局 %s@%d", table.LayoutID, table.LayoutVersion)}
+	if table.Title != "" {
+		t.heading = printable(table.Title)
+	}
+	for _, c := range table.Columns {
+		if c.Label != "" {
+			t.header = append(t.header, printable(c.Label))
+		} else {
+			t.header = append(t.header, headerText(c.Source))
+		}
+		t.numeric = append(t.numeric, c.Numeric())
+		t.align = append(t.align, c.Align)
+	}
+	marked := false
+	for _, row := range table.Rows {
+		texts, fills := make([]string, len(row.Cells)), make([]string, len(row.Cells))
+		for k, cell := range row.Cells {
+			texts[k] = printable(cell.Text)
+			if cell.Mark != "" {
+				fills[k], marked = present.Palette[cell.Mark], true
+			}
+		}
+		t.rows = append(t.rows, texts)
+		t.bold = append(t.bold, row.Subtotal)
+		t.fills = append(t.fills, fills)
+	}
+	if !marked {
+		t.fills = nil
+	}
+	if table.Totals != nil {
+		if table.TotalLabelAt >= 0 {
+			t.totalRow = make([]string, len(table.Columns))
+			for k, cell := range table.Totals {
+				t.totalRow[k] = printable(cell.Text)
+			}
+		} else {
+			for k, cell := range table.Totals {
+				t.totalList = append(t.totalList, t.header[k]+"："+printable(cell.Text))
+			}
+		}
+	}
+	return t, nil
+}
+
+// pieces is a run too wide for its box, cut into pieces that each fit one line. Typst may
+// break between pieces, and nowhere else inside the run.
+type pieces struct {
+	Pieces []string `json:"pieces"`
+}
+
+// build turns a snapshot into the template's data. It refuses characters the fonts do not
+// cover and snapshots too wide for a page, and never computes or rounds a value.
+func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
+	return buildTable(s, nil, m, created)
+}
+
+// buildTable is build for the whole snapshot (p nil) or for the presentation p (S23-A): the same measuring, fitting and checking of every
+// printed character, over what plainTable or presentedTable say is printed.
+func buildTable(s r.Snapshot, p *r.Presentation, m *measurer, created time.Time) (*document, error) {
+	cols := s.Result.Columns
+	if len(cols) == 0 || len(cols) != len(s.Query.Dimensions)+len(s.Query.Metrics) {
+		return nil, r.ErrIntegrity
+	}
+	var t *shown
+	var err error
+	if p == nil {
+		t, err = plainTable(s)
+	} else {
+		t, err = presentedTable(s, *p)
+	}
+	if err != nil {
+		return nil, err
+	}
+	n := len(t.header)
+	bold := func(i int) bool { return t.bold != nil && t.bold[i] }
 
 	// Column widths: natural widths when they fit, else see fit. A column's least width is its
 	// longest unbreakable run, capped, so that runs only break when they must.
-	natural, least := make([]float64, len(cols)), make([]float64, len(cols))
+	natural, least := make([]float64, n), make([]float64, n)
 	grow := func(j int, text string, bold bool) error {
-		n, t, err := m.extent(text, bodySize, bold)
+		line, token, err := m.extent(text, bodySize, bold)
 		if err != nil {
 			return err
 		}
 		limit := maxToken
-		if numeric(j) {
+		if t.numeric[j] {
 			limit = maxNumber
 		}
 		// The extra hundredth of a point survives fit rounding widths down to hundredths.
-		natural[j] = math.Max(natural[j], n*slack+2*insetX+0.01)
-		least[j] = math.Max(least[j], math.Min(t*slack, limit)+2*insetX+0.01)
+		natural[j] = math.Max(natural[j], line*slack+2*insetX+0.01)
+		least[j] = math.Max(least[j], math.Min(token*slack, limit)+2*insetX+0.01)
 		return nil
 	}
-	for j := range cols {
-		if err := grow(j, header[j], true); err != nil {
+	for j := range n {
+		if err := grow(j, t.header[j], true); err != nil {
 			return nil, err
 		}
-		for _, row := range rows {
-			if err := grow(j, row[j], false); err != nil {
+		for i, row := range t.rows {
+			if err := grow(j, row[j], bold(i)); err != nil {
 				return nil, err
 			}
 		}
-		if totalRow != nil {
-			if err := grow(j, totalRow[j], true); err != nil {
+		if t.totalRow != nil {
+			if err := grow(j, t.totalRow[j], true); err != nil {
 				return nil, err
 			}
 		}
@@ -185,7 +306,7 @@ func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
 		return nil, err
 	}
 
-	d := &document{Title: printable(s.Query.Dataset.ID), Fonts: m.families, Landscape: landscape, Labels: labels, Widths: widths, Rows: make([][]any, len(rows)), Empty: len(rows) == 0}
+	d := &document{Title: t.heading, Fonts: m.families, Landscape: landscape, Labels: labels, Widths: widths, Align: t.align, Rows: make([][]any, len(t.rows)), Empty: len(t.rows) == 0, Fills: t.fills}
 	for k, v := range labels {
 		if _, err := m.width(v+"0123456789", footSize, false); err != nil {
 			return nil, fmt.Errorf("pdf: label %s: %w", k, err)
@@ -196,9 +317,9 @@ func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
 		class = label
 	}
 	dataset := s.Query.Dataset.ID + "@" + s.Query.Dataset.Version
-	meta := fmt.Sprintf("%s · 截至 %s（%s）· 公司 %s · %d 行 · 生成于 %s UTC", dataset, s.Query.AsOf, s.Query.Timezone, strings.Join(s.Query.Companies, "、"), len(rows), created.UTC().Format("2006-01-02 15:04:05"))
+	meta := fmt.Sprintf("%s · 截至 %s（%s）· 公司 %s · %d 行 · 生成于 %s UTC", dataset, s.Query.AsOf, s.Query.Timezone, strings.Join(s.Query.Companies, "、"), len(s.Result.Rows), created.UTC().Format("2006-01-02 15:04:05")) + t.meta
 	footer := fmt.Sprintf("%s · 快照 %s · %s · 截至 %s · 来源水位 %s", class, s.ID, dataset, s.Query.AsOf, s.Prepared.Watermark)
-	if d.Heading, err = m.segment(printable(s.Query.Dataset.ID), titleSize, true, avail); err != nil {
+	if d.Heading, err = m.segment(t.heading, titleSize, true, avail); err != nil {
 		return nil, err
 	}
 	if d.Meta, err = m.segment(printable(meta), metaSize, false, avail); err != nil {
@@ -207,42 +328,43 @@ func build(s r.Snapshot, m *measurer, created time.Time) (*document, error) {
 	if d.Footer, err = m.segment(printable(footer), footSize, false, avail-footPage); err != nil {
 		return nil, err
 	}
-	content := func(j int) float64 { return widths[j] - 2*insetX }
-	for j := range cols {
-		align := "left"
-		if numeric(j) {
-			align = "right"
+	if t.footnote != "" {
+		if d.Footnote, err = m.segment(t.footnote, metaSize, false, avail); err != nil {
+			return nil, err
 		}
-		d.Align = append(d.Align, align)
-		h, err := m.segment(header[j], bodySize, true, content(j))
+	}
+	content := func(j int) float64 { return widths[j] - 2*insetX }
+	for j := range n {
+		h, err := m.segment(t.header[j], bodySize, true, content(j))
 		if err != nil {
 			return nil, err
 		}
 		d.Header = append(d.Header, h)
 	}
-	for i, row := range rows {
+	for i, row := range t.rows {
 		d.Rows[i] = make([]any, len(row))
 		for j, v := range row {
-			if d.Rows[i][j], err = m.segment(v, bodySize, false, content(j)); err != nil {
+			if d.Rows[i][j], err = m.segment(v, bodySize, bold(i), content(j)); err != nil {
 				return nil, err
 			}
 		}
+		if bold(i) {
+			d.SubtotalRows = append(d.SubtotalRows, i)
+		}
 	}
-	for j, v := range totalRow {
+	for j, v := range t.totalRow {
 		c, err := m.segment(v, bodySize, true, content(j))
 		if err != nil {
 			return nil, err
 		}
 		d.TotalRow = append(d.TotalRow, c)
 	}
-	if dims == 0 {
-		for i, v := range totals {
-			c, err := m.segment(header[dims+i]+"："+v, bodySize, true, avail)
-			if err != nil {
-				return nil, err
-			}
-			d.TotalList = append(d.TotalList, c)
+	for _, v := range t.totalList {
+		c, err := m.segment(v, bodySize, true, avail)
+		if err != nil {
+			return nil, err
 		}
+		d.TotalList = append(d.TotalList, c)
 	}
 	return d, nil
 }

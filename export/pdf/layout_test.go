@@ -111,6 +111,132 @@ func TestBuildLaysOutTheSnapshotAsGiven(t *testing.T) {
 	}
 }
 
+// presentation is a presentation of table(2, 2): the second metric first under its own label, the first dimension centred, the first
+// metric in parentheses with a dash for zero, subtotals by the first dimension, two marks.
+func presentation() r.Presentation {
+	parens := r.NumberFormat{Grouping: true, Negative: r.NegativeParentheses, Zero: r.ZeroDash}
+	return r.Presentation{
+		LayoutID: "0123456789abcdef0123456789abcdef", LayoutVersion: 2, Title: "分区账龄", Footnote: "金额含税；小计为本表所列金额之和。",
+		Columns:    []r.PresentedColumn{{ID: "m1", Label: "笔数", Align: r.AlignRight}, {ID: "d0", Align: r.AlignCenter}, {ID: "m0", Align: r.AlignRight, Format: &parens}},
+		SubtotalBy: "d0",
+		Marks:      []r.Mark{{Column: "m0", When: r.WhenLess, Value: "0", Mark: r.MarkBad}, {Column: "d0", When: r.WhenEqual, Value: "华西", Mark: r.MarkNote}},
+	}
+}
+
+func TestBuildPresentsTheSnapshotThroughALayout(t *testing.T) {
+	s := table(2, 2, []string{"华东", "2026", "1234567.89", "-0.50"}, []string{"华西", "2025", "-0.50", "1000.00"}, []string{"华东", "2025", "0.00", "999999999997.00"})
+	s.Result.Columns[3].Currency, s.Result.Columns[3].Unit = "", "笔"
+	p := presentation()
+	d, err := buildTable(s, &p, fakeMetrics(), created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The shown columns in the layout's order: a label of the layout replaces the dataset's label and its unit, the dataset's label keeps
+	// its currency.
+	if !jsonEqual(d.Header, []any{"笔数", "维度0", "金额0（CNY）"}) || !slices.Equal(d.Align, []string{"right", "center", "right"}) {
+		t.Errorf("header %v align %v", d.Header, d.Align)
+	}
+	// The groups (华东: rows 0 and 2; 华西: row 1), each followed by its subtotal row, in bold under a rule; the formats applied; the
+	// source's total row unchanged, its label in the first column that is not a summed metric.
+	want := [][]any{
+		{"-0.50", "华东", "1,234,567.89"},
+		{"999,999,999,997.00", "华东", "—"},
+		{"999,999,999,996.50", "小计", "1,234,567.89"},
+		{"1,000.00", "华西", "(0.50)"},
+		{"1,000.00", "小计", "(0.50)"},
+	}
+	if !jsonEqual(d.Rows, want) || !slices.Equal(d.SubtotalRows, []int{2, 4}) {
+		t.Errorf("rows = %v, subtotal rows %v", d.Rows, d.SubtotalRows)
+	}
+	if !jsonEqual(d.TotalRow, []any{"1,234,567.89", "合计", "1,234,567.89"}) || d.TotalList != nil {
+		t.Errorf("totals = %v / %v", d.TotalRow, d.TotalList)
+	}
+	// The marks as fills from the palette, "" elsewhere; a subtotal row is never filled.
+	fills := [][]string{{"", "", ""}, {"", "", ""}, {"", "", ""}, {"", "CFE2F3", "F4CCCC"}, {"", "", ""}}
+	if !jsonEqual(d.Fills, fills) {
+		t.Errorf("fills = %v", d.Fills)
+	}
+	// The title is the heading and the document's title, the footnote is under the table, the layout is in the meta line.
+	if d.Heading != "分区账龄" || d.Title != "分区账龄" || d.Footnote != "金额含税；小计为本表所列金额之和。" || d.Empty {
+		t.Errorf("heading %v title %q footnote %v", d.Heading, d.Title, d.Footnote)
+	}
+	if meta := d.Meta.(string); !strings.Contains(meta, "· 布局 0123456789abcdef0123456789abcdef@2") || !strings.Contains(meta, "finance.ledger@2026.10") || !strings.Contains(meta, "3 行") {
+		t.Errorf("meta %q", meta)
+	}
+	// The subtotal rows are measured in bold: the first column's widest text is the subtotal of 华东 (18 characters, as wide as the row
+	// above it), so with subtotals the column is wider than without them (the fake font sets a bold character wider than a plain one).
+	plain, _ := buildTable(s, &r.Presentation{Columns: p.Columns}, fakeMetrics(), created)
+	if plain.Widths[0] >= d.Widths[0] {
+		t.Errorf("widths with a bold subtotal %v, without %v", d.Widths, plain.Widths)
+	}
+	// Without a title the dataset is the heading, as always.
+	untitled := presentation()
+	untitled.Title, untitled.Footnote = "", ""
+	if d, err = buildTable(s, &untitled, fakeMetrics(), created); err != nil || d.Heading != "finance.ledger" || d.Footnote != nil {
+		t.Errorf("untitled: heading %v footnote %v (%v)", d.Heading, d.Footnote, err)
+	}
+	// Every shown column a metric: the totals as a list, as a snapshot without dimensions prints them.
+	metrics := r.Presentation{Columns: []r.PresentedColumn{{ID: "m1", Align: r.AlignRight}, {ID: "m0", Align: r.AlignRight}}}
+	if d, err = buildTable(s, &metrics, fakeMetrics(), created); err != nil || d.TotalRow != nil || !jsonEqual(d.TotalList, []any{"金额1（笔）：1,234,567.89", "金额0（CNY）：1,234,567.89"}) {
+		t.Errorf("metrics only: totals %v / %v (%v)", d.TotalRow, d.TotalList, err)
+	}
+}
+
+func TestAPlainBuildHasNoneOfThePresentationKeys(t *testing.T) {
+	d, err := build(table(2, 2, []string{"华东", "2026", "1234567.89", "-0.50"}), fakeMetrics(), created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(d)
+	for _, key := range []string{"footnote", "subtotal_rows", "fills"} {
+		if strings.Contains(string(b), `"`+key+`"`) {
+			t.Errorf("a plain document carries %q: %s", key, b)
+		}
+	}
+	// The whole presentation is the plain document, key for key.
+	same, err := buildTable(table(2, 2, []string{"华东", "2026", "1234567.89", "-0.50"}), nil, fakeMetrics(), created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := json.Marshal(same); string(c) != string(b) {
+		t.Error("buildTable without a presentation differs from build")
+	}
+}
+
+func TestBuildRefusesAPresentationThatDoesNotFitOrIsTooWide(t *testing.T) {
+	s := table(2, 2, []string{"华东", "2026", "1234567.89", "-0.50"})
+	p := presentation()
+	p.Columns[1].ID, p.SubtotalBy, p.Marks[1].Column = "d9", "d9", "d9"
+	if _, err := buildTable(s, &p, fakeMetrics(), created); !errors.Is(err, r.ErrIntegrity) {
+		t.Errorf("a column the snapshot lacks: %v", err)
+	}
+	wide := table(MaxColumns+1, 0)
+	whole := r.Presentation{}
+	for _, c := range wide.Result.Columns {
+		whole.Columns = append(whole.Columns, r.PresentedColumn{ID: c.ID, Align: r.AlignLeft})
+	}
+	if _, err := buildTable(wide, &whole, fakeMetrics(), created); !errors.Is(err, r.ErrUnsupported) {
+		t.Errorf("%d shown columns: %v", MaxColumns+1, err)
+	}
+	// The same snapshot with MaxColumns of its columns shown fits.
+	fits := r.Presentation{Columns: whole.Columns[:MaxColumns]}
+	if _, err := buildTable(wide, &fits, fakeMetrics(), created); err != nil {
+		t.Errorf("%d shown columns of %d: %v", MaxColumns, MaxColumns+1, err)
+	}
+	// A character the fonts do not cover in a label, a title or a footnote is refused like a value.
+	for name, change := range map[string]func(*r.Presentation){
+		"label":    func(p *r.Presentation) { p.Columns[0].Label = "☃" },
+		"title":    func(p *r.Presentation) { p.Title = "☃" },
+		"footnote": func(p *r.Presentation) { p.Footnote = "☃" },
+	} {
+		p := presentation()
+		change(&p)
+		if _, err := buildTable(s, &p, fakeMetrics('☃'), created); !errors.Is(err, r.ErrUnsupported) {
+			t.Errorf("%s with an uncovered character: %v", name, err)
+		}
+	}
+}
+
 func TestBuildWithoutDimensionsListsTotals(t *testing.T) {
 	d, err := build(table(0, 2, []string{"1.00", "2.00"}), fakeMetrics(), created)
 	if err != nil {

@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -170,6 +171,47 @@ func TestTypstExportsThroughTheService(t *testing.T) {
 		t.Fatal(err)
 	}
 	evidence(t, "financial", art.Content, d, snap, 1)
+
+	// S23-A (ADR 0024): the same snapshot exported through a layout's presentation. The job and the artifact name the layout version,
+	// the file differs from the plain export and is the same bytes when rendered again with the same clock. It is written as evidence
+	// (presented.pdf) so that veraPDF validates it as PDF/A-2b; the layout checker has no presented mode, so it gets no expectation.
+	parens := r.NumberFormat{Grouping: true, Negative: r.NegativeParentheses, Zero: r.ZeroDigits}
+	presentation := r.Presentation{
+		LayoutID: "fedcba9876543210fedcba9876543210", LayoutVersion: 3, Title: "应收账龄（按账龄区间）", Footnote: "小计为本表所列金额之和；合计为来源给出的原范围合计。",
+		Columns:    []r.PresentedColumn{{ID: "aging.bucket", Label: "账龄", Align: r.AlignCenter}, {ID: "customer.id", Align: r.AlignLeft}, {ID: "ar.open_balance", Align: r.AlignRight, Format: &parens}},
+		SubtotalBy: "aging.bucket",
+		Marks:      []r.Mark{{Column: "ar.open_balance", When: r.WhenLess, Value: "0", Mark: r.MarkBad}, {Column: "aging.bucket", When: r.WhenEqual, Value: "current", Mark: r.MarkGood}},
+	}
+	px, err := s.SubmitExportWith(ctx, p, j.SnapshotID, r.ExportOptions{Format: "pdf", Presentation: &presentation}, "pdf-presented")
+	if err != nil || px.Layout == nil || px.Layout.Version != 3 {
+		t.Fatal(px, err)
+	}
+	if _, err = s.RunOne(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if px, err = s.Job(ctx, p, px.ID); err != nil || px.State != "succeeded" || px.Layout == nil {
+		t.Fatal(px, err)
+	}
+	presented, err := s.Download(ctx, p, px.ArtifactID)
+	if err != nil || presented.LayoutID != presentation.LayoutID || presented.LayoutVersion != 3 || !bytes.HasPrefix(presented.Content, []byte("%PDF-")) {
+		t.Fatal(presented.LayoutID, presented.LayoutVersion, err)
+	}
+	if bytes.Equal(presented.Content, art.Content) {
+		t.Error("the presented export is the plain one")
+	}
+	again, err := w.WritePresented(ctx, snap, presentation)
+	if err != nil || !bytes.Equal(again, presented.Content) {
+		t.Errorf("two presented renders with the same clock differ (%v)", err)
+	}
+	pd, err := buildTable(snap, &presentation, newMeasurer(w.fonts), created)
+	if err != nil || len(pd.Rows) != 6 || !slices.Equal(pd.SubtotalRows, []int{1, 3, 5}) || pd.Fills == nil || pd.Footnote == nil {
+		t.Fatalf("the presented document: %+v (%v)", pd, err)
+	}
+	if dir := os.Getenv("REPORTING_PDF_EVIDENCE"); dir != "" {
+		if err := os.WriteFile(filepath.Join(dir, "presented.pdf"), presented.Content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // hostile holds strings that would be markup, code or line-breaking traps if the data were
@@ -282,6 +324,7 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 		{"empty", table(1, 1), 1},
 		{"rows1000", many, 10},
 	}
+	digests := map[string]string{}
 	for _, doc := range docs {
 		t.Run(doc.name, func(t *testing.T) {
 			b, err := w.Write(t.Context(), doc.s)
@@ -292,6 +335,8 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 				}
 				t.Fatal(err)
 			}
+			sum := sha256.Sum256(b)
+			digests[doc.name] = hex.EncodeToString(sum[:])
 			again, err := w.Write(t.Context(), doc.s)
 			if err != nil || !bytes.Equal(b, again) {
 				t.Fatalf("two renders with the same clock differ (%v)", err)
@@ -311,6 +356,77 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 	b, _ := later.Write(t.Context(), docs[2].s)
 	if bytes.Equal(a, b) {
 		t.Error("the creation time is not recorded")
+	}
+	t.Run("plain_golden", func(t *testing.T) { checkPlainGolden(t, digests) })
+	// S23-A: the thousand rows through a presentation (seven subtotal groups, a centred column, a mark on the large amounts, a title
+	// and a footnote), rendered twice to the same bytes and written as evidence for veraPDF.
+	t.Run("presented_rows1000", func(t *testing.T) {
+		p := r.Presentation{
+			LayoutID: "fedcba9876543210fedcba9876543210", LayoutVersion: 1, Title: "按公司小计的千行账", Footnote: "小计为本表所列金额之和。",
+			Columns:    []r.PresentedColumn{{ID: "d0", Label: "公司", Align: r.AlignCenter}, {ID: "d1", Align: r.AlignLeft}, {ID: "m0", Align: r.AlignRight}},
+			SubtotalBy: "d0",
+			Marks:      []r.Mark{{Column: "m0", When: r.WhenGreater, Value: "500000000.00", Mark: r.MarkWarn}},
+		}
+		b, err := w.WritePresented(t.Context(), many, p)
+		if err != nil {
+			var re *RenderError
+			if errors.As(err, &re) {
+				t.Fatalf("%v\n%s", err, re.output())
+			}
+			t.Fatal(err)
+		}
+		again, err := w.WritePresented(t.Context(), many, p)
+		if err != nil || !bytes.Equal(b, again) {
+			t.Fatalf("two presented renders with the same clock differ (%v)", err)
+		}
+		d, err := buildTable(many, &p, newMeasurer(w.fonts), created)
+		if err != nil || len(d.Rows) != r.MaxRows+7 || len(d.SubtotalRows) != 7 || len(d.Fills) != r.MaxRows+7 {
+			t.Fatalf("%d rows, %d subtotal rows, %d fill rows (%v)", len(d.Rows), len(d.SubtotalRows), len(d.Fills), err)
+		}
+		if dir := os.Getenv("REPORTING_PDF_EVIDENCE"); dir != "" {
+			if err := os.WriteFile(filepath.Join(dir, "presented_rows1000.pdf"), b, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+// plainGolden holds the SHA-256 of each plain table export TestTypstLaysOutDocuments renders, with the pinned Typst binary and fonts at
+// the fixed creation time. It is the proof of ADR 0024 decision 2 (S23-A): an export without a layout is byte for byte what it was before
+// the exports learned presentations, titles, subtotal rows and marks. Set REPORTING_PDF_WRITE_GOLDEN=1 to rewrite the file after a
+// reviewed Typst or font upgrade, or a reviewed change of what the plain export shows.
+const plainGolden = "testdata/plain_sha256.json"
+
+func checkPlainGolden(t *testing.T, digests map[string]string) {
+	t.Helper()
+	if os.Getenv("REPORTING_PDF_WRITE_GOLDEN") == "1" {
+		b, _ := json.MarshalIndent(digests, "", " ")
+		if err := os.WriteFile(plainGolden, append(b, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %s", plainGolden)
+		return
+	}
+	raw, err := os.ReadFile(plainGolden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want map[string]string
+	if err := json.Unmarshal(raw, &want); err != nil {
+		t.Fatal(err)
+	}
+	if len(want) == 0 || len(digests) == 0 {
+		t.Fatal("no golden digests")
+	}
+	for name, sum := range want {
+		if got := digests[name]; got != sum {
+			t.Errorf("%s.pdf: SHA-256 %s, the golden file has %s: a plain export changed its bytes", name, got, sum)
+		}
+	}
+	for name := range digests {
+		if _, ok := want[name]; !ok {
+			t.Errorf("%s.pdf has no golden digest; set REPORTING_PDF_WRITE_GOLDEN=1 to record it", name)
+		}
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"idp.local/reporting/doctemplates"
+	"idp.local/reporting/export/present"
 	r "idp.local/reporting/reporting"
 )
 
@@ -899,9 +900,9 @@ func TestSumDecimalsIsTheTablesRule(t *testing.T) {
 		{0, []string{"0"}},
 		{4, []string{"-0.0001", "0.00005"}},
 	} {
-		col := &column{scale: c.scale}
+		col := present.NewSum(c.scale)
 		for _, v := range c.values {
-			if err := col.add(v); err != nil {
+			if err := col.Add(v); err != nil {
 				t.Fatal(err)
 			}
 		}
