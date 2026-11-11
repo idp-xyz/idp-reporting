@@ -352,7 +352,9 @@ func (a *Adapter) call(parent context.Context, op, route string, issue bool, in,
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, int64(a.max)+1))
-	if err != nil {
+	// A body cut short by the timeout is the source's slowness, not a malformed answer: when the timeout has fired, the read's own
+	// outcome does not matter (a source that ends its body only because the request was cancelled can make the read succeed first).
+	if err != nil || ctx.Err() != nil {
 		if e := parent.Err(); e != nil {
 			return e
 		}
