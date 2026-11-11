@@ -609,16 +609,11 @@ test('a saved template named by the address, with or without a version, opens in
     assert.deepEqual(a.messages('reporting:event'), [
       {type: 'reporting:event', v: 1, name: 'saved', template_id: id, version: 2},
     ]);
-    a.click('doc-release-read');
-    await until(
-      () => a.$('doc-release-status').textContent.includes('修订') && !a.$('preview').disabled,
-      'release state'
-    );
-    a.click('doc-release-publish');
-    await until(
-      () => a.$('doc-release-status').textContent.includes('已发布版本') && !a.$('preview').disabled,
-      'published'
-    );
+    // S09-F: 发布 in the bar reads the release state and asks; 确认发布 publishes the saved version.
+    a.$('st-publish').click();
+    await until(() => !a.$('st-pub-confirm').disabled && !a.$('preview').disabled, 'release state');
+    a.$('st-pub-confirm').click();
+    await until(() => a.$('st-state').textContent === '已发布 v2' && !a.$('preview').disabled, 'published');
     assert.deepEqual(
       a.messages('reporting:event').map(m => [m.name, m.template_id, m.version]),
       [
@@ -626,12 +621,14 @@ test('a saved template named by the address, with or without a version, opens in
         ['published', id, 2],
       ]
     );
-    // A withdrawal is not an event, and neither is a refused save: the parent hears of saves and publishes only.
-    a.click('doc-release-withdraw');
+    // A withdrawal (撤回发布 in 历史) is not an event, and neither is a refused save: the parent hears of saves and publishes only.
+    a.$('st-versions').click();
     await until(
-      () => a.$('doc-release-status').textContent.includes('当前未发布') && !a.$('preview').disabled,
-      'withdrawn'
+      () => a.$('st-version-note').textContent === '当前发布：v2' && !a.$('preview').disabled,
+      'history read'
     );
+    a.click('doc-release-withdraw');
+    await until(() => a.$('st-state').textContent === '已保存 v2' && !a.$('preview').disabled, 'withdrawn');
     assert.equal(a.messages('reporting:event').length, 2);
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
@@ -682,18 +679,11 @@ test(
       await until(() => a.$('doc-server-status').textContent.includes('正在编辑模板 ' + id), 'opened');
       a.click('snapshot');
       await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('preview').disabled, 'frozen');
-      a.click('doc-release-read');
-      await until(() => a.$('doc-release-status').textContent.includes('修订') && !a.$('preview').disabled, 'release');
-      a.click('doc-release-publish');
-      await until(
-        () => a.$('doc-release-status').textContent.includes('已发布版本 1') && !a.$('preview').disabled,
-        'published'
-      );
-      a.click('doc-published-open');
-      await until(
-        () => a.$('doc-server-status').textContent.includes('已打开发布模板') && !a.$('preview').disabled,
-        'published open'
-      );
+      // S09-F: 发布 publishes the open v1; the editor then holds the published version, which is what the dialog's issue needs.
+      a.$('st-publish').click();
+      await until(() => !a.$('st-pub-confirm').disabled && !a.$('preview').disabled, 'release');
+      a.$('st-pub-confirm').click();
+      await until(() => a.$('st-state').textContent === '已发布 v1' && !a.$('preview').disabled, 'published');
       a.input('doc-row', '1');
       a.click('doc-issue');
       await until(() => a.messages('reporting:event').some(m => m.name === 'issued'), 'issued event', 20000);
@@ -1423,10 +1413,7 @@ test('the embedded studio: the query form is in its start card, the wordmark is 
     a.$('st-publish').click();
     await until(() => !a.$('st-pub-confirm').disabled, 'confirmation ready');
     a.$('st-pub-confirm').click();
-    await until(
-      () => a.$('doc-release-status').textContent.includes('已发布版本') && !a.$('preview').disabled,
-      'published'
-    );
+    await until(() => a.$('st-state').textContent === '已发布 v1' && !a.$('preview').disabled, 'published');
     assert.deepEqual(
       a.messages('reporting:event').map(m => [m.name, m.template_id, m.version]),
       [['published', id, 1]]

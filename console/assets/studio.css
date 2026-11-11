@@ -3159,16 +3159,10 @@ body.studio-on .console-main {
 #page-documents #st-validation.bad .status-dot {
   background: var(--amber);
 }
-#page-documents .release-box {
-  margin-top: 18px;
+#page-documents #doc-server-status {
+  margin-top: 14px;
   border-top: 1px solid var(--line);
-  padding-top: 12px;
-  font-size: 12px;
-}
-#page-documents .release-box ol {
-  margin: 6px 0;
-  padding-left: 18px;
-  font-size: 11px;
+  padding-top: 10px;
 }
 #page-documents .version-list .version-card {
   display: block;

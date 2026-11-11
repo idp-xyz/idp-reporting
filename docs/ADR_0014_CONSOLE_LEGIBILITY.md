@@ -183,7 +183,7 @@ of the owner's judgement this ADR does not deliver, and the reason is a contract
   (docs/S09D_SCOPE.md): the picker in the console and the embed, the text field kept for a product without the directory.
 - **S09-E** — shared versions/publish component, CSS de-duplication and the declarative checker: decision 9's later part.
   No visible change; the DOM tests are the proof. Part 1 (the component) is done.
-- **S09-F** — one save / publish / history pattern: decision 11. After S09-G.
+- **S09-F** — one save / publish / history pattern: decision 11. After S09-G. Done (docs/S09F_SCOPE.md).
 - **S09-G** — 正式出具 as a page of its own, with the register: decision 12. A baseline task T8 comes with it.
 
 The Prettier reformat is a chore before S09-A, not a slice: one pull request with the pinned dependency, the `format` and

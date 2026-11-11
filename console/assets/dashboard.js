@@ -668,14 +668,15 @@ window.createReportingDashboard = function (ports) {
   function restoreVersion(version) {
     return action(() => {
       const id = savedBoard();
-      if (!Number.isSafeInteger(version) || version < 1 || version > latest) throw Error('请选择有效的保存版本。');
+      if (!Number.isSafeInteger(version) || version < 1 || version > latest) throw Error('请选择有效的版本。');
       return ports.exchange(
         '/dashboards/' + id + '?version=' + version,
         undefined,
         value => {
           entry(value, id, version);
           apply(value.config);
-          $('board-status').textContent = '已把保存版本 v' + version + ' 载入编辑器，是未保存的修改；发布指针不变。';
+          $('board-status').textContent =
+            '已打开 v' + version + '，是未保存的修改；保存会成为下一个版本，当前发布不变。';
         },
         '看板版本'
       );
@@ -711,8 +712,6 @@ window.createReportingDashboard = function (ports) {
   );
   function resetRelease() {
     release = null;
-    $('board-release-status').textContent = '请读取当前看板发布状态后再操作。';
-    $('board-release-history').replaceChildren();
     tell();
   }
   function savedBoard() {
@@ -748,30 +747,11 @@ window.createReportingDashboard = function (ports) {
         throw Error('无法验证看板发布历史。');
       published = event.action === 'publish' ? event.version : 0;
     });
-    if (published !== value.published_version) throw Error('看板发布指针与历史不一致。');
+    if (published !== value.published_version) throw Error('看板的发布状态与发布记录不一致。');
     return value;
   }
   function showRelease(value) {
     release = releaseState(value);
-    $('board-release-status').textContent =
-      '发布修订 ' +
-      release.revision +
-      ' · ' +
-      (release.published_version ? '已发布版本 ' + release.published_version : '当前未发布');
-    $('board-release-history').replaceChildren();
-    for (const event of release.history) {
-      $('board-release-history').append(
-        node(
-          'li',
-          '修订 ' +
-            event.revision +
-            ' · ' +
-            (event.action === 'publish' ? '发布版本 ' + event.version : '撤回') +
-            ' · ' +
-            event.at
-        )
-      );
-    }
     tell();
   }
   function readRelease() {
@@ -781,22 +761,23 @@ window.createReportingDashboard = function (ports) {
       return ports.exchange('/dashboards/' + id + '/release', undefined, showRelease, '看板发布状态');
     });
   }
-  $('board-release-read').addEventListener('click', () => readRelease());
-  function changeRelease(actionName, pick) {
+  // pick: a version picked in 历史, published as it is (an older one is a rollback); without it the editor's saved version, which must match
+  // the editor. conflict: told when the server refused because the release state had changed (S09-F: the confirmation offers 重试).
+  function changeRelease(actionName, pick, conflict) {
     return action(() => {
       const id = savedBoard();
-      const other = actionName === 'publish' && pick && pick !== saved.version;
-      if (other && (!Number.isSafeInteger(pick) || pick < 1 || pick > latest)) throw Error('请选择有效的保存版本。');
-      if (!release) throw Error('请先刷新看板发布状态；发生冲突或结果不确定时需要重新读取。');
+      const picked = actionName === 'publish' && !!pick;
+      if (picked && (!Number.isSafeInteger(pick) || pick < 1 || pick > latest)) throw Error('请选择有效的版本。');
+      if (!release) throw Error('尚未读取到看板的发布状态，请重试。');
       if (
         actionName === 'publish' &&
-        !other &&
+        !picked &&
         JSON.stringify(canonical(config)) !== JSON.stringify(canonical(saved.config))
       )
-        throw Error('请先保存当前修改，再发布该保存版本。');
+        throw Error('请先保存当前修改，或用“发布”的保存并发布。');
       if (actionName === 'withdraw' && !release.published_version) throw Error('当前没有已发布版本。');
       const expected = release.revision,
-        version = actionName === 'publish' ? (other ? pick : saved.version) : 0;
+        version = actionName === 'publish' ? (picked ? pick : saved.version) : 0;
       resetRelease();
       return ports.exchange(
         '/dashboards/' + id + '/release',
@@ -804,34 +785,15 @@ window.createReportingDashboard = function (ports) {
         value => {
           releaseState(value);
           if (value.revision !== expected + 1 || value.published_version !== version)
-            throw Error('服务器返回了意外发布修订，请刷新状态核对。');
+            throw Error('服务器返回了意外的发布状态，请打开“历史”核对。');
           showRelease(value);
         },
-        '看板发布变更'
+        '看板发布变更',
+        actionName === 'publish' ? conflict : undefined
       );
     });
   }
-  $('board-release-publish').addEventListener('click', () => changeRelease('publish'));
   $('board-release-withdraw').addEventListener('click', () => changeRelease('withdraw'));
-  $('board-published-open').addEventListener('click', () =>
-    action(() => {
-      const id = savedBoard();
-      resetRelease();
-      return ports.exchange(
-        '/dashboards/' + id + '/published',
-        undefined,
-        value => {
-          entry(value, id);
-          apply(value.config);
-          saved = value;
-          resetRelease();
-          $('board-server-status').textContent =
-            '已打开发布看板 ' + id + ' · 版本 ' + value.version + '；数据来自当前授权查询。';
-        },
-        '发布看板打开'
-      );
-    })
-  );
   // What the studio layer shows: the binding, the counts, the saved version, whether the configuration differs from it, the release pointer when it has been read.
   function state() {
     const bound = !!result && !!query;
@@ -858,7 +820,7 @@ window.createReportingDashboard = function (ports) {
     openServer,
     state,
     readRelease,
-    publish: pick => changeRelease('publish', pick),
+    publish: (pick, conflict) => changeRelease('publish', pick, conflict),
     save: () => saveServer(false),
     listVersions,
     restoreVersion,

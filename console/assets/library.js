@@ -551,7 +551,7 @@ window.createReportingLibrary = function (ports) {
             btn('编辑', edit, 'small primary', null, {
               'aria-label': '编辑 ' + name,
               'aria-disabled': why ? 'true' : null,
-              title: why || '在设计器中打开最新保存版本',
+              title: why || '在设计器中打开最新版本',
               'data-focus': 'edit' + t.id,
             }),
           ])
@@ -561,7 +561,7 @@ window.createReportingLibrary = function (ports) {
       : h('button', {
           type: 'button',
           class: 'catalog-name',
-          title: why || '在设计器中打开最新保存版本',
+          title: why || '在设计器中打开最新版本',
           'aria-disabled': why ? 'true' : null,
           onclick: edit,
           text: name,
@@ -587,7 +587,7 @@ window.createReportingLibrary = function (ports) {
         'div',
         {class: 'catalog-state'},
         pill(label, t.published > 0 && !c.archived ? 'green' : 'blue'),
-        h('small', {text: t.versions + ' 个保存版本' + when})
+        h('small', {text: t.versions + ' 个版本' + when})
       ),
       actions
     );
@@ -842,12 +842,7 @@ window.createReportingLibrary = function (ports) {
 
   // The classification: domain, flow and collections of one template (the catalogue's metadata; it changes neither the layout nor the versions).
   function classifyDialog(t) {
-    const d = dialog(
-      'classify',
-      '分类 · ' + fallbackName(t),
-      '修改检索信息，不改变模板版式、数据绑定或保存版本',
-      'small'
-    );
+    const d = dialog('classify', '分类 · ' + fallbackName(t), '修改检索信息，不改变模板版式、数据绑定或版本', 'small');
     const domain = h(
       'select',
       {'aria-label': '业务域'},
@@ -1556,8 +1551,8 @@ window.createReportingLibrary = function (ports) {
             class: 'callout',
             text:
               window.reportingTemplateSpace.get() === 'team'
-                ? '创建后是团队模板（保存版本 1）：团队成员都能看到与修改；发布须由另一位发布者完成。'
-                : '创建后是您自己的普通模板（保存版本 1），可在设计器里修改与发布。',
+                ? '创建后是团队模板（版本 1）：团队成员都能看到与修改；发布须由另一位发布者完成。'
+                : '创建后是您自己的普通模板（版本 1），可在设计器里修改与发布。',
           })
         );
       }
@@ -1874,7 +1869,7 @@ window.createReportingLibrary = function (ports) {
       ui.items,
       ui.pagination,
       ui.samples,
-      h('div', {class: 'catalog-notice', text: '分类不改变模板内容或保存版本；示例模板只读，复制后才是您的模板。'})
+      h('div', {class: 'catalog-notice', text: '分类不改变模板内容或版本；示例模板只读，复制后才是您的模板。'})
     );
     ui.title.id = 'lib-title';
     ui.shell = h('div', {class: 'library-shell'}, header, h('div', {class: 'catalog-layout'}, ui.side, main));

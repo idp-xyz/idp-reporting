@@ -1,6 +1,7 @@
 # ADR 0015 · The source product lists the companies a principal may choose
 
-Date: 2026-11-06. Status: accepted, by the decision the owner delegated to engineering the same day (ADR 0014 decision 13).
+Date: 2026-11-06. Status: accepted, by the decision the owner delegated to engineering the same day (ADR 0014 decision 13), and
+ratified by the product owner on 2026-11-11, when it was put to the owner again as a contract-level decision (CODING_STANDARDS.md).
 It adds an optional capability to the adapter contract; no existing adapter, request or stored record changes.
 Implementation: S19-B (server, 2026-11-11: `reporting.CompanyDirectory`, the simulators, `GET /companies`, and the protocol's optional
 route `POST /reporting-source/v1/companies` for a connection with `companies: true`; docs/S19B_SCOPE.md); S09-D (the console and the
