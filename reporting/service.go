@@ -383,20 +383,58 @@ func (s *Service) SubmitExport(ctx context.Context, p Principal, id, key string)
 
 // SubmitExportFormat exports a snapshot in a configured format; "" and "xlsx" mean the workbook.
 func (s *Service) SubmitExportFormat(ctx context.Context, p Principal, id, format, key string) (JobView, error) {
+	return s.SubmitExportWith(ctx, p, id, ExportOptions{Format: format}, key)
+}
+
+// ExportOptions is what an export may carry beyond its snapshot (S23-A, ADR 0024): its format ("" and "xlsx" mean the workbook) and, when
+// the caller has resolved a layout, the presentation the file is rendered through, naming the layout version it came from.
+type ExportOptions struct {
+	Format       string
+	Presentation *Presentation
+}
+
+// SubmitExportWith admits an export of the caller's current, unexpired snapshot with the given options. A presentation must be whole
+// (ErrInvalid), name its layout version, be for a format whose writer can present (ErrUnsupported otherwise), and fit the snapshot's
+// columns and dimensions (ErrUnsupported: it is refused whole, never applied in part); the job freezes it, and its request hash binds the
+// layout version, so that a replay of the key with another version, or with none, is ErrConflict. The caller (the HTTP layer, which owns
+// the layout store) has checked that the layout is bound to the snapshot's dataset and readable by the principal. Admission reads no row.
+func (s *Service) SubmitExportWith(ctx context.Context, p Principal, id string, o ExportOptions, key string) (JobView, error) {
+	format := o.Format
 	if format == "xlsx" {
 		format = ""
 	}
-	if s.writers[format] == nil {
+	w := s.writers[format]
+	if w == nil {
 		return JobView{}, ErrUnsupported
 	}
 	if !validKey(key) {
 		return JobView{}, ErrInvalid
 	}
+	var presentation *Presentation
+	if o.Presentation != nil {
+		if e := o.Presentation.Validate(); e != nil {
+			return JobView{}, e
+		}
+		if o.Presentation.LayoutID == "" {
+			return JobView{}, fmt.Errorf("a presentation of an export must name its layout version: %w", ErrInvalid)
+		}
+		if _, ok := w.(PresentedWriter); !ok {
+			return JobView{}, fmt.Errorf("the %q writer cannot render a presentation: %w", o.Format, ErrUnsupported)
+		}
+		frozen := o.Presentation.Clone()
+		presentation = &frozen
+	}
 	snap, e := s.snapshot(ctx, p, id)
 	if e != nil {
 		return JobView{}, e
 	}
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHash(id, format), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format}, s.quotas)
+	if presentation != nil {
+		if e = presentation.Fits(snap.Result.Columns, snap.Query.Dimensions); e != nil {
+			return JobView{}, e
+		}
+	}
+	layoutID, layoutVersion := layoutOf(presentation)
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHashWithLayout(id, format, layoutID, layoutVersion), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format, Presentation: presentation}, s.quotas)
 	if e != nil {
 		return JobView{}, e
 	}
@@ -408,6 +446,10 @@ func view(j Job) JobView {
 		// The number is the source product's and is known once the job succeeded: jobView reads it
 		// from the record. An issue job itself carries none.
 		v.Issue = issueSummary(j)
+	}
+	if j.Presentation != nil {
+		// Which layout version an export prints (S23-A): the identity, never the presentation itself.
+		v.Layout = &LayoutRef{ID: j.Presentation.LayoutID, Version: j.Presentation.LayoutVersion}
 	}
 	return v
 }
@@ -1026,14 +1068,26 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		if e != nil {
 			return e
 		}
-		b, e := w.Write(ctx, snap)
+		var b []byte
+		if j.Presentation != nil {
+			// The frozen presentation (S23-A): the writer renders through it or the job is refused; without one the writer is called
+			// exactly as it always was.
+			pw, ok := w.(PresentedWriter)
+			if !ok {
+				return ErrUnsupported
+			}
+			b, e = pw.WritePresented(ctx, snap, *j.Presentation)
+		} else {
+			b, e = w.Write(ctx, snap)
+		}
 		if e != nil {
 			return e
 		}
 		if len(b) == 0 || len(b) > MaxArtifactBytes {
 			return ErrBudget
 		}
-		if pub.Artifact, e = s.keep(ctx, Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt}, b); e != nil {
+		layoutID, layoutVersion := layoutOf(j.Presentation)
+		if pub.Artifact, e = s.keep(ctx, Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt, LayoutID: layoutID, LayoutVersion: layoutVersion}, b); e != nil {
 			return e
 		}
 	case "issue":

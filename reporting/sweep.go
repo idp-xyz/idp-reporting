@@ -73,8 +73,8 @@ func Terminal(state string) bool {
 }
 
 // ReduceJob is the payload a terminal job keeps once its results are gone: the query, the prepared source read and the columns are
-// cleared, the request hash and the rest (owner, kind, key, ids, format, template, row or group) stay. Both stores reduce a job to this
-// shape, and ValidateReduced is what reading one checks.
+// cleared, the request hash and the rest (owner, kind, key, ids, format, template, row or group, an export's presentation) stay. Both
+// stores reduce a job to this shape, and ValidateReduced is what reading one checks.
 func ReduceJob(j Job) Job {
 	j.Query, j.Prepared, j.Columns, j.Reduced = QuerySpec{}, PreparedRead{}, nil, true
 	return j
@@ -93,7 +93,7 @@ func ValidateReduced(j Job) error {
 			return ErrInvalid
 		}
 	case "export":
-		if !validID(j.SnapshotID) || !validFormat(j.Format) || j.RequestHash != ExportRequestHash(j.SnapshotID, j.Format) || j.TemplateID != "" || j.Template != "" {
+		if !validID(j.SnapshotID) || !validFormat(j.Format) || !exportFields(j) {
 			return ErrInvalid
 		}
 	case "issue":
@@ -104,6 +104,9 @@ func ValidateReduced(j Job) error {
 		return ErrInvalid
 	}
 	if j.Kind != "issue" && (j.TemplateID != "" || j.TemplateVersion != 0 || j.TemplateSHA256 != "" || j.Template != "" || j.RowIndex != 0 || j.Group != nil) {
+		return ErrInvalid
+	}
+	if j.Kind != "export" && j.Presentation != nil {
 		return ErrInvalid
 	}
 	return nil
