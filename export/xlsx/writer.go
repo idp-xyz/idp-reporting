@@ -5,11 +5,18 @@
 // A numeric cell is written only when the exact string survives a float64 and comes back as the same digits at the column's scale; a value
 // that does not is written as text in the numeric column too, and the Metadata sheet counts those cells. The workbook stays a record: the
 // subtotal rows of a layout are values, never formulas, and no formula is ever generated.
+//
+// Since S20-C (docs/ADR_0023_PUBLISHED_FILTERS_AND_SORTS.md decision 6) the Metadata sheet ends with the scope of the snapshot's query:
+// the `query_scope` row, which every workbook has and which counts the query's filters and sort keys (0 and 0 for a query without them,
+// so that a reader can tell a workbook of the whole dataset from one written before the row existed), then a row per filter and a row
+// per sort key, in the query's normalized order, each with the words and the exact field, operator and value beside them.
 package xlsx
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/xuri/excelize/v2"
 	"idp.local/reporting/export/present"
@@ -20,6 +27,20 @@ import (
 const (
 	ExactSuffix   = "（精确）"
 	PrecisionNote = "Decimal and integer columns are numeric cells for arithmetic when their exact digits survive a float64 (else text, counted in inexact_cells); the （精确） text columns beside them hold the exact frozen strings for reconciliation. Subtotal rows are values; no formulas generated."
+)
+
+// The rows of the query's scope at the end of the Metadata sheet (S20-C). The scope row is `query_scope | filters | <n> | sort_keys | <m>`:
+// its third cell counts the query's filters and its fifth the sort keys, as text like every cell of the sheet. The n rows after it are
+// the filters, `filter_<i> | <words> | <field> | <operator> | <value>`, and the m rows after those the sort keys,
+// `sort_<i> | <words> | <field> | <direction>`, i from 1 in the query's normalized order: the words are English, with the column's label
+// (present.ScopeFilter.English), and the three cells beside them are exactly what the query has, the value of an `in` or a `between` the
+// JSON array of strings it carries.
+const (
+	ScopeKey      = "query_scope"
+	ScopeFilters  = "filters"
+	ScopeSortKeys = "sort_keys"
+	FilterKey     = "filter_"
+	SortKey       = "sort_"
 )
 
 // Writer renders a snapshot as a workbook of three sheets: Data, Totals and Metadata.
@@ -79,6 +100,28 @@ func (Writer) write(ctx context.Context, s r.Snapshot, p r.Presentation) ([]byte
 	table, e := present.Build(s, p)
 	if e != nil {
 		return nil, e
+	}
+	// The scope of the query (S20-C), the query's own whatever the presentation shows, as the rows that end the Metadata sheet: the
+	// scope row, always, then the filters and the sort keys. A cell holds at most excelize.TotalCellChars characters and the library
+	// cuts a longer text without saying so; a scope text that long (only a column label beyond every sensible length makes one) is
+	// refused, never cut.
+	scope, e := present.ScopeOf(s)
+	if e != nil {
+		return nil, e
+	}
+	scopeRows := [][]string{{ScopeKey, ScopeFilters, strconv.Itoa(len(scope.Filters)), ScopeSortKeys, strconv.Itoa(len(scope.Sort))}}
+	for i, filter := range scope.Filters {
+		scopeRows = append(scopeRows, []string{FilterKey + strconv.Itoa(i+1), filter.English(), filter.Field, filter.Operator, filter.Value})
+	}
+	for i, key := range scope.Sort {
+		scopeRows = append(scopeRows, []string{SortKey + strconv.Itoa(i+1), key.English(), key.Field, key.Direction})
+	}
+	for _, row := range scopeRows {
+		for _, v := range row {
+			if utf8.RuneCountInString(v) > excelize.TotalCellChars {
+				return nil, fmt.Errorf("xlsx: a filter or a sort key of the query is longer than a cell holds: %w", r.ErrUnsupported)
+			}
+		}
 	}
 	f := excelize.NewFile()
 	defer f.Close()
@@ -257,6 +300,8 @@ func (Writer) write(ctx context.Context, s r.Snapshot, p r.Presentation) ([]byte
 	for _, c := range s.Result.Columns {
 		metadata = append(metadata, []string{c.ID, c.Type, strconv.Itoa(c.Scale), c.Currency, c.Unit})
 	}
+	// The scope of the query, after every row the sheet had before S20-C, so that no cell of those moves.
+	metadata = append(metadata, scopeRows...)
 	for i, row := range metadata {
 		if e := putText("Metadata", i+1, row); e != nil {
 			return nil, e

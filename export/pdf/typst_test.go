@@ -95,6 +95,14 @@ type label struct {
 
 func evidence(t *testing.T, name string, pdf []byte, d *document, s r.Snapshot, minPages int) {
 	t.Helper()
+	scopedEvidence(t, name, pdf, d, s, minPages, nil, "")
+}
+
+// scopedEvidence is evidence for a snapshot whose query has filters or a sort (S20-C, ADR 0023 decision 6): the checker must also find
+// the scope lines in the meta block of the first page, above the table, and the mark beside the snapshot's id in the footer of every
+// page. The lines and the mark are what the test says the document must show, not what build made of the query.
+func scopedEvidence(t *testing.T, name string, pdf []byte, d *document, s r.Snapshot, minPages int, scope []string, mark string) {
+	t.Helper()
 	dir := os.Getenv("REPORTING_PDF_EVIDENCE")
 	if dir == "" {
 		return
@@ -102,8 +110,8 @@ func evidence(t *testing.T, name string, pdf []byte, d *document, s r.Snapshot, 
 	q := s.Query
 	e := expectation{File: name + ".pdf", Landscape: d.Landscape, Margin: marginX, Inset: insetX, MinPages: minPages,
 		Title: q.Dataset.ID, Dimensions: len(q.Dimensions), Rows: s.Result.Rows, Totals: []string{},
-		Meta:   []string{q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, q.Timezone, strings.Join(q.Companies, "、"), strconv.Itoa(len(s.Result.Rows)) + " 行", "生成于 2026-10-27 08:30:00 UTC"},
-		Footer: []string{"合同模拟器 / 合成数据（非真实业务数据）", "快照 " + s.ID, q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, "来源水位 " + s.Prepared.Watermark}}
+		Meta:   append([]string{q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, q.Timezone, strings.Join(q.Companies, "、"), strconv.Itoa(len(s.Result.Rows)) + " 行", "生成于 2026-10-27 08:30:00 UTC"}, scope...),
+		Footer: []string{"合同模拟器 / 合成数据（非真实业务数据）", "快照 " + s.ID + mark, q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, "来源水位 " + s.Prepared.Watermark}}
 	if e.Rows == nil {
 		e.Rows = [][]string{}
 	}
@@ -209,6 +217,80 @@ func TestTypstExportsThroughTheService(t *testing.T) {
 	}
 	if dir := os.Getenv("REPORTING_PDF_EVIDENCE"); dir != "" {
 		if err := os.WriteFile(filepath.Join(dir, "presented.pdf"), presented.Content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// S20-C (ADR 0023 decision 6): a snapshot made with filters and a sort says so in its export. The source narrowed, ordered and
+	// totalled the rows; the PDF prints them as any snapshot's and says the scope: in words under the meta line of the first page and,
+	// beside the snapshot's id, in the footer of every page. It is written as evidence with its expectation (filtered.pdf): the
+	// checker reads the scope lines and the footer's mark back from the PDF, and veraPDF validates it.
+	q := contractsim.FinancialQuery()
+	q.Filters = []r.Filter{{Field: "ar.open_balance", Operator: "ge", Value: "-1.00"}, {Field: "aging.bucket", Operator: "in", Value: `["current","1_30"]`}}
+	q.Sort = []r.Sort{{Field: "ar.open_balance", Direction: "desc"}}
+	fj, err := s.SubmitSnapshot(ctx, p, q, "snap-filtered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RunOne(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if fj, err = s.Job(ctx, p, fj.ID); err != nil || fj.SnapshotID == "" || fj.SnapshotID == j.SnapshotID {
+		t.Fatal(fj, err)
+	}
+	fe, err := s.SubmitExportFormat(ctx, p, fj.SnapshotID, "pdf", "pdf-filtered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RunOne(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if fe, err = s.Job(ctx, p, fe.ID); err != nil || fe.State != "succeeded" {
+		t.Fatal(fe, err)
+	}
+	filtered, err := s.Download(ctx, p, fe.ArtifactID)
+	if err != nil || filtered.Format != "pdf" || !bytes.HasPrefix(filtered.Content, []byte("%PDF-")) || bytes.Equal(filtered.Content, art.Content) {
+		t.Fatal(filtered.Format, err)
+	}
+	narrowed, err := repo.Snapshot(ctx, p.Identity, fj.SnapshotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := narrowed.Result.Rows; len(rows) != 2 || rows[0][0] != "customer_a" || rows[1][0] != "customer_b" || narrowed.Result.Totals["ar.open_balance"] != "100.01" {
+		t.Fatalf("the narrowed snapshot: %v, totals %v", rows, narrowed.Result.Totals)
+	}
+	scope := []string{"筛选：账龄区间 属于 current、1_30；应收余额 不小于 -1.00", "排序：应收余额 降序"}
+	const mark = "（已按 2 项条件筛选、1 项排序）"
+	fd, err := build(narrowed, newMeasurer(w.fonts), created)
+	if err != nil || !slices.Equal(fd.Scope, scope) || !strings.Contains(flatten(fd.Footer), "快照 "+narrowed.ID+mark+" · receivables.aging@1.0.0") {
+		t.Fatalf("the filtered document: scope %q, footer %q (%v)", fd.Scope, flatten(fd.Footer), err)
+	}
+	if again, err := w.Write(ctx, narrowed); err != nil || !bytes.Equal(again, filtered.Content) {
+		t.Errorf("two filtered renders with the same clock differ (%v)", err)
+	}
+	scopedEvidence(t, "filtered", filtered.Content, fd, narrowed, 1, scope, mark)
+	// The same snapshot through the layout: the scope lines are the query's, whatever the layout shows (presented_filtered.pdf, for
+	// veraPDF; the checker has no presented mode).
+	fx, err := s.SubmitExportWith(ctx, p, fj.SnapshotID, r.ExportOptions{Format: "pdf", Presentation: &presentation}, "pdf-presented-filtered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RunOne(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if fx, err = s.Job(ctx, p, fx.ID); err != nil || fx.State != "succeeded" || fx.Layout == nil {
+		t.Fatal(fx, err)
+	}
+	both, err := s.Download(ctx, p, fx.ArtifactID)
+	if err != nil || both.LayoutID != presentation.LayoutID || !bytes.HasPrefix(both.Content, []byte("%PDF-")) || bytes.Equal(both.Content, filtered.Content) || bytes.Equal(both.Content, presented.Content) {
+		t.Fatal(both.LayoutID, err)
+	}
+	bd, err := buildTable(narrowed, &presentation, newMeasurer(w.fonts), created)
+	if err != nil || !slices.Equal(bd.Scope, scope) || !strings.Contains(flatten(bd.Footer), "快照 "+narrowed.ID+mark+" · ") || !strings.Contains(flatten(bd.Meta), "布局 "+presentation.LayoutID+"@3") {
+		t.Fatalf("the presented filtered document: scope %q, footer %q (%v)", bd.Scope, flatten(bd.Footer), err)
+	}
+	if dir := os.Getenv("REPORTING_PDF_EVIDENCE"); dir != "" {
+		if err := os.WriteFile(filepath.Join(dir, "presented_filtered.pdf"), both.Content, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -387,6 +469,80 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "presented_rows1000.pdf"), b, 0o644); err != nil {
 				t.Fatal(err)
 			}
+		}
+	})
+	// S20-C (ADR 0023 decision 6): the scope block of a query with filters and a sort, at and beyond its bound, laid out with the real
+	// fonts. Each document is rendered twice to the same bytes and written as evidence with its expectation: the checker reads the
+	// scope lines back from the first page and the mark from the footer of every page, and veraPDF validates the file.
+	filteredDocument := func(t *testing.T, name string, s r.Snapshot, minPages int, scope []string, mark string) *document {
+		t.Helper()
+		b, err := w.Write(t.Context(), s)
+		if err != nil {
+			var re *RenderError
+			if errors.As(err, &re) {
+				t.Fatalf("%v\n%s", err, re.output())
+			}
+			t.Fatal(err)
+		}
+		again, err := w.Write(t.Context(), s)
+		if err != nil || !bytes.Equal(b, again) {
+			t.Fatalf("two renders with the same clock differ (%v)", err)
+		}
+		d, err := build(s, newMeasurer(w.fonts), created)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if footer := flatten(d.Footer); !strings.Contains(footer, "快照 "+s.ID+mark+" · ") {
+			t.Errorf("footer %q lacks the mark %q", footer, mark)
+		}
+		scopedEvidence(t, name, b, d, s, minPages, scope, mark)
+		return d
+	}
+	// Sixteen filters of sixty characters and two sort keys over three pages: the filter sentence fills its six lines with the first
+	// five filters, whole, and says that the other eleven are elsewhere; the sort sentence follows; every page's footer counts both.
+	t.Run("filtered_bound", func(t *testing.T) {
+		s := table(2, 1)
+		s.Result.Columns[0].Label = "客户"
+		for i := range 120 {
+			s.Result.Rows = append(s.Result.Rows, []string{fmt.Sprintf("公司%d", i%7), fmt.Sprintf("摘要 %d：应收账款含税及运费", i), fmt.Sprintf("%d.%02d", i*1234567, i%100)})
+		}
+		var conditions []string
+		for _, unit := range "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳" {
+			value := strings.Repeat(string(unit), 60)
+			s.Query.Filters = append(s.Query.Filters, r.Filter{Field: "d0", Operator: "ne", Value: value})
+			conditions = append(conditions, "客户 不等于 "+value)
+		}
+		s.Query.Sort = []r.Sort{{Field: "m0", Direction: "desc"}, {Field: "d0", Direction: "asc"}}
+		slices.Sort(conditions) // the normalized order: by value, the field and the operator being the same
+		filters := "筛选（共 16 项，此处列出前 5 项）：" + strings.Join(conditions[:5], "；") + "；其余 11 项见本快照的查询及其 XLSX 导出的 Metadata 工作表。"
+		const order = "排序：金额0 降序、客户 升序"
+		d := filteredDocument(t, "filtered_bound", s, 2, []string{filters, order}, "（已按 16 项条件筛选、2 项排序）")
+		if len(d.Scope) != maxFilterLines+1 || strings.Join(d.Scope[:maxFilterLines], "") != filters || d.Scope[maxFilterLines] != order {
+			t.Errorf("%d scope lines: %q", len(d.Scope), d.Scope)
+		}
+	})
+	// A query at its bounds, sixteen filters of 32 values of 128 characters: no filter fits the block, and one line says so.
+	t.Run("filtered_unlisted", func(t *testing.T) {
+		s := table(1, 1, []string{"华东", "1.00"}, []string{"华西", "-2.50"})
+		s.Result.Columns[0].Label = "客户"
+		list := `["` + strings.Join(slices.Repeat([]string{strings.Repeat("值", r.MaxFilterValueChars)}, r.MaxInValues), `","`) + `"]`
+		s.Query.Filters = slices.Repeat([]r.Filter{{Field: "d0", Operator: "in", Value: list}}, r.MaxQueryFilters)
+		const unlisted = "筛选：共 16 项，此处未能列出，见本快照的查询及其 XLSX 导出的 Metadata 工作表。"
+		d := filteredDocument(t, "filtered_unlisted", s, 1, []string{unlisted}, "（已按 16 项条件筛选）")
+		if !slices.Equal(d.Scope, []string{unlisted}) {
+			t.Errorf("scope lines: %q", d.Scope)
+		}
+	})
+	// A value that is one unbreakable run wider than a line (128 times W) is cut into lines by the server and printed whole, in
+	// order; a value with white space at its ends and a mark of the sentence in it is set in quotation marks.
+	t.Run("filtered_run", func(t *testing.T) {
+		s := table(1, 1, []string{"华东", "1.00"}, []string{"华西", "-2.50"})
+		s.Result.Columns[0].Label = "客户"
+		s.Query.Filters = []r.Filter{{Field: "d0", Operator: "eq", Value: strings.Repeat("W", r.MaxFilterValueChars)}, {Field: "d0", Operator: "contains", Value: " 甲、乙 "}}
+		sentence := "筛选：客户 包含 “ 甲、乙 ”；客户 等于 " + strings.Repeat("W", r.MaxFilterValueChars)
+		d := filteredDocument(t, "filtered_run", s, 1, []string{sentence}, "（已按 2 项条件筛选）")
+		if len(d.Scope) < 3 || len(d.Scope) > maxFilterLines || strings.Join(d.Scope, "") != sentence {
+			t.Errorf("%d scope lines: %q", len(d.Scope), d.Scope)
 		}
 	})
 }
