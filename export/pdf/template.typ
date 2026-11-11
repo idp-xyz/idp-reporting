@@ -42,8 +42,13 @@
 )
 #set table.cell(breakable: true)
 
+// A query with filters or a sort (S20-C) adds the scope lines under the meta line, in the same block: each is one line the server
+// composed and measured to fit the text width, set on a line of its own. Without them the key is absent and the block is the meta
+// line alone, exactly as before.
+#let scope = d.at("scope", default: ())
+
 #block(below: 7pt, text(size: 13pt, weight: "bold", show-text(d.heading)))
-#block(below: 8pt, text(size: 7.5pt, fill: luma(60), show-text(d.meta)))
+#block(below: 8pt, text(size: 7.5pt, fill: luma(60), if scope.len() == 0 { show-text(d.meta) } else { show-text(d.meta) + scope.map(line => linebreak() + line).join() }))
 
 #table(
   columns: d.widths.map(w => w * 1pt),

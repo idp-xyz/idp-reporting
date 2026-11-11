@@ -58,6 +58,9 @@ var dataClasses = map[string]string{"contract-simulator": "合同模拟器 / 合
 // A presented export (S23-A, ADR 0024) adds the keys that are absent otherwise: the footnote under the total row, the indices of the
 // subtotal rows (set in bold under a rule, as the total row is) and the mark fills, one colour or "" per cell of each row. Without a
 // presentation the data is what it always was, and so is the document.
+//
+// A query with filters or a sort (S20-C, ADR 0023 decision 6) adds the scope lines printed under the meta line, each one line that
+// fits the page's text width (scope.go); the key is absent for a query without them, whose data and document are what they always were.
 type document struct {
 	Title        string            `json:"title"` // PDF metadata
 	Fonts        []string          `json:"fonts"`
@@ -76,6 +79,7 @@ type document struct {
 	Footnote     any               `json:"footnote,omitempty"`
 	SubtotalRows []int             `json:"subtotal_rows,omitempty"`
 	Fills        [][]string        `json:"fills,omitempty"`
+	Scope        []string          `json:"scope,omitempty"`
 }
 
 // shown is the table as it is printed, before it is measured: the header texts, the alignment and kind of each column, the rows (every
@@ -260,6 +264,11 @@ func buildTable(s r.Snapshot, p *r.Presentation, m *measurer, created time.Time)
 	if err != nil {
 		return nil, err
 	}
+	// The scope of the query (S20-C): the query's own, whatever the presentation shows.
+	scope, err := present.ScopeOf(s)
+	if err != nil {
+		return nil, err
+	}
 	n := len(t.header)
 	bold := func(i int) bool { return t.bold != nil && t.bold[i] }
 
@@ -318,7 +327,13 @@ func buildTable(s r.Snapshot, p *r.Presentation, m *measurer, created time.Time)
 	}
 	dataset := s.Query.Dataset.ID + "@" + s.Query.Dataset.Version
 	meta := fmt.Sprintf("%s · 截至 %s（%s）· 公司 %s · %d 行 · 生成于 %s UTC", dataset, s.Query.AsOf, s.Query.Timezone, strings.Join(s.Query.Companies, "、"), len(s.Result.Rows), created.UTC().Format("2006-01-02 15:04:05")) + t.meta
-	footer := fmt.Sprintf("%s · 快照 %s · %s · 截至 %s · 来源水位 %s", class, s.ID, dataset, s.Query.AsOf, s.Prepared.Watermark)
+	// The scope lines under the meta line and the mark beside the snapshot's id in the footer of every page; both empty, and the
+	// footer what it always was, for a query without filters and without a sort.
+	var mark string
+	if d.Scope, mark, err = scopeBlock(scope, m, avail); err != nil {
+		return nil, err
+	}
+	footer := fmt.Sprintf("%s · 快照 %s%s · %s · 截至 %s · 来源水位 %s", class, s.ID, mark, dataset, s.Query.AsOf, s.Prepared.Watermark)
 	if d.Heading, err = m.segment(t.heading, titleSize, true, avail); err != nil {
 		return nil, err
 	}

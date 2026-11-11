@@ -327,6 +327,32 @@
   ],
   "pages": 1
  },
+ "filtered.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "filtered_bound.pdf": {
+  "first_rows": [
+   0,
+   53,
+   115
+  ],
+  "pages": 3
+ },
+ "filtered_run.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
+ "filtered_unlisted.pdf": {
+  "first_rows": [
+   0
+  ],
+  "pages": 1
+ },
  "financial.pdf": {
   "first_rows": [
    0

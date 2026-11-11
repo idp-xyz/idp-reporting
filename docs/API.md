@@ -31,7 +31,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | GET /jobs/{id} | Owner-scoped status; current source authority even after success. A job that succeeded and whose source read has expired is not re-authorized (there is no result left to authorize): it answers 200 with `expired: true`, its own state and ids, and, for an issue, the number from its record; the same after retention deleted its snapshot and artifact (S04-B, "Retention" below) |
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned. A running issue job is not cancelled (the source product may already hold a reservation for it): it is returned unchanged, and a queued one is cancelled |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
-| POST /exports | `{ "snapshot_id": "…", "format": "pdf", "layout_id": "…" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports. `layout_id` (S23-A, ADR 0024, "Layouts and presented exports" below) is optional: the export is rendered through the latest saved version of that layout and the job view carries `layout: {id, version}` |
+| POST /exports | `{ "snapshot_id": "…", "format": "pdf", "layout_id": "…" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports. `layout_id` (S23-A, ADR 0024, "Layouts and presented exports" below) is optional: the export is rendered through the latest saved version of that layout and the job view carries `layout: {id, version}`. The file of a snapshot whose query has filters or a sort says so (S20-C, "The exports say the scope" below) |
 | GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256; an issued PDF is named `issued-<issue id>.pdf` (the console saves it as `issued-<number>.pdf`) |
 
 The standalone HTML/CSS/JS console is served at /console/. Static assets contain
@@ -60,7 +60,8 @@ required filter missing or doubled — is 422 `UNSUPPORTED_COMBINATION`, as any 
 evaluates a filter itself. The source product applies them in its own transaction, binding the values as parameters, and the result's
 rows **and totals** are the narrowed scope's, in the order asked, stable across pages. The normalized query sorts the filters by field,
 operator and value and keeps the sort keys in their order; `query_hash`, the frozen snapshot and the evidence cover both, so a narrowed
-snapshot is another snapshot than the whole dataset's. The demo's two datasets declare: `receivables.aging` — `customer.id` eq/ne/in/prefix,
+snapshot is another snapshot than the whole dataset's, and its exports say what narrowed and ordered it (S20-C, "The exports say the
+scope" below). The demo's two datasets declare: `receivables.aging` — `customer.id` eq/ne/in/prefix,
 `aging.bucket` eq/in from `current 1_30 31_60 61_90 90+`, `ar.open_balance` lt/le/gt/ge/between; sorts `ar.open_balance` and `customer.id`
 asc/desc; `shipments.daily` — `shipment.destination_country` eq/in, `shipment.service_code` eq, `shipment.count` ge/le; sorts
 `shipment.count` and `shipment.destination_country` asc/desc.
@@ -81,7 +82,8 @@ is text too and `Metadata` counts it in `inexact_cells`. The `Totals` sheet has 
 integers beyond JavaScript/Excel precision survive unchanged in the exact columns; external
 strings beginning '=' do not generate formulas, and no formula is ever generated (a layout's
 subtotal rows are values). `Metadata` names the layout (`layout_id`, `layout_version`,
-`layout_title`, `layout_footnote`, `subtotal_by`; empty without one).
+`layout_title`, `layout_footnote`, `subtotal_by`; empty without one) and ends with the scope of
+the snapshot's query (S20-C, "The exports say the scope" below).
 
 A PDF is PDF/A-2b, rendered by a pinned Typst binary from a server-owned template
 (export/pdf): the same rows in snapshot order, the column labels repeated on every page,
@@ -93,6 +95,48 @@ as "-" at a line break), or more than 32 columns fails the job with UNSUPPORTED_
 a document over the artifact limit, or one that exceeds the renderer's own time (15 s) or
 memory (2 GiB) limit, fails with BUDGET_EXCEEDED. Such snapshots remain available as
 workbooks. Other renderer failures, and the 20 s job timeout, are EXECUTION_FAILED.
+
+**The exports say the scope** (S20-C, ADR 0023 decision 6, docs/S20C_SCOPE.md). A snapshot made with filters is a narrowed scope and its
+totals are that scope's; one made with a sort is ordered as asked. Both files say what the frozen query narrowed and ordered by, with or
+without a layout (the scope is the query's, whatever the layout shows). They only say it: the source applied it, and the rows and totals
+are the snapshot's.
+
+- **Workbook.** The `Metadata` sheet ends, after every row it had before, with the scope row
+  `query_scope | filters | <n> | sort_keys | <m>`: the third cell counts the query's filters, the fifth its sort keys. Every workbook has
+  it, `0` and `0` for a query without filters and sort; a workbook without the row was written before S20-C and says nothing of its
+  scope. The n rows after it are the filters, `filter_<i> | <words> | <field> | <operator> | <value>`, in the query's normalized order
+  (by field, operator, value), and the m rows after those the sort keys, `sort_<i> | <words> | <field> | <direction>`, in the order they
+  apply (i from 1). The words are English with the column's label (`equals`, `does not equal`, `is less than`,
+  `is less than or equal to`, `is greater than`, `is greater than or equal to`, `is one of a, b`, `is between a and b`, `starts with`,
+  `contains`; `ascending`, `descending`); the cells beside them are exactly what the query has, the value of an `in` or a `between` the
+  JSON array of strings it carries. All are text cells, like the rest of the sheet:
+
+  ```
+  query_scope | filters | 2 | sort_keys | 1
+  filter_1    | 账龄区间 is one of current, 1_30                 | aging.bucket    | in | ["current","1_30"]
+  filter_2    | 应收余额 is greater than or equal to -1.00       | ar.open_balance | ge | -1.00
+  sort_1      | 应收余额 descending                              | ar.open_balance | desc
+  ```
+
+- **PDF.** Under the meta line of the first page, in words: `筛选：账龄区间 属于 current、1_30；应收余额 不小于 -1.00` and
+  `排序：应收余额 降序` (the column's label, the operator in a word — 等于, 不等于, 小于, 不大于, 大于, 不小于, 属于 with the values
+  joined by 、, 介于 a 和 b 之间, 开头为, 包含; 升序, 降序 — and the values; filters joined by ；, sort keys by 、). In the footer of
+  every page, beside the snapshot's id: `快照 <id>（已按 2 项条件筛选、1 项排序）` (or `（已按 2 项条件筛选）`, `（已按 1 项排序）`), so
+  that the page with the total row says the total is a narrowed scope's. A value is the query's exact string: a number is not grouped
+  (`1000.00`, where the table's cells print `1,000.00`), a boolean is `true` or `false`. A value that could be misread in the sentence
+  — one that begins or ends with white space, or holds 、 ； “ ” (or 和, in a `between`) — is set between “ and ”, unchanged.
+  The words are bounded and never cut silently: the filter sentence takes at most 6 lines of the meta block and the sort sentence at
+  most 2 (lines of the page's text width at 7.5 pt). A sentence that does not fit says the count, lists the first whole items that fit
+  and says where the rest are, `筛选（共 16 项，此处列出前 5 项）：…；其余 11 项见本快照的查询及其 XLSX 导出的 Metadata 工作表。`; when not
+  even the first fits, `筛选：共 16 项，此处未能列出，见本快照的查询及其 XLSX 导出的 Metadata 工作表。` (the same two forms for 排序). The
+  footer always counts every filter and sort key. Every character of the scope is checked against the fonts like a value of the table,
+  whether or not the bound lets it be printed: a filter value or a label the fonts do not cover fails the PDF job with
+  UNSUPPORTED_COMBINATION, and the snapshot remains available as a workbook.
+
+A frozen query that does not fit the frozen columns by the core's rules fails either export with INTEGRITY_FAILURE and nothing of it is
+printed. An export of a query without filters and sort is what it was: the PDF byte for byte (the golden test of S23-A holds it), the
+workbook cell for cell but for the one `query_scope` row at the end of `Metadata`. An issued document and a preview say nothing of the
+scope (they are per row or group); the issue record names the snapshot, whose query holds the filters.
 
 Document templates (S03-E, docs/S03E_SCOPE.md; multi-page tables S03-F, docs/S03F_SCOPE.md) are mounted when the
 demo has the matching directories, and previews when it has the PDF flags:
