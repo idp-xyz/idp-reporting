@@ -51,6 +51,15 @@ func mountSpacedDocuments[T any](mux *http.ServeMux, base string, space docSpace
 				return e
 			}
 		}
+		// What the entries share is asked once (listing.go): the release states here, the source's catalog of each integration and the
+		// caller's backgrounds and images in the authorizations. Each used to be asked or read once per entry.
+		var releases map[string]privatedocs.ReleaseState
+		if summary != nil {
+			if releases, e = store.Releases(space.owner(p.Identity)); e != nil {
+				return e
+			}
+		}
+		req = listing(req)
 		out := []map[string]any{}
 		for _, entry := range all {
 			if e = authorize(req, p, entry.Layout); e != nil {
@@ -65,7 +74,7 @@ func mountSpacedDocuments[T any](mux *http.ServeMux, base string, space docSpace
 				for k, v := range summary(entry.Layout) {
 					item[k] = v
 				}
-				if state, e := store.Release(space.owner(p.Identity), entry.ID); e == nil {
+				if state, ok := releases[entry.ID]; ok {
 					item["published_version"] = state.PublishedVersion
 				}
 			}

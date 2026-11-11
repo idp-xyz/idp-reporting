@@ -12,7 +12,7 @@ func WithDashboards(fallback http.Handler, service *r.Service, authenticate Auth
 		return nil, r.ErrInvalid
 	}
 	describeBinding := func(req *http.Request, p r.Principal, binding dashboards.Binding) (r.Dataset, error) {
-		catalog, e := service.Catalog(req.Context(), p, binding.Integration)
+		catalog, e := catalogOf(req, service, p, binding.Integration)
 		if e != nil {
 			return r.Dataset{}, e
 		}

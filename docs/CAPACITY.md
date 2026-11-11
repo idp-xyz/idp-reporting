@@ -310,3 +310,27 @@ the band limit of 96; the heaviest by time are the two 57-element invoices. The 
 The per-identity template cap rises from 16 to 64 (docs/OPERATIONS.md): the file of an identity grows with it, bounded by the store's 8 MiB. A template of 128
 elements is about 25-30 KB canonical (64 KiB is the bound of one), so 64 templates of one version each is under 2 MB; the 20 versions a template may keep are what
 can reach 8 MiB first.
+
+## The design listings (2026-11-11)
+
+A listing of layouts, dashboards, templates, backgrounds or images authorizes every entry it shows. Until this date it asked the source for the catalog of
+the entry's integration once per entry (with the `http` adapter, a request to the product each), read the template store once more per entry for its release
+state, and read the caller's whole background or image store once per reference. Every read of a design store decodes and validates the owner's whole
+document (`privatedocs`), so a listing of templates was quadratic in their number. It was found by the console's DOM suite on a slow runner: by the time
+the issue page's test lists them, the suite's identity holds 55 templates (copies of the samples among them, some with a page background or an image), and
+`GET /document-templates` took 7.2 s on two cores of the development machine (WSL2, the demo server with the memory stores, the suite's own load beside it).
+
+A listing now asks what its entries share once per request (`transport/httpapi/listing.go`): one catalog answer per integration among the entries, the
+release states in one read (`privatedocs.Store.Releases`), the caller's backgrounds and images in one read each (`doctemplates.AssetIndex`, the verdicts of
+`Resolve` without the bytes). The same 55 templates on the same two cores list in 0.21 s. `TestAListingAsksTheSourceAndReadsEachStoreOncePerRequest` holds
+the counts, which for 12 templates of one integration were, before and after:
+
+| Listing | Catalog requests to the source | Reads of the store | Reads of the backgrounds / the images |
+|---|---|---|---|
+| templates (12; 4 with a background, 4 with an image) | 12 → 1 | 14 → 3 | 4 → 1 / 4 → 1 |
+| layouts, dashboards (6 each) | 6 → 1 | 1 → 1 | none |
+| backgrounds, images (2 each) | 2 → 1 | 1 → 1 | none |
+
+What did not change: a read still decodes and validates the owner's whole document, which the caps bound (8 MiB a document; 64 templates, 16 layouts and
+16 dashboards an identity, 8 backgrounds, 16 images a dataset); the routes of one template (a version, the published version, a preview, an issue) read the
+store once or twice each as before; and nothing is kept between requests: the next listing asks the source again, as every read does.
