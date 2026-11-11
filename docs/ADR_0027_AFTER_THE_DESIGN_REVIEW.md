@@ -34,14 +34,18 @@ The owner was then asked three things. The lifetime model is ADR 0026. The other
    thousand rows, grouping and pivoting, charts that mean something. Nothing built is dropped, and the dashboards go on.
 2. **IDP Parcel is the first real source** (the owner): it has a backend. docs/REAL_SOURCE_DISCOVERY_PARCEL.md records what that
    backend is today and what it lacks as a source. The order "real integration last", which the owner gave at S03-A, ends here.
+   Two of the discovery's questions the owner answered the same day. Parcel's side of the protocol is built by this
+   engineering in the idp-parcel repository, under that repository's rules: an ADR of Parcel's own first, which the owner
+   reads, then the implementation. And the company a query names is, for Parcel, the responsible legal entity (责任法人), the
+   one a confirmed charge and a statement carry.
 3. **The order of what is new.** What the functional review started (S08, S09-D and F, S16-C and D, S20-B and C, S21-B, S23-B, S24)
    goes on beside it.
 
    | Slice | What | Why here | Waits for |
    |---|---|---|---|
    | S25 | A result outlives its read (ADR 0026) | Before any product implements the protocol | In progress |
-   | S26 | The catalogue's semantics: absent values, instants, whether a metric may be summed (ADR 0028, proposed) | The first real datasets need all three, and they change the protocol | The owner's answers to ADR 0028 |
-   | S27 | Parcel, one thin dataset end to end: the protocol implemented in Parcel, the checker passed, the totals reconciled with Parcel's own statements, a real person reading a real report | Evidence before more design | The owner's answers to section 8 of the discovery: who builds in Parcel, what a company is, how identities map, an environment |
+   | S26 | The catalogue's semantics: absent values, instants, whether a metric may be summed (ADR 0028) | The first real datasets need all three, and they change the protocol | S25-B, which takes the protocol's next revision |
+   | S27 | Parcel, one thin dataset end to end: the protocol implemented in Parcel, the checker passed, the totals reconciled with Parcel's own statements, a real person reading a real report | Evidence before more design | The protocol as it is after S25-B and S26; Parcel's own ADR and the owner's reading of it; how identities map; an environment (section 8 of the discovery) |
    | S28 | The report: a named object (dataset, parameters, filters, sort, layout) that a person opens and runs; a list of reports; a schedule of a report | The largest gap for a person who is not a designer, and the one that depends least on the contract | Its own ADR: who may see a report is authorization |
    | S29 | Results beyond a thousand rows: a snapshot's rows out of the single JSON value, paging and exports that stream, the protocol's bounds | Detail reports and bulk exports | Its own ADR: the protocol and the store |
    | S30 | Grouping and pivoting on a frozen snapshot: the platform aggregates what it already holds under the source's authorization, by the additivity the metrics declare | Charts and cross-tabs without a dataset per cut | Its own ADR: it changes the baseline's rule that the platform computes nothing; after S26 and S29 |
@@ -50,15 +54,19 @@ The owner was then asked three things. The lifetime model is ADR 0026. The other
 4. **Evidence before features.** S27 comes before S28 to S30 on purpose. What a stable read is, how a frozen scope is authorized
    again, and every bound of the protocol have been implemented only by simulators; the first real implementation will change
    some of it, and S29 and S30 should build on the contract as it is after that. If Parcel's side cannot start yet (Parcel has
-   frozen work that does not block its own launch, and it has no deployed environment), S28 goes first.
+   frozen work that does not block its own launch, and it has no deployed environment), S28 goes first. The changes to the
+   protocol that are already decided are finished before Parcel implements it (S25-B, then S26, the cell type first), so that
+   Parcel implements one revision once. Parcel's own ADR is written meanwhile: the owner's reading of it is the longest wait.
 5. **What does not change.** The source's authority over every read and every disclosure; exact values; fail closed; a core that
    needs only the standard library; the five checks.
 
 ## Consequences
 
-- ADR 0028 is written now, as a proposal with its questions, because S26 is next after S25.
+- ADR 0028 was written with this one, because S26 is next after S25, and the owner answered its questions the same day.
 - S27 needs work in another repository, under that repository's own rules (Parcel takes an ADR of its own for a new way in).
-  This repository's part is the protocol, the checker, the reference source and the reconciliation.
+  This repository's part is the protocol, the checker, the reference source and the reconciliation. Parcel has no deployed
+  environment and no real tenant, so until it has, S27 can prove the protocol against Parcel's code and synthetic tenants and
+  cannot reconcile real figures; the go-live items 17 and 18 stay open until then.
 - docs/REAL_SOURCE_ONBOARDING.md's paragraph about Parcel is rewritten at S27 from the discovery; its paragraph about Brant stands
   until Brant has a receivables ledger to read.
 - S28 reopens an alternative ADR 0024 rejected ("a separate report object over snapshot and layout"). ADR 0024's reason stands
