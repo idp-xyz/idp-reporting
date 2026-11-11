@@ -231,11 +231,16 @@ window.createReportingBoardStudio = function (ports) {
     cards.forEach((card, index) => {
       const title = card.querySelector('h3'),
         controls = Array.from(card.querySelectorAll('.board-controls button'));
-      const kind = card.querySelector('.board-chart') ? 'bar' : card.querySelector('table') ? 'table' : 'metric';
+      // A chart (bar, line or pie: S21-A) shares the chart icon; a table and a metric have their own.
+      const kind = card.querySelector('.board-chart,.board-line,.board-pie')
+        ? 'chart'
+        : card.querySelector('table')
+          ? 'table'
+          : 'metric';
       const row = h(
         'div',
         {class: 'layer-row', role: 'listitem'},
-        icon(kind === 'bar' ? 'aggregate' : kind === 'table' ? 'table' : 'summary'),
+        icon(kind === 'chart' ? 'aggregate' : kind === 'table' ? 'table' : 'summary'),
         h('span', {text: index + 1 + ' · ' + (title ? title.textContent : '组件')})
       );
       [

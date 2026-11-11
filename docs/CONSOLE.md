@@ -3,6 +3,8 @@
 界面由现有 Go 服务直接提供，地址 /console/。无需 Node、npm 或前端构建即可
 运行已编译的服务。Node/jsdom 仅用于开发测试。当前数据和身份仍是合同模拟器。
 
+> S21-A（2026-11-11）：看板工作室多了折线图与饼图，组件有了标题与宽度。组件库在柱状图之后有“折线图”（当前页前 50 行按行顺序的 SVG 折线，含零线，每行一个点）与“饼图”（当前页前 12 行每行一个扇区；分类重复时注明“分类重复，饼图按行显示”而不合并；零或负值列出但不绘制），各自选分类字段与数值字段；图例写每行的分类与精确值的字面字符串，图里不写数值。每张卡片的控件行多了“组件标题”（1–64 个字符，替代默认标题）与“组件宽度”（半宽 / 全宽，全宽跨两列），是组件 JSON 的 `title` 与 `width` 键，随保存、发布、重开；服务端 `dashboards.Validate` 以同一规则拒绝（类型仍只有 metric / table / bar / line / pie，12 个组件与 64 KiB 不变）。看板仍不计算任何汇总。见 docs/S21A_SCOPE.md 与 docs/STUDIO.md“看板工作室”。
+
 > S17-A（2026-11-09）：英文界面。页眉与登录卡上有“中文 / English”切换，地址里的 `?lang=en` / `?lang=zh` 也可选择（读一次后从地址去掉）。选择英文时在 localStorage 写一项 `reporting-console-lang`，切回中文即删除；中文是默认，行为与存储均不变。console/assets/en.js 是以中文原文为键的英文目录，lang.js 在页面写入时替换文字与 aria-label、title、placeholder、alt；服务端数据、模板内容与用户手册保持中文，嵌入页不变。console/i18n.test.mjs 让目录与源码一一对应，并在英文下逐页检查不剩控制台自己的中文。见 docs/S17A_SCOPE.md。
 
 > S15-A（ADR 0019，2026-11-09）：浏览器登录。服务端配置了 `sign_in`（docs/DEPLOYMENT.md“Browser sign-in”）时，登录卡显示“使用企业账号登录”：页面生成 PKCE 校验串、state 与 nonce，把它们写进本标签页 sessionStorage 的一项（`reporting-sign-in`），然后整页跳到身份提供方；提供方带 `code` 与 `state` 回到 `/console/` 时，页面在做任何事之前先读出并删除这一项（不论这次加载是不是回来），立即用 `history.replaceState` 把 code 从地址里去掉，核对 state（不符、没有这一项、超过 10 分钟都拒绝，不发请求），再把 `{code, code_verifier, nonce}` 交给 `POST /api/reporting/v1/sign-in/token`，由服务端向提供方换取访问令牌；拿到的令牌与粘贴的一样只在内存里，登录后浏览器存储为空。退出、从往返缓存恢复的页面也删除这一项。提供方的错误说明与服务端之外的文字一律不显示，每个拒绝码有固定的中文提示。配置了登录时粘贴令牌的表单默认隐藏，`paste_fallback: true` 才保留（这不是安全边界：API 照旧接受任何有效令牌）。页面地址与登记的回调地址不同时按钮不可用并说明应从哪个地址打开。没有配置时登录卡不变。嵌入页不变。见 docs/S15A_SCOPE.md。

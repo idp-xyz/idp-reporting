@@ -45,7 +45,8 @@ func WithDashboards(fallback http.Handler, service *r.Service, authenticate Auth
 				if !ok || !metrics[*w.Field] || (c.Type != "decimal" && c.Type != "integer") {
 					return r.ErrDenied
 				}
-			} else if w.Type == "bar" {
+			} else if w.Type == "bar" || w.Type == "line" || w.Type == "pie" {
+				// A chart of the current page (S21-A: a line and a pie as the bar): a numeric field and a column of the dataset.
 				c, ok := columns[*w.Field]
 				if !ok || (c.Type != "decimal" && c.Type != "integer") {
 					return r.ErrDenied

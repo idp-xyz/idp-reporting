@@ -352,9 +352,10 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
       await sleep(400);
       await look(p);
     }
-    // The dashboard studio with its three kinds of component.
+    // The dashboard studio with its five kinds of component (S21-A: the line and the pie).
     a.go('dashboard');
-    for (const id of ['board-add-metric', 'board-add-table', 'board-add-bar']) a.$(id).click();
+    for (const id of ['board-add-metric', 'board-add-table', 'board-add-bar', 'board-add-line', 'board-add-pie'])
+      a.$(id).click();
     await look('dashboard with components');
     // A refusal told in a notice: a company scope the identity may not read.
     a.go('workspace');

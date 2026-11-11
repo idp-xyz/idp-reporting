@@ -7,6 +7,37 @@ window.createReportingDashboard = function (ports) {
     if (text !== undefined) n.textContent = text;
     return n;
   };
+  // The charts are SVG built from nodes and attributes (no markup, no style attribute: the page's CSP; colours are CSS classes).
+  const SVG = 'http://www.w3.org/2000/svg';
+  const shape = (tag, attributes) => {
+    const n = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(attributes || {})) n.setAttribute(k, String(v));
+    return n;
+  };
+  // S21-A: the field set of each widget type (the server's, dashboards.Widget); title and width are optional on every one.
+  const SHAPES = {
+    metric: ['type', 'field'],
+    bar: ['type', 'category', 'field'],
+    line: ['type', 'category', 'field'],
+    pie: ['type', 'category', 'field'],
+    table: ['type', 'columns'],
+  };
+  const CHART_NEEDS = {
+    bar: '柱状图需要当前授权的分类字段和数值字段。',
+    line: '折线图需要当前授权的分类字段和数值字段。',
+    pie: '饼图需要当前授权的分类字段和数值字段。',
+  };
+  const shaped = (w, required) =>
+    !!w &&
+    typeof w === 'object' &&
+    !Array.isArray(w) &&
+    required.every(k => Object.hasOwn(w, k)) &&
+    Object.keys(w).every(k => required.includes(k) || k === 'title' || k === 'width');
+  // A title is 1 to 64 characters, none of them a control character (the server's ValidTitle).
+  const titled = s => typeof s === 'string' && [...s].length >= 1 && [...s].length <= 64 && !/\p{Cc}/u.test(s);
+  // The selects of the three chart tools (bar, line, pie): a category is any column, a value a numeric one.
+  const CATEGORY_SELECTS = ['board-category', 'board-line-category', 'board-pie-category'],
+    VALUE_SELECTS = ['board-value', 'board-line-value', 'board-pie-value'];
   let result = null,
     query = null,
     config = null,
@@ -59,20 +90,20 @@ window.createReportingDashboard = function (ports) {
       throw Error('看板配置或数据集绑定无效。');
     for (const w of value.widgets) {
       if (w?.type === 'metric') {
-        if (!keys(w, ['type', 'field']) || typeof w.field !== 'string' || !metric(w.field))
+        if (!shaped(w, SHAPES.metric) || typeof w.field !== 'string' || !metric(w.field))
           throw Error('指标不在当前授权结果的服务端合计中。');
-      } else if (w?.type === 'bar') {
+      } else if (w?.type === 'bar' || w?.type === 'line' || w?.type === 'pie') {
         if (
-          !keys(w, ['type', 'category', 'field']) ||
+          !shaped(w, SHAPES[w.type]) ||
           typeof w.category !== 'string' ||
           !field(w.category) ||
           typeof w.field !== 'string' ||
           !numeric(w.field)
         )
-          throw Error('柱状图需要当前授权的分类字段和数值字段。');
+          throw Error(CHART_NEEDS[w.type]);
       } else if (w?.type === 'table') {
         if (
-          !keys(w, ['type', 'columns']) ||
+          !shaped(w, SHAPES.table) ||
           !Array.isArray(w.columns) ||
           !w.columns.length ||
           w.columns.length > 100 ||
@@ -81,6 +112,8 @@ window.createReportingDashboard = function (ports) {
         )
           throw Error('表格包含未知或重复字段。');
       } else throw Error('不支持此看板组件。');
+      if (Object.hasOwn(w, 'title') && !titled(w.title)) throw Error('组件标题需为 1–64 个字符，且不含控制字符。');
+      if (Object.hasOwn(w, 'width') && !['half', 'full'].includes(w.width)) throw Error('组件宽度只能是半宽或全宽。');
     }
     if (new TextEncoder().encode(JSON.stringify(value)).length > 65536) throw Error('配置超过 64 KiB 限额。');
   }
@@ -92,13 +125,17 @@ window.createReportingDashboard = function (ports) {
         integration_id: value.binding.integration_id,
         dataset: {id: value.binding.dataset.id, version: value.binding.dataset.version},
       },
-      widgets: value.widgets.map(w =>
-        w.type === 'metric'
-          ? {type: 'metric', field: w.field}
-          : w.type === 'bar'
-            ? {type: 'bar', category: w.category, field: w.field}
-            : {type: 'table', columns: w.columns.slice()}
-      ),
+      widgets: value.widgets.map(w => {
+        const out =
+          w.type === 'metric'
+            ? {type: 'metric', field: w.field}
+            : w.type === 'table'
+              ? {type: 'table', columns: w.columns.slice()}
+              : {type: w.type, category: w.category, field: w.field};
+        if (Object.hasOwn(w, 'title')) out.title = w.title;
+        if (Object.hasOwn(w, 'width')) out.width = w.width;
+        return out;
+      }),
     };
   }
   function action(fn) {
@@ -118,37 +155,47 @@ window.createReportingDashboard = function (ports) {
     $('board-status').textContent = '看板已更新；数据仍来自当前授权查询。';
   }
   // Business values stay exact strings/BigInts. Only bounded display ratios become numbers.
-  function barChart(widget) {
+  // The numeric cells of the rows a chart plots, exact: each cell's literal text and sign, and every magnitude as a BigInt at one
+  // common scale; null when a cell is not a plain decimal of at most 512 characters.
+  function exact(rows, valueIndex) {
+    const parsed = [];
+    for (const row of rows) {
+      const text = row[valueIndex];
+      if (typeof text !== 'string' || text.length > 512 || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(text))
+        return null;
+      const parts = text.replace(/^-/, '').split('.');
+      parsed.push({text, negative: text.startsWith('-'), digits: BigInt(parts.join('')), scale: parts[1]?.length || 0});
+    }
+    const scale = Math.max(0, ...parsed.map(p => p.scale));
+    return {parsed, magnitudes: parsed.map(p => p.digits * 10n ** BigInt(scale - p.scale))};
+  }
+  const unitOf = c => (c.currency ? ' 币种：' + c.currency : c.unit ? ' 单位：' + c.unit : '');
+  const indexOf = id => result.columns.findIndex(c => c.id === id);
+  // A tooltip on a drawn mark: the row, its category and its exact value.
+  const tip = (mark, text) => {
+    const title = shape('title');
+    title.textContent = text;
+    mark.append(title);
+    return mark;
+  };
+  function barChart(widget, heading) {
     const chart = node('div');
     chart.className = 'board-chart';
     const c = field(widget.field),
-      categoryIndex = result.columns.findIndex(c => c.id === widget.category),
-      valueIndex = result.columns.findIndex(c => c.id === widget.field);
-    chart.append(
-      node('h3', c.label + ' · 当前页柱状图'),
-      node(
-        'p',
-        '当前页/预览前 50 行，按原顺序逐行显示，不分组、不汇总。' +
-          (c.currency ? ' 币种：' + c.currency : c.unit ? ' 单位：' + c.unit : '')
-      )
-    );
+      categoryIndex = indexOf(widget.category),
+      valueIndex = indexOf(widget.field);
+    chart.append(node('h3', heading), node('p', '当前页/预览前 50 行，按原顺序逐行显示，不分组、不汇总。' + unitOf(c)));
     const rows = result.rows.slice(0, 50);
     if (!rows.length) {
       chart.append(node('p', '当前页没有可绘制行。'));
       return chart;
     }
-    const parsed = [];
-    for (const row of rows) {
-      const text = row[valueIndex];
-      if (typeof text !== 'string' || text.length > 512 || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(text)) {
-        chart.append(node('p', '图表不可用：当前绘图范围包含无效或超过限额的数值。'));
-        return chart;
-      }
-      const parts = text.replace(/^-/, '').split('.');
-      parsed.push({text, negative: text.startsWith('-'), digits: BigInt(parts.join('')), scale: parts[1]?.length || 0});
+    const numbers = exact(rows, valueIndex);
+    if (!numbers) {
+      chart.append(node('p', '图表不可用：当前绘图范围包含无效或超过限额的数值。'));
+      return chart;
     }
-    const scale = Math.max(...parsed.map(p => p.scale));
-    const values = parsed.map(p => p.digits * 10n ** BigInt(scale - p.scale));
+    const {parsed, magnitudes: values} = numbers;
     const maximum = values.reduce((a, b) => (a > b ? a : b), 0n),
       maxIndex = values.findIndex(v => v === maximum);
     chart.append(
@@ -182,15 +229,241 @@ window.createReportingDashboard = function (ports) {
     });
     return chart;
   }
+  // The legend of a chart: one line per plotted row, the row and its category then its exact value; for a pie, the slice's colour
+  // swatch first (empty for a row that is not drawn, which is said).
+  function legend(label, rows, categoryIndex, parsed, drawn) {
+    const list = node('ol');
+    list.className = 'board-legend';
+    list.setAttribute('aria-label', label);
+    rows.forEach((row, index) => {
+      const item = node('li');
+      if (drawn) {
+        const swatch = node('span');
+        swatch.className = 'board-swatch' + (drawn[index] ? ' board-slice-' + (index + 1) : '');
+        swatch.setAttribute('aria-hidden', 'true');
+        item.append(swatch);
+      }
+      const label = node('span', '第 ' + (index + 1) + ' 行 · ' + row[categoryIndex]);
+      label.className = 'board-legend-label';
+      item.append(label);
+      if (drawn && !drawn[index]) item.append(node('em', '未绘制'));
+      item.append(node('strong', parsed[index].text));
+      list.append(item);
+    });
+    return list;
+  }
+  // S21-A: a line over the current page's first 50 rows in row order (x: the row, y: the value on a linear scale that includes zero).
+  // The line, the points and the zero line are approximate; the exact values are the legend's literal strings.
+  function lineChart(widget, heading) {
+    const chart = node('div');
+    chart.className = 'board-line';
+    const c = field(widget.field),
+      categoryIndex = indexOf(widget.category),
+      valueIndex = indexOf(widget.field);
+    chart.append(
+      node('h3', heading),
+      node('p', '当前页 · 前 50 行 · 按行顺序。逐行连线，不分组、不汇总。' + unitOf(c))
+    );
+    const rows = result.rows.slice(0, 50);
+    if (!rows.length) {
+      chart.append(node('p', '当前页没有可绘制行。'));
+      return chart;
+    }
+    const numbers = exact(rows, valueIndex);
+    if (!numbers) {
+      chart.append(node('p', '图表不可用：当前绘图范围包含无效或超过限额的数值。'));
+      return chart;
+    }
+    const {parsed, magnitudes} = numbers,
+      values = magnitudes.map((m, i) => (parsed[i].negative ? -m : m));
+    let lowest = 0,
+      highest = 0;
+    values.forEach((v, i) => {
+      if (v < values[lowest]) lowest = i;
+      if (v > values[highest]) highest = i;
+    });
+    // The scale includes zero: from the lowest value or zero to the highest value or zero.
+    const low = values[lowest] < 0n ? values[lowest] : 0n,
+      high = values[highest] > 0n ? values[highest] : 0n,
+      span = high - low;
+    const W = 400,
+      H = 150,
+      PAD = 10;
+    const x = i => (rows.length === 1 ? W / 2 : PAD + (i * (W - 2 * PAD)) / (rows.length - 1)),
+      y = v => PAD + ((H - 2 * PAD) * (span === 0n ? 5000 : Number(((high - v) * 10000n) / span))) / 10000;
+    const picture = shape('svg', {
+      class: 'board-line-svg',
+      viewBox: '0 0 ' + W + ' ' + H,
+      role: 'img',
+      focusable: 'false',
+      'aria-label': '当前页折线图：' + c.label + '，' + rows.length + ' 个点',
+    });
+    picture.append(
+      shape('rect', {class: 'board-plot', x: 0, y: 0, width: W, height: H, rx: 4}),
+      shape('line', {class: 'board-zero', x1: 0, x2: W, y1: y(0n).toFixed(2), y2: y(0n).toFixed(2)}),
+      shape('polyline', {
+        class: 'board-line-path',
+        points: values.map((v, i) => x(i).toFixed(2) + ',' + y(v).toFixed(2)).join(' '),
+      })
+    );
+    values.forEach((v, i) =>
+      picture.append(
+        tip(
+          shape('circle', {class: 'board-point', cx: x(i).toFixed(2), cy: y(v).toFixed(2), r: 3}),
+          '第 ' + (i + 1) + ' 行 · ' + rows[i][categoryIndex] + ' · ' + parsed[i].text
+        )
+      )
+    );
+    const figure = node('figure'),
+      caption = node('figcaption');
+    caption.append(
+      node(
+        'p',
+        '线性标尺含零线；最小值 ' +
+          parsed[lowest].text +
+          '，最大值 ' +
+          parsed[highest].text +
+          '。折线与点位为近似比例，精确值见下方列表。'
+      ),
+      legend('各点精确值', rows, categoryIndex, parsed)
+    );
+    figure.append(picture, caption);
+    chart.append(figure);
+    return chart;
+  }
+  // S21-A: a pie of the current page's first 12 rows, one slice per row (the dashboard sums nothing: a repeated category is said, not
+  // merged). A zero or negative value is listed and not drawn; the proportions come from the exact magnitudes, numbers only for the angles.
+  function pieChart(widget, heading) {
+    const chart = node('div');
+    chart.className = 'board-pie';
+    const c = field(widget.field),
+      categoryIndex = indexOf(widget.category),
+      valueIndex = indexOf(widget.field);
+    chart.append(node('h3', heading), node('p', '当前页 · 前 12 行 · 每行一个扇区，不分组、不汇总。' + unitOf(c)));
+    const rows = result.rows.slice(0, 12);
+    if (!rows.length) {
+      chart.append(node('p', '当前页没有可绘制行。'));
+      return chart;
+    }
+    if (result.rows.length > 12) chart.append(node('p', '当前页有 ' + result.rows.length + ' 行，只绘制前 12 行。'));
+    const numbers = exact(rows, valueIndex);
+    if (!numbers) {
+      chart.append(node('p', '图表不可用：当前绘图范围包含无效或超过限额的数值。'));
+      return chart;
+    }
+    const {parsed, magnitudes} = numbers,
+      categories = rows.map(row => row[categoryIndex]),
+      drawn = parsed.map((p, i) => !p.negative && magnitudes[i] > 0n),
+      slices = rows.map((row, i) => i).filter(i => drawn[i]),
+      total = slices.reduce((sum, i) => sum + magnitudes[i], 0n);
+    if (new Set(categories).size !== categories.length) {
+      const note = node('p', '分类重复，饼图按行显示');
+      note.className = 'board-note';
+      chart.append(note);
+    }
+    const skipped = rows.map((row, i) => i).filter(i => !drawn[i]);
+    if (skipped.length) {
+      const note = node(
+        'p',
+        '零或负值不绘制扇区：' +
+          skipped.map(i => '第 ' + (i + 1) + ' 行 · ' + categories[i] + ' · ' + parsed[i].text).join('、') +
+          '。'
+      );
+      note.className = 'board-note';
+      chart.append(note);
+    }
+    const figure = node('figure'),
+      caption = node('figcaption');
+    const picture = shape('svg', {
+      class: 'board-pie-svg',
+      viewBox: '0 0 200 200',
+      role: 'img',
+      focusable: 'false',
+      'aria-label': '当前页饼图：' + c.label + '，' + slices.length + ' 个扇区',
+    });
+    // A point of the circle at a share of the turn, from twelve o'clock clockwise.
+    const point = turns => {
+      const angle = 2 * Math.PI * turns - Math.PI / 2;
+      return (100 + 90 * Math.cos(angle)).toFixed(2) + ',' + (100 + 90 * Math.sin(angle)).toFixed(2);
+    };
+    const arc = to => ' A90,90 0 0,1 ' + point(to);
+    const label = i => '第 ' + (i + 1) + ' 行 · ' + categories[i] + ' · ' + parsed[i].text;
+    // Each boundary is the exact cumulative share, rounded once to a millionth; the last one is exactly the whole circle. A slice over
+    // half the circle is two arcs (one arc between the same two points would be nothing: the one slice of a pie is the whole disc).
+    let cumulative = 0n,
+      start = 0;
+    for (const i of slices) {
+      cumulative += magnitudes[i];
+      const end = Number((cumulative * 1000000n) / total) / 1000000;
+      picture.append(
+        tip(
+          shape('path', {
+            class: 'board-slice board-slice-' + (i + 1),
+            d: 'M100,100 L' + point(start) + (end - start > 0.5 ? arc((start + end) / 2) : '') + arc(end) + ' Z',
+          }),
+          label(i)
+        )
+      );
+      start = end;
+    }
+    if (slices.length) figure.append(picture);
+    else chart.append(node('p', '没有可绘制的扇区：各行数值均为零或负。'));
+    caption.append(
+      node('p', '扇区为近似比例，只由绘制的正值确定；精确值见图例。'),
+      legend('图例与精确值', rows, categoryIndex, parsed, drawn)
+    );
+    figure.append(caption);
+    chart.append(figure);
+    return chart;
+  }
   function render() {
     const target = $('board-widgets');
     target.replaceChildren();
     if (!result || !config) return;
     config.widgets.forEach((widget, index) => {
       const card = node('article');
-      card.className = 'panel board-widget';
+      card.className = 'panel board-widget' + (widget.width === 'full' ? ' board-wide' : '');
       const controls = node('div');
       controls.className = 'board-controls';
+      // S21-A: the widget's title (1 to 64 characters; emptied, the default heading returns) and its width (half: one column of the
+      // grid; full: both), each written into the document and so saved, published and reopened with it.
+      const title = node('input');
+      title.type = 'text';
+      title.maxLength = 64;
+      title.className = 'board-title';
+      title.value = Object.hasOwn(widget, 'title') ? widget.title : '';
+      title.placeholder = '标题（可选）';
+      title.setAttribute('aria-label', '组件标题');
+      title.addEventListener('change', () =>
+        action(() => {
+          const next = JSON.parse(JSON.stringify(config)),
+            text = title.value.trim();
+          if (text) next.widgets[index].title = text;
+          else delete next.widgets[index].title;
+          apply(next);
+        })
+      );
+      const width = node('select');
+      width.className = 'board-width';
+      width.setAttribute('aria-label', '组件宽度');
+      for (const [value, label] of [
+        ['half', '半宽'],
+        ['full', '全宽'],
+      ]) {
+        const o = node('option', label);
+        o.value = value;
+        width.append(o);
+      }
+      width.value = widget.width === 'full' ? 'full' : 'half';
+      width.addEventListener('change', () =>
+        action(() => {
+          const next = JSON.parse(JSON.stringify(config));
+          if (width.value === 'full') next.widgets[index].width = 'full';
+          else delete next.widgets[index].width;
+          apply(next);
+        })
+      );
+      controls.append(title, width);
       for (const [label, delta] of [
         ['上移', -1],
         ['下移', 1],
@@ -212,19 +485,25 @@ window.createReportingDashboard = function (ports) {
         controls.append(b);
       }
       card.append(controls);
+      // The heading: the widget's title, else the default of its type.
+      const heading = Object.hasOwn(widget, 'title') ? widget.title : null;
       if (widget.type === 'metric') {
         const c = field(widget.field);
         card.append(
-          node('h3', c.label),
+          node('h3', heading ?? c.label),
           node('p', '服务端原范围合计' + (c.currency ? ' · ' + c.currency : c.unit ? ' · ' + c.unit : ''))
         );
         const value = node('strong', result.totals[widget.field]);
         value.className = 'board-value';
         card.append(value);
       } else if (widget.type === 'bar') {
-        card.append(barChart(widget));
+        card.append(barChart(widget, heading ?? field(widget.field).label + ' · 当前页柱状图'));
+      } else if (widget.type === 'line') {
+        card.append(lineChart(widget, heading ?? field(widget.field).label + ' · 当前页折线图'));
+      } else if (widget.type === 'pie') {
+        card.append(pieChart(widget, heading ?? field(widget.field).label + ' · 当前页饼图'));
       } else {
-        card.append(node('h3', '明细表 · 当前结果页'));
+        card.append(node('h3', heading ?? '明细表 · 当前结果页'));
         const wrap = node('div');
         wrap.className = 'table-wrap';
         const table = node('table'),
@@ -267,6 +546,12 @@ window.createReportingDashboard = function (ports) {
   );
   $('board-add-bar').addEventListener('click', () =>
     action(() => add({type: 'bar', category: $('board-category').value, field: $('board-value').value}))
+  );
+  $('board-add-line').addEventListener('click', () =>
+    action(() => add({type: 'line', category: $('board-line-category').value, field: $('board-line-value').value}))
+  );
+  $('board-add-pie').addEventListener('click', () =>
+    action(() => add({type: 'pie', category: $('board-pie-category').value, field: $('board-pie-value').value}))
   );
   $('board-reset').addEventListener('click', () =>
     action(() => apply({schema_version: '1.0', kind: 'dashboard', binding: binding(), widgets: []}))
@@ -593,8 +878,7 @@ window.createReportingDashboard = function (ports) {
       $('board-widgets').replaceChildren();
       $('board-metric').replaceChildren();
       $('board-columns').replaceChildren();
-      $('board-category').replaceChildren();
-      $('board-value').replaceChildren();
+      for (const id of [...CATEGORY_SELECTS, ...VALUE_SELECTS]) $(id).replaceChildren();
       $('board-json').value = '';
       $('board-count').textContent = '0 / 12 个组件';
       $('board-source').textContent = '尚无当前授权结果';
@@ -616,17 +900,19 @@ window.createReportingDashboard = function (ports) {
       }
       $('board-metric').replaceChildren();
       $('board-columns').replaceChildren();
-      $('board-category').replaceChildren();
-      $('board-value').replaceChildren();
+      for (const id of [...CATEGORY_SELECTS, ...VALUE_SELECTS]) $(id).replaceChildren();
       for (const c of result.columns) {
-        const category = node('option', c.label);
-        category.value = c.id;
-        $('board-category').append(category);
-        if (numeric(c.id)) {
-          const value = node('option', c.label);
-          value.value = c.id;
-          $('board-value').append(value);
+        for (const id of CATEGORY_SELECTS) {
+          const category = node('option', c.label);
+          category.value = c.id;
+          $(id).append(category);
         }
+        if (numeric(c.id))
+          for (const id of VALUE_SELECTS) {
+            const value = node('option', c.label);
+            value.value = c.id;
+            $(id).append(value);
+          }
         if (metric(c.id)) {
           const o = node('option', c.label);
           o.value = c.id;
