@@ -227,7 +227,8 @@ return [...found].sort((a,b)=>b.length-a.length);})()`);
   await sleep(400);
   await shot('en-tasks-1440');
   await measure('tasks panel 1440');
-  for (const p of ['audit', 'system']) {
+  // S09-G: the issue page, with the snapshot above and no published template yet.
+  for (const p of ['issue', 'audit', 'system']) {
     await nav(p);
     await shot('en-' + p + '-1440');
     await measure(p + ' 1440');

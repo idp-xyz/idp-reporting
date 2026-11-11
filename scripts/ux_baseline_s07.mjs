@@ -1,4 +1,4 @@
-// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): seven tasks a person does in the console, driven with real
+// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): eight tasks a person does in the console, driven with real
 // mouse and keyboard input over the Chrome DevTools Protocol, counting what the person pays for each: clicks, texts typed, page switches (a
 // section shown in place of another), shell changes (the chrome around the page replaced: console shell ↔ document studio ↔ template centre ↔
 // dashboard studio), dialogs opened and dead ends (the page telling the person to go somewhere else first). The same script runs before and after a
@@ -466,6 +466,115 @@ async function coreTasks() {
       'preview',
       60000
     );
+    await idle();
+  });
+
+  // T8 · 用已发布模板出具一份正式文件并下载 (ADR 0014 decision 12). T7 left a preview on the workbench, so the person freezes a snapshot first, then
+  // issues from a published template. Before S09-G the way runs through the design tool: the centre, 编辑 on the template, 检查与发布, 正式出具,
+  // 正式出具 — which is refused until 打开已发布模板 was pressed in 版本 (a dead end), then 正式出具 again. After S09-G the rail has 出具: the page lists
+  // the published templates of both spaces (one's own and the team's, S12-C), the person picks the template, presses 正式出具 and confirms.
+  await task('T8 冻结快照 → 用已发布模板出具 → 下载', async () => {
+    // The precondition, not a step of the task: a published 1.x template of the current dataset that the source product issues (the sample T3
+    // copied is a banded 2.0 template whose values the renderer refuses to print). It is made through the API with the session's token, as
+    // scripts/manual_screens.mjs seeds the manual's templates; no click is counted for it.
+    const api = (method, path, body, idempotent) =>
+      evalJs(
+        `(async()=>{const r=await fetch('/api/reporting/v1'+${JSON.stringify(path)},{method:${JSON.stringify(method)},headers:{Authorization:'Bearer '+${JSON.stringify(token)},'Content-Type':'application/json'${idempotent ? `,'Idempotency-Key':crypto.randomUUID()` : ''}},body:${body === undefined ? 'undefined' : JSON.stringify(JSON.stringify(body))}});const t=await r.text();return {status:r.status,body:t?JSON.parse(t):null};})()`
+      );
+    const must = (r, what) => {
+      if (r.status < 200 || r.status >= 300)
+        throw new Error(`${what}: ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+      return r.body;
+    };
+    const binding = await evalJs(
+      `(()=>{const s=document.getElementById('query-dataset').value.split('@');return {integration_id:document.getElementById('query-product').value,dataset:{id:s[0],version:s[1]}};})()`
+    );
+    const config = {
+      schema_version: '1.0',
+      kind: 'document',
+      name: '基线出具模板',
+      binding,
+      elements: [
+        {
+          id: 'n1',
+          source: 'literal',
+          field: '',
+          text: '基线出具模板',
+          x: 10,
+          y: 25,
+          width: 190,
+          height: 12,
+          font_size: 18,
+          align: 'left',
+        },
+      ],
+    };
+    const t = must(await api('POST', '/document-templates', {id: '', expected_version: 0, config}), 'the template');
+    must(
+      await api('POST', `/document-templates/${t.id}/release`, {action: 'publish', version: 1, expected_revision: 0}),
+      'its publication'
+    );
+    await openPage('workspace');
+    await clickBtn('#page-workspace', '创建快照');
+    await waitFor(
+      `document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`,
+      'snapshot',
+      60000
+    );
+    const issued = `document.getElementById('notice').textContent.includes('下载已发起')&&document.getElementById('notice').textContent.includes('No. ')`;
+    if (await evalJs(`!!document.querySelector('[data-page="issue"]')`)) {
+      await openPage('issue');
+      await waitFor(`${q('#issue-templates input[type=radio]')}`, 'the published templates', 30000);
+      await clickExpr(
+        `[...document.querySelectorAll('#issue-templates label')].find(l=>l.textContent.includes('基线出具模板'))`,
+        '基线出具模板'
+      );
+      await waitFor(`!document.getElementById('issue-go').disabled`, 'the template is chosen', 30000);
+      await clickBtn('#page-issue', '正式出具');
+      await waitFor(`!document.getElementById('sh-d-issue').hidden`, 'the confirmation');
+      await clickBtn('#sh-d-issue', '确认出具');
+      await waitFor(issued, 'issued', 90000);
+      await idle();
+      return;
+    }
+    await openPage('library');
+    await waitFor(
+      `${q('#page-library .catalog-card[aria-label="基线出具模板"]')}`,
+      'the published template in the centre',
+      30000
+    );
+    await sleep(300);
+    await clickBtn('#page-library .catalog-card[aria-label="基线出具模板"]', '编辑');
+    await waitFor(
+      `!document.getElementById('page-documents').hidden&&document.getElementById('doc-server-status').textContent.includes('正在编辑模板')`,
+      'the template in the studio',
+      60000
+    );
+    await idle();
+    await click('#st-tab-check');
+    await click('#st-tool-issue');
+    await waitFor(`${q('#st-d-issue.open')}`, 'the issue dialog');
+    await clickBtn('#st-d-issue', '正式出具');
+    await sleep(400);
+    if (!(await evalJs(issued))) {
+      // Refused: the studio wants the published version opened first. The person closes the dialog, does that and presses 正式出具 again.
+      await evalJs(`window.__ux.deadEnd()`);
+      await clickBtn('#st-d-issue', '关闭');
+      await click('#st-versions');
+      await waitFor(`${q('#st-d-versions.open')}`, 'the versions');
+      await clickBtn('#st-d-versions', '打开已发布模板');
+      await waitFor(
+        `document.getElementById('doc-server-status').textContent.includes('已打开发布模板')`,
+        'the published version is open',
+        30000
+      );
+      await idle();
+      await clickBtn('#st-d-versions', '关闭');
+      await click('#st-tool-issue');
+      await waitFor(`${q('#st-d-issue.open')}`, 'the issue dialog again');
+      await clickBtn('#st-d-issue', '正式出具');
+      await waitFor(issued, 'issued', 90000);
+    }
     await idle();
   });
 }

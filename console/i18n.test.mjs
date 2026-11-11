@@ -255,6 +255,7 @@ function english(intercept, search = '?lang=en') {
     'versions.js',
     'studio.js',
     'library.js',
+    'issue.js',
     'documents.js',
     'board.js',
     'app.js',
@@ -347,7 +348,7 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
     await look('data drawer');
     a.w.document.querySelector('[data-panel="tasks"]').click();
     await look('tasks panel');
-    for (const p of ['dashboard', 'documents', 'library', 'schedules', 'audit', 'admin', 'system']) {
+    for (const p of ['dashboard', 'documents', 'library', 'issue', 'schedules', 'audit', 'admin', 'system']) {
       a.go(p);
       await sleep(400);
       await look(p);

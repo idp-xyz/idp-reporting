@@ -18,6 +18,7 @@ export const SCRIPTS = [
   'versions.js',
   'studio.js',
   'library.js',
+  'issue.js',
   'documents.js',
   'board.js',
 ];

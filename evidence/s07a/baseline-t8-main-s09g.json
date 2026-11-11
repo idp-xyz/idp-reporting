@@ -1,0 +1,154 @@
+{
+  "label": "main",
+  "generated": "2026-11-11T07:06:54.419Z",
+  "base": "http://127.0.0.1:7890",
+  "tasks": [
+    {
+      "name": "T1 登录 → 冻结快照 → 导出 Excel",
+      "clicks": 2,
+      "texts": 2,
+      "pages": 0,
+      "shells": 0,
+      "dialogs": 0,
+      "deadEnds": 0,
+      "seconds": 1.1,
+      "log": []
+    },
+    {
+      "name": "T2 从空会话发布一个带指标卡的看板",
+      "clicks": 8,
+      "texts": 2,
+      "pages": 1,
+      "shells": 0,
+      "dialogs": 2,
+      "deadEnds": 0,
+      "seconds": 2.5,
+      "log": [
+        "page page-workspace → page-dashboard",
+        "dialog +1",
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T3 从模板中心复制样例 → 设计器 → 保存 → 发布",
+      "clicks": 5,
+      "texts": 1,
+      "pages": 2,
+      "shells": 0,
+      "dialogs": 2,
+      "deadEnds": 0,
+      "seconds": 2.4,
+      "log": [
+        "page page-dashboard → page-library",
+        "dialog +1",
+        "page page-library → page-documents",
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T4 冻结快照 → 任务工作区 → 查看结果",
+      "clicks": 4,
+      "texts": 0,
+      "pages": 1,
+      "shells": 0,
+      "dialogs": 1,
+      "deadEnds": 0,
+      "seconds": 1.3,
+      "log": [
+        "page page-documents → page-workspace",
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T5 文档工作室 → 看板工作室 → 模板中心 → 文档工作室",
+      "clicks": 4,
+      "texts": 0,
+      "pages": 4,
+      "shells": 0,
+      "dialogs": 0,
+      "deadEnds": 0,
+      "seconds": 2.6,
+      "log": [
+        "page page-workspace → page-documents",
+        "page page-documents → page-dashboard",
+        "page page-dashboard → page-library",
+        "page page-library → page-documents"
+      ]
+    },
+    {
+      "name": "T6 报表工作台：调整一列 → 保存 → 发布布局",
+      "clicks": 5,
+      "texts": 0,
+      "pages": 1,
+      "shells": 0,
+      "dialogs": 1,
+      "deadEnds": 0,
+      "seconds": 1.3,
+      "log": [
+        "page page-documents → page-workspace",
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T7 查看数据集的字段与币种 → 用它查询预览",
+      "clicks": 2,
+      "texts": 0,
+      "pages": 0,
+      "shells": 0,
+      "dialogs": 1,
+      "deadEnds": 0,
+      "seconds": 0.3,
+      "log": [
+        "dialog +1"
+      ]
+    },
+    {
+      "name": "T8 冻结快照 → 用已发布模板出具 → 下载",
+      "clicks": 12,
+      "texts": 0,
+      "pages": 2,
+      "shells": 0,
+      "dialogs": 3,
+      "deadEnds": 1,
+      "seconds": 3.1,
+      "log": [
+        "page page-workspace → page-library",
+        "page page-library → page-documents",
+        "dialog +1",
+        "dialog +1",
+        "dialog +1"
+      ]
+    }
+  ],
+  "totals": {
+    "clicks": 42,
+    "texts": 5,
+    "pages": 11,
+    "shells": 0,
+    "dialogs": 10,
+    "deadEnds": 1
+  },
+  "log": [
+    "page page-workspace → page-dashboard",
+    "dialog +1",
+    "dialog +1",
+    "page page-dashboard → page-library",
+    "dialog +1",
+    "page page-library → page-documents",
+    "dialog +1",
+    "page page-documents → page-workspace",
+    "dialog +1",
+    "page page-workspace → page-documents",
+    "page page-documents → page-dashboard",
+    "page page-dashboard → page-library",
+    "page page-library → page-documents",
+    "page page-documents → page-workspace",
+    "dialog +1",
+    "dialog +1",
+    "page page-workspace → page-library",
+    "page page-library → page-documents",
+    "dialog +1",
+    "dialog +1",
+    "dialog +1"
+  ]
+}

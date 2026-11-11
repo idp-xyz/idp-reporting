@@ -52,6 +52,8 @@ window.reportingRefusal = (() => {
 // how many rows the group has and the digest of those rows. The key values are the caller's own data, shown as text.
 // S12-C (ADR 0018): the template space the console works in: '' (one's own) or 'team' (the tenant's shared space, under /team/...). The
 // template centre switches it; the studio, the previews and the official issue follow it. The embed page stays in its own space.
+// path(path, space) names a space other than the current one: the issue page (S09-G) lists the published templates of both spaces and
+// issues each through the route of its own.
 window.reportingTemplateSpace = (() => {
   let space = '';
   return {
@@ -59,7 +61,7 @@ window.reportingTemplateSpace = (() => {
     set: value => {
       space = value === 'team' ? 'team' : '';
     },
-    path: path => (space === 'team' ? '/team' : '') + path,
+    path: (path, of = space) => (of === 'team' ? '/team' : '') + path,
   };
 })();
 window.reportingIssueGroup = (() => {
@@ -1124,7 +1126,14 @@ window.createReportingDocuments = function (ports) {
       $('doc-issue-status').textContent = e.message;
       return;
     }
-    const body = $('doc-issues-body');
+    issueRows($('doc-issues-body'), values, v => action(() => ports.issued(v.artifact_id, v.number, v.sha256)));
+    $('doc-issues-wrap').hidden = !values.length;
+    $('doc-issue-status').textContent = values.length
+      ? '当前身份共 ' + values.length + ' 条出具记录（最新在前，最多显示 50 条）。'
+      : '当前身份尚无出具记录。';
+  }
+  // The rows of the register, for the studio's dialog and the issue page alike (S09-G): the values must have passed checkIssues.
+  function issueRows(body, values, onDownload) {
     body.replaceChildren();
     for (const v of values) {
       const state =
@@ -1157,16 +1166,12 @@ window.createReportingDocuments = function (ports) {
         const b = node('button', '下载');
         b.type = 'button';
         b.className = 'button secondary';
-        b.addEventListener('click', () => action(() => ports.issued(v.artifact_id, v.number, v.sha256)));
+        b.addEventListener('click', () => onDownload(v));
         actions.append(b);
       }
       row.append(actions);
       body.append(row);
     }
-    $('doc-issues-wrap').hidden = !values.length;
-    $('doc-issue-status').textContent = values.length
-      ? '当前身份共 ' + values.length + ' 条出具记录（最新在前，最多显示 50 条）。'
-      : '当前身份尚无出具记录。';
   }
   const hex64 = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v),
     reference = v => typeof v === 'string' && v.length >= 1 && v.length <= 128;
@@ -3750,11 +3755,18 @@ window.createReportingDocuments = function (ports) {
       ];
     },
     labels: labelsOf,
+    // S09-G (ADR 0014 decision 12): in the console, 正式出具 is a page of its own; the studio's ribbon item leads there with the template that is
+    // open preselected, in the space the studio works in (S12-C). The embed page has no pages and keeps the dialog: the port is absent there.
+    issuePage: ports.issuePage
+      ? () => ports.issuePage(saved && saved.id ? saved.id : '', window.reportingTemplateSpace.get())
+      : null,
   };
   studio = window.createReportingStudio ? window.createReportingStudio(api) : null;
   return {
     openServer,
     bridge,
+    // The register's checks and rows, shared with the issue page (S09-G): what the dialog shows and what the page shows are one rendering.
+    issueRecords: {check: checkIssues, rows: issueRows},
     pdfPages: n => api.pdfPages(n),
     clear(logout = false) {
       past = [];

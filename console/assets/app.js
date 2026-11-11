@@ -13,12 +13,14 @@
     dashboard: '看板工作室',
     library: '模板中心',
     documents: '文档工作室',
+    issue: '正式出具',
     tasks: '任务工作区',
     schedules: '定时报表',
     audit: '操作记录',
     admin: '数据源与绑定',
     system: '能力与环境',
   };
+  let issuePage = null; // the issue page (issue.js, S09-G): the console only
   // The shell's wordmark names the page (S06-C) in the page's own words (S09-C, ADR 0014 decision 7); the studios and the centre carry
   // their own wordmarks, hidden inside the console.
   let board = null;
@@ -73,9 +75,20 @@
         {label: label, uncertain: '操作结果尚未确认，保存操作请刷新服务器看板列表；发布操作请刷新发布状态核对。'}
       ),
   });
-  const documents = window.createReportingDocuments({
+  const documentsPorts = {
     // The studio's crumb, wordmark and rail go to the template centre (S06-B part 3); the embed page has no centre and keeps the template chooser.
     ...(embedded ? {} : {library: () => openPage('library')}),
+    // S09-G: the ribbon's 正式出具 leads to the issue page with the open template preselected, in its space (the console only; the embed keeps
+    // the dialog). It answers whether it did: without the page (the embed, or a page removed) the studio keeps its dialog.
+    ...(embedded
+      ? {}
+      : {
+          issuePage: (id, space) => {
+            if (!issuePage || !$('page-issue')) return false;
+            openPage('issue', {id, space});
+            return true;
+          },
+        }),
     // Private images (schema 2.1): an upload like a background's; the listing and the bytes of an image are read in the background (no busy state, no notice: the canvas shows a labelled box until they arrive).
     uploadImage: (file, binding, apply) =>
       perform(
@@ -160,12 +173,20 @@
       state.capabilities.formats.includes('pdf') &&
       state.capabilities.issuance === true,
     snapshot: () => state.snapshot,
-    issue: (body, banded) =>
-      perform(m => createIssue(m, body, banded === true), {
-        label: '正式出具',
-        snapshot: body.snapshot_id,
-        uncertain: '出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。',
-      }),
+    // then: told when the issue finished (S09-G: the page's register follows); space: the template's space when it is not the one the console
+    // works in (S09-G lists both spaces' published templates; the studio issues in its own).
+    issue: (body, banded, then, space) =>
+      perform(
+        async m => {
+          await createIssue(m, body, banded === true, space);
+          if (then && current(m)) then();
+        },
+        {
+          label: '正式出具',
+          snapshot: body.snapshot_id,
+          uncertain: '出具任务提交结果未确认；请刷新出具记录核对，勿直接重复提交（同一待确认提交会复用原请求标识）。',
+        }
+      ),
     issued: (id, number, sha256) =>
       perform(m => download(id, m, 'pdf', issuedName(number), sha256), {label: '出具下载'}),
     exchange: (path, options, apply, label) =>
@@ -225,7 +246,8 @@
         },
         {label: 'PDF预览', snapshot: body.snapshot_id, uncertain: '预览生成结果未确认；可重新生成，不会正式出具。'}
       ),
-  });
+  };
+  const documents = window.createReportingDocuments(documentsPorts);
   // The template centre (library.js; the console only, the embed page has no such page): its ports are the request function, one verified PDF download, the notice and the studio's bridge.
   const library =
     !embedded && window.createReportingLibrary && $('page-library')
@@ -283,7 +305,50 @@
         ...(embedded ? {} : {data: from => drawer.open(from)}),
       })
     : null;
-  // S07-E: the most jobs the console keeps (the list, the pages read with 加载更多) and the size of a page of the server's listing.
+  // The issue page (issue.js, S09-G, ADR 0014 decision 12): the console only. Its ports are the request function with the console's
+  // notices, the data context, the session's issuer role (S12-A2), the studio's issue and download ports (one request path for issuing,
+  // the template's space naming the route, S12-C), documents.js's register rendering, the shell's 出具前确认 drawer and the data drawer.
+  issuePage =
+    !embedded && window.createReportingIssuePage && $('page-issue')
+      ? window.createReportingIssuePage({
+          call: async (path, options, label) => {
+            const m = mark(),
+              stale = () => Object.assign(Error('stale'), {stale: true});
+            try {
+              const value = await request(path, options);
+              if (!current(m)) throw stale();
+              return value;
+            } catch (error) {
+              if (error instanceof Stale || error.stale || !current(m)) throw stale();
+              notify(label + '：' + errorMessage(error), 'error');
+              throw error;
+            }
+          },
+          snapshot: () => state.snapshot,
+          dataSummary: () => dataSummary(),
+          query: () =>
+            state.query && typeof state.query.integration_id === 'string' && state.query.dataset
+              ? {integration_id: state.query.integration_id, dataset: copy(state.query.dataset)}
+              : null,
+          issuance: () =>
+            !!state.capabilities &&
+            Array.isArray(state.capabilities.formats) &&
+            state.capabilities.formats.includes('pdf') &&
+            state.capabilities.issuance === true,
+          previews: () =>
+            !!state.capabilities &&
+            Array.isArray(state.capabilities.formats) &&
+            state.capabilities.formats.includes('pdf'),
+          // S12-A2 (ADR 0018): whether the session's roles allow the official issue; the server refuses it anyway (AUTH_ROLE_DENIED).
+          issuer: () => Array.isArray(state.roles) && state.roles.includes('issuer'),
+          issue: (body, banded, then, space) => documentsPorts.issue(body, banded, then, space),
+          issued: (id, number, sha256) => documentsPorts.issued(id, number, sha256),
+          preview: (body, path) => documentsPorts.download(body, path),
+          records: documents.issueRecords,
+          data: from => drawer.open(from),
+          open: page => openPage(page),
+        })
+      : null;
   // The roles of ADR 0018 in the console's words (S12-A2).
   const roleNames = {
     viewer: '查看',
@@ -292,6 +357,7 @@
     issuer: '正式出具',
     administrator: '审计管理',
   };
+  // S07-E: the most jobs the console keeps (the list, the pages read with 加载更多) and the size of a page of the server's listing.
   const maxKnownJobs = 500,
     jobsPage = 50;
   const statuses = {
@@ -450,6 +516,8 @@
     versions: makeDrawer('ly-d-versions', [], () => null),
     publish: makeDrawer('ly-d-publish', [], () => null),
   };
+  // The issue page's 出具前确认 (S09-G) is a dialog of the shell like the layout designer's; the page gets it once the drawers exist.
+  if (issuePage) issuePage.dialog(makeDrawer('sh-d-issue', [], () => $('issue-confirm')));
   // The name of the dataset a query names, in the user's words (S09-C): the catalogue entry's title where the console has it, the id otherwise.
   function datasetName(dataset) {
     const known = state.datasets.find(d => d.dataset.id === dataset.id && d.dataset.version === dataset.version);
@@ -482,6 +550,7 @@
       ? '当前数据：' + s.text + ' · ' + s.kind + ' · 数据集 ' + s.dataset + '（点击修改）'
       : '选择产品连接、数据集、公司范围与时点';
     if (library && library.data) library.data();
+    if (issuePage) issuePage.sync();
   }
   // The page count of a PDF the server rendered, read from its page tree (/Type /Page objects, or the /Count of /Pages), for the studio's pager; 1 when it cannot be read.
   function pdfPageCount(bytes) {
@@ -611,6 +680,7 @@
     documents.clear(true);
     if (library) library.clear();
     if (board) board.clear();
+    if (issuePage) issuePage.clear();
     state.epoch++;
     state.view++;
     state.catalogOperation++;
@@ -994,11 +1064,12 @@
       embed.event('published', {template_id: release[1], version: value.published_version});
   }
   let drawerAsked = false;
-  function openPage(page) {
+  // detail: what the page is opened with (S09-G: the issue page takes the template to preselect, {id, space}).
+  function openPage(page, detail) {
     if (embedded) return;
     for (const d of drawers) d.close();
     const asked = page;
-    if (!pages[page]) page = 'workspace';
+    if (!pages[page] || !$('page-' + page)) page = 'workspace';
     for (const name of Object.keys(pages)) $('page-' + name).hidden = name !== page;
     document.querySelectorAll('.nav-item').forEach(b => {
       const active = b.dataset.page === page;
@@ -1018,6 +1089,8 @@
     if (page === 'audit' && state.session) loadAudit(false).catch(error => fail(error, mark(), {label: '操作记录'}));
     if (page === 'schedules' && state.session) loadSchedules().catch(error => fail(error, mark(), {label: '定时报表'}));
     if (page === 'admin' && state.session) loadAdmin().catch(error => fail(error, mark(), {label: '数据源与绑定'}));
+    if (page === 'issue' && issuePage && state.session)
+      issuePage.show(detail && typeof detail === 'object' && typeof detail.id === 'string' ? detail : null);
     if (asked === 'catalog' && !embedded) {
       if (state.session) setTimeout(() => drawer.open($('sh-data-chip')), 0);
       else drawerAsked = true;
@@ -2022,6 +2095,7 @@
       document.querySelector('.shell').inert = false;
       busy(0);
       if (library && !$('page-library').hidden) library.show();
+      if (issuePage && !$('page-issue').hidden) issuePage.show(null);
       if (embedded) {
         document.querySelector('.shell').hidden = false;
         showEmbedView();
@@ -3110,24 +3184,25 @@
       fail(error, m, context);
     }
   }
-  async function submit(kind, payload, context, verify) {
-    const fingerprint = kind + JSON.stringify(payload);
+  // space (an issue): the template's space when it is not the one the console works in (S09-G); the fingerprint of a pending submission
+  // includes the route, so that one idempotency key never names two requests.
+  async function submit(kind, payload, context, verify, space) {
+    const path =
+      kind === 'snapshot'
+        ? '/snapshot-jobs'
+        : kind === 'issue'
+          ? window.reportingTemplateSpace.path('/issues', space)
+          : '/exports';
+    const fingerprint = kind + path + JSON.stringify(payload);
     if (!state.pending || state.pending.fingerprint !== fingerprint)
       state.pending = {fingerprint: fingerprint, key: crypto.randomUUID()};
     const key = state.pending.key;
     try {
-      const job = await request(
-        kind === 'snapshot'
-          ? '/snapshot-jobs'
-          : kind === 'issue'
-            ? window.reportingTemplateSpace.path('/issues')
-            : '/exports',
-        {
-          method: 'POST',
-          body: payload,
-          key: key,
-        }
-      );
+      const job = await request(path, {
+        method: 'POST',
+        body: payload,
+        key: key,
+      });
       checkJob(job);
       if (verify) verify(job);
       rememberJob(job, context);
@@ -3253,21 +3328,28 @@
         done.state === 'cancelled' ? '' : 'error'
       );
   }
-  async function createIssue(m, body, banded) {
+  // space: the template's space (S12-C) when the caller names one; else the space the console works in.
+  async function createIssue(m, body, banded, space) {
     const query = copy(state.query);
     if (!state.snapshot || body.snapshot_id !== state.snapshot) throw new Failure(400, 'INVALID_REQUEST');
     // The view must be the job that was asked for, before the key is spent or the task kept.
-    const job = await submit('issue', body, {query: query, integration: query.integration_id}, j => {
-      if (
-        j.kind !== 'issue' ||
-        j.issue.template_id !== body.template_id ||
-        j.issue.template_version !== body.version ||
-        (banded
-          ? j.issue.group === undefined || j.issue.row_index !== undefined
-          : j.issue.group !== undefined || j.issue.row_index !== body.row_index)
-      )
-        throw new Failure(0, 'INVALID_RESPONSE');
-    }).catch(error => {
+    const job = await submit(
+      'issue',
+      body,
+      {query: query, integration: query.integration_id},
+      j => {
+        if (
+          j.kind !== 'issue' ||
+          j.issue.template_id !== body.template_id ||
+          j.issue.template_version !== body.version ||
+          (banded
+            ? j.issue.group === undefined || j.issue.row_index !== undefined
+            : j.issue.group !== undefined || j.issue.row_index !== body.row_index)
+        )
+          throw new Failure(0, 'INVALID_RESPONSE');
+      },
+      space
+    ).catch(error => {
       // The product or the deployment cannot issue (or the row or the template cannot be printed): not the dataset's query shape, which is what a 422 otherwise says.
       if (error && error.status === 422 && error.code === 'UNSUPPORTED_COMBINATION') error.code = 'ISSUE_UNSUPPORTED';
       throw error;

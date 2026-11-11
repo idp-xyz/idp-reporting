@@ -2104,4 +2104,73 @@ window.reportingEnglish = {
   添加饼图: 'Add pie chart',
   '指标卡是服务端原范围合计，表格和图表是当前页或有界预览；两者范围可能不同。看板不计算新的汇总，不改变查询权限。':
     'Metric cards are server-side totals over the original scope; tables and charts are the current page or a bounded preview, so the two scopes may differ. The dashboard computes no new aggregates and does not change query permissions.',
+  // ---- S09-G: the issue page (issue.js), its 出具前确认 dialog (index.html) and the studio's way in (studio.js)
+  出具: 'Issue',
+  '用已发布的模板，按冻结快照的一行出具带编号的正式文件；编号由来源产品确认。':
+    'Issue a numbered official document from a published template for one row of the frozen snapshot; the source product confirms the number.',
+  '当前数据集的已发布模板，我的与团队空间的都在；一张模板一个编号序列由来源产品决定。':
+    "The published templates of the current dataset, from your own and the team's space; the source product decides the number series of each template.",
+  刷新模板: 'Refresh templates',
+  已发布模板: 'Published templates',
+  '冻结快照的行号（从 1 开始）': 'Row number in the frozen snapshot (from 1)',
+  '分带模板（2.x）按这一行所在的分组出具。': 'A banded template (2.x) issues the group that holds this row.',
+  'PDF 预览': 'PDF preview',
+  '当前身份的出具记录，最新在前，最多 50 条；记录永久保留，文件按保留期清除。':
+    'Your issue records, newest first, at most 50; records are kept permanently, files are removed at the end of their retention.',
+  尚未读取: 'Not read yet',
+  刷新记录: 'Refresh records',
+  尚无出具记录: 'No issue records yet',
+  '出具的文件在这里按编号列出，可再次下载。': 'Issued documents are listed here by number and can be downloaded again.',
+  '模板 · 版本': 'Template · version',
+  '快照 · 行/分组': 'Snapshot · row/group',
+  'PDF 摘要 · 页数': 'PDF digest · pages',
+  来源确认: 'Source confirmation',
+  '先选择数据并冻结快照：出具按冻结快照的行进行。':
+    'Select data and freeze a snapshot first: a document is issued for a row of the frozen snapshot.',
+  '正在读取已发布模板…': 'Reading the published templates…',
+  '当前数据集没有已发布的模板。到模板中心复制一个示例，在文档工作室发布后再来。':
+    'The current dataset has no published template. Copy a sample in the template centre, publish it in the document studio and come back.',
+  '已发布 v{0}{1}': 'Published v{0}{1}',
+  '分带模板 · 按分组出具': 'Banded template · issued by group',
+  '单页模板 · 按行出具': 'Single-page template · issued by row',
+  我的: 'Mine',
+  团队: 'Team',
+  '我的模板：当前身份自己的已发布版本': 'My templates: your own published version',
+  '团队模板：租户共享空间的已发布版本': "Team templates: the published version in the tenant's shared space",
+  模板标识: 'Template identifier',
+  '{0} 个已发布模板；只有已发布版本可以出具。': '{0} published templates; only a published version can be issued.',
+  '当前角色不能出具：正式出具需要“正式出具”角色，请联系平台运营方在身份绑定中授予；出具记录仍可查看。':
+    'Your role cannot issue: an official issue needs the “Official issue” role; ask the platform operator to grant it in your identity binding. The issue records can still be read.',
+  '服务端未启用正式出具（需要 PDF 渲染与来源产品的出具能力）。':
+    'The server has not enabled official issue (it needs PDF rendering and a source product that issues).',
+  '出具需要冻结快照：先在“选择数据…”里创建快照。':
+    'Issuing needs a frozen snapshot: create one under “Select data…” first.',
+  '选择一个已发布模板。': 'Choose a published template.',
+  '正在读取已发布版本…': 'Reading the published version…',
+  '出具后，编号与文件进入下面的出具记录。':
+    'After the issue, the number and the file appear in the issue records below.',
+  '无法验证已发布模板。': 'Could not verify the published template.',
+  出具记录无法验证: 'The issue records could not be verified',
+  无法验证: 'Not verifiable',
+  '{0} 条': '{0} records',
+  '请填写 1–1000 之间的行号。': 'Enter a row number between 1 and 1000.',
+  '{0} · 已发布 v{1}': '{0} · published v{1}',
+  空间: 'Space',
+  '团队模板（租户共享空间）': "Team templates (the tenant's shared space)",
+  快照: 'Snapshot',
+  行: 'Row',
+  '第 {0} 行所在的分组（服务端按模板的分组字段确定）':
+    "The group that holds row {0} (the server finds it by the template's group fields)",
+  '由来源产品分配并确认；任务成功后才有编号和文件':
+    'Assigned and confirmed by the source product; the number and the file exist only once the task succeeds',
+  '出具是一次提交：同一待确认提交会复用原请求标识，不会重复出具。':
+    'An issue is one submission: a pending submission reuses its original request ID and is never issued twice.',
+  出具前确认: 'Confirm before issuing',
+  '按冻结快照的这一行（或它所在的分组）用已发布版本出具；编号由来源产品确认':
+    'Issues the published version for this row of the frozen snapshot (or the group that holds it); the source product confirms the number',
+  '正式文件通过摘要校验后下载；出具记录永久保留。':
+    'The official document is downloaded after its digest check; the issue record is kept permanently.',
+  确认出具: 'Confirm issue',
+  '在“出具”页用这个模板的已发布版本出具；出具记录也在那里':
+    "Issue with this template's published version on the “Issue” page; the issue records are there too",
 };
