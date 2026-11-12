@@ -50,6 +50,7 @@
     savedLayout: null,
     layoutLatest: 0,
     layout: null,
+    layoutInvalid: '',
     snapshot: null,
     query: null,
     page: 0,
@@ -552,6 +553,7 @@
   const lyDialogs = {
     versions: makeDrawer('ly-d-versions', [], () => null),
     publish: makeDrawer('ly-d-publish', [], () => null),
+    export: makeDrawer('ly-d-export', [], () => $('ly-export-save')),
   };
   // The issue page's 出具前确认 (S09-G) is a dialog of the shell like the layout designer's; the page gets it once the drawers exist.
   if (issuePage) issuePage.dialog(makeDrawer('sh-d-issue', [], () => $('issue-confirm')));
@@ -670,7 +672,8 @@
   // their title and the sentence stands beside them; with a snapshot, or before any result, nothing is said.
   function exportHint() {
     const needsSnapshot = !!state.session && !!state.lastResult && !state.snapshot;
-    for (const id of ['export', 'export-pdf']) $(id).title = needsSnapshot ? '导出需要冻结快照：先创建快照' : '';
+    for (const id of ['export', 'export-pdf'])
+      $(id).title = needsSnapshot ? '导出需要冻结快照：先创建快照' : exportLayoutTitle();
     if ($('export-hint')) $('export-hint').hidden = !needsSnapshot;
   }
   // S20-B (ADR 0014 decision 6): a query the console can see cannot be sent as it is — a filter without a value, a number not in the
@@ -685,6 +688,15 @@
     }
     $('query-hint').textContent = why;
     $('query-hint').hidden = !why;
+  }
+  // S23-B (ADR 0024 decision 2): the export buttons say which saved layout the file will carry, and when the designer holds edits the
+  // file will not (the export uses the latest saved version; the confirmation before exporting offers to save first).
+  function exportLayoutTitle() {
+    const saved = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null;
+    if (!saved) return '';
+    return layoutDirty()
+      ? '布局有未保存的修改：导出使用已保存的版本 ' + saved.version
+      : '导出使用已保存的布局（版本 ' + saved.version + '）';
   }
   function busy(change) {
     state.busy = Math.max(0, state.busy + change);
@@ -709,6 +721,17 @@
     dashboard.clear();
     documents.clear();
     $('designer-columns').replaceChildren();
+    $('layout-marks').replaceChildren();
+    $('layout-subtotals').replaceChildren();
+    $('layout-title').value = '';
+    $('layout-footnote').value = '';
+    $('layout-mark-add').disabled = true;
+    state.layoutInvalid = '';
+    for (const id of ['result-layout-title', 'result-layout-footnote']) {
+      $(id).textContent = '';
+      $(id).hidden = true;
+    }
+    $('result-layout-note').hidden = true;
     $('layout-status').textContent = '查询数据后可设计布局。';
     state.snapshot = null;
     state.query = null;
@@ -882,6 +905,10 @@
     if (error.code === 'OVERLOADED' && error.status === 503) return '服务繁忙，请稍后再试';
     if (error.status === 503) return '当前授权来源不可用，请稍后重试。';
     if (error.code === 'INTEGRITY_FAILURE') return '资源完整性校验失败，内容已停止显示。';
+    if (error.code === 'LAYOUT_EXPORT_UNSUPPORTED')
+      return '这个布局不属于当前快照的数据集，导出文件不能带它；请换一个布局或不带布局导出。';
+    if (error.code === 'LAYOUT_EXPORT_INVALID')
+      return '已保存的布局不再符合数据集的规则（列或类型已变）：请在设计器里调整并保存，再导出。';
     if (error.code === 'TEMPLATE_NOT_PUBLISHED')
       return '只能正式出具当前已发布的模板版本；当前发布可能刚改变，请核对后重试。';
     if (error.status === 409) return '请求冲突、资源失效或完整性检查未通过，请重新查询。';
@@ -2435,28 +2462,118 @@
       ? state.layout.columns
       : result.columns.map(c => ({id: c.id, align: ['decimal', 'integer'].includes(c.type) ? 'right' : 'left'}));
   }
+  // S23-B (ADR 0024 decision 5): the table view shows what the exports print. With a 1.1 layout the rows go through the console's copy of the
+  // server's presentation step (present.js): the layout's columns in order under their labels and alignments, the numbers in their format
+  // with the exact frozen value as the cell's title, each subtotal group followed by its 小计 row (exact sums), the marks as cell classes,
+  // the title above the table and the footnote under it. A 1.0 layout (columns, order and alignment only) and no layout show the table as
+  // they always did: the frozen strings as they are.
   function renderTable(result) {
-    const columns = visibleColumns(result);
-    const header = node('tr');
-    const body = $('result-table').tBodies[0];
+    const header = node('tr'),
+      body = $('result-table').tBodies[0],
+      title = $('result-layout-title'),
+      footnote = $('result-layout-footnote'),
+      note = $('result-layout-note');
     body.replaceChildren();
-    for (const entry of columns) {
-      const c = result.columns.find(c => c.id === entry.id);
-      header.append(node('th', c.label + (c.currency ? ' (' + c.currency + ')' : c.unit ? ' (' + c.unit + ')' : '')));
+    const layout = matchingLayout() ? state.layout : null;
+    if (!layout || layout.schema_version !== '1.1') {
+      for (const entry of visibleColumns(result)) {
+        const c = result.columns.find(c => c.id === entry.id);
+        header.append(node('th', c.label + (c.currency ? ' (' + c.currency + ')' : c.unit ? ' (' + c.unit + ')' : '')));
+      }
+      $('result-table').tHead.replaceChildren(header);
+      for (const values of result.rows) {
+        const row = node('tr');
+        for (const entry of visibleColumns(result)) {
+          const i = result.columns.findIndex(c => c.id === entry.id);
+          const cell = node('td', values[i], entry.align === 'right' ? 'layout-right' : 'layout-left');
+          cell.title = values[i];
+          row.append(cell);
+        }
+        body.append(row);
+      }
+      for (const el of [title, footnote]) {
+        el.textContent = '';
+        el.hidden = true;
+      }
+      note.hidden = true;
+      return;
+    }
+    const table = present.build(result, state.query, layout);
+    for (const c of table.columns) {
+      const th = node('th', c.header, 'layout-' + c.align);
+      // A label replaces the dataset's label and its currency or unit (S23-A); the dataset's stays as the title.
+      if (c.label)
+        th.title =
+          c.source.label +
+          (c.source.currency ? ' (' + c.source.currency + ')' : c.source.unit ? ' (' + c.source.unit + ')' : '');
+      header.append(th);
     }
     $('result-table').tHead.replaceChildren(header);
-    for (const values of result.rows) {
-      const row = node('tr');
-      for (const entry of columns) {
-        const i = result.columns.findIndex(c => c.id === entry.id);
-        const cell = node('td', values[i], entry.align === 'right' ? 'layout-right' : 'layout-left');
-        cell.title = values[i];
-        row.append(cell);
-      }
+    for (const r of table.rows) {
+      const row = node('tr', undefined, r.subtotal ? 'layout-subtotal' : undefined);
+      r.cells.forEach((cell, k) => {
+        const td = node('td', cell.text, 'layout-' + table.columns[k].align + (cell.mark ? ' mark-' + cell.mark : ''));
+        if (cell.exact !== '') td.title = cell.exact;
+        row.append(td);
+      });
       body.append(row);
     }
+    title.textContent = table.title;
+    title.hidden = !table.title;
+    footnote.textContent = table.footnote;
+    footnote.hidden = !table.footnote;
+    note.hidden = !table.subtotalBy;
   }
-  function applyLayout(layout, allowPending = false) {
+  // The console's copy of the server's presentation step and layout rules (present.js, S23-B).
+  const present = window.reportingPresent;
+  // The default layout of a result: every column in catalogue order, numeric ones right-aligned, 1.0. A layout equal to it is no design.
+  function defaultLayout() {
+    return {
+      schema_version: '1.0',
+      binding: layoutBinding(),
+      columns: state.lastResult.columns.map(c => ({
+        id: c.id,
+        align: ['decimal', 'integer'].includes(c.type) ? 'right' : 'left',
+      })),
+    };
+  }
+  // canonical is a layout as text with its keys in one order, for comparing two layouts whoever wrote them (the server marshals its struct's
+  // order, the console its own).
+  function canonical(value) {
+    if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
+    if (value && typeof value === 'object')
+      return (
+        '{' +
+        Object.keys(value)
+          .sort()
+          .map(k => JSON.stringify(k) + ':' + canonical(value[k]))
+          .join(',') +
+        '}'
+      );
+    return JSON.stringify(value);
+  }
+  // sameLayout says whether two layouts are the same document (S23-B: the whole document, not the columns alone).
+  function sameLayout(a, b) {
+    return canonical(a) === canonical(b);
+  }
+  // normalizeLayout drops what the server treats as absent (an empty title, footnote or label) and, when told to, writes the schema a
+  // layout speaks: 1.1 when it uses anything 1.1 added, else 1.0 exactly as before S23-B. An imported or opened document keeps its own
+  // schema (a 1.1 document that uses nothing of 1.1 is valid and stays 1.1 until the designer changes it).
+  function normalizeLayout(layout, reschema) {
+    if (!layout || typeof layout !== 'object' || !Array.isArray(layout.columns)) return layout;
+    const next = copy(layout);
+    for (const key of ['title', 'footnote']) if (next[key] === '') delete next[key];
+    for (const c of next.columns) if (c && typeof c === 'object' && c.label === '') delete c.label;
+    if (next.subtotals === null || (next.subtotals && next.subtotals.by === '')) delete next.subtotals;
+    if (Array.isArray(next.marks) && !next.marks.length) delete next.marks;
+    if (reschema) next.schema_version = present.uses11(next) ? '1.1' : '1.0';
+    return next;
+  }
+  // applyLayout holds a document to the server's rules (layouts.Validate, layouts.Check against the current result and query) and makes it
+  // the layout: the table and the designer follow. A shape that is not a layout is the query form's generic refusal (as before); a 1.1 rule
+  // the server would refuse is a refusal that names the rule (present.Refusal, shown in the status line). keepDesigner: a text field's
+  // keystroke redraws the table and the badge but not the designer, so that the field keeps the focus.
+  function applyLayout(layout, allowPending = false, keepDesigner = false) {
     if (!state.session || !state.lastResult || state.catalogLoading || (state.busy && !allowPending))
       throw new Failure(400, 'INVALID_REQUEST');
     const keys = (value, names) =>
@@ -2465,84 +2582,156 @@
       !Array.isArray(value) &&
       Object.keys(value).sort().join(',') === names.sort().join(',');
     if (
-      !keys(layout, ['schema_version', 'binding', 'columns']) ||
-      layout.schema_version !== '1.0' ||
+      !layout ||
+      typeof layout !== 'object' ||
+      Array.isArray(layout) ||
       !keys(layout.binding, ['integration_id', 'dataset']) ||
       !keys(layout.binding.dataset, ['id', 'version']) ||
       layout.binding.integration_id !== state.query.integration_id ||
       layout.binding.dataset.id !== state.query.dataset.id ||
-      layout.binding.dataset.version !== state.query.dataset.version ||
-      !Array.isArray(layout.columns) ||
-      !layout.columns.length ||
-      layout.columns.length > 100 ||
-      new Set(layout.columns.map(c => c?.id)).size !== layout.columns.length ||
-      !layout.columns.every(
-        c =>
-          keys(c, ['id', 'align']) &&
-          typeof c.id === 'string' &&
-          state.lastResult.columns.some(known => known.id === c.id) &&
-          ['left', 'right'].includes(c.align)
-      )
+      layout.binding.dataset.version !== state.query.dataset.version
     )
       throw new Failure(400, 'INVALID_REQUEST');
-    state.layout = copy(layout);
+    const next = normalizeLayout(layout, false);
+    try {
+      present.validate(next, state.lastResult, state.query);
+    } catch (error) {
+      if (error instanceof present.Refusal) throw new LayoutRefusal(error.message);
+      throw new Failure(400, 'INVALID_REQUEST');
+    }
+    state.layout = next;
+    state.layoutInvalid = '';
     renderTable(state.lastResult);
-    renderDesigner();
-    $('layout-status').textContent = '布局已应用；数据和授权范围保持当前查询。';
+    if (keepDesigner) renderLayoutState();
+    else {
+      renderDesigner();
+      $('layout-status').textContent = '布局已应用；数据和授权范围保持当前查询。';
+    }
+  }
+  // The words of the designer's choices (the server's words are in the document).
+  const alignWords = [
+      ['left', '左对齐'],
+      ['center', '居中'],
+      ['right', '右对齐'],
+    ],
+    negativeWords = [
+      ['minus', '负号'],
+      ['parentheses', '括号'],
+    ],
+    zeroWords = [
+      ['digits', '数字'],
+      ['dash', '— 横线'],
+    ],
+    markWords = [
+      ['good', '好'],
+      ['warn', '注意'],
+      ['bad', '差'],
+      ['note', '备注'],
+    ],
+    numericWhens = [
+      ['lt', '小于'],
+      ['le', '小于等于'],
+      ['gt', '大于'],
+      ['ge', '大于等于'],
+      ['eq', '等于'],
+      ['ne', '不等于'],
+    ],
+    textWhens = [
+      ['eq', '等于'],
+      ['ne', '不等于'],
+      ['blank', '为空'],
+    ];
+  function choice(ariaLabel, pairs, value) {
+    const s = node('select');
+    s.setAttribute('aria-label', ariaLabel);
+    for (const [v, text] of pairs) {
+      const option = node('option', text);
+      option.value = v;
+      s.append(option);
+    }
+    s.value = value;
+    return s;
+  }
+  // A change of the designer: the document is rebuilt from the layout, normalized (its schema follows what it uses) and applied; a refusal
+  // is shown in the status line and the designer drawn again from the layout that stands.
+  function designed(fn, keepDesigner = false) {
+    try {
+      const next = copy(state.layout);
+      fn(next);
+      applyLayout(normalizeLayout(next, true), false, keepDesigner);
+    } catch (error) {
+      $('layout-status').textContent = error instanceof LayoutRefusal ? error.message : errorMessage(error);
+      if (!keepDesigner) renderDesigner();
+    }
   }
   function renderDesigner() {
-    const target = $('designer-columns');
+    const target = $('designer-columns'),
+      marks = $('layout-marks'),
+      subtotals = $('layout-subtotals');
     target.replaceChildren();
-    if (!state.lastResult) return;
+    marks.replaceChildren();
+    subtotals.replaceChildren();
+    state.layoutInvalid = '';
+    if (!state.lastResult) {
+      $('layout-title').value = '';
+      $('layout-footnote').value = '';
+      $('layout-mark-add').disabled = true;
+      return;
+    }
     if (state.savedLayout && !savedBindingMatches(state.savedLayout)) {
       state.savedLayout = null;
       state.releaseView = null;
       $('layout-server-status').textContent = '首次保存会为当前数据集创建新布局。';
     }
     if (!matchingLayout() || !state.layout.columns.every(c => state.lastResult.columns.some(k => k.id === c.id)))
-      state.layout = {
-        schema_version: '1.0',
-        binding: layoutBinding(),
-        columns: state.lastResult.columns.map(c => ({
-          id: c.id,
-          align: ['decimal', 'integer'].includes(c.type) ? 'right' : 'left',
-        })),
-      };
-    const entries = state.layout.columns;
+      state.layout = defaultLayout();
+    const layout = state.layout,
+      entries = layout.columns,
+      result = state.lastResult,
+      query = state.query;
+    // The report's texts: a keystroke follows into the layout without redrawing the designer (the field keeps the focus).
+    for (const [id, key] of [
+      ['layout-title', 'title'],
+      ['layout-footnote', 'footnote'],
+    ]) {
+      const field = $(id);
+      if (field.value !== (layout[key] || '')) field.value = layout[key] || '';
+      field.oninput = () =>
+        designed(next => {
+          if (field.value) next[key] = field.value;
+          else delete next[key];
+        }, true);
+    }
     const ordered = [
-      ...entries.map(c => state.lastResult.columns.find(k => k.id === c.id)),
-      ...state.lastResult.columns.filter(c => !entries.some(k => k.id === c.id)),
+      ...entries.map(c => result.columns.find(k => k.id === c.id)),
+      ...result.columns.filter(c => !entries.some(k => k.id === c.id)),
     ];
     for (const c of ordered) {
       const row = node('div', undefined, 'designer-row');
       const label = node('label');
       const check = node('input');
       check.type = 'checkbox';
-      check.checked = entries.some(k => k.id === c.id);
+      const index = entries.findIndex(k => k.id === c.id);
+      const entry = entries[index];
+      check.checked = index >= 0;
       check.setAttribute('aria-label', '显示 ' + c.label);
       label.append(check, document.createTextNode(c.label));
       row.append(label);
-      const update = fn => {
-        try {
-          const next = copy(state.layout);
-          fn(next.columns);
-          applyLayout(next);
-        } catch (error) {
-          $('layout-status').textContent = errorMessage(error);
-          renderDesigner();
-        }
-      };
+      const update = fn => designed(next => fn(next.columns, next));
       check.addEventListener('change', () =>
-        update(cols => {
+        update((cols, next) => {
           if (check.checked) cols.push({id: c.id, align: 'left'});
-          else
+          else {
             cols.splice(
               cols.findIndex(k => k.id === c.id),
               1
             );
+            // A column that is hidden takes its subtotal and its mark rules with it (the server refuses a subtotal or a mark on a column the layout does not show).
+            if (next.subtotals && next.subtotals.by === c.id) delete next.subtotals;
+            if (next.marks) next.marks = next.marks.filter(m => m.column !== c.id);
+          }
         })
       );
-      const index = entries.findIndex(k => k.id === c.id);
       const up = button('上移', () =>
         update(cols => {
           [cols[index - 1], cols[index]] = [cols[index], cols[index - 1]];
@@ -2550,17 +2739,7 @@
       );
       up.disabled = index <= 0;
       row.append(up);
-      const align = node('select');
-      align.setAttribute('aria-label', c.label + ' 对齐');
-      for (const [value, text] of [
-        ['left', '左对齐'],
-        ['right', '右对齐'],
-      ]) {
-        const option = node('option', text);
-        option.value = value;
-        align.append(option);
-      }
-      align.value = entries[index]?.align || 'left';
+      const align = choice(c.label + ' 对齐', alignWords, entry ? entry.align : 'left');
       align.disabled = index < 0;
       align.addEventListener('change', () =>
         update(cols => {
@@ -2568,10 +2747,163 @@
         })
       );
       row.append(align);
+      // 列标签 (S23-B): empty keeps the dataset's label.
+      const text = node('input');
+      text.type = 'text';
+      text.maxLength = present.limits.label;
+      text.placeholder = '列标签';
+      text.setAttribute('aria-label', c.label + ' 列标签');
+      text.value = entry && entry.label ? entry.label : '';
+      text.disabled = index < 0;
+      text.addEventListener('input', () =>
+        designed(next => {
+          if (text.value) next.columns[index].label = text.value;
+          else delete next.columns[index].label;
+        }, true)
+      );
+      row.append(text);
+      // 格式 (S23-B), on a decimal or integer column only: the effective format is shown (a metric is grouped by default, a numeric dimension
+      // plain); the document carries a format only when the choice differs from that default, so a layout that chooses nothing stays 1.0.
+      if (present.numericType(c.type)) {
+        const effective = present.effectiveFormat(c, entry, query),
+          base = present.effectiveFormat(c, null, query),
+          box = node('span', undefined, 'designer-format');
+        const grouping = node('input');
+        grouping.type = 'checkbox';
+        grouping.checked = effective.grouping;
+        grouping.setAttribute('aria-label', c.label + ' 千分位');
+        const groupingLabel = node('label', undefined, 'designer-check');
+        groupingLabel.append(grouping, document.createTextNode('千分位'));
+        const negative = choice(c.label + ' 负数', negativeWords, effective.negative),
+          zero = choice(c.label + ' 零', zeroWords, effective.zero);
+        for (const el of [grouping, negative, zero]) {
+          el.disabled = index < 0;
+          el.addEventListener('change', () =>
+            update(cols => {
+              const chosen = {grouping: grouping.checked, negative: negative.value, zero: zero.value};
+              if (canonical(chosen) === canonical(base)) delete cols[index].format;
+              else cols[index].format = chosen;
+            })
+          );
+        }
+        box.append(groupingLabel, negative, zero);
+        row.append(box);
+      }
       target.append(row);
     }
+    // 小计 (S23-B): one dimension column the layout shows, or none.
+    const none = node('option', '无');
+    none.value = '';
+    subtotals.append(none);
+    for (const entry of entries) {
+      const c = result.columns.find(k => k.id === entry.id);
+      if (!query.dimensions.includes(c.id)) continue;
+      const option = node('option', c.label);
+      option.value = c.id;
+      subtotals.append(option);
+    }
+    subtotals.value = layout.subtotals ? layout.subtotals.by : '';
+    subtotals.onchange = () =>
+      designed(next => {
+        if (subtotals.value) next.subtotals = {by: subtotals.value};
+        else delete next.subtotals;
+      });
+    // 标记规则 (S23-B): up to eight; each a shown column, a relation the column's type allows, a value where the relation takes one, a mark.
+    const rules = layout.marks || [];
+    $('layout-mark-add').disabled = rules.length >= present.limits.marks || !entries.length;
+    $('layout-mark-add').title = rules.length >= present.limits.marks ? '最多 ' + present.limits.marks + ' 条规则' : '';
+    rules.forEach((rule, i) => {
+      const row = node('div', undefined, 'designer-row mark-rule'),
+        column = result.columns.find(k => k.id === rule.column),
+        numeric = present.numericType(column.type),
+        n = '规则 ' + (i + 1);
+      row.append(node('span', n, 'mark-index'));
+      const col = choice(
+        n + ' 列',
+        entries.map(e => [e.id, result.columns.find(k => k.id === e.id).label]),
+        rule.column
+      );
+      col.addEventListener('change', () =>
+        designed(next => {
+          const m = next.marks[i],
+            type = result.columns.find(k => k.id === col.value).type;
+          m.column = col.value;
+          // A relation the new column's type does not allow starts over with one it does: equal to 0 on a number, blank on a text.
+          if (present.numericType(type) !== numeric) {
+            if (present.numericType(type)) {
+              m.when = 'eq';
+              m.value = '0';
+            } else {
+              m.when = 'blank';
+              delete m.value;
+            }
+          }
+        })
+      );
+      const when = choice(n + ' 关系', numeric ? numericWhens : textWhens, rule.when);
+      when.addEventListener('change', () =>
+        designed(next => {
+          const m = next.marks[i];
+          m.when = when.value;
+          if (m.when === 'blank') delete m.value;
+          else if (m.value === undefined) m.value = numeric ? '0' : '';
+        })
+      );
+      const value = node('input');
+      value.type = 'text';
+      value.maxLength = present.limits.value;
+      value.setAttribute('aria-label', n + ' 值');
+      value.placeholder = numeric ? '数，如 0 或 -12.50' : '文字';
+      if (numeric) value.inputMode = 'decimal';
+      value.value = rule.value === undefined ? '' : rule.value;
+      value.hidden = rule.when === 'blank';
+      value.addEventListener('input', () => {
+        // A number that is not one is not applied: the layout keeps its value, the field says so, and 保存 and 发布 wait with the reason.
+        if (numeric && !present.isExact(value.value)) {
+          value.setAttribute('aria-invalid', 'true');
+          state.layoutInvalid =
+            '标记规则 ' + (i + 1) + '：数值列比较的值必须是一个数（如 0、-12.50）；改正后才能保存。';
+          $('layout-status').textContent = state.layoutInvalid;
+          renderLayoutState();
+          return;
+        }
+        value.removeAttribute('aria-invalid');
+        designed(next => {
+          next.marks[i].value = value.value;
+        }, true);
+        $('layout-status').textContent = '布局已应用；数据和授权范围保持当前查询。';
+      });
+      const mark = choice(n + ' 标记', markWords, rule.mark);
+      const swatch = node('span', undefined, 'mark-swatch mark-' + rule.mark);
+      swatch.setAttribute('aria-hidden', 'true');
+      mark.addEventListener('change', () =>
+        designed(next => {
+          next.marks[i].mark = mark.value;
+        })
+      );
+      const remove = button('移除', () =>
+        designed(next => {
+          next.marks.splice(i, 1);
+        })
+      );
+      remove.setAttribute('aria-label', '移除' + n);
+      row.append(col, when, value, swatch, mark, remove);
+      marks.append(row);
+    });
     renderLayoutState();
   }
+  $('layout-mark-add').addEventListener('click', () =>
+    layoutAction(() =>
+      designed(next => {
+        const first = next.columns[0],
+          column = state.lastResult.columns.find(k => k.id === first.id),
+          rule = present.numericType(column.type)
+            ? {column: first.id, when: 'eq', value: '0', mark: 'good'}
+            : {column: first.id, when: 'blank', mark: 'good'};
+        next.marks = [...(next.marks || []), rule];
+      })
+    )
+  );
   // A refusal of the layout designer names what is missing (S07-G, ADR 0011 §4); the server's answers keep the console's messages.
   class LayoutRefusal extends Error {}
   const refuse = reason => {
@@ -2639,25 +2971,29 @@
       b.dataset.version === current.dataset.version
     );
   }
+  // The save request: the layout as it stands becomes the next version of the saved layout (or a new layout); the entry is returned.
+  async function saveLayout(m, fresh) {
+    const layout = copy(state.layout);
+    const saved = !fresh && savedBindingMatches(state.savedLayout) ? state.savedLayout : null;
+    const entry = await request('/layouts', {
+      method: 'POST',
+      body: {id: saved?.id || '', expected_version: saved?.version || 0, layout: layout},
+    });
+    if (!current(m)) throw new Stale();
+    if (!isID(entry.id) || !Number.isSafeInteger(entry.version) || entry.version < 1)
+      throw new Failure(0, 'INVALID_RESPONSE');
+    setSavedLayout(entry);
+    $('layout-server-status').textContent =
+      '已保存 ' + entry.id + ' · 版本 ' + entry.version + '；再次保存会创建新版本。';
+    return entry;
+  }
   function saveServerLayout(fresh) {
     layoutAction(() => {
-      const layout = copy(state.layout);
-      const saved = !fresh && savedBindingMatches(state.savedLayout) ? state.savedLayout : null;
-      perform(
-        async m => {
-          const entry = await request('/layouts', {
-            method: 'POST',
-            body: {id: saved?.id || '', expected_version: saved?.version || 0, layout: layout},
-          });
-          if (!current(m)) throw new Stale();
-          if (!isID(entry.id) || !Number.isSafeInteger(entry.version) || entry.version < 1)
-            throw new Failure(0, 'INVALID_RESPONSE');
-          setSavedLayout(entry);
-          $('layout-server-status').textContent =
-            '已保存 ' + entry.id + ' · 版本 ' + entry.version + '；再次保存会创建新版本。';
-        },
-        {label: '布局保存', uncertain: '保存结果尚未确认，请先刷新我的布局核对，再决定是否保存。'}
-      );
+      if (state.layoutInvalid) refuse(state.layoutInvalid);
+      perform(m => saveLayout(m, fresh), {
+        label: '布局保存',
+        uncertain: '保存结果尚未确认，请先刷新我的布局核对，再决定是否保存。',
+      });
     });
   }
   $('layout-server-save').addEventListener('click', () => saveServerLayout(false));
@@ -2723,14 +3059,14 @@
     if (!saved || !savedBindingMatches(saved)) refuse('请先保存或打开当前数据集的服务器布局。');
     return saved;
   }
-  const sameColumns = (a, b) =>
-    a.columns.length === b.columns.length &&
-    a.columns.every((c, i) => c.id === b.columns[i].id && c.align === b.columns[i].align);
-  const layoutDirty = () =>
-    !!state.layout &&
-    !!state.savedLayout &&
-    savedBindingMatches(state.savedLayout) &&
-    !sameColumns(state.layout, state.savedLayout.layout);
+  function layoutDirty() {
+    return (
+      !!state.layout &&
+      !!state.savedLayout &&
+      savedBindingMatches(state.savedLayout) &&
+      !sameLayout(state.layout, state.savedLayout.layout)
+    );
+  }
   function showRelease(id, value) {
     if (
       !value ||
@@ -2764,8 +3100,8 @@
       if (picked && (!Number.isSafeInteger(pick) || pick < 1 || pick > state.layoutLatest))
         refuse('请选择有效的版本。');
       if (!release || release.id !== saved.id) refuse('尚未读取到发布状态，请重试。');
-      if (action === 'publish' && !picked && !sameColumns(state.layout, saved.layout))
-        refuse('列或对齐有未保存的修改：请先保存，或用“发布”的保存并发布。');
+      if (action === 'publish' && !picked && !sameLayout(state.layout, saved.layout))
+        refuse('布局有未保存的修改：请先保存，或用“发布”的保存并发布。');
       if (action === 'withdraw' && !release.published) refuse('当前没有已发布版本。');
       perform(
         async m => {
@@ -2825,6 +3161,15 @@
     }
     el.textContent = text;
     el.className = 'pill ' + tone;
+    // S23-B: a mark's value that is not a number holds 保存 and 发布 until it is one, with the reason; the export buttons name the saved layout.
+    for (const [id, title] of [
+      ['layout-server-save', '保存为新的布局版本'],
+      ['layout-publish', ''],
+    ]) {
+      $(id).disabled = !!state.layoutInvalid;
+      $(id).title = state.layoutInvalid || title;
+    }
+    exportHint();
     layoutVersions.sync();
   }
   // The latest version of this layout, from the listing (the dialog lists every saved version up to it).
@@ -3087,7 +3432,7 @@
         node(
           'b',
           j.kind === 'export'
-            ? exportFormats[j.format || 'xlsx'].label + ' 导出'
+            ? exportFormats[j.format || 'xlsx'].label + ' 导出' + (j.layout ? ' · 布局版本 ' + j.layout.version : '')
             : j.kind === 'snapshot'
               ? '报表快照'
               : j.kind === 'issue'
@@ -3095,6 +3440,8 @@
                 : '私有任务'
         )
       );
+      // S23-B: the layout an export printed, by id in the title (the version is in the words).
+      if (j.layout) title.title = '布局 ' + j.layout.id + ' · 版本 ' + j.layout.version;
       const id = node('td', j.job_id, 'task-id');
       id.title = j.job_id;
       const status = node('td');
@@ -3182,7 +3529,16 @@
       (j.kind === 'issue') !== (j.issue !== undefined) ||
       (j.kind === 'issue' && (j.format !== 'pdf' || !checkIssue(j.issue, j.state))) ||
       (j.error_code !== undefined && (j.state !== 'failed' || !validCode(j.error_code))) ||
-      (j.expired !== undefined && (j.expired !== true || j.state !== 'succeeded'))
+      (j.expired !== undefined && (j.expired !== true || j.state !== 'succeeded')) ||
+      // S23-B: an export that carried a layout names it: {id, version}, nothing else; no other kind carries one.
+      (j.layout !== undefined &&
+        (j.kind !== 'export' ||
+          !j.layout ||
+          typeof j.layout !== 'object' ||
+          Object.keys(j.layout).sort().join(',') !== 'id,version' ||
+          !isID(j.layout.id) ||
+          !Number.isSafeInteger(j.layout.version) ||
+          j.layout.version < 1))
     )
       throw new Failure(0, 'INVALID_RESPONSE');
   }
@@ -3440,18 +3796,27 @@
         done.state === 'cancelled' ? '' : 'error'
       );
   }
-  async function createExport(m, format) {
+  // layoutId (S23-B): the saved layout the file carries; the server uses its latest saved version and the job names it. Its refusals are
+  // the layout's: 422 a layout of another dataset, 400 a saved layout that no longer fits the dataset's rules.
+  async function createExport(m, format, layoutId) {
     const id = state.snapshot;
     const query = copy(state.query);
     const kind = exportFormats[format];
-    if (!id || !kind) throw new Failure(400, 'INVALID_REQUEST');
-    const job = await submit('export', format === 'xlsx' ? {snapshot_id: id} : {snapshot_id: id, format: format}, {
-      query: query,
-      integration: query.integration_id,
-    });
+    if (!id || !kind || (layoutId !== undefined && !isID(layoutId))) throw new Failure(400, 'INVALID_REQUEST');
+    const payload = format === 'xlsx' ? {snapshot_id: id} : {snapshot_id: id, format: format};
+    if (layoutId) payload.layout_id = layoutId;
+    let job;
+    try {
+      job = await submit('export', payload, {query: query, integration: query.integration_id});
+    } catch (error) {
+      if (layoutId && error && error.status === 422) error.code = 'LAYOUT_EXPORT_UNSUPPORTED';
+      if (layoutId && error && error.status === 400) error.code = 'LAYOUT_EXPORT_INVALID';
+      throw error;
+    }
     if (!current(m)) throw new Stale();
     if (job.kind !== 'export' || (job.format || 'xlsx') !== format) throw new Failure(0, 'INVALID_RESPONSE');
-    notify(kind.label + ' 导出任务已提交。');
+    if (layoutId && (!job.layout || job.layout.id !== layoutId)) throw new Failure(0, 'INVALID_RESPONSE');
+    notify(kind.label + ' 导出任务已提交' + (job.layout ? '（布局版本 ' + job.layout.version + '）' : '') + '。');
     const done = await poll(job.job_id, m);
     if (!done) return;
     if (done.state === 'succeeded' && done.artifact_id) await download(done.artifact_id, m, done.format);
@@ -3608,8 +3973,49 @@
   });
   $('preview').addEventListener('click', () => perform(preview));
   $('snapshot').addEventListener('click', () => perform(createSnapshot));
-  $('export').addEventListener('click', () => perform(m => createExport(m, 'xlsx')));
-  $('export-pdf').addEventListener('click', () => perform(m => createExport(m, 'pdf')));
+  // S23-B: an export carries the saved layout of the current dataset (its latest saved version). When the designer holds unsaved edits,
+  // or a design that was never saved, the page says so first and offers 保存后导出 (the edits become the next version and the file
+  // carries it) or an export as it would be anyway (按已保存的版本导出 / 不带布局导出); 取消 exports nothing.
+  let pendingExport = null;
+  function exportWithLayout(format) {
+    if (!state.snapshot || state.busy || !state.lastResult) return;
+    const saved = state.savedLayout && savedBindingMatches(state.savedLayout) ? state.savedLayout : null;
+    if (saved && !layoutDirty()) return perform(m => createExport(m, format, saved.id));
+    if (!saved && !(state.layout && matchingLayout() && !sameLayout(state.layout, defaultLayout())))
+      return perform(m => createExport(m, format));
+    pendingExport = {format, saved};
+    $('ly-export-note').textContent = saved
+      ? '布局有未保存的修改。导出文件使用已保存的版本 ' + saved.version + '；要让这次修改进入文件，先保存。'
+      : '布局尚未保存：导出文件不带布局（列、格式与小计都不会打印）。要让它进入文件，先保存。';
+    $('ly-export-saved').textContent = saved ? '按已保存的版本导出' : '不带布局导出';
+    lyDialogs.export.open($(format === 'pdf' ? 'export-pdf' : 'export'));
+    $('ly-export-save').focus();
+  }
+  $('export').addEventListener('click', () => exportWithLayout('xlsx'));
+  $('export-pdf').addEventListener('click', () => exportWithLayout('pdf'));
+  $('ly-export-saved').addEventListener('click', () => {
+    const p = pendingExport;
+    pendingExport = null;
+    lyDialogs.export.close();
+    if (p) perform(m => createExport(m, p.format, p.saved ? p.saved.id : undefined));
+  });
+  $('ly-export-save').addEventListener('click', () => {
+    const p = pendingExport;
+    pendingExport = null;
+    lyDialogs.export.close();
+    if (!p) return;
+    if (state.layoutInvalid) {
+      $('layout-status').textContent = state.layoutInvalid;
+      return;
+    }
+    perform(
+      async m => {
+        const entry = await saveLayout(m, false);
+        await createExport(m, p.format, entry.id);
+      },
+      {label: '保存并导出', uncertain: '保存或导出的结果尚未确认：请打开“历史”核对版本，再从任务列表查看导出。'}
+    );
+  });
   $('refresh-result').addEventListener('click', () =>
     perform(m => (state.snapshot ? loadSnapshot(state.snapshot, state.query, m, true) : preview(m)))
   );

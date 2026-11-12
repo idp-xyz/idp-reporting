@@ -239,7 +239,6 @@ window.reportingEnglish = {
   没有符合筛选的任务: 'No tasks match the filter',
   尚无任务: 'No tasks yet',
   '已显示 {0} 项；更早的任务请用任务 ID 打开。': 'Showing {0} items; open older tasks by task ID.',
-  '{0} 导出': '{0} export',
   报表快照: 'Report snapshot',
   私有任务: 'Private task',
   待刷新: 'Awaiting refresh',
@@ -270,7 +269,6 @@ window.reportingEnglish = {
   '冻结快照已生成，可分页查看或导出。': 'Frozen snapshot created; you can page through it or export it.',
   '快照任务已取消。': 'Snapshot task cancelled.',
   '快照任务失败，请检查当前授权与查询范围。': 'Snapshot task failed; check the current authorisation and query scope.',
-  '{0} 导出任务已提交。': '{0} export task submitted.',
   '导出任务已取消。': 'Export task cancelled.',
   '导出任务失败，未生成可下载文件。': 'Export task failed; no downloadable file was produced.',
   '正式出具任务已提交{0}，正在等待来源产品确认编号；任务成功后才有编号和可下载的正式文件。':
@@ -1334,9 +1332,6 @@ window.reportingEnglish = {
   '生成 Excel 并下载': 'Generate Excel and download',
   '导出任务完成后，重新校验权限和文件摘要。':
     'When the export task completes, permissions and the file digest are revalidated.',
-  '报表布局设计器 · 列与对齐': 'Report layout designer · Columns and alignment',
-  '选择列、顺序与对齐；布局只影响屏幕显示，Excel 仍导出完整结果。':
-    'Choose columns, order and alignment; the layout only affects the screen display, Excel still exports the full result.',
   版本: 'Version',
   '发布只固定你自己的布局版本，不共享数据；修改草稿不改变已发布版本。':
     'Publishing only fixes your own layout version and shares no data; editing the draft does not change the published version.',
@@ -2048,8 +2043,6 @@ window.reportingEnglish = {
     'Only the currently published template version can be issued; the publication may have just changed, check and retry.',
   '请选择有效的版本。': 'Select a valid version.',
   '尚未读取到发布状态，请重试。': 'The publish state has not been read yet; retry.',
-  '列或对齐有未保存的修改：请先保存，或用“发布”的保存并发布。':
-    'Columns or alignment have unsaved changes: save first, or use “Publish” → Save and publish.',
   '操作结果尚未确认，请打开“历史”核对当前发布。':
     'The result was not confirmed; open “History” and check the current publication.',
   '已打开 v{0}，是未保存的修改；保存会成为下一个版本，当前发布不变。':
@@ -2238,4 +2231,92 @@ window.reportingEnglish = {
     "Filters and sorting: this session does not have this snapshot's query; the original snapshot's apply",
   '服务端不接受这组筛选或排序：字段、运算符、取值或排序方向不在数据集当前发布的范围内。请核对筛选值，或刷新目录后重试。':
     'The server does not accept these filters or this sort order: a field, an operator, a value or a direction is outside what the dataset currently publishes. Check the filter values, or refresh the catalogue and try again.',
+  // ---- S23-B (ADR 0024 decision 5): the layout designer formats the table report; the exports carry the layout
+  '布局有未保存的修改：导出使用已保存的版本 {0}': 'The layout has unsaved edits: the export uses saved version {0}',
+  '导出使用已保存的布局（版本 {0}）': 'The export uses the saved layout (version {0})',
+  '这个布局不属于当前快照的数据集，导出文件不能带它；请换一个布局或不带布局导出。':
+    "This layout does not belong to the snapshot's dataset, so the file cannot carry it; use another layout or export without one.",
+  '已保存的布局不再符合数据集的规则（列或类型已变）：请在设计器里调整并保存，再导出。':
+    "The saved layout no longer fits the dataset's rules (a column or a type changed): adjust and save it in the designer, then export.",
+  负号: 'Minus sign',
+  括号: 'Parentheses',
+  数字: 'Digits',
+  '— 横线': '— dash',
+  好: 'Good',
+  注意: 'Warn',
+  差: 'Bad',
+  备注: 'Note',
+  小于等于: 'less than or equal',
+  大于等于: 'greater than or equal',
+  为空: 'blank',
+  列标签: 'Column label',
+  '{0} 列标签': '{0} column label',
+  '{0} 千分位': '{0} thousands grouping',
+  千分位: 'Grouping',
+  '{0} 负数': '{0} negative',
+  '{0} 零': '{0} zero',
+  '最多 {0} 条规则': 'At most {0} rules',
+  '规则 {0}': 'Rule {0}',
+  '{0} 列': '{0} column',
+  '{0} 关系': '{0} relation',
+  '{0} 值': '{0} value',
+  '数，如 0 或 -12.50': 'A number, e.g. 0 or -12.50',
+  '标记规则 {0}：数值列比较的值必须是一个数（如 0、-12.50）；改正后才能保存。':
+    'Mark rule {0}: the value a numeric column is compared with must be a number (e.g. 0, -12.50); fix it to save.',
+  '{0} 标记': '{0} mark',
+  '布局有未保存的修改：请先保存，或用“发布”的保存并发布。':
+    'The layout has unsaved changes: save first, or use “Publish” → Save and publish.',
+  '{0} 导出{1}': '{0} export{1}',
+  '· 布局版本 {0}': '· layout version {0}',
+  '布局 {0} · 版本 {1}': 'Layout {0} · version {1}',
+  '{0} 导出任务已提交{1}。': '{0} export task submitted{1}.',
+  '（布局版本 {0}）': ' (layout version {0})',
+  '布局有未保存的修改。导出文件使用已保存的版本 {0}；要让这次修改进入文件，先保存。':
+    'The layout has unsaved edits. The file uses saved version {0}; to have these edits in the file, save first.',
+  '布局尚未保存：导出文件不带布局（列、格式与小计都不会打印）。要让它进入文件，先保存。':
+    'The layout is not saved: the file carries no layout (columns, formats and subtotals are not printed). To have it in the file, save first.',
+  按已保存的版本导出: 'Export the saved version',
+  不带布局导出: 'Export without a layout',
+  保存并导出: 'Save and export',
+  '保存或导出的结果尚未确认：请打开“历史”核对版本，再从任务列表查看导出。':
+    'The save or the export was not confirmed: open “History” to check the versions, then look for the export in the task list.',
+  '1.0 版式没有标题、脚注、列标签、格式、居中、小计或标记规则：请把 schema_version 写成 1.1。':
+    'A 1.0 layout has no title, footnote, column label, format, centre alignment, subtotals or mark rules: write schema_version 1.1.',
+  '标题最多 {0} 个字符，不能含控制字符。': 'A title has at most {0} characters and no control characters.',
+  '脚注最多 {0} 个字符，不能含控制字符。': 'A footnote has at most {0} characters and no control characters.',
+  '列标签最多 {0} 个字符，不能含控制字符。': 'A column label has at most {0} characters and no control characters.',
+  '格式只有 千分位（是/否）、负数（负号/括号）、零（数字/—）三项。':
+    'A format has three settings only: grouping (yes/no), negative (minus/parentheses), zero (digits/dash).',
+  '格式只能用于数值列：{0} 不是数值列。': 'A format applies to numeric columns only: {0} is not numeric.',
+  '小计列必须是布局里显示的列。': 'The subtotal column must be a column the layout shows.',
+  '小计列必须是维度列：{0} 不是维度。': 'The subtotal column must be a dimension: {0} is not one.',
+  '标记规则最多 {0} 条。': 'At most {0} mark rules.',
+  '标记规则 {0}：': 'Mark rule {0}: ',
+  '{0}列必须是布局里显示的列。': '{0}the column must be one the layout shows.',
+  '{0}标记只有 好、注意、差、备注 四种。': '{0}the mark is one of Good, Warn, Bad, Note.',
+  '{0}值最多 {1} 个字符。': '{0}the value has at most {1} characters.',
+  '{0}数值列的关系只有 小于、小于等于、大于、大于等于、等于、不等于。':
+    '{0}a numeric column compares with less than, less than or equal, greater than, greater than or equal, equal to or not equal to.',
+  '{0}数值列比较的值必须是一个数（如 0、-12.50）。':
+    '{0}the value a numeric column is compared with must be a number (e.g. 0, -12.50).',
+  '{0}文本列的关系只有 等于、不等于、为空。': '{0}a text column compares with equal to, not equal to or blank.',
+  '{0}“为空”不带值，等于与不等于要带值。': '{0}“blank” takes no value; equal to and not equal to take one.',
+  '布局超过 64 KiB。': 'The layout exceeds 64 KiB.',
+  小计: 'Subtotal',
+  '报表布局设计器 · 列、格式与小计': 'Report layout designer · Columns, formats and subtotals',
+  '选择列、顺序、对齐、列标签与数字格式，设置小计与标记规则；保存后的布局随导出文件一起打印。':
+    'Choose the columns, their order, alignment, labels and number formats, set subtotals and mark rules; a saved layout is printed with the exports.',
+  标题: 'Title',
+  脚注: 'Footnote',
+  标记规则: 'Mark rules',
+  添加规则: 'Add rule',
+  '最多 8 条；一个单元格由第一条成立的规则上色，小计行不上色。':
+    'At most 8; a cell is coloured by the first rule that holds; subtotal rows are not coloured.',
+  '小计按屏幕上显示的行分组计算；导出文件按整个快照分组。':
+    'Subtotals on screen group the rows shown here; the exported files group the whole snapshot.',
+  导出前确认: 'Confirm before exporting',
+  导出文件随已保存的布局版本打印: 'The file is printed with the saved layout version',
+  保存后导出: 'Save, then export',
+  '表格上方的标题，可不填': 'A title above the table, optional',
+  '表格下方的脚注，可不填': 'A footnote under the table, optional',
 };

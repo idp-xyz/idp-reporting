@@ -10,6 +10,7 @@
 // REPORTING_DEMO_COLLEAGUE_TOKEN, whose token --colleague-token-file names (docs/UX_BASELINE_S07.md, "团队任务"). Its totals are held apart.
 // Usage: node scripts/ux_baseline_s07.mjs --out FILE.json --token-file FILE --label before|after [--base http://127.0.0.1:PORT] [--cdp PORT]
 //   [--tasks core|team --colleague-token-file FILE]
+// S23-B adds T11 to the core set (选列、设置格式和小计、保存、导出 Excel) after S20-B's T9; T10 is reserved, so the names skip.
 import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 import {dirname} from 'node:path';
@@ -160,6 +161,15 @@ const typeInto = async (sel, text) => {
   texts++;
   await evalJs(`${q(sel)}.select()`);
   await send('Input.insertText', {text});
+  await sleep(120);
+};
+// S23-B: a choice in a list box is one click (the person opens the list and picks an entry; the pick is the change event, as T7 chooses its
+// dataset): the script pays the click and then sets the value.
+const choose = async (expr, value, label) => {
+  await clickExpr(expr, label);
+  await evalJs(
+    `(()=>{const s=${expr};s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`
+  );
   await sleep(120);
 };
 const idle = () => waitFor(`!document.getElementById('preview').disabled`, 'idle', 60000);
@@ -634,6 +644,53 @@ async function coreTasks() {
       'the workbook of the narrowed snapshot',
       90000
     );
+    await idle();
+  });
+
+  // T11 · 选列、设置格式和小计、保存、导出 Excel (S23-B, ADR 0024 decision 5), on the frozen snapshot the person has (T9's narrowed one, on the
+  // workbench where T9 ended; a snapshot is frozen first if there is none): the person opens the layout designer if it is closed, hides a
+  // column, puts negative amounts in parentheses, asks for subtotals by customer, saves the layout and exports the workbook, which prints it (the
+  // export button sends the saved layout; a saved and unchanged layout asks nothing more; the file says the layout and the snapshot's scope).
+  // The task cannot run before S23-B: the designer had no format and no subtotal control. T10 is reserved.
+  await task('T11 选列、设置格式和小计、保存、导出 Excel', async () => {
+    await openPage('workspace');
+    if (await evalJs(`document.getElementById('result-kind').textContent!=='冻结快照'`)) {
+      await clickBtn('#page-workspace', '创建快照');
+      await waitFor(
+        `document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled`,
+        'snapshot',
+        60000
+      );
+    }
+    if (!(await evalJs(`document.getElementById('report-designer').open`))) await click('#report-designer > summary');
+    const row = label =>
+      `[...document.querySelectorAll('#designer-columns .designer-row')].find(r=>r.querySelector('label')?.textContent===${JSON.stringify(label)})`;
+    await waitFor(
+      `${row('应收余额')}?.querySelector('.designer-format select')&&${q('#layout-subtotals option[value="customer.id"]')}`,
+      'the designer with its format and subtotal controls'
+    );
+    await clickExpr(`${row('账龄区间')}?.querySelector('input[type=checkbox]')`, '显示 账龄区间');
+    await waitFor(`!${row('账龄区间')}?.querySelector('input[type=checkbox]').checked`, 'the column hidden');
+    await choose(`${row('应收余额')}?.querySelector('.designer-format select')`, 'parentheses', '应收余额 负数');
+    await choose(q('#layout-subtotals'), 'customer.id', '小计');
+    await waitFor(
+      `document.querySelectorAll('#result-table tr.layout-subtotal').length>0`,
+      'the subtotal rows on screen'
+    );
+    const status = await evalJs(`document.getElementById('layout-server-status').textContent`);
+    await clickBtn('#report-designer', '保存');
+    await waitFor(
+      `(()=>{const t=document.getElementById('layout-server-status').textContent;return t.startsWith('已保存 ')&&t!==${JSON.stringify(status)};})()`,
+      'saved',
+      30000
+    );
+    await idle();
+    // The export's end is the download notice written after this click (T9's notice is the same words, so the text alone cannot tell).
+    await evalJs(
+      `(()=>{const n=document.getElementById('notice');window.__t11Downloaded=false;new MutationObserver(()=>{if(n.textContent.includes('下载已发起'))window.__t11Downloaded=true;}).observe(n,{childList:true,characterData:true,subtree:true});})()`
+    );
+    await clickBtn('#page-workspace .result-actions', '导出 Excel');
+    await waitFor(`window.__t11Downloaded`, 'the workbook with the layout', 90000);
     await idle();
   });
 }
