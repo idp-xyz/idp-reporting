@@ -18878,3 +18878,102 @@ test('S23-B B5: a saved 1.1 layout opened again (历史 › 打开, the JSON und
     a.close();
   }
 });
+
+// S23-B with S20-B: the two slices on one page. The query panel's filters and sort narrow the snapshot above; the layout designer and the
+// table view present it below: the 小计 rows are of the filtered rows, the subtitle already says the scope is narrowed, and the workbook
+// exported with the layout says both the layout (S23-A's Metadata rows) and the scope (S20-C's rows at the end of the Metadata sheet).
+const exportsInto = bodies => async (path, options) => {
+  if (path.endsWith('/exports') && options?.method === 'POST') bodies.push(JSON.parse(options.body));
+};
+test('S23-B B6: a narrowed snapshot (S20-B) through a layout with subtotals: the 小计 rows are of the filtered rows in the sorted order, the subtitle says the scope is narrowed, and the workbook exported with the layout names the layout and the scope (S20-C)', async () => {
+  const bodies = [];
+  const a = app(exportsInto(bodies));
+  try {
+    await a.login();
+    a.configure();
+    const n = narrowOf(a);
+    n.add('filter', 'aging.bucket');
+    n.choose('filter', 'aging.bucket', 'in');
+    n.tick('aging.bucket', '1_30');
+    n.tick('aging.bucket', '31_60');
+    n.add('sort', 'ar.open_balance');
+    n.choose('sort', 'ar.open_balance', 'desc');
+    a.click('snapshot');
+    await until(
+      () => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled,
+      'the narrowed snapshot'
+    );
+    assert.deepEqual(resultRows(a), [AR.c, AR.b], 'two rows of the three, the largest balance first');
+    assert.match(a.$('result-subtitle').textContent, / · 已按 1 个筛选缩小范围，合计是筛选后的范围$/);
+    // The layout with subtotals by customer, saved: the table is the narrowed snapshot as the exports print it.
+    a.$('layout-json').value = JSON.stringify(fullLayout());
+    a.click('layout-open');
+    a.click('layout-server-save');
+    await until(() => a.$('layout-state').textContent === '已保存 v1' && !a.$('preview').disabled, 'saved');
+    const id = savedId(a);
+    const rows = [...a.$('result-table').tBodies[0].rows].map(r => ({
+      subtotal: r.classList.contains('layout-subtotal'),
+      cells: [...r.cells].map(c => c.textContent),
+      titles: [...r.cells].map(c => c.title),
+    }));
+    assert.deepEqual(
+      rows.map(r => r.subtotal),
+      [false, true, false, true],
+      'a 小计 row after each of the two filtered customers, none for the one the filter left out'
+    );
+    assert.deepEqual(
+      rows[0].cells,
+      ['customer_c', '31_60', '9007199254740893.00'],
+      'the sort is kept: the largest balance first'
+    );
+    assert.deepEqual(rows[1].cells, ['小计', '', '9007199254740893.00']);
+    assert.deepEqual(rows[2].cells, ['customer_b', '1_30', '(0.24)']);
+    assert.equal(rows[2].titles[2], '-0.24');
+    assert.deepEqual(rows[3].cells, ['小计', '', '(0.24)']);
+    assert.match(
+      a.$('result-subtitle').textContent,
+      / · 已按 1 个筛选缩小范围，合计是筛选后的范围$/,
+      'the subtitle still says the scope with the layout applied'
+    );
+    assert.equal(a.$('result-layout-note').hidden, false);
+    assert.equal(a.$('result-layout-title').textContent, '应收账龄报表');
+    // The export carries the layout; the workbook says the layout and the scope.
+    a.click('export');
+    await until(() => a.downloads.length === 1 && !a.$('preview').disabled, 'the workbook', 20000);
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].layout_id, id);
+    const job = [...a.$('tasks-body').rows].find(r => r.cells[0].textContent.startsWith('Excel 导出'));
+    assert.equal(job.cells[0].textContent, 'Excel 导出 · 布局版本 1');
+    const files = unzip(Buffer.from(await a.downloads[0].blob.arrayBuffer()));
+    const data = sheetRows(files, 'Data');
+    assert.deepEqual([data[0].A, data[0].B, data[0].C, data[0].D], ['客户', '账龄区间', '余额', '余额（精确）']);
+    assert.equal(data.length - 1, 4, 'two filtered rows and their two 小计 rows, as on screen');
+    assert.deepEqual(
+      data.slice(1).map(r => [r.A, r.D]),
+      rows.map(r => [r.cells[0], r.subtotal ? r.cells[2].replace(/[()]/g, m => (m === '(' ? '-' : '')) : r.titles[2]]),
+      'the printed rows are the screen rows: the customers and 小计 in order, the exact values'
+    );
+    const metadata = Object.fromEntries(sheetRows(files, 'Metadata').map(r => [r.A, r]));
+    assert.equal(metadata.layout_id.B, id);
+    assert.equal(metadata.layout_version.B, '1');
+    assert.equal(metadata.layout_title.B, '应收账龄报表');
+    assert.equal(metadata.subtotal_by.B, 'customer.id');
+    assert.deepEqual(
+      [metadata.query_scope.B, metadata.query_scope.C, metadata.query_scope.D, metadata.query_scope.E],
+      ['filters', '1', 'sort_keys', '1'],
+      "S20-C's scope row counts the filter and the sort key"
+    );
+    assert.deepEqual([metadata.filter_1.C, metadata.filter_1.D], ['aging.bucket', 'in']);
+    assert.match(metadata.filter_1.E, /1_30/);
+    assert.match(metadata.filter_1.E, /31_60/);
+    assert.deepEqual([metadata.sort_1.C, metadata.sort_1.D], ['ar.open_balance', 'desc']);
+    // The total is the narrowed scope's, and present.js adds the two filtered values to the same digits.
+    const totals = sheetRows(files, 'Totals');
+    assert.equal(totals[0].C, 'exact_value');
+    assert.equal(totals[1].C, '9007199254740892.76');
+    assert.equal(a.w.reportingPresent.sum(['9007199254740893.00', '-0.24'], 2), '9007199254740892.76');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});

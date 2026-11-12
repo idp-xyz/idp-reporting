@@ -103,7 +103,10 @@ same document sent directly; a malformed mark value holds 保存 and 发布 with
 its subtotal and rules; the table view against the workbook the server exports for the same snapshot and layout (headers, texts, exact
 columns, the 小计 rows equal to the exact sums, the Metadata and Totals sheets; the test reads the zip and the sheet XML itself); the
 `sum`/`compare`/`format`/`holds` unit cases (grouping, parentheses, the dash, the 2^53 row); the export dialog's three paths and the plain
-export; the 422 and 400 refusals; a saved 1.1 layout opened again from 历史 and from JSON. `console/embed.dom.test.mjs`: the embed view.
+export; the 422 and 400 refusals; a saved 1.1 layout opened again from 历史 and from JSON; and B6, the two slices on one page: a snapshot
+narrowed by S20-B's filter and sort, shown through a layout with subtotals (the 小计 rows are of the two filtered rows in the sorted order,
+the subtitle still says 已按 1 个筛选缩小范围), exported with the layout — the workbook names the layout (S23-A's Metadata rows) and the scope
+(S20-C's `query_scope`, `filter_1`, `sort_1` rows) and its total is the narrowed scope's. `console/embed.dom.test.mjs`: the embed view.
 `scripts/browser_console_s06c.mjs`: the designer with its controls and the formatted table with its 小计 rows and its marked cell at 1440 and
 390, light and dark (`console-layout-designer-*`, `console-layout-table-*`): no horizontal overflow, the contrast of every visible text and
 of the marked cell's text ≥ 4.5:1, legibility; its S21-A check now reads a data cell's exact value from the cell's title and skips the 小计
