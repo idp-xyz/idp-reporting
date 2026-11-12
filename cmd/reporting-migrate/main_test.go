@@ -49,6 +49,9 @@ func TestMigrateCommandArguments(t *testing.T) {
 		"sweep without grace":  {[]string{"sweep", "--grace", "0"}, "--grace and --batch must be positive"},
 		"sweep negative grace": {[]string{"sweep", "--grace", "-1h"}, "--grace and --batch must be positive"},
 		"sweep without batch":  {[]string{"sweep", "--batch", "0"}, "--grace and --batch must be positive"},
+		// The reconciliation of the object store cannot be put off for good (S25-B1): at every sweep (0) up to every thirty days.
+		"reconcile before now": {[]string{"sweep", "--reconcile-every", "-1s"}, "--reconcile-every must be 0 (at every sweep) up to 720h0m0s"},
+		"reconcile never":      {[]string{"sweep", "--reconcile-every", "721h"}, "--reconcile-every must be 0 (at every sweep) up to 720h0m0s"},
 		"sweep role as app":    {[]string{"roles", "--migrator-role", "a", "--app-role", "b", "--sweep-role", "b"}, "--sweep-role must be"},
 		"sweep role as owner":  {[]string{"roles", "--migrator-role", "a", "--app-role", "b", "--sweep-role", "a"}, "--sweep-role must be"},
 		"sweep role bad name":  {[]string{"roles", "--migrator-role", "a", "--app-role", "b", "--sweep-role", "Robert'; DROP"}, "--sweep-role must be"},
@@ -469,7 +472,7 @@ VALUES($1,'t','i','x','y','artifact',$2::jsonb,encode(sha256(convert_to($2::json
 	// Without the flags the rows go and the objects wait, and the command says so.
 	exec(`UPDATE reporting_s01.assets SET expires_at = clock_timestamp()-interval '49 hours' WHERE id=$1`, a)
 	exec(`UPDATE reporting_s01.assets SET expires_at = clock_timestamp()+interval '1 hour' WHERE id=$1`, b)
-	expect([]string{"sweep"}, false, "swept: 1 artifacts", "objects: no object store configured, rows only; the files of 1 deleted artifacts that were in an object store, and any orphan, wait for a reconciliation")
+	expect([]string{"sweep"}, false, "swept: 1 artifacts", "objects: no object store configured, rows only; the files of 1 deleted artifacts that were in an object store wait for a reconciliation, which the next sweep with the object store flags does when there are any (--reconcile-every 0 with the flags reconciles in any case)")
 	if count("SELECT count(*) FROM reporting_s01.assets WHERE id=$1", a) != 0 || !held(a) {
 		t.Fatal("without the object store flags the row must go and the object stay")
 	}
@@ -479,9 +482,55 @@ VALUES($1,'t','i','x','y','artifact',$2::jsonb,encode(sha256(convert_to($2::json
 	if count("SELECT count(*) FROM reporting_s01.assets WHERE id=$1", b) != 0 || held(b) || !held(stray) {
 		t.Fatalf("with the object store flags: row of b gone %v, object of b held %v, stray held %v", count("SELECT count(*) FROM reporting_s01.assets WHERE id=$1", b) == 0, held(b), held(stray))
 	}
-	// The ledger holds the counts and nothing that names an object.
-	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE NOT dry_run AND objects=1 AND orphans=0"); n != 1 {
+	// The ledger holds the counts and nothing that names an object, and says that this sweep reconciled the bucket; the dry run before it
+	// listed the bucket too, and the sweep without the flags did not.
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE NOT dry_run AND objects=1 AND orphans=0 AND reconciled"); n != 1 {
 		t.Fatal("the ledger row of the sweep with the object store", n)
+	}
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE reconciled"); n != 2 {
+		t.Fatal("the ledger says that sweeps reconciled that did not, or the reverse:", n)
+	}
+	// The sweep without the flags left the object of the row it deleted, and the ledger says so (S25-B1; until then only the command's
+	// output did): that is why the sweep with the flags, right after it, reconciled.
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE NOT dry_run AND NOT reconciled AND objects_left=1 AND artifacts=1"); n != 1 {
+		t.Fatal("the ledger row of the sweep that left an object:", n)
+	}
+	// S25-B1: the bucket holds every file that is kept, so the next sweep does not list it again: by the ledger its last reconciliation
+	// left nothing behind and is within the last twenty-three hours, the command's default. The command says that the bucket was not
+	// reconciled, and counts no orphan rather than saying there are none. A sweep told to reconcile at every sweep does. (The stray is
+	// young, so no reconciliation takes it: what is held here is what the command says and what the ledger records; that a listing is
+	// skipped is held by the stores' own tests.)
+	const settled = "the bucket was not reconciled: its last reconciliation left nothing behind and is within the last 23h0m0s (--reconcile-every 0 reconciles now)"
+	expect(with(), false, "swept: 0 artifacts", "objects: 0 deleted, 0 left for the next reconciliation; "+settled)
+	expect(with("--dry-run"), false, "dry run, would sweep: 0 artifacts", "objects: 0 would be deleted, 0 left for the next reconciliation; "+settled)
+	// The largest interval is accepted, and the bucket is settled by it too.
+	expect(with("--reconcile-every", "720h"), false, "objects: 0 deleted, 0 left for the next reconciliation; "+strings.Replace(settled, "23h0m0s", "720h0m0s", 1))
+	expect(with("--reconcile-every", "0"), false, "swept: 0 artifacts", "objects: 0 deleted, 0 orphans deleted, 0 left for the next reconciliation")
+	// An interval that the last reconciliation is already older than: it reconciles. (More than a microsecond has passed since the last one.)
+	expect(with("--reconcile-every", "1us"), false, "objects: 0 deleted, 0 orphans deleted, 0 left for the next reconciliation")
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE reconciled AND NOT dry_run"); n != 3 {
+		t.Fatal("the ledger records the reconciliations of the sweeps that were told to reconcile:", n)
+	}
+	// Each of the three said since when the bucket is settled, by a time not after its own row's.
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE reconciled AND NOT dry_run AND settled_from <= at"); n != 3 {
+		t.Fatal("the reconciliations that left nothing do not all say since when the bucket is settled:", n)
+	}
+	// The sweep role, which is what a scheduled sweep connects as, reads the ledger to know whether the bucket is due, and reconciles when
+	// it is: it needs no privilege it did not have (it reads every table, and writes the ledger).
+	admin2 := os.Getenv("REPORTING_STORE_DSN")
+	t.Setenv("REPORTING_STORE_DSN", strings.Replace(admin2, "postgres@", "reporting_cli_sweep_t@", 1))
+	expect(with(), false, "swept: 0 artifacts", "objects: 0 deleted, 0 left for the next reconciliation; "+settled)
+	expect(with("--reconcile-every", "0"), false, "swept: 0 artifacts", "objects: 0 deleted, 0 orphans deleted, 0 left for the next reconciliation")
+	// A sweep that fails says what it had done and that the bucket was not reconciled to its end: here the application role, which may
+	// not sweep and is refused before anything is done.
+	t.Setenv("REPORTING_STORE_DSN", strings.Replace(admin2, "postgres@", "reporting_cli_app_t@", 1))
+	expect(with(), true, "swept: 0 artifacts", "objects: 0 deleted, 0 orphans deleted, 0 left for the next reconciliation; the sweep failed before the bucket was reconciled to the end of its listing")
+	t.Setenv("REPORTING_STORE_DSN", admin2)
+	if n := count("SELECT count(*) FROM reporting_s01.sweeps WHERE reconciled AND NOT dry_run"); n != 4 {
+		t.Fatal("the ledger records the sweep role's reconciliation:", n)
+	}
+	if !held(stray) {
+		t.Fatal("a young object that no row names was deleted")
 	}
 }
 

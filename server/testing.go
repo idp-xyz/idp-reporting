@@ -59,6 +59,7 @@ type MemoryStore struct {
 	reason  string
 	closed  bool
 	sweep   error
+	swept   []r.SweepOptions
 }
 
 // NewMemoryStoreForTests makes one; now is the store's clock (leases and expiries).
@@ -90,15 +91,23 @@ func (m *MemoryStore) SetNotReady(reason string) { m.mu.Lock(); m.reason = reaso
 // SetSweepError makes Sweep fail with err; nil makes it work again.
 func (m *MemoryStore) SetSweepError(err error) { m.mu.Lock(); m.sweep = err; m.mu.Unlock() }
 
-// Sweep implements the repository's sweep, failing when SetSweepError says so.
+// Sweep implements the repository's sweep, failing when SetSweepError says so, and remembers what each sweep was asked to do.
 func (m *MemoryStore) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, error) {
 	m.mu.Lock()
 	err := m.sweep
+	m.swept = append(m.swept, o)
 	m.mu.Unlock()
 	if err != nil {
 		return r.SweepResult{}, err
 	}
 	return m.Store.Sweep(ctx, o)
+}
+
+// Swept is the options of every sweep asked of the store so far, as the service resolved them.
+func (m *MemoryStore) Swept() []r.SweepOptions {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]r.SweepOptions(nil), m.swept...)
 }
 
 // Ready implements Store.

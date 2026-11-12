@@ -12,23 +12,30 @@ import (
 
 // SweepOptions: zero is the default, never "none"; a negative or oversized value is refused, so that a slip can only keep data longer.
 func TestSweepOptionsDefaultsAndBounds(t *testing.T) {
+	// The interval of the reconciliation (S25-B1) has no default of its own: zero reconciles at every sweep, as before it existed.
 	got, e := r.SweepOptions{}.Resolved()
-	if e != nil || got.Grace != 24*time.Hour || got.Batch != 500 || got.DryRun {
+	if e != nil || got.Grace != 24*time.Hour || got.Batch != 500 || got.DryRun || got.Reconcile != 0 {
 		t.Fatal(got, e)
 	}
-	got, e = r.SweepOptions{Grace: time.Minute, Batch: 3, DryRun: true}.Resolved()
-	if e != nil || got.Grace != time.Minute || got.Batch != 3 || !got.DryRun {
+	got, e = r.SweepOptions{Grace: time.Minute, Batch: 3, DryRun: true, Reconcile: time.Hour}.Resolved()
+	if e != nil || got.Grace != time.Minute || got.Batch != 3 || !got.DryRun || got.Reconcile != time.Hour {
 		t.Fatal(got, e)
 	}
 	for name, o := range map[string]r.SweepOptions{
 		"negative grace": {Grace: -1}, "negative batch": {Batch: -1}, "oversized grace": {Grace: r.MaxSweepGrace + 1}, "oversized batch": {Batch: r.MaxSweepBatch + 1},
+		// The reconciliation removes the files whose rows are gone: it cannot be put off for good.
+		"a negative interval": {Reconcile: -1}, "an interval beyond thirty days": {Reconcile: r.MaxReconcileInterval + 1},
 	} {
 		if _, e := o.Resolved(); !errors.Is(e, r.ErrInvalid) {
 			t.Errorf("%s: %v", name, e)
 		}
 	}
-	if _, e := (r.SweepOptions{Grace: r.MaxSweepGrace, Batch: r.MaxSweepBatch}).Resolved(); e != nil {
+	if _, e := (r.SweepOptions{Grace: r.MaxSweepGrace, Batch: r.MaxSweepBatch, Reconcile: r.MaxReconcileInterval}).Resolved(); e != nil {
 		t.Fatal("the bounds themselves are allowed", e)
+	}
+	// An hour short of a day, so that a sweep scheduled once a day reconciles every day and not every other day.
+	if r.DefaultReconcileInterval != 23*time.Hour || r.DefaultReconcileInterval >= 24*time.Hour || r.MaxReconcileInterval != 30*24*time.Hour {
+		t.Fatal("the sweeps that run on a schedule reconcile once a day unless told otherwise, and at least every thirty days")
 	}
 	// A service refuses the same options before it asks the store.
 	v := newIssueEnv(t, envOpts{})

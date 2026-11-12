@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -81,8 +83,16 @@ func newObjectsDurable(makeObjects objectStoreOf) func(*testing.T) *objWorld {
 			}
 		}
 		admin := fixtureAdmin(t)
-		h := &retention{t: t, repo: v.repo, s: service(v.repo, store)(nil), p: v.p, issuer: issuer,
-			age: func(d time.Duration) { ageDurable(t, admin, d); skew.Add(int64(d)) }, service: service(v.repo, store)}
+		// Time passes for the stored expiries, for the platform's clock of the objects, and for the ledger of the sweeps, whose times say
+		// when the object store was last reconciled (S25-B1): the database's clock cannot move, so what it wrote moves into the past.
+		age := func(d time.Duration) {
+			ageDurable(t, admin, d)
+			if _, e := admin.Exec(ctx, `UPDATE reporting_s01.sweeps SET at = at - $1::interval, settled_from = settled_from - $1::interval`, fmt.Sprintf("%d microseconds", d.Microseconds())); e != nil {
+				t.Fatal(e)
+			}
+			skew.Add(int64(d))
+		}
+		h := &retention{t: t, repo: v.repo, s: service(v.repo, store)(nil), p: v.p, issuer: issuer, age: age, service: service(v.repo, store)}
 		return &objWorld{retention: h, raw: store.ObjectStore, store: store,
 			product: func(id string) (string, string, bool) {
 				rec, ok, e := v.source.IssueRecord(ctx, id)
@@ -290,6 +300,189 @@ func durableObjectDetails(t *testing.T, newWorld func(*testing.T) *objWorld) {
 		}
 		if strings.Contains(text, "artifacts/") || strings.Contains(text, r.ObjectKey("")) {
 			t.Fatalf("the ledger holds a key: %s", text)
+		}
+	})
+	// S25-B1: the ledger says which sweeps reconciled the object store, how many objects each left behind and, of a reconciliation that
+	// left none, since when the bucket is settled; that is what the next sweep reads to know whether the bucket is due. The memory store
+	// keeps the same in a field; here it is three columns, an index and a statement.
+	t.Run("the_ledger_says_what_each_sweep_did_about_the_bucket_and_the_sweep_reads_it_by_its_index", func(t *testing.T) {
+		w := newWorld(t)
+		admin := fixtureAdmin(t)
+		// The ledgers this subtest writes, the one of fifty thousand rows among them, do not stay for the tests after it.
+		t.Cleanup(func() {
+			if _, e := admin.Exec(context.Background(), "TRUNCATE reporting_s01.sweeps"); e != nil {
+				t.Errorf("the ledger of the sweeps could not be emptied: %v", e)
+			}
+		})
+		every := r.SweepOptions{Grace: objGrace, Reconcile: 6 * time.Hour}
+		dry := every
+		dry.DryRun = true
+		w.sweep(dry)   // 1. nothing is on record: a dry run lists the bucket, and settles nothing
+		w.sweep(every) // 2. so the first sweep reconciles
+		w.sweep(every) // 3. and the next, within the interval, does not
+		// An export whose row is past its grace, 71 minutes later, and whose object cannot be deleted when its row goes.
+		snap := w.freeze("snap")
+		w.export(snap.SnapshotID, "export")
+		w.pastGrace()
+		w.store.fail("delete")
+		if res := w.sweep(every); res.Artifacts != 1 || res.ObjectsLeft != 1 || res.Reconciled { // 4. within the interval: the object is left
+			t.Fatalf("the sweep whose delete failed: %+v", res)
+		}
+		w.store.fail()
+		if res := w.sweep(every); !res.Reconciled || res.Orphans != 1 || res.ObjectsLeft != 0 || len(w.keys()) != 0 { // 5. so this one reconciles
+			t.Fatalf("the sweep after one that left an object: %+v, bucket %v", res, w.keys())
+		}
+		w.rowsOnly(every)                        // 6. without the object store, with nothing to delete: nothing to say
+		w.sweep(r.SweepOptions{Grace: objGrace}) // 7. without an interval: a reconciliation, as at every sweep before
+		// settled says that the row carries the time its listing began; early, that this time is not after the time the row was written.
+		type row struct {
+			dry, complete, reconciled bool
+			left                      int
+			settled, early            bool
+		}
+		var rows []row
+		cur, e := admin.Query(ctx, "SELECT dry_run, complete, reconciled, objects_left, settled_from IS NOT NULL, COALESCE(settled_from <= at, false) FROM reporting_s01.sweeps ORDER BY id")
+		if e != nil {
+			t.Fatal(e)
+		}
+		for cur.Next() {
+			var x row
+			if e = cur.Scan(&x.dry, &x.complete, &x.reconciled, &x.left, &x.settled, &x.early); e != nil {
+				t.Fatal(e)
+			}
+			rows = append(rows, x)
+		}
+		cur.Close()
+		// Only the reconciliations that left nothing say since when the bucket is settled: not the dry run, which listed it too.
+		want := []row{{true, true, true, 0, false, false}, {false, true, true, 0, true, true}, {false, true, false, 0, false, false}, {false, true, false, 1, false, false},
+			{false, true, true, 0, true, true}, {false, true, false, 0, false, false}, {false, true, true, 0, true, true}}
+		if fmt.Sprint(rows) != fmt.Sprint(want) {
+			t.Fatalf("the ledger says %+v, want %+v", rows, want)
+		}
+		// The rule itself, on ledgers written for it. Two kinds of entry concern the bucket, dry runs apart: a sweep that left objects or
+		// did not complete, which counts from when it ended, and a reconciliation that ran to its end and left none, which counts from
+		// when its listing began. The bucket is settled, within an hour here, only when the newest of them is such a reconciliation and
+		// its listing began less than an hour ago.
+		settled := func() bool {
+			t.Helper()
+			var ok bool
+			if e := admin.QueryRow(ctx, postgres.BucketSettledForTests(), time.Hour.Microseconds()).Scan(&ok); e != nil {
+				t.Fatal(e)
+			}
+			return ok
+		}
+		// ago is how long ago the sweep ended; began, of a reconciliation that left nothing, how long ago its listing began (0: when it
+		// ended, a listing that took no time); failed, that the sweep did not complete.
+		type swept struct {
+			ago        time.Duration
+			dry        bool
+			reconciled bool
+			left       int
+			began      time.Duration
+			failed     bool
+		}
+		for name, c := range map[string]struct {
+			ledger []swept
+			want   bool
+		}{
+			"no sweep on record":                                  {nil, false},
+			"a reconciliation ten minutes ago":                    {[]swept{{ago: 10 * time.Minute, reconciled: true}}, true},
+			"a reconciliation two hours ago":                      {[]swept{{ago: 2 * time.Hour, reconciled: true}}, false},
+			"a reconciliation that left objects":                  {[]swept{{ago: 10 * time.Minute, reconciled: true, left: 3}}, false},
+			"a sweep that left objects after a reconciliation":    {[]swept{{ago: 30 * time.Minute, reconciled: true}, {ago: 10 * time.Minute, left: 2}}, false},
+			"a reconciliation after a sweep that left objects":    {[]swept{{ago: 30 * time.Minute, left: 2}, {ago: 10 * time.Minute, reconciled: true}}, true},
+			"a dry run that would leave objects":                  {[]swept{{ago: 30 * time.Minute, reconciled: true}, {ago: 10 * time.Minute, dry: true, left: 5}}, true},
+			"a dry run's listing after a sweep that left objects": {[]swept{{ago: 30 * time.Minute, left: 2}, {ago: 10 * time.Minute, dry: true, reconciled: true}}, false},
+			"a sweep with nothing to say after a reconciliation":  {[]swept{{ago: 30 * time.Minute, reconciled: true}, {ago: 10 * time.Minute}}, true},
+			"only sweeps with nothing to say":                     {[]swept{{ago: 30 * time.Minute}, {ago: 10 * time.Minute}}, false},
+			// Two sweeps at once. The reconciliation began to list forty minutes ago and ended ten minutes ago; the other sweep left
+			// objects twenty minutes ago, at keys the listing may have passed already. The reconciliation's row is the later one, and it
+			// does not settle what was left after its listing began.
+			"a sweep left objects while a reconciliation was listing, which ended last": {[]swept{{ago: 20 * time.Minute, left: 2}, {ago: 10 * time.Minute, reconciled: true, began: 40 * time.Minute}}, false},
+			// The same two rows the other way about: the objects were left before the listing began, so the listing saw them.
+			"a sweep left objects before a reconciliation began to list": {[]swept{{ago: 50 * time.Minute, left: 2}, {ago: 10 * time.Minute, reconciled: true, began: 40 * time.Minute}}, true},
+			// The interval counts from when the listing began: that is the moment the bucket is known as of.
+			"a reconciliation that ended within the hour and began before it": {[]swept{{ago: 10 * time.Minute, reconciled: true, began: 70 * time.Minute}}, false},
+			// A sweep that was cut short or failed cannot say what it left: a batch whose commit was not answered may have deleted its rows.
+			"a sweep that did not complete after a reconciliation": {[]swept{{ago: 30 * time.Minute, reconciled: true}, {ago: 10 * time.Minute, failed: true}}, false},
+			"a reconciliation after a sweep that did not complete": {[]swept{{ago: 30 * time.Minute, failed: true}, {ago: 10 * time.Minute, reconciled: true}}, true},
+			"a dry run that did not complete":                      {[]swept{{ago: 30 * time.Minute, reconciled: true}, {ago: 10 * time.Minute, dry: true, failed: true}}, true},
+			// The same instant to the microsecond: a sweep that left objects ended when a listing began. The row written later decides.
+			// Written after the sweep's, the reconciliation settles: what was left by then, its listing saw. Written before it, it does
+			// not: the sweep's row came after, and the next sweep lists once more.
+			"a listing began the instant a sweep that left objects ended, its row the later one":   {[]swept{{ago: 20 * time.Minute, left: 2}, {ago: 10 * time.Minute, reconciled: true, began: 20 * time.Minute}}, true},
+			"a listing began the instant a sweep that left objects ended, its row the earlier one": {[]swept{{ago: 10 * time.Minute, reconciled: true, began: 20 * time.Minute}, {ago: 20 * time.Minute, left: 2}}, false},
+		} {
+			if _, e := admin.Exec(ctx, "TRUNCATE reporting_s01.sweeps"); e != nil {
+				t.Fatal(e)
+			}
+			// One reading of the database's clock for the whole ledger, so that two rows of it can name the same instant.
+			var now time.Time
+			if e := admin.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&now); e != nil {
+				t.Fatal(e)
+			}
+			for _, s := range c.ledger {
+				var began *time.Time
+				if s.reconciled && s.left == 0 && !s.dry && !s.failed {
+					at := now.Add(-max(s.began, s.ago))
+					began = &at
+				}
+				if _, e := admin.Exec(ctx, `INSERT INTO reporting_s01.sweeps(dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches, reconciled, objects_left, at, settled_from)
+VALUES($1, $2, 86400, 500, 0, 0, 0, 0, $3, $4, $5, $6)`, s.dry, !s.failed, s.reconciled, s.left, now.Add(-s.ago), began); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if got := settled(); got != c.want {
+				t.Errorf("%s: the bucket is settled: %t, want %t", name, got, c.want)
+			}
+		}
+		// The ledger refuses a row that says the bucket is settled by a sweep that could not have settled it: a dry run, a sweep that
+		// did not reconcile, one that left objects, one that did not complete. (The values are dry_run, complete, reconciled, objects_left.)
+		for name, values := range map[string]string{
+			"a dry run":                      "true, true, true, 0",
+			"a sweep that did not reconcile": "false, true, false, 0",
+			"a sweep that left objects":      "false, true, true, 1",
+			"a sweep that did not complete":  "false, false, true, 0",
+		} {
+			if _, e := admin.Exec(ctx, `INSERT INTO reporting_s01.sweeps(grace_seconds, batch, artifacts, snapshots, jobs, batches, dry_run, complete, reconciled, objects_left, settled_from)
+VALUES(86400, 500, 0, 0, 0, 0, `+values+`, clock_timestamp())`); e == nil || !strings.Contains(e.Error(), "sweeps_settled_from_check") {
+				t.Errorf("the ledger took the word of %s that the bucket is settled: %v", name, e)
+			}
+		}
+		// A ledger of fifty thousand sweeps, a month of one a minute, of which one reconciled: the statement reads the sweeps that
+		// concern the bucket by their own index and not the ledger, so its cost does not grow with the sweeps on record.
+		if _, e = admin.Exec(ctx, "TRUNCATE reporting_s01.sweeps"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = admin.Exec(ctx, `INSERT INTO reporting_s01.sweeps(dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches, reconciled, at, settled_from)
+SELECT false, true, 86400, 500, 0, 0, 0, 0, g = 30, clock_timestamp() - g * interval '1 minute', CASE WHEN g = 30 THEN clock_timestamp() - g * interval '1 minute' END FROM generate_series(1, 50000) g`); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = admin.Exec(ctx, "ANALYZE reporting_s01.sweeps"); e != nil {
+			t.Fatal(e)
+		}
+		if !settled() {
+			t.Error("a reconciliation half an hour ago, among fifty thousand sweeps, does not settle the bucket")
+		}
+		var raw []byte
+		if e = admin.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+postgres.BucketSettledForTests(), time.Hour.Microseconds()).Scan(&raw); e != nil {
+			t.Fatal(e)
+		}
+		var doc []map[string]any
+		if e = json.Unmarshal(raw, &doc); e != nil || len(doc) != 1 {
+			t.Fatal(string(raw), e)
+		}
+		var nodes []planNode
+		collectPlan(t, doc[0]["Plan"].(map[string]any), &nodes)
+		byIndex := false
+		for _, n := range nodes {
+			byIndex = byIndex || n.Index == "sweeps_reconciliation"
+			if n.Type == "Seq Scan" && n.Relation == "sweeps" {
+				t.Errorf("the ledger is scanned to know whether the bucket is due: %s", describePlan(nodes))
+			}
+		}
+		if !byIndex {
+			t.Errorf("the sweeps that concern the bucket are not read by sweeps_reconciliation: %s", describePlan(nodes))
 		}
 	})
 	t.Run("a_row_that_names_another_artifacts_object_does_not_make_the_sweep_delete_it", func(t *testing.T) {

@@ -23,6 +23,11 @@ The schema is a sequence of embedded migrations, `storage/postgres/migrations/NN
 | 008 | object_storage | the `objects` and `orphans` counts of the `sweeps` ledger (S04-E, "Object storage") | the two counts, and it is refused while a ledger row says objects were deleted or an artifact's file is an object, unless the loss is accepted |
 | 009 | capacity_indexes | four indexes: `jobs_identity_created`, `jobs_identity_in_flight`, `assets_identity_kind_expires`, `jobs_reducible` (S04-G, "Capacity") | nothing (an index is derived from the rows) |
 | 010 | jobs_identity_kind_stats | extended statistics `jobs_identity_kind_stats` on `jobs (tenant, issuer, subject, kind)` and an `ANALYZE`, so that the issue listing of an identity with a long issue history reads `jobs_identity_created` ("Capacity", docs/CAPACITY.md "Migration 010") | nothing (statistics are derived from the rows) |
+| 015 | kept_results | what the store needs before a result may outlive its read (S25-B1, ADR 0026): the index `assets_identity_results` of the stored-results count, without the issued files ("Quotas"); and on the `sweeps` ledger `reconciled`, `objects_left`, `settled_from` and the index `sweeps_reconciliation` ("The sweep and the reconciliation") | the ledger's word on which sweeps reconciled the object store, on the objects each left and on since when the bucket is settled (refused while a row says that a sweep reconciled or left objects, unless accepted); no row of a job or an asset |
+| 016 | stored_results_index_cleanup | drops `assets_identity_kind_expires` of 009, which the stored-results count read until 015 ("Quotas") | nothing (its down builds the index again as 009 made it, and fails while something else stands under that name) |
+
+011 to 014 each add tables and are described where their tables are: "Designs in the store" (011 `designs`), "The audit" (012
+`audit_events`), "Scheduled reports" (013 `schedules`, `schedule_runs`) and "Cancelled issues" (014 `issue_cancellations`).
 
 The ledger `reporting_s01.schema_migrations` records every applied step with the SHA-256 of its up file,
 the time and who applied it. The `profile` row names the deployment kind (`production` or
@@ -130,6 +135,19 @@ older worker that meets a group job destroys it (before, the job stayed claimabl
 stop the older workers before a group job can be admitted, and do not run an older worker against a store that holds group
 jobs. Real products implement version 2 when they are integrated; until then a 2.0 template is issued only by the
 contract simulators.
+
+Kept results (S25, docs/ADR_0026_RESULT_LIFETIME.md) add a rolling constraint of the same kind, and migration `kept_results` (S25-B1)
+is what enforces most of it. A job whose result is kept beyond its read says so in its payload (`KeepUntil`), and the file it makes
+carries the query and the read it is authorized by afterwards. A binary older than S25-A does not know either: it reads such a job as
+one that keeps nothing, and a worker of it would publish the file with the read's expiry and without that basis. Nothing would be
+disclosed that should not be, and the file would not be kept: once its snapshot's read is over the newer servers refuse the file and the
+job's poll (409 `INTEGRITY_FAILURE`), while the listing of the jobs goes on showing a result that has not expired, and the sweep deletes
+the file a grace later. So no worker
+older than S25-A may run against a store on which a job can keep its result. From `kept_results` on the ledger sees to it at every
+start: a binary that does not know the step refuses to open the store ("Schema lifecycle"), and every binary that knows it knows kept
+results. What the ledger cannot stop is a server that was already running when `up` was applied; roll every server right after the
+migration, as for every step (docs/DEPLOYMENT.md "Upgrade procedure"). No result is kept until a source of the deployment vouches for
+the scope of its reads, which no source of the protocol can do before S25-B2; declare that only when every server runs the new binary.
 
 The failure of an issue job (S03-H, docs/API.md) is recorded before the source product is told, in this order:
 
@@ -249,7 +267,8 @@ slip can only keep data longer, never delete it sooner. The sweep refuses a stor
 version and a role that lacks what it needs, before anything is changed. It is idempotent and returns counts only. `reporting-server` has the same loop (`retention.sweep_interval`, off by default), but it connects as the application role, which never deletes, so there the sweep is refused and logged by its code: schedule `reporting-migrate sweep` (docs/DEPLOYMENT.md "The sweep").
 
 With an object store configured (S04-E, "Object storage" below) the artifact step also deletes, after each batch commits, the objects the deleted rows
-named, and a fourth step reconciles the bucket; the counts above gain `objects` and `orphans`.
+named, and a fourth step reconciles the bucket; the counts above gain `objects` and `orphans`. Since S25-B1 the fourth step does not run
+at every sweep: the ledger says whether the bucket is due ("The sweep and the reconciliation").
 
 Running it: `reporting-migrate sweep [--grace D] [--batch N] [--dry-run]` on `REPORTING_STORE_DSN`, as the sweep
 role or the migrator (the application role has no DELETE and is refused), prints `swept: A artifacts, S snapshots,
@@ -381,17 +400,26 @@ What is counted, per identity, at the moment of an admission:
 | Quota | What it counts | Default | Bounds |
 |---|---|---|---|
 | `jobs_in_flight` | jobs of every kind (snapshot, export, issue) in state `queued` or `running` | 8 | 1..1000 |
-| `stored_results` | snapshots and artifacts the identity owns whose expiry is still in the future by the store's clock | 64 | 1..100000 |
+| `stored_results` | snapshots and export files the identity owns whose expiry is still in the future by the store's clock; not the files of issued documents (S25-B1, below) | 512 | 1..100000 |
 | `admissions_per_hour` | jobs admitted in the last hour by the store's clock, whatever became of them | 120 | 1..100000 |
 
 Rules that follow from it:
 
 - A job that is `succeeded`, `failed` or `cancelled` frees its in-flight slot. It still counts toward `admissions_per_hour` for the
   hour after its admission.
-- An expired snapshot or artifact does not count: it waits for the retention sweep (docs/OPERATIONS.md "Retention") and the sweep
+- An expired snapshot or export file does not count: it waits for the retention sweep (docs/OPERATIONS.md "Retention") and the sweep
   deleting it changes nothing about the count. A row whose expiry could not be read (NULL, which the sweep never deletes) is not
-  "in the future" and does not count. An issue record never counts: it is permanent and is not a result in this sense (the issued
-  document's artifact is, until it expires). A stored result bounds bytes too, as each is already bounded by `MaxResultBytes` and `MaxArtifactBytes`.
+  "in the future" and does not count. A stored result bounds bytes too, as each is already bounded by `MaxResultBytes` and `MaxArtifactBytes`.
+- **An issued document is not a stored result** (S25-B1, ADR 0026 decision 7): neither its record, which is permanent, nor its file,
+  which is kept for `retention.issued` (ten years by default) where the source vouches for the scope of its reads. So an issue job
+  adds nothing to the count, and `stored_results` never refuses one: at the limit a freeze and an export are refused and an issue is
+  admitted. What bounds issuing is `jobs_in_flight` and `admissions_per_hour`. Until S25-B1 the issued file counted, like any
+  artifact, for the minutes it lived; kept for years it would have held its slot for years.
+- Where the source vouches for the scope of its reads (ADR 0026; no source of the protocol can before S25-B2), an export file is kept
+  for `retention.results` (seven days by default) and holds its slot for as long, beyond its read; so does the snapshot of a
+  scheduled run. That is why the default is 512 and no longer 64: size `stored_results` together with `retention.results`, for what
+  an identity makes in that many days. With a source that vouches for nothing every result still ends with its read, and 512 is
+  simply more room than 64 was.
 - A replay of an existing Idempotency-Key is never refused by a quota: the job exists and the answer is its view. A replay with a
   changed request is still `IDEMPOTENCY_CONFLICT`, not a quota refusal.
 - A refusal admits nothing and changes nothing. The check order, when more than one quota is reached, is `jobs_in_flight`,
@@ -414,7 +442,7 @@ SELECT EXISTS (SELECT 1 FROM reporting_s01.jobs WHERE tenant=$1 AND integration=
 -- only if no job has the key:
 SELECT
  (SELECT count(*) FROM reporting_s01.jobs   WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND state IN ('queued','running')),
- (SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp()),
+ (SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND NOT (data ? 'Issue') AND expires_at > clock_timestamp()),
  (SELECT count(*) FROM reporting_s01.jobs   WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND created_at > clock_timestamp() - interval '1 hour');
 ```
 
@@ -422,6 +450,45 @@ Two admissions of one identity run one after the other (the second counts what t
 each other; the lock ends with the transaction, committed or refused. The memory store counts under its mutex with the same rules.
 Under row-level security the statements see only the identity's own rows, which is what is wanted; the worker scope is not used for
 admission.
+
+**The index of the count (S25-B1, migration `kept_results`).** The file of an issued document is an artifact whose payload names its
+issue (`data ? 'Issue'`), and the count leaves it out by those words. Reading a payload to know would cost the file itself for every
+unexpired artifact at every admission (an artifact stored without an object store holds its file in the payload), and the issued
+files of an identity only grow. So the step adds `assets_identity_results` on `assets (tenant, issuer, subject, expires_at) WHERE
+kind IN ('snapshot','artifact') AND NOT (data ? 'Issue')`, which holds an identity's snapshots and export files and none of its
+issued files: the count is answered from it and does not look into a payload to tell an issued file, under the row-level policies too
+(the predicate is the index's, evaluated when a row is written, not a condition on a row that is read). It takes the place of
+`assets_identity_kind_expires` of 009, which served this count alone and held every issued file; the step after it,
+`stored_results_index_cleanup`, drops that one.
+`integration/plan_test.go` holds the plan as the application role, for a typical identity and for one with a long history, of which
+the seed has issued files with years left. (The one case in which PostgreSQL evaluates the predicate on rows again is a bitmap that
+outgrew `work_mem`: one identity's unexpired results on more pages than `work_mem` has room for, about a thousand pages at the
+smallest setting of 64 kB and some sixty-five thousand at the default 4 MB, which only a quota far above the default allows.
+docs/CAPACITY.md "Migration `kept_results`" has the measurement, and what the count costs with and without the index.)
+
+`kept_results` builds the index inside its transaction, and `CREATE INDEX` blocks writes to `assets` while it does (reads go on). On
+a store whose `assets` is large, build it beforehand, outside a transaction, under the name and the definition the step uses; the
+step then finds it, builds nothing, and refuses anything else under that name (another definition, an index a failed build left
+invalid, something that is no index), changing nothing. The definition is compared letter for letter, because the kinds and the
+payload's key are text: an index that names `issue` where the count names `Issue` would never serve the count.
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS assets_identity_results ON reporting_s01.assets (tenant, issuer, subject, expires_at)
+  WHERE kind IN ('snapshot','artifact') AND NOT (data ? 'Issue');
+```
+
+**Why the old index is dropped by a step of its own.** Dropping an index takes the table's exclusive lock. In the transaction that
+has just built an index on the same table that would be a second, stronger lock on `assets`, asked for while the first is held: a
+transaction that had read `assets` and was waiting to write it (a sweep's batch does both in one statement) would then wait for the
+migration while the migration waits for it, and PostgreSQL would end one of the two, after the whole build. In
+`stored_results_index_cleanup` the exclusive lock is the only lock the transaction asks for on `assets`. It is held for an instant,
+but it waits for every transaction that is reading or writing the table, and while it waits the others queue behind it; like every
+lock of a migration it gives up after a minute, the step changes nothing, and `up` is run again.
+
+Neither step creates a table, so `reporting-migrate roles` is not needed after them. Going back, the down of
+`stored_results_index_cleanup` builds the index of 009 again (blocking writes to `assets` meanwhile), and fails, changing nothing,
+when something else stands under that name; the down of `kept_results` then takes the index of the count. A binary older than
+`kept_results` counts an issued file as a stored result again, as it always did.
 
 Seeing an identity's usage. Counts only, never payloads (run as a role that can read the tables, not as an application connection
 without a context, which sees nothing):
@@ -431,14 +498,19 @@ SELECT count(*) FILTER (WHERE state IN ('queued','running')) AS jobs_in_flight,
        count(*) FILTER (WHERE created_at > clock_timestamp() - interval '1 hour') AS admissions_last_hour
   FROM reporting_s01.jobs WHERE tenant = :'tenant' AND issuer = :'issuer' AND subject = :'subject';
 SELECT count(*) AS stored_results FROM reporting_s01.assets
- WHERE tenant = :'tenant' AND issuer = :'issuer' AND subject = :'subject' AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp();
+ WHERE tenant = :'tenant' AND issuer = :'issuer' AND subject = :'subject' AND kind IN ('snapshot','artifact') AND NOT (data ? 'Issue') AND expires_at > clock_timestamp();
+-- the issued files the identity holds, which no quota counts (kept until their own expiry)
+SELECT count(*) AS issued_files FROM reporting_s01.assets
+ WHERE tenant = :'tenant' AND issuer = :'issuer' AND subject = :'subject' AND kind = 'artifact' AND data ? 'Issue';
 ```
 
 What the caller sees: 429 `QUOTA_EXCEEDED` with the quota's name and `Retry-After: 60` (docs/API.md "Quotas"); `GET /capabilities` carries the
 numbers in force; the console names the quota (docs/CONSOLE.md). Interplay with retention: `stored_results` frees itself at expiry, not
 at deletion, so a slow or stopped sweep does not hold anyone at their limit; the jobs table keeps its rows (the hour count reads them),
 and an identity that wants room sooner waits for expiry or cancels what it no longer needs. A quota of `stored_results` smaller than a
-tenant's working set makes its users wait for expiry: size it with the 24-hour grace and the ten-minute source reads in mind.
+tenant's working set makes its users wait for expiry: with a source that vouches for no scope a result expires with its read, within
+a quarter of an hour; with one that does, an export and a scheduled run's snapshot expire `retention.results` later (seven days by
+default), and that is the wait.
 
 The counting statements read the identity's rows by the tenant prefix of the unique key of `jobs`; S04-G ("Capacity") added the indexes that
 lead with (tenant, issuer, subject) and measured the difference (docs/CAPACITY.md).
@@ -524,9 +596,59 @@ being unavailable with the status code only).
 1. Artifacts: the rows are deleted in batches (each one transaction); after a batch commits, the objects its rows named are deleted. A key is deleted
    only if it is `artifacts/<the id of the row that named it>`; a row that names anything else (a tampered payload) has its row deleted and its key left.
 2. Snapshots, then job payloads: as before.
-3. Reconciliation: list `artifacts/` in pages of 1000 and delete every object that (a) has the key of a canonical artifact id (anything else under
-   the prefix is another process's and is left alone), (b) is older than the grace, and (c) is named by no row of `assets` of any kind (a lookup per page
-   with `id = ANY($1)` in a transaction of the worker scope, so row-level security shows it every identity's rows).
+3. Reconciliation, when the bucket is due (below): list `artifacts/` in pages of 1000 and delete every object that (a) has the key of a canonical
+   artifact id (anything else under the prefix is another process's and is left alone), (b) is older than the grace, and (c) is named by no row of
+   `assets` of any kind (a lookup per page with `id = ANY($1)` in a transaction of the worker scope, so row-level security shows it every identity's rows).
+
+**When the bucket is due (S25-B1).** The reconciliation is the one step of a sweep that costs what the bucket holds and not what the sweep
+handles: it lists every object. While a file lived a quarter of an hour and a day of grace, that was a day of files. Once a source vouches for
+the scope of its reads (ADR 0026), the bucket holds the exports of a week and the issued documents of ten years, so a sweep does not do it
+every time. It reads the `sweeps` ledger, which since migration `kept_results` says of each sweep whether it reconciled the bucket
+(`reconciled`), how many objects it left behind (`objects_left`) and, of a reconciliation that ran to its end and left none, the time
+its listing began (`settled_from`), and leaves the bucket alone while it is settled:
+
+- two kinds of sweep concern the bucket, dry runs apart: **a sweep that left objects or did not complete**, from the time it ended, and
+  **a reconciliation that left nothing**, from the time its listing began (a listing knows the bucket as it was when it began). The bucket
+  is **settled** when the newest of them is such a reconciliation and its listing began less than the interval ago: `--reconcile-every`
+  of the command (default 23 h), `retention.reconcile_interval` of the server's loop (default 23 h), `SweepOptions.Reconcile` in code.
+  Every process that sweeps a store reads the same ledger, by the database's clock, so how often the bucket is listed does not grow with
+  how many of them run or how often;
+- the default is an hour short of a day so that **a sweep scheduled once a day reconciles every day**. The interval is measured from the
+  start of the last listing to the moment a sweep asks: with an interval equal to the schedule's period, whether a run finds the last
+  reconciliation old enough is decided by which of the two runs got to that point a second sooner, and the bucket can end up
+  reconciled every other run only. Choose an interval clearly under a multiple of the schedule's period;
+- **a sweep that leaves objects makes the next sweep reconcile**, whatever the interval: a delete that failed, or a sweep run without the
+  object store flags that deleted rows whose files are objects. A file whose row is gone is therefore removed by the next sweep, as
+  it was before (the bullet on the grace, below, has the one exception). That holds for two sweeps at once as well: a reconciliation
+  that was already listing when the other sweep left its object, and that ended after it, does not settle the bucket, because it
+  counts from when its listing began;
+- **so does a sweep that did not complete** (it was stopped, a batch failed, the bucket could not be listed): its ledger row says
+  `complete = false`. Such a sweep cannot always say what it left: a batch whose commit was never answered may have deleted its rows.
+  A sweep that is refused before it begins (its options, its role's privileges, the schema's version) writes no row and changes nothing;
+- what waits for the interval is what no ledger row knows of. The orphan of a publication that failed (the object was put and its row
+  never came), which no sweep can know of without listing: it holds no row's file and is garbage, and it now stays up to the interval
+  longer than it did. And the objects of a batch whose sweep was killed after the rows were committed and before their objects were
+  deleted, or whose ledger row could not be written (the command then fails and says so): files whose rows are gone, which the next
+  reconciliation takes, at most one interval later. After a sweep that was killed, or whose ledger row was not written,
+  `sweep --reconcile-every 0` with the flags takes them at once;
+- a reconciliation takes an object no row names only when it is older than its own sweep's grace, and than 15 minutes ("Clock"
+  below), as before. Where every sweep of a store has the same grace of 15 minutes or more, an object a sweep leaves is old enough for
+  the next sweep's reconciliation. Two cases are not: **a sweep whose grace is under 15 minutes settles nothing**, so that with such a
+  grace every sweep reconciles, as before, until the object it left is old enough; and an object left by a sweep with a shorter grace
+  than the next one's (a sweep run by hand with `--grace 1h` beside a scheduled one with the default, say) is too young for that
+  reconciliation, which settles the bucket all the same: it goes with the first reconciliation whose grace it has outlived, up to an
+  interval later than it would have. Give the sweeps of a store one grace;
+- an interval of zero (`--reconcile-every 0`) reconciles at every sweep, as every sweep did before S25-B1; the interval is at most 30 days,
+  because the reconciliation cannot be put off for good. A ledger that records no reconciliation (a store that has just been migrated)
+  means the bucket is due: the first sweep after `up` reconciles;
+- a dry run lists the bucket when it is due and settles nothing; a reconciliation whose listing fails settles nothing either, and the next
+  sweep tries again;
+- a sweep that starts while another is still reconciling finds the bucket due and lists it too (the ledger knows of a reconciliation
+  when it has ended). Nothing is deleted twice; where a listing takes longer than the schedule's period, more than one runs at a time,
+  once per interval.
+
+The statement that reads the ledger is answered from the partial index `sweeps_reconciliation`, which holds only the sweeps the rule
+reads, in its order, so it costs the same however many sweeps the ledger records (a sweep a minute is half a million rows a year).
 
 **Clock.** The age of an object is judged by the platform host's clock against the time the object store stamped on the object, because that clock is the
 one that stamped it; it is the only place the host's clock decides anything in the sweep (the rows' expiries stay the database's, and a source test holds
@@ -536,17 +658,36 @@ clock is far ahead of the store's would take young objects for old; keep hosts o
 
 Counts only, as every sweep. The result and the command's output carry `objects` (deleted after their rows), `orphans` (deleted by the reconciliation)
 and `objects left` (meant to be deleted and not: a failed delete, or no object store configured); the `sweeps` ledger gains the first two (migration
-008, default 0 for earlier rows). A dry run lists and counts, deletes nothing. A sweep whose store cannot be listed fails (non-zero) after its rows, with
-the counts it had.
+008, default 0 for earlier rows) and, since migration `kept_results`, the third, whether the sweep reconciled and since when the bucket is settled. A dry
+run counts, lists the bucket when it is due, and deletes nothing. A sweep whose store cannot be listed fails (non-zero) after its rows, with the counts it had.
 
-`reporting-migrate sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint ... --object-store-bucket ...]` prints, besides the S04-B line,
-`objects: N deleted, M orphans deleted, K left for the next reconciliation`; without the flags it deletes rows only, prints `objects: no object store
-configured, rows only; the files of N deleted artifacts that were in an object store, and any orphan, wait for a reconciliation (...)` and exits 0. The
-demo's worker loop sweeps every `-sweep-interval` through the store it was opened with and logs the object counts when there are some.
+`reporting-migrate sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint ... --object-store-bucket ... [--reconcile-every D]]` prints,
+besides the S04-B line, one of four lines about the objects:
+
+- when it reconciled: `objects: N deleted, M orphans deleted, K left for the next reconciliation`;
+- when the bucket is settled: `objects: N deleted, K left for the next reconciliation; the bucket was not reconciled: its last
+  reconciliation left nothing behind and is within the last 23h0m0s (--reconcile-every 0 reconciles now)`. It counts no orphan, because
+  none was looked for, which is not the same as none being there;
+- when the sweep failed (it exits non-zero): `objects: N deleted, M orphans deleted, K left for the next reconciliation; the sweep failed
+  before the bucket was reconciled to the end of its listing`. The orphans are those it had deleted when it failed, and the next sweep
+  reconciles;
+- without the flags it deletes rows only, and exits 0: `objects: no object store configured, rows only; the files of N deleted artifacts
+  that were in an object store wait for a reconciliation, which the next sweep with the object store flags does when there are any
+  (--reconcile-every 0 with the flags reconciles in any case)`. The ledger records the N.
+
+The server's loop logs `reconciled` (true or false) in its `sweep` line. The demo's worker loop sweeps every `-sweep-interval` through the
+store it was opened with, reconciles every time (its bucket is a fixture's) and logs the object counts when there are some.
 
 Migration 008 (`object_storage`) adds the two ledger columns; its down drops them and is refused while a ledger row counts deleted objects or an
 artifact's file is an object (a binary older than the step cannot read such a row: it would stay, un-downloadable, until it expires), unless
 `--accept-data-loss`. The catalog is committed as `integration/testdata/catalog_008.txt`; 003 to 007 are byte for byte unchanged.
+
+Migration `kept_results` (S25-B1) adds `sweeps.reconciled` (default false), `sweeps.objects_left` (default 0) and `sweeps.settled_from` (no
+default: only a reconciliation that ran to its end and left nothing has one, and the ledger refuses it from any other row), so that the
+rows written before it say none of the three, and the index `sweeps_reconciliation`. Its down drops them and is refused while a ledger row
+says that a sweep reconciled or left objects, unless `--accept-data-loss` (the counts of what each sweep deleted stay); a binary older
+than the step reconciles at every sweep, as it always did. The other half of the step is the index of the stored-results count ("Quotas"
+above). The catalogs of the two steps of S25-B1 are committed as `integration/testdata/catalog_015.txt` and `catalog_016.txt`.
 
 ### Verifying
 
@@ -555,14 +696,19 @@ artifact's file is an object (a binary older than the step cannot read such a ro
 SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND data ? 'Object';
 -- rows that still hold their content inline (stored before S04-E); the two counts add up to the artifacts held
 SELECT count(*) FROM reporting_s01.assets WHERE kind='artifact' AND NOT data ? 'Object';
--- the ledger: objects deleted after their rows and orphans reconciled, per sweep
-SELECT at, dry_run, complete, artifacts, objects, orphans FROM reporting_s01.sweeps ORDER BY at DESC LIMIT 20;
+-- the ledger: objects deleted after their rows, orphans reconciled, objects left behind, whether the sweep reconciled and, of a
+-- reconciliation that left nothing, when its listing began, per sweep
+SELECT at, dry_run, complete, artifacts, objects, orphans, objects_left, reconciled, settled_from FROM reporting_s01.sweeps ORDER BY at DESC LIMIT 20;
+-- what the next sweep reads: the newest entry that concerns the bucket. A settled_from within the interval: the bucket is settled.
+-- No settled_from (a sweep that left objects or did not complete), or no row at all: the next sweep with the object store flags reconciles.
+SELECT at, complete, objects_left, settled_from FROM reporting_s01.sweeps
+ WHERE NOT dry_run AND (settled_from IS NOT NULL OR objects_left > 0 OR NOT complete) ORDER BY COALESCE(settled_from, at) DESC, id DESC LIMIT 1;
 ```
 
 Against the bucket, count the objects under `artifacts/` with the store's own tool (`mc ls --recursive ALIAS/BUCKET/artifacts | wc -l`,
 `aws s3 ls s3://BUCKET/artifacts/ --recursive | wc -l`). The difference between that count and the first query is the orphans (objects whose
-transaction failed, deletes that failed): it should be zero after a sweep once the grace has passed, and `sweep --dry-run` with the flags prints how
-many the reconciliation would delete. A count of objects *below* the rows' count is not an orphan problem: a row promises a file that is gone, every
+transaction failed, deletes that failed): it should be zero after a reconciliation once the grace has passed (`sweep --reconcile-every 0` with the
+flags reconciles now), and `sweep --dry-run --reconcile-every 0` with the flags prints how many the reconciliation would delete. A count of objects *below* the rows' count is not an orphan problem: a row promises a file that is gone, every
 download of it is `INTEGRITY_FAILURE`, and the bucket's versioning or backup is where it is recovered from.
 
 ### What it costs, and what is not covered
@@ -777,7 +923,7 @@ docs/CAPACITY.md with the machine and what they do not show; this section is wha
 |---|---|
 | `jobs_identity_created` on `jobs (tenant, issuer, subject, created_at DESC)` | the admissions-in-the-last-hour count of S04-D; the issue listing of an identity with a long issue history, which the planner reads newest first once migration 010's statistics tell it how many rows match (before 010 it kept the unique key and sorted them) |
 | `jobs_identity_in_flight` on `jobs (tenant, issuer, subject) WHERE state IN ('queued','running')` | the jobs-in-flight count; partial, so it holds only the live rows and stays tiny whatever the history |
-| `assets_identity_kind_expires` on `assets (tenant, issuer, subject, kind, expires_at)` | the stored-results count (which scanned every asset of every tenant) |
+| `assets_identity_kind_expires` on `assets (tenant, issuer, subject, kind, expires_at)` | the stored-results count (which scanned every asset of every tenant). Migration `kept_results` (S25-B1) adds `assets_identity_results` for the count, which leaves the issued files out, and `stored_results_index_cleanup` drops this index ("Quotas"): a store at the latest version does not have it |
 | `jobs_reducible` on `jobs (source_expires_at) WHERE state IN ('succeeded','failed','cancelled') AND NOT (data ? 'Reduced')` | the retention sweep's job reduction (S04-B): the finished jobs not yet reduced, by the expiry of their own source read; a job leaves it when reduced |
 
 **`CREATE INDEX` blocks writes to the table while it builds.** `reporting-migrate up` builds the four inside the migration's transaction, so

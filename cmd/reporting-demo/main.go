@@ -284,7 +284,7 @@ func run() error {
 	assetDir := flag.String("background-directory", "", "optional private immutable PNG background directory (0700); it also holds the private images of schema 2.1 templates, in its images subdirectory")
 	var embedOrigins []string
 	quotaJobs := flag.Int("quota-jobs", 0, "quota per identity: queued and running jobs (S04-D); 0 is the default, 8; 1..1000")
-	quotaResults := flag.Int("quota-results", 0, "quota per identity: snapshots and artifacts not yet expired (S04-D); 0 is the default, 64; 1..100000")
+	quotaResults := flag.Int("quota-results", 0, "quota per identity: snapshots and export files not yet expired (S04-D; the files of issued documents are not counted, S25-B1); 0 is the default, 512; 1..100000")
 	quotaAdmissions := flag.Int("quota-admissions", 0, "quota per identity: jobs admitted in the last hour (S04-D); 0 is the default, 120; 1..100000")
 	quotaQueries := flag.Int("quota-queries", 0, "quota per identity: POST /queries and snapshot row reads running at once in this process (S04-G); 0 is the default, 4; 1..64")
 	maxInFlight := flag.Int("max-in-flight", 0, "API requests worked on at once in this process (S04-G); beyond it a request is answered 503 OVERLOADED with Retry-After: 1; 0 is the default, 128; 1..4096")

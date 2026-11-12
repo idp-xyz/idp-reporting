@@ -51,6 +51,7 @@ const (
 	MaxShutdownGrace         = 600
 	MinSweepInterval         = 60
 	MaxSweepInterval         = 7 * 24 * 3600
+	MinReconcileInterval     = 1
 	MaxTokenLifetimeSeconds  = 3600
 	MaxConnections           = 256
 	MaxCursorKeyFiles        = r.MaxCursorKeys
@@ -216,12 +217,26 @@ type QuotasConfig struct {
 // RetentionConfig is the sweep loop (SweepInterval 0, the default, turns it off) and how long a result is kept after the read it was made
 // from has expired, by its class (ADR 0026 decision 3), in seconds: Results for export files and the snapshots of scheduled runs, Issued for
 // the files of issued documents; 0 is the default of each (7 days, 10 years). Nothing is kept beyond the scope the source vouches for.
+// ReconcileInterval is how long, in seconds, a reconciliation of the object store that left nothing behind settles the bucket for the
+// sweep loop (S25-B1, r.SweepOptions.Reconcile): 0 is the default, 23 hours. A sweep that leaves objects or does not complete makes
+// the next one reconcile whatever the interval. With a value below SweepInterval every sweep reconciles.
 type RetentionConfig struct {
-	SweepInterval int   `json:"sweep_interval"`
-	Grace         int   `json:"grace"`
-	Batch         int   `json:"batch"`
-	Results       int64 `json:"results"`
-	Issued        int64 `json:"issued"`
+	SweepInterval     int   `json:"sweep_interval"`
+	Grace             int   `json:"grace"`
+	Batch             int   `json:"batch"`
+	Results           int64 `json:"results"`
+	Issued            int64 `json:"issued"`
+	ReconcileInterval int   `json:"reconcile_interval"`
+}
+
+// SweepOptions is what the sweep loop asks of each sweep: the grace and the batch (0: their defaults) and how long a reconciliation
+// settles the object store for (0: the default, r.DefaultReconcileInterval).
+func (c RetentionConfig) SweepOptions() r.SweepOptions {
+	every := r.DefaultReconcileInterval
+	if c.ReconcileInterval != 0 {
+		every = seconds(c.ReconcileInterval)
+	}
+	return r.SweepOptions{Grace: seconds(c.Grace), Batch: c.Batch, Reconcile: every}
 }
 
 // PDFConfig is the pinned Typst renderer: the three fields together.
@@ -599,6 +614,11 @@ func (c *Config) Validate() error {
 	}
 	if _, err := (r.SweepOptions{Grace: seconds(ret.Grace), Batch: ret.Batch}).Resolved(); err != nil {
 		return configProblem("retention.grace is 0 (the default, 24 hours) up to %d seconds and retention.batch 0 (the default, %d) up to %d", int64(r.MaxSweepGrace.Seconds()), r.DefaultSweepBatch, r.MaxSweepBatch)
+	}
+	// As a number of seconds, like the grace: the reconciliation is what removes a file whose row is gone, and cannot be put off for good.
+	// Any interval below the sweep's own makes every sweep reconcile, so the least one is a second.
+	if ret.ReconcileInterval != 0 && (ret.ReconcileInterval < MinReconcileInterval || int64(ret.ReconcileInterval) > int64(r.MaxReconcileInterval/time.Second)) {
+		return configProblem("retention.reconcile_interval must be 0 (the default, %d seconds) or between %d and %d seconds", int64(r.DefaultReconcileInterval/time.Second), MinReconcileInterval, int64(r.MaxReconcileInterval/time.Second))
 	}
 	if _, err := c.RetentionValues(); err != nil {
 		return err

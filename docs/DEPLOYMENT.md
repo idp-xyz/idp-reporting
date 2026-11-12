@@ -82,7 +82,7 @@ the rule and never repeats a value of the file.
     { "tenant": "acme", "integration": "erp-finance", "source_tenant": "acme-prod", "adapter": "http",
       "options": { "base_url": "https://erp.internal/reporting", "ca_file": "/etc/reporting/tls/erp-ca.pem", "auth_env": "REPORTING_SOURCE_ERP_AUTH", "issuance": "rows", "companies": true } }
   ],
-  "quotas": { "jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120, "queries_in_flight": 4 },
+  "quotas": { "jobs_in_flight": 8, "stored_results": 512, "admissions_per_hour": 120, "queries_in_flight": 4 },
   "retention": { "sweep_interval": 0 },
   "profile_label": "staging-eu",
   "sign_in": {
@@ -120,9 +120,10 @@ the rule and never repeats a value of the file.
 | `issuer.jwks_file`, `.bindings_file` | required | The public keys (at most 64 KiB, 16 RSA keys of 2048..4096 bits, e=65537) and the list of `{subject, client_id, tenant, integrations[, roles][, email]}` (`roles`, S12-A, ADR 0018: 1..5 of `viewer`, `designer`, `publisher`, `issuer`, `administrator`; absent: `viewer, designer, publisher, issuer`, the rights before roles; `email`, S16-B: one address, an RFC 5322 addr-spec of printable ASCII, at most 254 characters, where the person's scheduled runs' ends are mailed when `schedules.email` is configured; absent: no mail) (strict, at most 4096). Re-read by a reload. |
 | `cursor_key_files` | required | 1..4 files, newest first; each holds one key, hex or base64 (a text valid as both is read as hex), 32..64 bytes; two files may not hold the same key. |
 | `connections` | required | 1..256 entries `{tenant, integration, source_tenant, adapter, options}`; `(tenant, integration)` unique; `adapter` names a registry entry (`http` in the shipped command; "Connecting a source product over HTTP" below for its `options`). |
-| `quotas.*` | 8, 64, 120, 4 | `jobs_in_flight` 1..1000, `stored_results` 1..100000, `admissions_per_hour` 1..100000, `queries_in_flight` 1..64; 0 is the default of each. |
+| `quotas.*` | 8, 512, 120, 4 | `jobs_in_flight` 1..1000, `stored_results` 1..100000, `admissions_per_hour` 1..100000, `queries_in_flight` 1..64; 0 is the default of each. `stored_results` counts an identity's unexpired snapshots and export files, not the files of issued documents (ADR 0026 decision 7, S25-B1); its default was 64 while every result ended with its read, and it is set together with `retention.results`: an export kept for a week holds its slot for a week. |
 | `retention.sweep_interval` | 0 (off) | 0 or 60..604800 seconds. See "The sweep" below. |
 | `retention.grace`, `.batch` | 24 h, 500 | `grace` 0 (default) up to 10 years in seconds; `batch` 0 (default) up to 10000. |
+| `retention.reconcile_interval` | 23 h | 0 (default) or 1..2592000 seconds: for how long a reconciliation of the object store that left nothing behind settles the bucket for the sweep loop (S25-B1; docs/OPERATIONS.md "The sweep and the reconciliation"). The reconciliation lists the whole bucket, which holds every file that is kept, so it is not done at every sweep: it is done when no reconciliation began within the interval, and at once after a sweep that left objects behind or did not complete. A value well under `sweep_interval` (1 is the least) makes every sweep do it. `reporting-migrate sweep` has the same rule (`--reconcile-every`). |
 | `retention.results`, `.issued` | 7 days, 10 years | How long a result is kept after the source read it was made from has expired (ADR 0026, S25-A), in seconds: `results` for export files and the snapshots of scheduled runs (0 for the default, or 60..31622400), `issued` for the files of issued documents (0 for the default, or 60..3153600000). Nothing is kept beyond the scope the source vouches for: with a source that declares none, every result ends with its read, whatever these say. A change applies to the jobs admitted after it. |
 | `pdf.typst`, `.sha256`, `.fonts` | none | All three or none (the pinned Typst and the only fonts PDF export may use). |
 | `layout_directory`, `dashboard_directory`, `template_directory`, `background_directory` | none | Private single-process directories (mode 0700, owned by the user the server runs as), as in the demo. They are **per process**: two servers do not share them. |
@@ -304,6 +305,12 @@ database's clock) has run out. Set the unit's `TimeoutStopSec` above `shutdown_g
 The retention sweep (`retention.sweep_interval`) is **off by default and cannot work on a production store**: the server connects as the application role, which never deletes (S04-A), so the sweep is refused and logged as
 `sweep_failed` with `AUTH_SCOPE_DENIED`. Run `reporting-migrate sweep` (docs/OPERATIONS.md "Retention") from a scheduler with the sweep role. The loop exists for a store whose role may sweep, and is tested with counts and codes.
 
+With an object store, a sweep reconciles the bucket (it lists every object, to find the ones no row names) only when the bucket is due, not every time (S25-B1): when no reconciliation began within the last 23 hours by
+default, and at once after a sweep that left objects behind or did not complete. `reporting-migrate sweep --reconcile-every D` and `retention.reconcile_interval` set the interval, and the `sweeps` ledger is where every
+process that sweeps reads whether the bucket is due (docs/OPERATIONS.md "The sweep and the reconciliation"). A scheduler may therefore run the sweep as often as it likes: the listing does not grow more frequent with it,
+as long as the sweeps complete and leave nothing. Give the schedule a period longer than a sweep takes, the day's reconciliation included: a sweep that starts while another is still listing the bucket lists it too. What
+no ledger row knows of waits for the next reconciliation, up to the interval: the file of a publication that failed after its file was put, and the files of a batch whose sweep was killed between its rows and its objects.
+
 ## A hardened systemd unit
 
 ```ini
@@ -365,6 +372,11 @@ Moving an existing deployment from the directories to the database: stop the ser
 2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs`, 012 `audit_events`, 013 `schedules` and `schedule_runs` and 014 `issue_cancellations` do: without `roles` the server refuses to start at step store, "no INSERT … on designs", "on audit_events", "on schedules" or "on issue_cancellations") (docs/OPERATIONS.md "Schema lifecycle").
    The ledger check goes both ways: an **older binary refuses to start against a newer ledger, and a running older server turns `/readyz` 503 `schema`** the moment `up` has been applied. That is the check doing its work, so
    roll the servers right after the migration; a migration is not a thing to apply and then leave for a day.
+   The steps `kept_results` and `stored_results_index_cleanup` (S25-B1) create no table and need no `roles`. The first builds an index on `assets` inside its transaction, which blocks writes to the table meanwhile: on a
+   large store build it beforehand (docs/OPERATIONS.md "Quotas"). The second drops the index the older binary's count read, under the table's exclusive lock, for which it waits at most a minute behind the transactions
+   that use the table; when it gives up, nothing has changed and `up` is run again. A server of the older binary that is still running (not ready, by the ledger check) then scans `assets` at every admission it still
+   makes until it is rolled, and counts as it always did. The binary that brings the steps has 512 and no longer 64 as the default of `quotas.stored_results`, and no longer counts an issued document's file; a
+   configuration that sets the quota keeps its number.
 3. Roll the servers **one at a time**: take one out of the balancer (`kill -TERM`; `/readyz` says `draining`), wait for it to exit (0), start the new binary, wait for `/readyz` 200, put it back, next. Binaries that read the jobs of a newer version may destroy them (docs/OPERATIONS.md "Workers and issue jobs"): never run an older worker against a store that holds newer jobs.
 4. A rollback is the reverse order with `reporting-migrate down --to N` only where the step's rules allow it.
 

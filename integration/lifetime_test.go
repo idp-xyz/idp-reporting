@@ -869,6 +869,36 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		}
 		mustError(t, w.repo.Publish(ctx, c, file), r.ErrDenied)
 	})
+	// S25-B1, ADR 0026 decision 7: what is kept and what the stored-results quota counts are not the same thing. An export that is kept
+	// holds its slot for as long as it is kept, beyond its read; the file of an issued document, kept for longer still, holds none.
+	t.Run("a_kept_export_holds_its_slot_of_the_stored_results_and_an_issued_file_holds_none", func(t *testing.T) {
+		w := newWorld(t)
+		w.vouch()
+		s := w.svcWith(r.Quotas{StoredResults: 2}, r.Retention{Results: lifetimeResults})
+		submit := func(key string) error {
+			_, e := s.SubmitSnapshot(ctx, w.p, contractsim.FinancialQuery(), key)
+			return e
+		}
+		snap := w.freeze(s, "snap")                  // one stored result
+		is := w.issue(s, snap.SnapshotID, "issue")   // its file is kept until the scope ends, and is none
+		ex := w.export(s, snap.SnapshotID, "export") // two: the limit
+		refused(t, submit("over"), r.QuotaStoredResults)
+		read := w.job(snap.ID).Prepared
+		if file := w.artifact(is.ArtifactID); !file.ExpiresAt.After(read.ExpiresAt) || file.Issue != is.ID {
+			t.Fatalf("the issued file is not kept beyond its read: %+v", file)
+		}
+		// The read ends. The working snapshot is over and its slot is free; the export is kept and still holds its own; the issued file
+		// is kept too and never held one. So exactly one freeze is admitted, and the next is refused.
+		w.until(read.ExpiresAt)
+		w.freeze(s, "next")
+		refused(t, submit("over again"), r.QuotaStoredResults)
+		// What holds a slot and what holds none are both still served.
+		for name, id := range map[string]string{"export": ex.ArtifactID, "issued file": is.ArtifactID} {
+			if e := w.download(s, id); e != nil {
+				t.Fatalf("the kept %s is not served: %v", name, e)
+			}
+		}
+	})
 	t.Run("an_export_the_store_cannot_read_keeps_nothing", func(t *testing.T) {
 		w := newWorld(t)
 		if w.unreadable == nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"idp.local/reporting/storage/objects"
 	"idp.local/reporting/storage/postgres"
 	"net/http"
 	"os"
@@ -36,6 +37,46 @@ func TestSweepLoopLogsCountsAndCodes(t *testing.T) {
 	}
 	if strings.Contains(s.log.String(), testDSNPass) {
 		t.Error("the sweep's error reached the log")
+	}
+	// The line says whether the sweep reconciled the object store (S25-B1); this store has none, so it did not.
+	if reconciled, said := sweeps[0]["reconciled"]; !said || reconciled != false {
+		t.Errorf("the sweep's line does not say that the bucket was not reconciled: %v", sweeps[0])
+	}
+	// Every sweep of the loop is asked to leave the object store alone while a reconciliation of the last twenty-three hours settles it,
+	// unless the configuration says otherwise.
+	asked := store.Swept()
+	if len(asked) != 2 || asked[0].Reconcile != 23*time.Hour || asked[1].Reconcile != 23*time.Hour || asked[0].Grace != 24*time.Hour || asked[0].Batch != 500 || asked[0].DryRun {
+		t.Fatalf("the loop asked for %+v", asked)
+	}
+}
+
+// retention.reconcile_interval is how long a reconciliation settles the object store for the sweep loop (S25-B1): the loop passes it on
+// to every sweep, and its line says what the sweep's result says of the reconciliation.
+func TestTheSweepLoopReconcilesAsOftenAsTheConfigurationSays(t *testing.T) {
+	w := newWorld(t)
+	w.cfg.Retention.SweepInterval = 3600
+	w.cfg.Retention.ReconcileInterval = 7200
+	w.cfg.Retention.Grace = 1800
+	// A store that has an object store: its first sweep finds no reconciliation on record and reconciles; the second, a moment later
+	// and within the two hours, does not.
+	store := NewMemoryStoreForTests(time.Now)
+	store.UseObjects(objects.NewMemory(time.Now))
+	tick := make(chan time.Time)
+	hooks := &Hooks{Swept: make(chan struct{}, 2)}
+	s := startWorld(t, w, WithStoreForTests(store), WithHooksForTests(hooks), WithSweepTickerForTests(func(time.Duration) (<-chan time.Time, func()) { return tick, func() {} }))
+	for range 2 {
+		tick <- time.Time{}
+		<-hooks.Swept
+	}
+	s.cancel()
+	<-s.Done()
+	asked := store.Swept()
+	if len(asked) != 2 || asked[0].Reconcile != 2*time.Hour || asked[1].Reconcile != 2*time.Hour || asked[0].Grace != 30*time.Minute {
+		t.Fatalf("the loop asked for %+v", asked)
+	}
+	sweeps := s.log.events(t, "sweep")
+	if len(sweeps) != 2 || sweeps[0]["reconciled"] != true || sweeps[1]["reconciled"] != false {
+		t.Fatalf("the loop's lines do not say which sweep reconciled the object store: %v", sweeps)
 	}
 }
 

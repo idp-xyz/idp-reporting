@@ -10479,7 +10479,7 @@ test('a real server at its limit refuses with the quota notice', async () => {
     ).json();
     assert.deepEqual(capabilities.quotas, {
       jobs_in_flight: 1,
-      stored_results: 64,
+      stored_results: 512,
       admissions_per_hour: 120,
       queries_in_flight: 4,
     });

@@ -18,8 +18,9 @@ func TestQuotasTakeDefaultsAndRefuseWhatIsOutOfBounds(t *testing.T) {
 	service := func(q r.Quotas) (*r.Service, error) {
 		return r.NewService(r.Config{Repository: memory.New(time.Now), Connections: []r.Connection{{Tenant: p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: a}}, CursorKey: []byte("01234567890123456789012345678901"), Quotas: q})
 	}
+	// The defaults; of the stored results 512 since ADR 0026 decision 7 (64 while every result ended with its read).
 	s, e := service(r.Quotas{})
-	if e != nil || s.Quotas() != (r.Quotas{JobsInFlight: 8, StoredResults: 64, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
+	if e != nil || s.Quotas() != (r.Quotas{JobsInFlight: 8, StoredResults: 512, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
 		t.Fatalf("%+v %v", s, e)
 	}
 	// A value inside its bounds is kept, at both ends of each range; the others default.
