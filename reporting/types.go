@@ -71,8 +71,12 @@ func QuotaOf(e error) string {
 // Quotas bound what one identity (tenant, issuer, subject) may hold at the store (S04-D). Zero is the default; a value outside its bounds
 // is refused by Resolved, so by NewService.
 type Quotas struct {
-	JobsInFlight      int // queued and running jobs: default 8, 1..1000
-	StoredResults     int // snapshots and artifacts not yet expired by the store's clock: default 64, 1..100000
+	JobsInFlight int // queued and running jobs: default 8, 1..1000
+	// StoredResults bounds the snapshots and export files the identity holds that have not expired by the store's clock: default 512,
+	// 1..100000. The file of an issued document is not one of them, as its record is not (ADR 0026 decision 7): it is kept for years, and
+	// the admissions per hour bound how many an identity makes. The default was 64 while every result ended with its read, a quarter of an
+	// hour at most; an export is now kept for days where the source vouches for the scope.
+	StoredResults     int
 	AdmissionsPerHour int // jobs admitted in the last hour by the store's clock: default 120, 1..100000
 	// QueriesInFlight (S04-G) bounds the POST /queries and snapshot row reads the service runs at once for one identity: default 4, 1..64.
 	// Unlike the three above it is enforced by the service, in this process (it protects this process's cores and its connections to the
@@ -82,7 +86,7 @@ type Quotas struct {
 
 const (
 	DefaultJobsInFlight      = 8
-	DefaultStoredResults     = 64
+	DefaultStoredResults     = 512
 	DefaultAdmissionsPerHour = 120
 	DefaultQueriesInFlight   = 4
 	MaxJobsInFlight          = 1000
@@ -104,6 +108,12 @@ func (q Quotas) Resolved() (Quotas, error) {
 	}
 	return q, nil
 }
+
+// MakesStoredResult says whether a job of the kind makes a stored result in the sense of the quota: a freeze makes a snapshot and an
+// export a file, and both count; an issue makes the file of an issued document, which does not (ADR 0026 decision 7). So the
+// stored-results quota refuses a freeze and an export at the limit and never an issue: it would refuse it for results the issue does not
+// add to. An issue is bounded, like every job, by the jobs in flight and the admissions per hour. Both stores apply it at admission.
+func MakesStoredResult(kind string) bool { return kind != "issue" }
 
 type Identity struct {
 	Tenant  string

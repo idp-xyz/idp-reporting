@@ -156,6 +156,20 @@ No decision changed; what changed is which slice does what, and two conditions o
 - A server of the code before S25-A does not know a kept result. Every server on a store runs S25-A's code before a source of that
   deployment declares a scope; S25-D writes the rule into docs/OPERATIONS.md.
 
+Amended 2026-11-12, with S25-B1 (docs/S25B1_SCOPE.md). No decision changed. S25-B is delivered as two slices: **S25-B1** is what the
+store needs before a source can vouch (the quota of decision 7 with its index, the reconciliation of the object store, the rollout
+rule), and **S25-B2** is the wire (the protocol's revision 1.2, the adapter `http`, `sourcetest`, the durable simulator, the
+checker's rules). What S25-B1 settled that the list left open:
+
+- Decision 7 says what `stored_results` counts. S25-B1 takes it to mean also that the quota never refuses an issue: an issue adds
+  nothing to what is counted, and the decision names the admissions per hour as what bounds the issued files.
+- Of the two ways named above for the reconciliation, S25-B1 takes the cadence: the bucket is reconciled when it is due (about once
+  a day by default, and at once after a sweep that left objects behind or did not complete), not at every sweep. What no sweep's
+  record knows of waits for the next reconciliation, at most one interval: the file of a publication that failed, and the files of
+  a batch whose sweep was killed between its rows and their objects (docs/S25B1_SCOPE.md "Known").
+- The rollout rule is in docs/OPERATIONS.md with S25-B1 and does not wait for S25-D, because the migration of S25-B1 is what
+  enforces most of it: a binary that does not know the step, and so does not know a kept result, refuses to open the store.
+
 ## Questions for the product owner
 
 - **Q1, the model.** (a) The source vouches for the scope and the platform keeps by class, as above (recommended). (b) After

@@ -54,6 +54,23 @@ func TestConfigAcceptsAValidDocument(t *testing.T) {
 	if v, err := c.RetentionValues(); err != nil || v.Results != 24*time.Hour || v.Issued != 36500*24*time.Hour {
 		t.Fatalf("%+v %v", v, err)
 	}
+	// What the sweep loop asks of each sweep (S25-B1): a reconciliation settles the object store for twenty-three hours unless the file
+	// says otherwise, between a second and thirty days; the grace and the batch are the sweep's own defaults when the file does not say.
+	if o := c.Retention.SweepOptions(); o.Reconcile != 23*time.Hour || o.Grace != 0 || o.Batch != 0 || o.DryRun {
+		t.Fatalf("%+v", o)
+	}
+	for seconds, want := range map[int]time.Duration{1: time.Second, 7200: 2 * time.Hour, 2592000: 30 * 24 * time.Hour} {
+		d["retention"] = map[string]any{"reconcile_interval": seconds, "grace": 600, "batch": 7}
+		if c, err = ParseConfig(encode(t, d)); err != nil {
+			t.Fatal(seconds, err)
+		}
+		if o := c.Retention.SweepOptions(); o.Reconcile != want || o.Grace != 10*time.Minute || o.Batch != 7 {
+			t.Fatalf("%d seconds: %+v", seconds, o)
+		}
+		if _, err := c.Retention.SweepOptions().Resolved(); err != nil {
+			t.Fatalf("%d seconds: the sweep refuses what the configuration accepts: %v", seconds, err)
+		}
+	}
 }
 
 // Every refusal of the file itself, each with a known secret placed where it would hurt, and the text of the refusal checked for it.
@@ -134,9 +151,13 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 		"a negative retention time":          with(func(d map[string]any) { d["retention"] = map[string]any{"issued": -1} }),
 		// 18446744134 seconds is 2^64 nanoseconds and sixty seconds more: as a duration it wraps around to a minute, which the bounds of a
 		// duration would accept. Each is refused as the number of seconds it is.
-		"a grace that wraps around":          with(func(d map[string]any) { d["retention"] = map[string]any{"grace": int64(18446744134)} }),
-		"a results' time that wraps around":  with(func(d map[string]any) { d["retention"] = map[string]any{"results": int64(18446744134)} }),
-		"an issued time that wraps around":   with(func(d map[string]any) { d["retention"] = map[string]any{"issued": int64(18446744134)} }),
+		"a grace that wraps around":         with(func(d map[string]any) { d["retention"] = map[string]any{"grace": int64(18446744134)} }),
+		"a results' time that wraps around": with(func(d map[string]any) { d["retention"] = map[string]any{"results": int64(18446744134)} }),
+		"an issued time that wraps around":  with(func(d map[string]any) { d["retention"] = map[string]any{"issued": int64(18446744134)} }),
+		// The reconciliation of the object store (S25-B1) is not put off for good; the least interval, a second, is accepted above.
+		"a reconciliation over thirty days":  with(func(d map[string]any) { d["retention"] = map[string]any{"reconcile_interval": 2592001} }),
+		"a negative reconciliation interval": with(func(d map[string]any) { d["retention"] = map[string]any{"reconcile_interval": -1} }),
+		"a reconciliation that wraps around": with(func(d map[string]any) { d["retention"] = map[string]any{"reconcile_interval": int64(18446744134)} }),
 		"half a pdf section":                 with(func(d map[string]any) { d["pdf"] = map[string]any{"typst": "/usr/bin/typst"} }),
 		"an object store without a bucket":   with(func(d map[string]any) { d["object_store"] = map[string]any{"endpoint": "https://s3.example"} }),
 		"an embed origin that is http":       with(func(d map[string]any) { d["embed_origins"] = map[string]any{"i": []string{"http://127.0.0.1:1"}} }),

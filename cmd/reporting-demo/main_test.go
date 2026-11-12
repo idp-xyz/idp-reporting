@@ -161,7 +161,7 @@ func TestSweepLoopSweepsEveryIntervalLogsCountsOnlyAndStops(t *testing.T) {
 // The -quota-* flags (S04-D, and -quota-queries of S04-G): zero is the default, a value out of its bounds stops the start and names the flag.
 func TestQuotaFlagsStopTheStartOutsideTheirBounds(t *testing.T) {
 	q, err := quotaConfig(0, 0, 0, 0)
-	if err != nil || q != (r.Quotas{JobsInFlight: 8, StoredResults: 64, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
+	if err != nil || q != (r.Quotas{JobsInFlight: 8, StoredResults: 512, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
 		t.Fatalf("%+v %v", q, err)
 	}
 	if q, err = quotaConfig(1000, 100000, 1, 64); err != nil || q != (r.Quotas{JobsInFlight: 1000, StoredResults: 100000, AdmissionsPerHour: 1, QueriesInFlight: 64}) {

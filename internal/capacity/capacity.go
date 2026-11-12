@@ -78,18 +78,25 @@ INSERT INTO reporting_s01.jobs(id, tenant, integration, issuer, subject, kind, s
 SELECT id, tenant, $7, '` + Issuer + `', subject, kind, state, key, $8, CASE WHEN state = 'running' THEN now() + interval '1 hour' END, now() + interval '365 days', d,
   encode(sha256(convert_to(d::text, 'UTF8')), 'hex'), created FROM p`
 
+// Of the assets, one in ten is an issue record, half are snapshots and the rest artifacts. Two in fifteen of the assets are the files of
+// issued documents (an artifact whose payload names its issue), kept for nine years, as the store holds them once a source vouches for the
+// scope of its reads (ADR 0026): the rows the stored-results count must not read (S25-B1). The other artifacts are exports.
 const seedAssetsSQL = `WITH g AS (SELECT g, CASE WHEN g <= $4 THEN 0 ELSE 1 + ((g - $4) % ($2 - 1)) END AS k FROM generate_series(1, $1) g),
 x AS (SELECT g, k, '` + TenantPrefix + `' || (k % $3) AS tenant, 'cap-u' || k AS subject, md5('cap-asset-' || g) AS id,
   CASE WHEN g % 10 = 0 THEN 'issue' WHEN g % 2 = 0 THEN 'artifact' ELSE 'snapshot' END AS kind,
-  CASE WHEN g % 10 = 0 THEN NULL WHEN g % 50 = 1 THEN date_trunc('microseconds', now() + interval '6 hours') ELSE date_trunc('microseconds', now() - ((1 + g % 19) * interval '1 hour')) END AS expires FROM g),
+  g % 10 <> 0 AND g % 6 = 0 AS issued,
+  CASE WHEN g % 10 = 0 THEN NULL WHEN g % 6 = 0 THEN date_trunc('microseconds', now() + interval '9 years') WHEN g % 50 = 1 THEN date_trunc('microseconds', now() + interval '6 hours')
+    ELSE date_trunc('microseconds', now() - ((1 + g % 19) * interval '1 hour')) END AS expires FROM g),
 p AS (SELECT x.*, jsonb_build_object('ID', id, 'Owner', jsonb_build_object('Tenant', tenant, 'Issuer', '` + Issuer + `', 'Subject', subject, 'Integration', $5::text),
   'SnapshotID', md5('cap-snapshot-' || g), 'ExpiresAt', to_char(expires AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'SHA256', md5(id) || md5(id || 'x'),
-  'Content', encode(decode(md5(id || '1') || md5(id || '2') || md5(id || '3') || md5(id || '4') || md5(id || '5') || md5(id || '6') || md5(id || '7') || md5(id || '8'), 'hex'), 'base64')) AS d FROM x)
+  'Content', encode(decode(md5(id || '1') || md5(id || '2') || md5(id || '3') || md5(id || '4') || md5(id || '5') || md5(id || '6') || md5(id || '7') || md5(id || '8'), 'hex'), 'base64'))
+  || CASE WHEN issued THEN jsonb_build_object('Issue', md5('cap-issued-' || g)) ELSE '{}'::jsonb END AS d FROM x)
 INSERT INTO reporting_s01.assets(id, tenant, integration, issuer, subject, kind, data, data_sha256, expires_at)
 SELECT id, tenant, $5, '` + Issuer + `', subject, kind, d, encode(sha256(convert_to(d::text, 'UTF8')), 'hex'), expires FROM p`
 
 // Seed writes the bulk history. The rows are shaped to be inert to the retention sweep (the jobs' source reads expire in a year, the assets
-// that have expired did so within the grace), so that the sweep step measures exactly the rows SeedSweep adds.
+// that have expired did so within the grace, the issued files have years left), so that the sweep step measures exactly the rows SeedSweep
+// adds.
 func Seed(ctx context.Context, admin *pgxpool.Pool, p Profile, tmpl r.Job) error {
 	if !p.Valid() {
 		return r.ErrInvalid

@@ -226,14 +226,22 @@ func runQuotaContract(t *testing.T, build func(*testing.T) *quotaWorld) {
 		if ex, e = s.Job(ctx, w.p, ex.ID); e != nil || ex.State != "succeeded" {
 			t.Fatal(ex, e)
 		}
-		// A snapshot and an artifact are two stored results: the limit. One more job of any kind is refused...
+		// A snapshot and an artifact are two stored results: the limit. One more job that would make one is refused...
 		_, e = w.submit(s, w.p, "k2")
 		refused(t, e, r.QuotaStoredResults)
 		_, e = s.SubmitExport(ctx, w.p, first.SnapshotID, "export-2")
 		refused(t, e, r.QuotaStoredResults)
-		_, e = s.SubmitIssue(ctx, w.p, issueInput(first.SnapshotID, 0), "issue")
-		refused(t, e, r.QuotaStoredResults)
-		// ...but the replay of a key whose job exists is not.
+		// ...and an issue is not, since S25-B1: the file it makes is not a stored result (ADR 0026 decision 7), so this quota has nothing
+		// to refuse it for. (Until then this line was a refusal: the issued file counted.) It is cancelled, so that the snapshot it names
+		// is the sweep's to take below.
+		issue, e := s.SubmitIssue(ctx, w.p, issueInput(first.SnapshotID, 0), "issue")
+		if e != nil {
+			t.Fatal("an issue was refused at the limit of the stored results:", e)
+		}
+		if c, e := s.Cancel(ctx, w.p, issue.ID); e != nil || c.State != "cancelled" {
+			t.Fatal(c, e)
+		}
+		// ...and the replay of a key whose job exists is not either.
 		if again, e := w.submit(s, w.p, "k1"); e != nil || again.ID != first.ID {
 			t.Fatal(again, e)
 		}
@@ -250,7 +258,10 @@ func runQuotaContract(t *testing.T, build func(*testing.T) *quotaWorld) {
 		}
 		w.mustSubmit(s, w.p, "k4")
 	})
-	t.Run("issue_records_never_count_and_expired_results_leave_them_alone", func(t *testing.T) {
+	// Until S25-B1 the file of an issued document was a stored result, and this subtest held the limit to "the snapshot, the issued file and
+	// one more". ADR 0026 decision 7 changed the rule: the file is kept for years where the source vouches for the scope, so neither it nor
+	// its record is a stored result, and the admissions per hour bound how many an identity issues.
+	t.Run("issued_files_and_issue_records_never_count_and_expired_results_leave_them_alone", func(t *testing.T) {
 		w := build(t)
 		s := w.svc(r.Quotas{StoredResults: 3})
 		snap := w.mustSubmit(s, w.p, "snap")
@@ -259,24 +270,58 @@ func runQuotaContract(t *testing.T, build func(*testing.T) *quotaWorld) {
 		if e != nil || snap.State != "succeeded" {
 			t.Fatal(snap, e)
 		}
-		issue, e := s.SubmitIssue(ctx, w.p, issueInput(snap.SnapshotID, 0), "issue")
+		// Two documents are issued from the snapshot: two files and two records.
+		var issue r.JobView
+		for row, key := range []string{"issue", "issue-2"} {
+			if issue, e = s.SubmitIssue(ctx, w.p, issueInput(snap.SnapshotID, row), key); e != nil {
+				t.Fatal(e)
+			}
+			w.run(s)
+			if issue, e = s.Job(ctx, w.p, issue.ID); e != nil || issue.State != "succeeded" {
+				t.Fatal(issue, e)
+			}
+			file, e := w.repo.Artifact(ctx, w.p.Identity, issue.ArtifactID)
+			if e != nil || file.Issue != issue.ID || !file.ExpiresAt.After(time.Time{}) {
+				t.Fatalf("the issued file is not stored under its issue: %+v %v", file, e)
+			}
+			if _, e = w.repo.Issue(ctx, w.p.Identity, issue.ID); e != nil {
+				t.Fatal("the issue record is not stored", e)
+			}
+		}
+		// One result is held, the snapshot. Were the issued files counted, three would be held and the export would be refused; were
+		// the records counted too, five.
+		ex, e := s.SubmitExport(ctx, w.p, snap.SnapshotID, "export")
 		if e != nil {
-			t.Fatal(e)
+			t.Fatal("an issued file or its record holds a slot of the stored results:", e)
 		}
-		w.run(s) // the issued document's artifact and its record: one result, one record
-		if _, e = w.repo.Issue(ctx, w.p.Identity, issue.ID); e != nil {
-			t.Fatal("the issue record is not stored", e)
+		w.run(s)
+		if ex, e = s.Job(ctx, w.p, ex.ID); e != nil || ex.State != "succeeded" {
+			t.Fatal(ex, e)
 		}
-		// Two results are held (the snapshot and the artifact). Were the record counted, three would be held and this would be refused.
+		// An export file is a stored result: two are held, and a second snapshot makes three.
 		next := w.mustSubmit(s, w.p, "snap-2")
 		w.run(s)
-		// Now three are held: the limit is exact.
+		// The limit is exact: a freeze and an export are refused at it. An issue is admitted and runs, because it adds nothing to what
+		// the quota counts; the jobs in flight and the admissions per hour are what bound it.
+		_, e = w.submit(s, w.p, "snap-3")
+		refused(t, e, r.QuotaStoredResults)
+		_, e = s.SubmitExport(ctx, w.p, snap.SnapshotID, "export-2")
+		refused(t, e, r.QuotaStoredResults)
+		third, e := s.SubmitIssue(ctx, w.p, issueInput(snap.SnapshotID, 0), "issue-3")
+		if e != nil {
+			t.Fatal("an issue was refused at the limit of the stored results:", e)
+		}
+		w.run(s)
+		if third, e = s.Job(ctx, w.p, third.ID); e != nil || third.State != "succeeded" {
+			t.Fatal(third, e)
+		}
+		// And the limit still holds after it.
 		_, e = w.submit(s, w.p, "snap-3")
 		refused(t, e, r.QuotaStoredResults)
 		if next.ID == "" {
 			t.Fatal(next)
 		}
-		// Everything expires; the record is permanent and the count is zero.
+		// Everything expires; the records are permanent and the count is zero.
 		w.pass(readLife + time.Minute)
 		if _, e = w.repo.Issue(ctx, w.p.Identity, issue.ID); e != nil {
 			t.Fatal(e)
@@ -379,7 +424,7 @@ func runQuotaContract(t *testing.T, build func(*testing.T) *quotaWorld) {
 	t.Run("the_store_applies_the_quotas_it_is_given_defaults_and_bounds", func(t *testing.T) {
 		w := build(t)
 		s := w.svc(r.Quotas{})
-		if got := s.Quotas(); got != (r.Quotas{JobsInFlight: 8, StoredResults: 64, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
+		if got := s.Quotas(); got != (r.Quotas{JobsInFlight: 8, StoredResults: 512, AdmissionsPerHour: 120, QueriesInFlight: 4}) {
 			t.Fatalf("%+v", got)
 		}
 		base := w.mustSubmit(s, w.p, "base")

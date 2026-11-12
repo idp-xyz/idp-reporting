@@ -121,7 +121,7 @@ func TestCapabilitiesCarryTheQuotasInForce(t *testing.T) {
 		limits r.Quotas
 		want   map[string]any
 	}{
-		{r.Quotas{}, map[string]any{"jobs_in_flight": 8.0, "stored_results": 64.0, "admissions_per_hour": 120.0, "queries_in_flight": 4.0}},
+		{r.Quotas{}, map[string]any{"jobs_in_flight": 8.0, "stored_results": 512.0, "admissions_per_hour": 120.0, "queries_in_flight": 4.0}},
 		{r.Quotas{JobsInFlight: 3, StoredResults: 7, AdmissionsPerHour: 11, QueriesInFlight: 2}, map[string]any{"jobs_in_flight": 3.0, "stored_results": 7.0, "admissions_per_hour": 11.0, "queries_in_flight": 2.0}},
 	} {
 		_, h := quotaSetup(t, c.limits)
