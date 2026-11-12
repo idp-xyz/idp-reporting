@@ -1,4 +1,4 @@
-// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): eight tasks a person does in the console, driven with real
+// UX task baseline for S07 (docs/ADR_0009_SHELL_CONTINUITY.md, docs/UX_BASELINE_S07.md): nine tasks a person does in the console, driven with real
 // mouse and keyboard input over the Chrome DevTools Protocol, counting what the person pays for each: clicks, texts typed, page switches (a
 // section shown in place of another), shell changes (the chrome around the page replaced: console shell ↔ document studio ↔ template centre ↔
 // dashboard studio), dialogs opened and dead ends (the page telling the person to go somewhere else first). The same script runs before and after a
@@ -591,6 +591,49 @@ async function coreTasks() {
       await clickBtn('#st-d-issue', '正式出具');
       await waitFor(issued, 'issued', 90000);
     }
+    await idle();
+  });
+
+  // T9 · 筛选后冻结并导出 (S20-B, ADR 0023 decision 5): narrow the dataset by a filter it publishes, order it, freeze exactly that and
+  // export the workbook — what a person did in Excel, after exporting the whole dataset, before the catalogue could publish filters.
+  // From wherever T8 left the person: the header's data chip opens the data drawer; 添加筛选 账龄区间, 属于, 1_30; 添加排序 应收余额,
+  // 降序; 创建快照; then the workbench's 导出 Excel. A console whose query panel has no filters (before S20-B) cannot do it at all:
+  // the task says so before it clicks anything, and a task that failed is not in the totals.
+  await task('T9 筛选后冻结并导出', async () => {
+    if (!(await evalJs(`!!document.getElementById('query-filter-add')`)))
+      throw new Error('not possible: the query panel has no filters and no sort (before S20-B)');
+    const offer = (line, field) =>
+      `[...document.querySelectorAll('#${line} button')].find(b=>b.dataset.field===${JSON.stringify(field)}&&!b.disabled)`;
+    const choice = (list, field, value) =>
+      `[...document.querySelectorAll('#${list} .narrow-row')].find(r=>r.dataset.field===${JSON.stringify(field)})?.querySelector('input[value=${JSON.stringify(value)}]')?.closest('label')`;
+    await click('#sh-data-chip');
+    await waitFor(`!document.getElementById('sh-d-data').hidden`, 'the data drawer');
+    await waitFor(`!!${offer('query-filter-add', 'aging.bucket')}`, 'the filters the dataset publishes');
+    await clickExpr(offer('query-filter-add', 'aging.bucket'), '添加筛选：账龄区间');
+    await clickExpr(choice('query-filter-rows', 'aging.bucket', 'in'), '属于');
+    await clickExpr(choice('query-filter-rows', 'aging.bucket', '1_30'), '1_30');
+    await clickExpr(offer('query-sort-add', 'ar.open_balance'), '添加排序：应收余额');
+    await clickExpr(choice('query-sort-rows', 'ar.open_balance', 'desc'), '降序');
+    await waitFor(`!document.getElementById('snapshot').disabled`, 'the narrowed query can be frozen');
+    await clickBtn('#sh-d-data', '创建快照');
+    await waitFor(
+      `document.getElementById('result-kind').textContent==='冻结快照'&&!document.getElementById('export').disabled&&document.getElementById('sh-d-data').hidden`,
+      'the narrowed snapshot',
+      60000
+    );
+    // The snapshot is the narrowed one: the one row of the 1_30 bucket, and the chip says the scope.
+    const frozen = await evalJs(
+      `({rows:document.querySelectorAll('#result-table tbody tr').length,chip:document.getElementById('sh-data-text').textContent})`
+    );
+    if (frozen.rows !== 1 || !frozen.chip.endsWith(' · 1 个筛选 · 按应收余额降序'))
+      throw new Error('the snapshot is not the narrowed one: ' + JSON.stringify(frozen));
+    await openPage('workspace');
+    await clickBtn('#page-workspace', '导出 Excel');
+    await waitFor(
+      `document.getElementById('notice').textContent.includes('Excel 已通过摘要校验')`,
+      'the workbook of the narrowed snapshot',
+      90000
+    );
     await idle();
   });
 }

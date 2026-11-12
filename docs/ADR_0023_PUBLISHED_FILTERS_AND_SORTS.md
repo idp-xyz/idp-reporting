@@ -4,8 +4,8 @@ Date: 2026-11-11. Status: accepted, by the decision the product owner delegated 
 after the functional review of that day named this the largest gap), and ratified by the owner that evening, when it was put to the
 owner again as a contract-level decision (it changes the adapter contract and the source protocol; CODING_STANDARDS.md). It amends one sentence of docs/s00/INTERFACES.md's catalogue row and
 docs/CONSOLE.md's "当前只有已发布查询组合，自定义筛选、排序、SQL、公式不开放"; it keeps every other rule of the baseline. Implementation:
-S20-A (the core, the protocol, the adapters, the API, the checker; docs/S20A_SCOPE.md, S20-A: this pull request), S20-B (the console),
-S20-C (the exports say the scope, decision 6: built, docs/S20C_SCOPE.md).
+S20-A (the core, the protocol, the adapters, the API, the checker; docs/S20A_SCOPE.md, S20-A: this pull request), S20-B (the console's
+filters and sort, decision 5: built, docs/S20B_SCOPE.md), S20-C (the exports say the scope, decision 6: built, docs/S20C_SCOPE.md).
 
 ## Context
 
@@ -96,6 +96,10 @@ narrow by is the product's decision, and docs/REAL_SOURCE_ONBOARDING.md's 数据
   `httpsource`, `sourcetest`), the conformance checker, the API (`/catalog` carries the lists; `/queries` and `/snapshot-jobs` accept the
   filters), the OpenAPI descriptions and their tests. No console change; a query without filters behaves exactly as before.
 - **S20-B** — the console's filters and sort blocks, the chip, the subtitles, the evidence line; the DOM tests; T9 in the baseline.
+  Built (docs/S20B_SCOPE.md): the query panel, in the console and in the embed page, offers the filters and the sorts the selected dataset
+  declares, by label, and sends them with the preview, the snapshot and the schedule; what the page can see is wrong holds the query with
+  the reason, and the server's 422 stays the truth; the chip, the total's card, the subtitle and the evidence line say a narrowed scope.
+  T9 (筛选后冻结并导出) is not possible on main and is 9 clicks and 1 page switch on the slice; the held totals are 44 / 11 / 0 / 0.
 - **S20-C** — the exports' metadata and footer. Built (docs/S20C_SCOPE.md): the workbook's `Metadata` sheet ends with the count of the
   query's filters and sort keys and a row for each; the PDF table export says them in words under the meta line of its first page, within
   a stated bound, and counts them beside the snapshot's id in the footer of every page; an export of a query without them is what it was.

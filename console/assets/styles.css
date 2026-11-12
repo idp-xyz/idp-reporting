@@ -1529,9 +1529,167 @@ html[lang="en"] #page-documents .toolrail button small {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 .query-actions .help {
   max-width: 520px;
+}
+/* The filters and the sort (S20-B, ADR 0023 decision 5; filters.js): two groups between the panel's meta line and its actions, built
+   from what the dataset declares, side by side where the panel is wide and one under the other in the data drawer or a start card.
+   A row is the field (its label, the id as secondary text: ADR 0014 decision 7), the operator or the direction (radios, or the word
+   alone when the declaration leaves no choice), the value under it and the row's buttons; on a phone the row stacks. */
+.query-narrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 14px 24px;
+  padding: 2px 20px 16px;
+}
+.narrow-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.narrow-head,
+.narrow-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.narrow-add {
+  align-items: center;
+}
+.narrow-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.narrow-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.narrow-rows:empty {
+  display: none;
+}
+.narrow-row {
+  display: grid;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+}
+.narrow-filter {
+  grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "field ops tools"
+    "field value tools";
+}
+.narrow-sort {
+  grid-template-columns: auto minmax(96px, 150px) minmax(0, 1fr) auto;
+  grid-template-areas: "rank field ops tools";
+}
+.narrow-rank {
+  grid-area: rank;
+  min-width: 1.2em;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--muted);
+}
+.narrow-field {
+  grid-area: field;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 6px;
+}
+.narrow-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.narrow-id {
+  flex-basis: 100%;
+  font: 11px/1.5 var(--mono);
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.narrow-ops {
+  grid-area: ops;
+}
+.narrow-ops,
+.narrow-set {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+.narrow-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.narrow-choice input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+.narrow-word {
+  font-size: 13px;
+  color: var(--text);
+}
+.narrow-value {
+  grid-area: value;
+  min-width: 0;
+}
+.narrow-value input[type="text"],
+.narrow-value input[type="date"],
+.narrow-value select,
+.narrow-value textarea {
+  width: 100%;
+  font-size: 13px;
+}
+.narrow-value textarea {
+  display: block;
+  resize: vertical;
+}
+.narrow-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.narrow-range input {
+  flex: 1 1 0;
+}
+.narrow-tools {
+  grid-area: tools;
+  align-self: start;
+  display: flex;
+  gap: 2px;
+}
+.narrow-offers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.narrow-offers .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 .result-actions {
   display: flex;
@@ -3212,6 +3370,22 @@ body.board-on .console-main {
   }
   .query-meta {
     padding: 0 16px 14px;
+  }
+  .query-narrow {
+    padding: 0 16px 14px;
+  }
+  .narrow-filter {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "field tools"
+      "ops ops"
+      "value value";
+  }
+  .narrow-sort {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank field tools"
+      "ops ops ops";
   }
   .query-actions {
     padding: 12px 16px;

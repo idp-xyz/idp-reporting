@@ -20,6 +20,7 @@ const factories = {
   createReportingEmbed: 'readonly',
   createReportingIssuePage: 'readonly',
   createReportingCompanyPicker: 'readonly',
+  createReportingFilters: 'readonly',
 };
 
 export default [

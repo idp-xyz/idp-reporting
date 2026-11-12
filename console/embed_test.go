@@ -245,7 +245,7 @@ func TestEveryOtherAnswerStaysUnframeable(t *testing.T) {
 	allowed := "/embed/report?" + query("integration", "brant", "parent", hostA, "dataset", "receivables.aging")
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/"}, {"GET", "/console/"}, {"GET", "/console/index.html"}, {"GET", "/console/app.js"}, {"GET", "/console/dashboard.js"}, {"GET", "/console/documents.js"},
-		{"GET", "/console/canvas.js"}, {"GET", "/console/versions.js"}, {"GET", "/console/studio.js"}, {"GET", "/console/studio.css"}, {"GET", "/console/library.js"}, {"GET", "/console/library.css"}, {"GET", "/console/issue.js"}, {"GET", "/console/companies.js"}, {"GET", "/console/embed.js"}, {"GET", "/console/en.js"}, {"GET", "/console/lang.js"}, {"GET", "/console/styles.css"}, {"GET", "/console/embed.css"}, {"GET", "/console/embed.html"},
+		{"GET", "/console/canvas.js"}, {"GET", "/console/versions.js"}, {"GET", "/console/studio.js"}, {"GET", "/console/studio.css"}, {"GET", "/console/library.js"}, {"GET", "/console/library.css"}, {"GET", "/console/issue.js"}, {"GET", "/console/companies.js"}, {"GET", "/console/filters.js"}, {"GET", "/console/embed.js"}, {"GET", "/console/en.js"}, {"GET", "/console/lang.js"}, {"GET", "/console/styles.css"}, {"GET", "/console/embed.css"}, {"GET", "/console/embed.html"},
 		{"GET", "/console/private.json"}, {"GET", "/console/assets/"}, {"GET", "/api/reporting/v1/session"}, {"POST", "/api/reporting/v1/queries"}, {"GET", "/nope"},
 		{"GET", "/embed/"}, {"GET", "/embed/other"}, {"GET", "/embed/report/"}, {"GET", "/embed/report/x"}, {"POST", "/embed/report"}, {"POST", allowed},
 		{"PUT", "/embed/dashboard"}, {"DELETE", "/embed/document-designer"}, {"OPTIONS", "/embed/report"}, {"GET", "/embed"}, {"GET", "//embed/report"},

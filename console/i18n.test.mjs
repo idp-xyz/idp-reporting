@@ -259,6 +259,7 @@ function english(intercept, search = '?lang=en') {
     'documents.js',
     'board.js',
     'companies.js',
+    'filters.js',
     'app.js',
   ])
     w.eval(scripts[name]);
@@ -356,8 +357,55 @@ test('S17-A: the console in English, every page, shell, drawer and dialog: no Ch
     assert.equal(company().checked, true, 'the one listed company is chosen');
     assert.equal(a.$('query-companies').hidden, false, 'the partial directory keeps the typed line');
     await look('company picker');
+    // S20-B (ADR 0023 decision 5): the filters and the sort of the query panel, from what the demo dataset declares: a filter that
+    // waits for its value (the reason beside the disabled actions), one from the closed list, a number not in the column's form,
+    // 介于 out of order, two sort keys. The three filters keep the dataset's three rows, so what follows has the rows it had; the
+    // preview and the snapshot are narrowed all the same, and the chip, the total's card, the subtitle, the evidence line, the
+    // issue page and the schedule say so on every page looked at below.
+    const offered = (line, field) => [...a.$(line).querySelectorAll('button')].find(b => b.dataset.field === field);
+    const narrowRow = (list, field) => [...a.$(list).children].find(r => r.dataset.field === field);
+    const pick = (list, field, selector) => narrowRow(list, field).querySelector(selector).click();
+    const fill = (control, value) => {
+      control.value = value;
+      control.dispatchEvent(new a.w.Event('input', {bubbles: true}));
+    };
+    assert.equal(a.$('query-narrow').hidden, false, 'the demo dataset declares filters and sorts');
+    await look('filters and sort, nothing added');
+    offered('query-filter-add', 'customer.id').click();
+    assert.equal(a.$('preview').disabled, true, 'a filter without a value holds the query');
+    assert.equal(a.$('query-hint').hidden, false);
+    await look('a filter waiting for its value');
+    pick('query-filter-rows', 'customer.id', 'input[type=radio][value="in"]');
+    await look('a list a line');
+    pick('query-filter-rows', 'customer.id', 'input[type=radio][value="prefix"]');
+    fill(narrowRow('query-filter-rows', 'customer.id').querySelector('.narrow-value input'), 'customer_');
+    offered('query-filter-add', 'aging.bucket').click();
+    await look('a closed list to choose from');
+    pick('query-filter-rows', 'aging.bucket', 'input[type=radio][value="in"]');
+    for (const value of ['current', '1_30', '31_60'])
+      pick('query-filter-rows', 'aging.bucket', 'input[type=checkbox][value="' + value + '"]');
+    offered('query-filter-add', 'ar.open_balance').click();
+    pick('query-filter-rows', 'ar.open_balance', 'input[type=radio][value="between"]');
+    const [low, high] = narrowRow('query-filter-rows', 'ar.open_balance').querySelectorAll('.narrow-value input');
+    await look('介于 without its values');
+    fill(low, '100');
+    fill(high, '9007199254740893.00');
+    await look("a number not in the column's form");
+    fill(low, '9007199254740893.00');
+    fill(high, '-1.00');
+    await look('介于 out of order');
+    fill(low, '-1.00');
+    fill(high, '9007199254740893.00');
+    offered('query-sort-add', 'ar.open_balance').click();
+    pick('query-sort-rows', 'ar.open_balance', 'input[type=radio][value="desc"]');
+    offered('query-sort-add', 'customer.id').click();
+    assert.equal(a.$('query-hint').hidden, true);
+    assert.equal(a.$('preview').disabled, false, 'the three filters and the two sort keys are complete');
+    await look('filters and sort');
     a.$('preview').click();
     await until(() => !a.$('result-table-wrap').hidden, 'preview');
+    assert.equal(a.$('result-table').tBodies[0].rows.length, 3, "the filters keep the dataset's three rows");
+    assert.equal(a.$('result-evidence').children.length >= 5, true, 'the scope is said in the evidence line');
     await look('preview');
     a.$('snapshot').click();
     await until(() => !a.$('export').disabled, 'snapshot', 12000);
