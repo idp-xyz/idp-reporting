@@ -78,9 +78,9 @@ if(over.length){console.error("== baseline: over the documented numbers: "+over.
 # T1 and T2 no longer type the company (texts 5 → 3), the one listed company being chosen already (docs/UX_BASELINE_S07.md "公司选择器").
 # S20-B added task T9 (筛选后冻结并导出: the data drawer, a filter, a sort key, the snapshot, the workbook): its own 9 clicks and 1 page
 # switch are in these totals (T1–T8 measure 35 / 10 on the same run and on main; docs/UX_BASELINE_S07.md "T9：筛选后冻结并导出").
-# S23-B added task T11 (选列、设置格式和小计、保存、导出 Excel) after T9: its own clicks are in these totals (T1–T9 measure 44 / 11 on the
-# same run and on main; docs/UX_BASELINE_S07.md "T11：格式与小计").
-hold "$out/baseline.json" 50 12 0 0 || failed=1
+# S23-B added task T11 (选列、设置格式和小计、保存、导出 Excel) after T9: its own 5 clicks are in these totals, and no page switch (T9 leaves
+# the person on the workbench; T1–T9 measure 44 / 11 on the same run and on main; docs/UX_BASELINE_S07.md "T11：格式与小计").
+hold "$out/baseline.json" 49 11 0 0 || failed=1
 # S12-D: the team tasks. Their one dead end is the approver's: the studio needs their own authorized data before it opens a template.
 hold "$out/baseline-team.json" 25 8 0 1 || failed=1
 exit $failed

@@ -1,6 +1,6 @@
 {
   "label": "base",
-  "generated": "2026-11-12T04:08:22.760Z",
+  "generated": "2026-11-12T07:33:17.055Z",
   "base": "http://127.0.0.1:7966",
   "tasks": [
     {
@@ -22,7 +22,7 @@
       "shells": 0,
       "dialogs": 2,
       "deadEnds": 0,
-      "seconds": 2.4,
+      "seconds": 2.3,
       "log": [
         "page page-workspace → page-dashboard",
         "dialog +1",
@@ -37,7 +37,7 @@
       "shells": 0,
       "dialogs": 2,
       "deadEnds": 0,
-      "seconds": 2.6,
+      "seconds": 2.4,
       "log": [
         "page page-dashboard → page-library",
         "dialog +1",
@@ -53,7 +53,7 @@
       "shells": 0,
       "dialogs": 1,
       "deadEnds": 0,
-      "seconds": 1.1,
+      "seconds": 1.3,
       "log": [
         "page page-documents → page-workspace",
         "dialog +1"
@@ -67,7 +67,7 @@
       "shells": 0,
       "dialogs": 0,
       "deadEnds": 0,
-      "seconds": 2.6,
+      "seconds": 2.5,
       "log": [
         "page page-workspace → page-documents",
         "page page-documents → page-dashboard",
@@ -110,19 +110,33 @@
       "shells": 0,
       "dialogs": 1,
       "deadEnds": 0,
-      "seconds": 1.4,
+      "seconds": 1.2,
       "log": [
         "page page-workspace → page-issue",
         "dialog +1"
       ]
+    },
+    {
+      "name": "T9 筛选后冻结并导出",
+      "clicks": 9,
+      "texts": 0,
+      "pages": 1,
+      "shells": 0,
+      "dialogs": 1,
+      "deadEnds": 0,
+      "seconds": 2,
+      "log": [
+        "dialog +1",
+        "page page-issue → page-workspace"
+      ]
     }
   ],
   "totals": {
-    "clicks": 35,
+    "clicks": 44,
     "texts": 3,
-    "pages": 10,
+    "pages": 11,
     "shells": 0,
-    "dialogs": 8,
+    "dialogs": 9,
     "deadEnds": 0
   },
   "log": [
@@ -143,6 +157,8 @@
     "dialog +1",
     "dialog +1",
     "page page-workspace → page-issue",
-    "dialog +1"
+    "dialog +1",
+    "dialog +1",
+    "page page-issue → page-workspace"
   ]
 }

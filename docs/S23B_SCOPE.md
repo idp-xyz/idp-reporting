@@ -87,12 +87,14 @@ B5 · **The embed page** (`embed.html`, `console/embed.dom.test.mjs`): the repor
 the dialogs and the table's title, footnote and note are byte for byte the console's (the existing shared-sections test holds it), and the
 embed test drives a title into the table and reads the formatted metric.
 
-B6 · **Baseline task T11** 选列、设置格式和小计、保存、导出 Excel (`scripts/ux_baseline_s07.mjs`; T9 is the filters slice's, T10 is reserved):
-on T8's snapshot — the workbench, hide 账龄区间, 负数 → 括号, 小计 → 客户, 保存, 导出 Excel; a choice in a list box is one click, as T7's
-dataset. It measures **6 clicks, 0 texts, 1 page switch, 0 shells, 0 dialogs, 0 dead ends**; T1–T8 are unchanged (35 / 10 / 0 / 0, texts 3,
-dialogs 8) on the base and on the branch (`evidence/s07a/baseline-before-s23b.json`, `baseline-after-s23b.json`). It cannot run on main
-(`baseline-t11-main-s23b.json`: the branch's script against the base's demo, T11 times out waiting for the format and subtotal controls).
-The held totals of `scripts/ci_browser_evidence.sh` become **41 / 11 / 0 / 0** (35 / 10 plus T11's own); the team set stays 25 / 8 / 0 / 1.
+B6 · **Baseline task T11** 选列、设置格式和小计、保存、导出 Excel (`scripts/ux_baseline_s07.mjs`, after S20-B's T9; T10 is reserved): on
+the frozen snapshot the person has — T9's narrowed one, on the workbench where T9 ended — hide 账龄区间, 负数 → 括号, 小计 → 客户, 保存,
+导出 Excel; a choice in a list box is one click, as T7's dataset. It measures **5 clicks, 0 texts, 0 page switches, 0 shells, 0 dialogs, 0
+dead ends** (on the base before S20-B it followed T8's 出具 page and paid 报表 — one click and one page switch more: 6 / 1; a task measures the
+way from where the one before left the person, as T6, T8 and T9 do); T1–T9 are unchanged (44 / 11 / 0 / 0, texts 3, dialogs 9) on main and
+on the branch (`evidence/s07a/baseline-before-s23b.json`, `baseline-after-s23b.json`). It cannot run on main (`baseline-t11-main-s23b.json`:
+the branch's script against main's demo, T11 times out waiting for the format and subtotal controls). The held totals of
+`scripts/ci_browser_evidence.sh` become **49 / 11 / 0 / 0** (44 / 11 plus T11's own 5 clicks); the team set stays 25 / 8 / 0 / 1.
 docs/UX_BASELINE_S07.md "T11：格式与小计".
 
 B7 · **Tests.** `console/dom.test.mjs` (S23-B B1–B5, against the real demo server): every control builds the documented 1.1 document and the
@@ -146,7 +148,7 @@ the new `09a-layout-export-confirm.png` (导出前确认) if the manual gets a f
 ## Evidence
 
 - `bash /tmp/idp-agent/domtest.sh` (the three jsdom suites with the renderer) and `domtest-nopdf.sh` (without): see the pull request.
-- `scripts/ci_browser_evidence.sh`: console 170 checks, library, baseline 41 / 11 / 0 / 0 held, team 25 / 8 / 0 / 1 held, english.
+- `scripts/ci_browser_evidence.sh`: console, library, baseline 49 / 11 / 0 / 0 held, team 25 / 8 / 0 / 1 held, english.
 - `node scripts/i18n_extract.mjs`: every Chinese string of the console in the English catalogue, none stale.
 - Prettier and ESLint clean; `go test ./console/...` (the embed and handler tests know `present.js`).
 

@@ -1,6 +1,6 @@
 {
   "label": "branch",
-  "generated": "2026-11-12T04:09:29.485Z",
+  "generated": "2026-11-12T07:32:56.934Z",
   "base": "http://127.0.0.1:7968",
   "tasks": [
     {
@@ -67,7 +67,7 @@
       "shells": 0,
       "dialogs": 0,
       "deadEnds": 0,
-      "seconds": 2.6,
+      "seconds": 2.5,
       "log": [
         "page page-workspace → page-documents",
         "page page-documents → page-dashboard",
@@ -83,7 +83,7 @@
       "shells": 0,
       "dialogs": 1,
       "deadEnds": 0,
-      "seconds": 1.4,
+      "seconds": 1.3,
       "log": [
         "page page-documents → page-workspace",
         "dialog +1"
@@ -110,32 +110,44 @@
       "shells": 0,
       "dialogs": 1,
       "deadEnds": 0,
-      "seconds": 1.5,
+      "seconds": 1.2,
       "log": [
         "page page-workspace → page-issue",
         "dialog +1"
       ]
     },
     {
-      "name": "T11 选列、设置格式和小计、保存、导出 Excel",
-      "clicks": 6,
+      "name": "T9 筛选后冻结并导出",
+      "clicks": 9,
       "texts": 0,
       "pages": 1,
       "shells": 0,
-      "dialogs": 0,
+      "dialogs": 1,
       "deadEnds": 0,
-      "seconds": 1.6,
+      "seconds": 2,
       "log": [
+        "dialog +1",
         "page page-issue → page-workspace"
       ]
+    },
+    {
+      "name": "T11 选列、设置格式和小计、保存、导出 Excel",
+      "clicks": 5,
+      "texts": 0,
+      "pages": 0,
+      "shells": 0,
+      "dialogs": 0,
+      "deadEnds": 0,
+      "seconds": 1.2,
+      "log": []
     }
   ],
   "totals": {
-    "clicks": 41,
+    "clicks": 49,
     "texts": 3,
     "pages": 11,
     "shells": 0,
-    "dialogs": 8,
+    "dialogs": 9,
     "deadEnds": 0
   },
   "log": [
@@ -156,6 +168,7 @@
     "dialog +1",
     "dialog +1",
     "page page-workspace → page-issue",
+    "dialog +1",
     "dialog +1",
     "page page-issue → page-workspace"
   ]
