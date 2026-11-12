@@ -18905,6 +18905,8 @@ test('S23-B B6: a narrowed snapshot (S20-B) through a layout with subtotals: the
     );
     assert.deepEqual(resultRows(a), [AR.c, AR.b], 'two rows of the three, the largest balance first');
     assert.match(a.$('result-subtitle').textContent, / · 已按 1 个筛选缩小范围，合计是筛选后的范围$/);
+    const snapshotJob = a.$('tasks-body').rows[0].cells[1].textContent;
+    assert.match(snapshotJob, /^[a-f0-9]{32}$/);
     // The layout with subtotals by customer, saved: the table is the narrowed snapshot as the exports print it.
     a.$('layout-json').value = JSON.stringify(fullLayout());
     a.click('layout-open');
@@ -18972,6 +18974,28 @@ test('S23-B B6: a narrowed snapshot (S20-B) through a layout with subtotals: the
     assert.equal(totals[0].C, 'exact_value');
     assert.equal(totals[1].C, '9007199254740892.76');
     assert.equal(a.w.reportingPresent.sum(['9007199254740893.00', '-0.24'], 2), '9007199254740892.76');
+    // A later session restores the snapshot without its query (S20-B: the server's job view carries none): the designer still renders —
+    // with no dimension known, 小计 offers 无 only — and the table is as today, since no saved layout is bound to a snapshot whose dataset
+    // the page cannot name.
+    a.click('logout');
+    await a.login();
+    a.input('restore-id', snapshotJob);
+    a.click('restore-job');
+    await until(() => a.$('notice').textContent.includes('已恢复') && !a.$('preview').disabled, 'the job restored');
+    [...a.$('tasks-body').querySelectorAll('button')].find(b => b.textContent === '查看结果').click();
+    await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('preview').disabled, 'the snapshot again');
+    assert.deepEqual(
+      [...a.$('layout-subtotals').options].map(o => o.textContent),
+      ['无'],
+      'no dimension is known: 小计 offers none'
+    );
+    assert.deepEqual(
+      resultRows(a),
+      [AR.c, AR.b],
+      'the table as today: no layout is bound to a snapshot the page cannot name the dataset of'
+    );
+    assert.equal(a.$('result-layout-title').hidden, true);
+    assert.equal(a.$('result-subtitle').textContent, '同一快照分页 · 原数据时点 · 原快照时区 · 筛选与排序以原快照为准');
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
     a.close();

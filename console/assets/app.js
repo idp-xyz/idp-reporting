@@ -2791,13 +2791,14 @@
       }
       target.append(row);
     }
-    // 小计 (S23-B): one dimension column the layout shows, or none.
+    // 小计 (S23-B): one dimension column the layout shows, or none. A snapshot shown without its query (restored by id in a later
+    // session, S20-B) does not say which columns are dimensions: none is offered.
     const none = node('option', '无');
     none.value = '';
     subtotals.append(none);
     for (const entry of entries) {
       const c = result.columns.find(k => k.id === entry.id);
-      if (!query.dimensions.includes(c.id)) continue;
+      if (!Array.isArray(query.dimensions) || !query.dimensions.includes(c.id)) continue;
       const option = node('option', c.label);
       option.value = c.id;
       subtotals.append(option);
