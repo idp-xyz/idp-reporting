@@ -1,11 +1,12 @@
 # S20-B · The console's filters and sort: the query panel, the chip, the result's scope (ADR 0023 decision 5)
 
-2026-11-11. ADR 0023 (accepted the same day) lets the catalogue publish, per dataset version, which columns a query may narrow by and
-order by; S20-A built the server side (`/catalog` carries `filters` and `sorts`, `/queries` and `/snapshot-jobs` take `filters` and `sort`
-and refuse what the entry does not declare). This slice is the console: the query panel grows a 筛选 and a 排序 block built from the
-declaration, they are part of the query wherever the query goes, and every place that names a result says when its scope is narrowed.
-The server is untouched (Go: only `console/handler.go` serving the new script, and its two route tests). A query without filters is
-exactly what it was.
+2026-11-12 (begun 2026-11-11). ADR 0023 (accepted 2026-11-11) lets the catalogue publish, per dataset version, which columns a query may
+narrow by and order by; S20-A built the server side (`/catalog` carries `filters` and `sorts`, `/queries` and `/snapshot-jobs` take
+`filters` and `sort` and refuse what the entry does not declare), and S20-C made the exports say a snapshot's filters and sort
+(docs/S20C_SCOPE.md). This slice is the console: the query panel grows a 筛选 and a 排序 block built from the declaration, they are part
+of the query wherever the query goes, and every place of the console that names a result says when its scope is narrowed. The server is
+untouched (Go: only `console/handler.go` serving the new script, and its two route tests). A query without filters is exactly what it
+was.
 
 B1 · **The blocks** (`console/assets/filters.js`, `window.createReportingFilters(ports)`; markup in `index.html` and `embed.html`,
 `#query-narrow`, between the panel's meta line and its actions). `app.js` tells the script which dataset is on show (`show`), and the
@@ -127,11 +128,13 @@ narrowed (the three filters keep the dataset's three rows), so every page it loo
 B11 · **Measurement** (ADR 0023 decision 5, ADR 0011 decision 7). `scripts/ux_baseline_s07.mjs` gained the ninth core task, **T9
 筛选后冻结并导出**: from wherever T8 left the person, the header's data chip, 添加筛选 账龄区间, 属于, 1_30, 添加排序 应收余额, 降序,
 创建快照, then the workbench's 导出 Excel. On main the task is not possible — the query panel has no filter to click — and the script
-says so before it clicks anything; on this branch it is **9 clicks, 0 texts, 1 page switch, 0 shell switches, 1 dialog (the data
-drawer), 0 dead ends**. T1–T8 are the same on both runs (35 clicks, 10 page switches), so the held totals of
-`scripts/ci_browser_evidence.sh` grow by exactly T9's own: **44 / 11 / 0 / 0** (they were 35 / 10 / 0 / 0). Evidence:
-`evidence/s07a/baseline-before-s20b.json` (main 75e3e29 with this branch's script), `evidence/s07a/baseline-after-s20b.json`;
-docs/UX_BASELINE_S07.md "T9：筛选后冻结并导出".
+says so before it clicks anything (a task that is not possible is not in the totals); on this branch it is **9 clicks, 0 texts, 1 page
+switch, 0 shell switches, 1 dialog (the data drawer), 0 dead ends**. T1–T8 are the same, task by task, on both runs (35 clicks, 3
+texts, 10 page switches, 8 dialogs), so the held totals of `scripts/ci_browser_evidence.sh` grow by exactly T9's own: **44 / 11 / 0 /
+0** (they were 35 / 10 / 0 / 0); the team tasks are not touched (25 / 8 / 0 / 1). Both runs are the whole CI browser job, on 2026-11-12,
+the same machine and headless Chromium: `evidence/s07a/baseline-before-s20b.json` (a copy of main bfb0613, after S20-C and S08-A, with
+this branch's `scripts/ux_baseline_s07.mjs`; main's own hold of 35 / 10 / 0 / 0 passes there) and
+`evidence/s07a/baseline-after-s20b.json` (this branch); docs/UX_BASELINE_S07.md "T9：筛选后冻结并导出".
 
 B12 · **The real browser.** `scripts/browser_console_s06c.mjs` checks, at 1440: what the panel offers, a filter that waits for its
 value (the disabled actions and their reason), a number not in the column's form, two filter rows (a closed list, a typed number) and
@@ -139,13 +142,21 @@ a sort key inside the panel, legibility, overflow and contrast in the light and 
 card, chip, subtitle, evidence line) and 移除; at 390, in the data drawer: two filter rows and a sort key stacked inside the drawer,
 nothing scrolling sideways, legibility, overflow and contrast in both schemes. Screenshots `console-03c-filter-waiting.png`,
 `console-03d-filters-and-sort.png`, `console-1440-dark-filters-and-sort.png`, `console-03e-narrowed-preview.png`,
-`console-390-filters-and-sort.png`, `console-390-dark-filters-and-sort.png`. Evidence: the CI job locally
-(`scripts/ci_browser_evidence.sh`): console, library, baseline, baseline-team and english pass.
+`console-390-filters-and-sort.png`, `console-390-dark-filters-and-sort.png`. At 1440 the scheme is changed while another page is on
+show, as the script's dark pass at its end does: the layout designer under the panel is a closed `<details>`, which Chrome restyles
+only when something reads it, so a change made with the workbench on screen let the audit's own reading start the 0.15 s background
+transition of the designer's buttons and measure its first frame (the new scheme's text on the old scheme's fill, 1.22:1, on buttons
+nobody sees; reproduced on a page of four lines, outside the console). `scripts/browser_english_s17a.mjs` adds a filter from the closed
+list, one that waits for its value (the reason in English), a sort key, a screenshot and its overflow measure at 1440, and runs its
+preview narrowed. Evidence: the CI job locally (`scripts/ci_browser_evidence.sh`): console (171 checks; 149 on main), library (41),
+baseline, baseline-team and english (52; 48 on main) pass.
 
-B13 · **Docs.** This page; docs/CONSOLE.md (the S20-B note; the paragraph on published combinations); ADR 0023's implementation line;
-docs/ADR_0017_ENTERPRISE_ROADMAP.md (the Progress line); docs/UX_BASELINE_S07.md (T9); docs/STUDIO.md (the chip's text and the data
-drawer's focus); the manual's words (docs/manual/index.html: the quick start, the data drawer's and the workbench's captions, the
-workbench's control table, case C06). The manual's screenshots were **not** retaken: see "The manual's figures" below.
+B13 · **Docs.** This page; docs/CONSOLE.md (the S20-B note; the workbench's line of 可操作内容; the paragraph on published
+combinations); ADR 0023's implementation line and slice list; docs/UX_BASELINE_S07.md (T9); docs/STUDIO.md (the chip's text, the data
+drawer's panel and focus); docs/TEST_SCENARIOS.md (what the simulator declares; four rows of the workbench's matrix); README.md (the
+console's line); the manual's words (docs/manual/index.html: the note on 当前数据, the quick start, the captions of the data drawer and
+of the workbench, three rows of the workbench's control table — 筛选, 排序, what the exported files say — case C06 and a new case C23).
+The manual's screenshots were **not** retaken: see "The manual's figures" below.
 
 ## Interpretations of ADR 0023 made here
 
@@ -182,15 +193,24 @@ workbench's control table, case C06). The manual's screenshots were **not** reta
   header's chip above it says the scope. ADR 0023's Consequences name the card; that text is left to the slice that takes the
   dashboards.
 - **T9 starts where T8 ends** (the issue page), opens the data drawer as the ADR describes and then goes to the workbench for the
-  export: 9 clicks and 1 page switch. From the workbench itself the panel is on the page and the task would be 8 clicks and no dialog.
+  export: 9 clicks, 1 page switch and 1 dialog. From the workbench itself the panel is on the page, and the same task is 7 clicks
+  without a dialog or a page switch (no chip to open, no 报表 to go back to).
+- **The sentences on screen are the console's own.** S20-C chose the exports' words while this slice was being built: the operators and
+  the directions are the same words in both (等于 … 包含, 升序, 降序), the sentences differ in form — the screen says `应收余额 介于 a 至 b`
+  (as the row reads, two fields with 至 between them) and `按应收余额降序` (the ADR's words for the chip), the PDF `应收余额 介于 a 和 b
+  之间` and `应收余额 降序`, and the PDF sets a value that could be misread between “ and ”, which the screen does not. Nothing reads one
+  against the other by machine; making them one sentence is a change of a few strings on either side.
 
 ## The manual's figures
 
 Not retaken (`scripts/manual_screens.sh`). The figures that show the query panel now have the 筛选 and 排序 blocks under the meta line
 and the new sentence in the actions row: `02-home`, `03-data-fields`, `05-data-drawer`, `07-workbench-preview`,
-`08-workbench-snapshot`, `10-refused-company`, `11-shipment-preview`, `34-dark-workbench`, `36-phone-workbench`. No figure shows a
-filter row, a sort key or a narrowed result yet: a new figure of the data drawer with 账龄区间 属于 1_30 and 应收余额 降序, and one
-of the narrowed result (the chip, 筛选后范围合计, the evidence line), would illustrate the workbench's new rows of the control table.
+`08-workbench-snapshot`, `10-refused-company`, `11-shipment-preview`, `34-dark-workbench`, `36-phone-workbench`. The captions of
+`03`, `05` and `07`, which name the panel's parts, say that the figure is older than the two blocks. No figure shows a filter row, a
+sort key or a narrowed result yet: a new figure of the data drawer with 账龄区间 属于 1_30 and 应收余额 降序, and one of the narrowed
+result (the chip, 筛选后范围合计, the evidence line), would illustrate the workbench's new rows of the control table and case C23
+(`scripts/manual_screens.mjs` would have to walk them). The manual's `testdata/catalog.json` was exported on 2026-11-04 and holds no
+`filters` or `sorts`; it is a sample of the route, not what the page reads.
 
 ## Known
 
@@ -198,5 +218,16 @@ of the narrowed result (the chip, 筛选后范围合计, the evidence line), wou
   an intercepted catalogue (the wire form checked against what the console sends), not against the real source.
 - A query at the very bounds (16 属于 filters of 32 long values) does not fit the server's 64 KiB body (S20-A "Known"); the console
   does not measure the body, and such a query is the server's 413.
-- The exports say nothing of the scope yet (S20-C): the workbook of a narrowed snapshot holds the narrowed rows and totals, and its
-  Metadata sheet does not name the filters.
+- The exports say the scope themselves (S20-C, merged while this slice was being built): the workbook of a narrowed snapshot holds
+  the narrowed rows and totals and its `Metadata` sheet ends with the filters and the sort keys, the PDF table export says them under
+  its meta line and counts them in every page's footer. The console's export buttons and requests are what they were, and no test of
+  this slice reads the scope out of a file: the DOM test downloads the narrowed snapshot's workbook and checks that it is one; what the
+  file says is held by S20-C's own tests through the same routes.
+- A snapshot whose query the session does not have (restored by its id, or in a later session) shows `筛选与排序以原快照为准` and
+  keeps the card's 原范围合计: the console cannot tell whether that snapshot was narrowed. No route serves a snapshot's query
+  (docs/S20C_SCOPE.md "Known" says the same); its exports do say the scope.
+- The header's chip has a maximum width (460 px; 300 px at 1100 px and under) and cuts a longer text with an ellipsis, as before: a
+  long narrowing (`· 3 个筛选 · 按应收余额降序、再按客户升序`) may not fit, and the whole text is the chip's title; the result's
+  subtitle and evidence line are not cut.
+- A filter row is said on screen in the order the rows were added; the server normalizes the query's filters (by field, operator,
+  value) for the digest, and the exports list them in that order. The filters are a conjunction, so the order carries no meaning.
