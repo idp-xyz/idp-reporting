@@ -1,6 +1,6 @@
 # IDP Reporting Platform
 
-IDP 产品的独立报表平台：一个 Go 服务端和它自带的网页控制台。来源产品负责业务事实、授权、单据编号与确认；平台通过适配器读取，在当前授权下做查询、快照、报表布局、看板、文档模板、Excel/PDF 导出与单据预览，正式单据在来源产品确认编号后出具（ADR 0003）。平台不修改来源的事实，也不自己编号。
+IDP 产品的独立报表平台：一个 Go 服务端和它自带的网页控制台。来源产品负责业务事实、授权、单据编号与确认；平台通过适配器读取，在当前授权下做查询、快照、报表布局、看板、文档模板、Excel/PDF 导出与单据预览，正式单据在来源产品确认编号后出具（ADR 0003），已出具单据的作废同样由来源产品决定、平台只记录它的回执（ADR 0025，服务端 S24-A）。平台不修改来源的事实，也不自己编号。
 
 ## 现状（2026-11-06）
 
@@ -19,7 +19,7 @@ IDP 产品的独立报表平台：一个 Go 服务端和它自带的网页控制
 |---|---|
 | `reporting/` | 领域中立的核心：查询、任务、快照与私有资产；只依赖标准库（CI 检查） |
 | `adapters/contractsim/` | 合同模拟器，即合成的来源产品；`pgsource` 在单独的数据库里持久保存来源版本与授权 |
-| `adapters/httpsource/` | 通用来源适配器 `http`（S19-A）：来源产品实现固定的 HTTPS 协议（docs/SOURCE_HTTP_PROTOCOL.md；1.1 版加入可选的公司目录路由（ADR 0015，S19-B）与数据集的筛选/排序声明（ADR 0023，S20-A））即可接入；`sourcetest` 是协议的参考实现，`conformance` 与 `cmd/reporting-source-check` 是产品方自检工具 |
+| `adapters/httpsource/` | 通用来源适配器 `http`（S19-A）：来源产品实现固定的 HTTPS 协议（docs/SOURCE_HTTP_PROTOCOL.md；1.1 版加入可选的公司目录路由（ADR 0015，S19-B）与数据集的筛选/排序声明（ADR 0023，S20-A），其后的修订加入可选的单据作废路由（ADR 0025，S24-A））即可接入；`sourcetest` 是协议的参考实现，`conformance` 与 `cmd/reporting-source-check` 是产品方自检工具 |
 | `server/`、`cmd/reporting-server/` | 生产组合：配置文件、密钥、健康与就绪、日志、重载、停机、指标（docs/DEPLOYMENT.md） |
 | `cmd/reporting-demo/` | 本机演示：合同模拟器、回环地址、随机令牌 |
 | `cmd/reporting-migrate/` | 运维的存储工具：迁移、角色、profile、保留期清理、`verify-objects`（docs/OPERATIONS.md） |
@@ -82,7 +82,7 @@ npm run format:check                                           # Prettier（ADR 
 | 想知道 | 看 |
 |---|---|
 | 架构基线与接口合同 | docs/s00/ARCHITECTURE.md、docs/s00/INTERFACES.md |
-| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0024_TABLE_REPORT_FORMATTING.md（0013、0021 为提案；0012 仅决定 6 已接受） |
+| 设计决定 | docs/ADR_0001_PDF_ENGINE.md … docs/ADR_0028_CATALOGUE_SEMANTICS.md（0013、0021 为提案；0012 仅决定 6 已接受） |
 | API | docs/API.md |
 | 控制台与设计器 | docs/CONSOLE.md、docs/STUDIO.md，用户手册 docs/manual/ |
 | 嵌入 | docs/EMBEDDING.md |

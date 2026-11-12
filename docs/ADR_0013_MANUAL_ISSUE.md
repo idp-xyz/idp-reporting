@@ -93,3 +93,10 @@ are numbered by its product or by a manual source, never by both, because a conn
   dataset's options name its prefix (1 to 8 characters, A–Z and 0–9, starting with a letter); numbers are `<PREFIX>-<6 digits>` from one
   locked row per series, consecutive, never reused, never restarted; a yearly restart is a new prefix (such as `AR26`), which is a new
   series and a new locked row. Two datasets may not name the same prefix within a connection.
+
+## Amendment 2026-11-11 (ADR 0025 decision 6)
+
+Decision 5 gave the manual source a cancellation "through the manual source's API". ADR 0025 gives every issuing authority one way to be
+asked for a cancellation, the adapter capability `reporting.DocumentCanceller` behind the platform's route `POST /issues/{id}/cancellation`.
+The manual source implements that capability and has no cancellation route of its own. The rest of decision 5 stands: who may cancel, the
+reason, the number that stays used, the register that shows who cancelled, when and why, and a corrected document being a new issue.

@@ -16,25 +16,29 @@ import (
 // Version is the protocol's version, the v1 of every path.
 const Version = 1
 
-// Revision is the minor revision of version 1: 1 since S19-B added the optional route companies and S20-A the optional filters and sorts
-// of a dataset, which a query then carries (docs/SOURCE_HTTP_PROTOCOL.md). A minor revision only adds optional routes and optional
-// fields; a source of an earlier revision is served unchanged.
-const Revision = 1
+// Revision is the minor revision of version 1: 2 since S24-A added the optional route issue-cancellations (ADR 0025); 1 since S19-B
+// added the optional route companies and S20-A the optional filters and sorts of a dataset, which a query then carries
+// (docs/SOURCE_HTTP_PROTOCOL.md). A minor revision only adds optional routes and optional fields; a source of an earlier revision is
+// served unchanged. The number is written here, in the title of docs/SOURCE_HTTP_PROTOCOL.md and in docs/source-openapi.json
+// (info.version), and nowhere else: TestTheOpenAPIDescriptionIsTheProtocol holds the two documents to this constant.
+const Revision = 2
 
 // Prefix is the path every route of version 1 starts with, under the connection's base URL.
 const Prefix = "/reporting-source/v1"
 
 // The paths. The read reference and the job id are path segments (RefPattern, JobPattern), always repeated in the body, where the source
-// must find the same value. PathCompanies is optional (revision 1, S19-B): asked only of a connection that declares the capability.
+// must find the same value. PathCompanies is optional (revision 1, S19-B) and so is PathCancellations (S24-A): each is asked only of a
+// connection that declares the capability. A cancellation names its job in the body alone.
 const (
-	PathCatalog   = Prefix + "/catalog"
-	PathCompanies = Prefix + "/companies"
-	PathReads     = Prefix + "/reads"
-	PathPages     = Prefix + "/reads/{ref}/pages"
-	PathAuthorize = Prefix + "/reads/{ref}/authorize"
-	PathPrepare   = Prefix + "/issues/{job_id}/prepare"
-	PathConfirm   = Prefix + "/issues/{job_id}/confirm"
-	PathVoid      = Prefix + "/issues/{job_id}/void"
+	PathCatalog       = Prefix + "/catalog"
+	PathCompanies     = Prefix + "/companies"
+	PathReads         = Prefix + "/reads"
+	PathPages         = Prefix + "/reads/{ref}/pages"
+	PathAuthorize     = Prefix + "/reads/{ref}/authorize"
+	PathPrepare       = Prefix + "/issues/{job_id}/prepare"
+	PathConfirm       = Prefix + "/issues/{job_id}/confirm"
+	PathVoid          = Prefix + "/issues/{job_id}/void"
+	PathCancellations = Prefix + "/issue-cancellations"
 )
 
 // RequestIDHeader carries the platform's random id of one request (32 lowercase hexadecimal characters): the source logs it, so that one
@@ -58,6 +62,8 @@ const (
 	// MaxCompanies and MaxCompanyBytes bound the company directory's answer (ADR 0015, S19-B): the platform's own bounds.
 	MaxCompanies    = r.MaxCompanies
 	MaxCompanyBytes = r.MaxCompanyBytes
+	// MaxCancellationReason bounds the reason of a cancellation, in characters (ADR 0025, S24-A): the platform's own bound.
+	MaxCancellationReason = r.MaxCancellationReason
 )
 
 // Path fills a path's one parameter, escaped (the patterns allow nothing that needs escaping, which the adapter checks before it sends).
@@ -276,6 +282,43 @@ type VoidResponse struct {
 	Voided *bool `json:"voided"`
 }
 
+// Cancellation is reporting.IssueCancellation on the wire (ADR 0025 decision 1, S24-A): the document by the platform's job id and by what
+// the source gave for it (the references of its reservation and of its confirmation, and its number), and the person's reason: 1..200
+// characters of text on one line.
+type Cancellation struct {
+	JobID           string `json:"job_id"`
+	ReservationRef  string `json:"reservation_ref"`
+	ConfirmationRef string `json:"confirmation_ref"`
+	Number          string `json:"number"`
+	Reason          string `json:"reason"`
+}
+
+// CancellationOf is the wire form of a cancellation.
+func CancellationOf(c r.IssueCancellation) Cancellation {
+	return Cancellation{JobID: c.JobID, ReservationRef: c.ReservationRef, ConfirmationRef: c.ConfirmationRef, Number: c.Number, Reason: c.Reason}
+}
+
+// IssueCancellation is the cancellation of the wire form.
+func (w Cancellation) IssueCancellation() r.IssueCancellation {
+	return r.IssueCancellation{JobID: w.JobID, ReservationRef: w.ReservationRef, ConfirmationRef: w.ConfirmationRef, Number: w.Number, Reason: w.Reason}
+}
+
+type CancelRequest struct {
+	Context      *Context      `json:"context"`
+	Cancellation *Cancellation `json:"cancellation"`
+}
+
+// CancellationReceipt is the source's record of the cancellation: the job it cancelled the document of (the request's), its own
+// reference and its time, a whole second not before the confirmation's.
+type CancellationReceipt struct {
+	JobID       string `json:"job_id"`
+	Ref         string `json:"ref"`
+	CancelledAt string `json:"cancelled_at"`
+}
+type CancelResponse struct {
+	Receipt *CancellationReceipt `json:"receipt"`
+}
+
 // ErrorBody is every refusal's body: one code of the closed set, nothing else.
 type ErrorBody struct {
 	Code string `json:"code"`
@@ -299,7 +342,8 @@ type Code struct {
 	Name   string
 	Status int
 	Err    error
-	// IssueOnly: the code may be answered by the issue routes only (the read routes have no job to be unknown or to conflict).
+	// IssueOnly: the code may be answered by the issue routes only, the cancellation's among them (the read routes have no job to be
+	// unknown or to conflict).
 	IssueOnly bool
 }
 

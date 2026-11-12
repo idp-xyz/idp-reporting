@@ -31,7 +31,8 @@ func (s *Simulator) now() time.Time {
 }
 
 // SetIssueRefused makes PrepareDocument refuse every document as not approved by the product's
-// own rules, until it is set back. It is a Go-only fixture control like SetUnavailable.
+// own rules, and CancelDocument every cancellation as one its rules do not allow (S24-A), until it
+// is set back. It is a Go-only fixture control like SetUnavailable.
 func (s *Simulator) SetIssueRefused(v bool) { s.mu.Lock(); defer s.mu.Unlock(); s.issueRefused = v }
 
 // lookupBefore orders the records of one job id for the lookup: reservations before tombstones,
@@ -181,7 +182,48 @@ func (s *Simulator) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, re
 	return nil
 }
 
+// CancelDocument cancels the confirmed document the simulator holds for the job in sc's source, when
+// the platform asks for a person (S24-A, ADR 0025 decision 1). It refuses, in this order: a request
+// that is not well formed (ErrInvalid: the job id, the two references, the number, a reason of 1..200
+// characters of text); an unavailable source (ErrUnavailable); and with ErrDenied a principal the
+// source does not know, one whose current grant may not issue documents (who may not issue may not
+// cancel) and the product's own rules saying no (the approval switch). Then a job the source holds
+// nothing for is ErrNotFound, and the record decides (IssueRecord.Cancel): only a confirmed document
+// that the request names as the simulator holds it is cancelled, anything else is ErrConflict; a
+// cancelled one answers the same receipt again, whatever the reason says. The checks apply to every
+// call, so a principal revoked meanwhile is refused even the receipt of a document it cancelled. The
+// number is never given out again: the sequence only counts up.
+func (s *Simulator) CancelDocument(ctx context.Context, sc r.SourceContext, c r.IssueCancellation) (r.IssueCancellationReceipt, error) {
+	if e := ctx.Err(); e != nil {
+		return r.IssueCancellationReceipt{}, e
+	}
+	if !c.Valid() {
+		return r.IssueCancellationReceipt{}, r.ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g, e := s.catalog(sc)
+	if e != nil {
+		return r.IssueCancellationReceipt{}, e
+	}
+	if !g.IssueDocuments || s.issueRefused {
+		return r.IssueCancellationReceipt{}, r.ErrDenied
+	}
+	key := issueKey{sourceOf(sc), c.JobID}
+	rec, ok := s.issues[key]
+	if !ok {
+		return r.IssueCancellationReceipt{}, r.ErrNotFound
+	}
+	next, receipt, e := rec.Cancel(c, s.now())
+	if e != nil {
+		return r.IssueCancellationReceipt{}, e
+	}
+	s.issues[key] = next
+	return receipt, nil
+}
+
 var (
 	_ r.DocumentAuthority  = (*Simulator)(nil)
 	_ r.VersionedAuthority = (*Simulator)(nil)
+	_ r.DocumentCanceller  = (*Simulator)(nil)
 )

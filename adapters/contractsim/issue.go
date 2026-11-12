@@ -35,6 +35,10 @@ const (
 // durable simulator keep this same record and decide every call with the methods below, so that
 // their rules cannot drift. It is a lookup for tests, not part of the reporting.DocumentAuthority
 // contract. Times are UTC; the fields of a step that did not happen are zero.
+//
+// A confirmed document that the product cancelled when the platform asked (S24-A, ADR 0025 decision 1)
+// stays a confirmed record and carries its cancellation beside it: the reference, the time and the reason
+// of the request that cancelled it (see Cancelled). Its number stays used, like every number given out.
 type IssueRecord struct {
 	Integration     string
 	SourceTenant    string
@@ -51,6 +55,9 @@ type IssueRecord struct {
 	ConfirmedAt     time.Time // whole second
 	Reason          string    // why the job was voided, at most MaxVoidReason bytes
 	VoidedAt        time.Time // whole second
+	CancellationRef string    // the cancellation's reference; empty unless the document was cancelled
+	CancelledAt     time.Time // whole second, never before the confirmation
+	CancelReason    string    // the reason of the request that cancelled the document
 }
 
 // hexOf: exactly n hexadecimal characters, lowercase unless upper also allows A-F.
@@ -329,11 +336,45 @@ func (rec IssueRecord) Confirm(c r.IssueConfirmation, now time.Time) (IssueRecor
 
 // Void answers VoidIssue at now for a job that has this record: a reserved or confirmed record
 // becomes void with the cut reason (changed is true); a void one, a tombstone included, stays as
-// it is, with its first reason. A job without a record gets NewTombstone.
+// it is, with its first reason. A job without a record gets NewTombstone. A document that was
+// cancelled stays as it is too (S24-A): it is withdrawn already, a void of it is not an error, and
+// its cancellation is still answered afterwards.
 func (rec IssueRecord) Void(reason string, now time.Time) (next IssueRecord, changed bool) {
-	if rec.State == IssueVoid {
+	if rec.State == IssueVoid || rec.Cancelled() {
 		return rec, false
 	}
 	rec.State, rec.Reason, rec.VoidedAt = IssueVoid, CutReason(reason), now.UTC().Truncate(time.Second)
 	return rec, true
+}
+
+// Cancelled: the record is a confirmed document that the product cancelled (S24-A).
+func (rec IssueRecord) Cancelled() bool { return rec.CancellationRef != "" }
+
+// CancellationReceipt is the product's answer to CancelDocument for a cancelled record.
+func (rec IssueRecord) CancellationReceipt() r.IssueCancellationReceipt {
+	return r.IssueCancellationReceipt{Ref: rec.CancellationRef, CancelledAt: rec.CancelledAt}
+}
+
+// Cancel answers CancelDocument at now for a job that has this record, once the caller has checked
+// the request's form, the principal and the product's own rules (S24-A, ADR 0025 decision 1). It
+// returns the record to keep and the receipt; the record is the receiver's when the document had
+// been cancelled already. Only a confirmed document is cancelled: a reservation that was never
+// confirmed (expired or not), a void and a tombstone are ErrConflict. The request must name the
+// document as the product holds it, by the reservation's reference, the confirmation's and the
+// number: another of any of them is ErrConflict. A document that is cancelled answers the same
+// receipt again, whatever the reason says this time, and keeps its first reason. The time is the
+// clock's whole second and never before the confirmation. The number is not touched: it stays used.
+func (rec IssueRecord) Cancel(c r.IssueCancellation, now time.Time) (IssueRecord, r.IssueCancellationReceipt, error) {
+	if rec.Tombstone() || rec.State != IssueConfirmed || c.ReservationRef != rec.Ref || c.ConfirmationRef != rec.ConfirmationRef || c.Number != rec.Number {
+		return rec, r.IssueCancellationReceipt{}, r.ErrConflict
+	}
+	if rec.Cancelled() {
+		return rec, rec.CancellationReceipt(), nil
+	}
+	at := now.UTC().Truncate(time.Second)
+	if at.Before(rec.ConfirmedAt) {
+		at = rec.ConfirmedAt
+	}
+	rec.CancellationRef, rec.CancelledAt, rec.CancelReason = r.NewID(), at, c.Reason
+	return rec, rec.CancellationReceipt(), nil
 }

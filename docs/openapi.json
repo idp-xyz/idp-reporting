@@ -76,7 +76,7 @@
           "core"
         ],
         "summary": "Download an artifact",
-        "description": "Re-authorizes the whole scope and checks the expiry. An issued PDF is named `issued-<issue id>.pdf`.",
+        "description": "Re-authorizes the whole scope and checks the expiry. An issued PDF is named `issued-<issue id>.pdf`. The file of an issue that was cancelled is not handed out: 409 ISSUE_CANCELLED (S24-A, ADR 0025 decision 4); the issue's record goes on saying its number, digest and page count.",
         "x-reporting-mount": "core",
         "parameters": [
           {
@@ -127,7 +127,14 @@
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "description": "INTEGRITY_FAILURE (the file's time has passed, or the file or its record does not verify) or ISSUE_CANCELLED (the artifact is the file of an issue that was cancelled; said for as long as the file is held, without asking the source).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ExecutionFailed"
@@ -2003,6 +2010,105 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/reporting/v1/issues/{id}/cancellation": {
+      "post": {
+        "operationId": "cancelIssue",
+        "tags": [
+          "issues"
+        ],
+        "summary": "Ask the source product to cancel an issued document",
+        "description": "S24-A (ADR 0025 decisions 1 to 4). An `issuer`'s, for an issue of the caller's own that succeeded. The platform asks the issue's source product within the request and the product decides; with the product's receipt it records the cancellation beside the issue record (which keeps every field) and answers the issue as `GET /issues/{id}` shows it, with `cancellation`. Asking again answers the same and does not ask the product again. The file of a cancelled issue is no longer handed out (`GET /artifacts/{id}/content` is 409 ISSUE_CANCELLED); the number stays used. Recorded in the audit as `issue.cancel`: `requested` before the product is asked (503 AUDIT_UNAVAILABLE when that cannot be written, and nothing is asked) and `succeeded` with the cancellation, in one step. No Idempotency-Key: the issue id is the key. See docs/API.md \"Cancelling an issued document\".",
+        "x-reporting-mount": "core",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "JSON (`Content-Type: application/json`). Unknown or case-mismatched fields, duplicate keys, `null`, extra roots and excessive nesting are 400. At most 4 KiB; a larger body is 413 REQUEST_TOO_LARGE.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueCancellationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The issue with its cancellation: the one just recorded, or the one recorded before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "AUTH_ROLE_DENIED: the caller is not an `issuer`. AUTH_SCOPE_DENIED: the caller no longer holds the issue's product, or the product refuses (the person may not cancel there, or the product's own rules say no). Nothing is recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "IDEMPOTENCY_CONFLICT: the issue job has not succeeded (queued, running, failed or cancelled before it ran: there is no issued document), or the product does not hold the document as a confirmed one. INTEGRITY_FAILURE: the product's answer cannot be trusted (a receipt that does not verify, a job it says it never reserved, another receipt than the one recorded). Nothing is recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "description": "UNSUPPORTED_COMBINATION: the issue's product cannot be asked for a cancellation (`issue_cancellation` is false for it in the capabilities). Nothing is asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ExecutionFailed"
+          },
+          "503": {
+            "description": "AUTHORITY_UNAVAILABLE: the product did not answer; nothing is recorded, and whether it cancelled is found by asking again. AUDIT_UNAVAILABLE: the audit event could not be written; when the product had already cancelled, asking again completes the record with the product's same receipt. OVERLOADED: the process's in-flight bound (`Retry-After: 1`).",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4095,16 +4201,19 @@
         "enum": [
           "INVALID_REQUEST",
           "AUTH_SCOPE_DENIED",
+          "AUTH_ROLE_DENIED",
           "NOT_FOUND",
           "IDEMPOTENCY_CONFLICT",
           "INTEGRITY_FAILURE",
           "LEASE_LOST",
           "TEMPLATE_NOT_PUBLISHED",
+          "ISSUE_CANCELLED",
           "UNSUPPORTED_COMBINATION",
           "BUDGET_EXCEEDED",
           "REQUEST_TOO_LARGE",
           "QUOTA_EXCEEDED",
           "AUTHORITY_UNAVAILABLE",
+          "AUDIT_UNAVAILABLE",
           "OVERLOADED",
           "EXECUTION_FAILED",
           "METHOD_NOT_ALLOWED",
@@ -4114,7 +4223,7 @@
           "SIGN_IN_UNAVAILABLE",
           "SIGN_IN_BUSY"
         ],
-        "description": "The code of a refusal (`classify` in transport/httpapi/api.go). OVERLOADED is the in-flight bound's 503 (WithMaxInFlight); METHOD_NOT_ALLOWED is only answered by /healthz and /readyz. The SIGN_IN_* codes are answered only by POST /sign-in/token."
+        "description": "The code of a refusal (`classify` in transport/httpapi/api.go). OVERLOADED is the in-flight bound's 503 (WithMaxInFlight); METHOD_NOT_ALLOWED is only answered by /healthz and /readyz. The SIGN_IN_* codes are answered only by POST /sign-in/token. AUTH_ROLE_DENIED (S12-A) is the 403 of a route whose role the caller lacks; AUDIT_UNAVAILABLE (S12-B) the 503 of an action that must not run unrecorded when its audit event cannot be written; ISSUE_CANCELLED (S24-A) the 409 of the download of a cancelled issue's file."
       },
       "Error": {
         "type": "object",
@@ -4274,6 +4383,13 @@
             "type": "boolean",
             "description": "Whether the server has an issuer; whether an integration can issue is its adapter's capability."
           },
+          "issue_cancellation": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "S24-A (ADR 0025 decision 5): for each product the server serves for the caller (the session's integrations), whether a cancellation of an issued document can be asked of it (its connection has the capability). It promises nothing about one document: the product decides each request."
+          },
           "routes": {
             "type": "array",
             "items": {
@@ -4322,6 +4438,7 @@
           "formats",
           "source_interfaces",
           "issuance",
+          "issue_cancellation",
           "routes",
           "template_routes",
           "embedding",
@@ -4913,6 +5030,34 @@
         "additionalProperties": false,
         "description": "The row group of a schema 2.0 issue (reporting.IssueGroupView)."
       },
+      "IssueCancellation": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^[!-~]{1,128}$",
+            "description": "The source product's reference of the cancellation."
+          },
+          "cancelled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The product's time, RFC 3339 in UTC, a whole second, not before `confirmed_at`."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The reason the person gave, as the platform recorded it: 1..200 characters on one line."
+          }
+        },
+        "required": [
+          "ref",
+          "cancelled_at",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "The cancellation of an issued document (S24-A, ADR 0025; reporting.IssueCancellationView): what the source product answered when the platform asked it, and the reason. Present only on an issue the product cancelled; shown to the issue's owner and to nobody else."
+      },
       "IssueSummary": {
         "type": "object",
         "properties": {
@@ -4936,6 +5081,9 @@
           },
           "group": {
             "$ref": "#/components/schemas/IssueGroup"
+          },
+          "cancellation": {
+            "$ref": "#/components/schemas/IssueCancellation"
           }
         },
         "required": [
@@ -5009,6 +5157,10 @@
           "issue_id": {
             "$ref": "#/components/schemas/Id"
           },
+          "integration_id": {
+            "type": "string",
+            "description": "The product the issue was made under (S24-A): the key of `issue_cancellation` in the capabilities."
+          },
           "state": {
             "type": "string",
             "enum": [
@@ -5046,6 +5198,9 @@
           "group": {
             "$ref": "#/components/schemas/IssueGroup"
           },
+          "cancellation": {
+            "$ref": "#/components/schemas/IssueCancellation"
+          },
           "artifact_id": {
             "$ref": "#/components/schemas/Id"
           },
@@ -5081,6 +5236,7 @@
         },
         "required": [
           "issue_id",
+          "integration_id",
           "state",
           "snapshot_id",
           "template_id",
@@ -5910,6 +6066,22 @@
         "additionalProperties": false,
         "description": "Exactly one of `row_index` and `group`; a 1.x template takes `row_index` only."
       },
+      "IssueCancellationRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Why the document is cancelled: 1..200 characters (not bytes) of text on one line, not blank, without control characters. It is sent to the source product and kept with the cancellation; it never reaches a log, a metric or a refusal."
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "Exactly `{\"reason\": \"…\"}`."
+      },
       "SampleField": {
         "type": "object",
         "properties": {
@@ -6408,6 +6580,7 @@
               "design.change",
               "design.release",
               "issue.submit",
+              "issue.cancel",
               "export.submit",
               "artifact.download",
               "role.refused",

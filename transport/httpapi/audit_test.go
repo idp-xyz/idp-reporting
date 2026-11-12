@@ -33,6 +33,10 @@ func TestAuditActionOfEachRouteClass(t *testing.T) {
 		{"POST", "POST /api/reporting/v1/document-images", "design.change", "image", false},
 		{"POST", "POST /api/reporting/v1/dashboards/{id}/release", "design.release", "dashboard", true},
 		{"POST", "POST /api/reporting/v1/issues", "issue.submit", "issue", true},
+		// S24-A (ADR 0025 decision 2): a cancellation must not run unrecorded, as the issue it cancels; reading an issue records nothing.
+		{"POST", "POST /api/reporting/v1/issues/{id}/cancellation", "issue.cancel", "issue", true},
+		{"GET", "GET /api/reporting/v1/issues/{id}", "", "", false},
+		{"POST", "POST /api/reporting/v1/jobs/{id}/cancel", "", "", false},
 		{"POST", "POST /api/reporting/v1/exports", "export.submit", "export", false},
 		{"GET", "GET /api/reporting/v1/artifacts/{id}/content", "artifact.download", "artifact", false},
 		{"GET", "GET /api/reporting/v1/layouts", "", "", false},

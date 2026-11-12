@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"encoding/pem"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -19,12 +20,23 @@ const testSourceAuth = "SOURCE-AUTH-Zq7-never-shown-0123456789"
 // loopback TLS server whose certificate is pinned by ca_file, with the credential in the environment. Simulators are not allowed.
 func httpWorld(t *testing.T) (*world, *httptest.Server) {
 	t.Helper()
+	return httpWorldWith(t, nil, nil)
+}
+
+// httpWorldWith is httpWorld with further options of the connection (issuance, cancellation) and, when observe is not nil, with every
+// request the source receives shown to it before it is served.
+func httpWorldWith(t *testing.T, extra map[string]any, observe func(*http.Request)) (*world, *httptest.Server) {
+	t.Helper()
 	w := newWorld(t)
-	src := httptest.NewTLSServer(sourcetest.New(w.sim, sourcetest.Options{Token: testSourceAuth}))
+	src := httptest.NewTLSServer(sourcetest.New(w.sim, sourcetest.Options{Token: testSourceAuth, Observe: observe}))
 	t.Cleanup(src.Close)
 	ca := filepath.Join(w.dir, "source-ca.pem")
 	writeFile(t, ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: src.Certificate().Raw}), 0o644)
-	options, _ := json.Marshal(map[string]any{"base_url": src.URL, "ca_file": ca, "auth_env": "REPORTING_SOURCE_AUTH", "timeout": 5, "companies": true})
+	o := map[string]any{"base_url": src.URL, "ca_file": ca, "auth_env": "REPORTING_SOURCE_AUTH", "timeout": 5, "companies": true}
+	for k, v := range extra {
+		o[k] = v
+	}
+	options, _ := json.Marshal(o)
 	w.cfg.AllowSimulator = false
 	w.cfg.Connections[0].Adapter = HTTPAdapter
 	w.cfg.Connections[0].Options = options

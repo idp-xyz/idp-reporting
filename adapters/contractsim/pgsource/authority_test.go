@@ -276,8 +276,10 @@ var durableScenarios = []scenario{
 		g.Reserve(1)
 		g.Reserve(2)
 		must(t, env.src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED")) // a tombstone
+		res, rc := g.Issued(8)
+		g.Cancel(res, rc, "a cancellation the reset clears")
 		must(t, env.src.ResetFixture(ctx))
-		for _, table := range []string{"issues", "issue_numbers"} {
+		for _, table := range []string{"issues", "issue_numbers", "issue_cancellations"} {
 			if n := scalar[int64](t, env.admin, "SELECT count(*) FROM "+schema+table); n != 0 {
 				t.Fatal(table, "keeps", n, "rows")
 			}
@@ -299,10 +301,20 @@ var durableScenarios = []scenario{
 		receipt := g.Confirm(first)
 		second := g.Reserve(2)
 		must(t, g.Src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED")) // a tombstone
+		// A cancelled document (S24-A): its cancellation is in the database too.
+		cancelledRes, cancelledReceipt := g.Issued(8)
+		cancellation := g.Cancel(cancelledRes, cancelledReceipt, "cancelled before the source was reopened")
 		g.Env.(*durableEnv).src.Close()
 		reopened, e := pgsource.Open(ctx, dsn, false)
 		must(t, e)
 		defer reopened.Close()
+		again8, e := reopened.CancelDocument(ctx, g.SC, g.Cancellation(cancelledRes, cancelledReceipt, "asked again after the reopening"))
+		if e != nil || again8.Ref != cancellation.Ref || !again8.CancelledAt.Equal(cancellation.CancelledAt) {
+			t.Fatalf("the cancellation changed over a reopening: %+v then %+v %v", cancellation, again8, e)
+		}
+		if rec, ok, e := reopened.IssueRecord(ctx, authoritytest.Job(8)); e != nil || !ok || rec.State != contractsim.IssueConfirmed || !rec.Cancelled() || rec.CancelReason != "cancelled before the source was reopened" || rec.Number != "AR-000003" {
+			t.Fatal(rec, ok, e)
+		}
 		again, e := reopened.PrepareDocument(ctx, g.SC, g.Intent(1, 0))
 		must(t, e)
 		if again.Ref != first.Ref || again.Number != first.Number || !again.IssuedAt.Equal(first.IssuedAt) || !again.ExpiresAt.Equal(first.ExpiresAt) {
@@ -316,9 +328,9 @@ var durableScenarios = []scenario{
 		if e != nil || back.Ref != second.Ref {
 			t.Fatal(back, e)
 		}
-		// the sequence went on from where it was
+		// the sequence went on from where it was: three numbers were given out, the cancelled document's among them
 		third, e := reopened.PrepareDocument(ctx, g.SC, g.Intent(3, 0))
-		if e != nil || third.Number != "AR-000003" {
+		if e != nil || third.Number != "AR-000004" {
 			t.Fatal(third, e)
 		}
 		// and a void of a job nothing was reserved for is still final
@@ -534,13 +546,13 @@ var durableScenarios = []scenario{
 		must(t, e)
 		s.Close()
 	}},
-	{"a_fresh_database_gets_the_version_2_schema", func(t *testing.T) {
+	{"a_fresh_database_gets_the_version_3_schema", func(t *testing.T) {
 		freshSchema(t)
 		a := admin(t)
-		if v := scalar[int](t, a, "SELECT version FROM "+schema+"profile"); v != 2 {
+		if v := scalar[int](t, a, "SELECT version FROM "+schema+"profile"); v != 3 {
 			t.Fatal("profile version", v)
 		}
-		for _, table := range []string{"issues", "issue_numbers", "versions", "heads", "grants", "prepared"} {
+		for _, table := range []string{"issues", "issue_numbers", "issue_cancellations", "versions", "heads", "grants", "prepared"} {
 			if !scalar[bool](t, a, "SELECT to_regclass($1) IS NOT NULL", schema+table) {
 				t.Fatal("no table", table)
 			}
@@ -551,14 +563,14 @@ var durableScenarios = []scenario{
 			t.Fatal(res.Number)
 		}
 	}},
-	{"opening_requires_profile_version_2", func(t *testing.T) {
+	{"opening_requires_profile_version_3", func(t *testing.T) {
 		a := admin(t)
 		openSource(t).Close()
 		t.Cleanup(func() {
-			exec(t, a, "UPDATE "+schema+"profile SET profile='durable-contract-simulator-only',version=2")
+			exec(t, a, "UPDATE "+schema+"profile SET profile='durable-contract-simulator-only',version=3")
 		})
-		for name, set := range map[string]string{"a future version": "version=3", "another profile": "profile='something-else'"} {
-			exec(t, a, "UPDATE "+schema+"profile SET profile='durable-contract-simulator-only',version=2")
+		for name, set := range map[string]string{"a future version": "version=4", "another profile": "profile='something-else'"} {
+			exec(t, a, "UPDATE "+schema+"profile SET profile='durable-contract-simulator-only',version=3")
 			exec(t, a, "UPDATE "+schema+"profile SET "+set)
 			for _, initialize := range []bool{false, true} {
 				s, e := pgsource.Open(ctx, dsn, initialize)
@@ -572,6 +584,109 @@ var durableScenarios = []scenario{
 		}
 	}},
 	{"a_version_1_database_is_upgraded_in_one_transaction_and_keeps_its_data", upgradeFromVersion1},
+	{"a_version_2_database_is_upgraded_and_its_documents_can_be_cancelled", upgradeFromVersion2},
+	{"the_schema_holds_a_cancellation_to_a_job_once_and_to_its_form", func(t *testing.T) {
+		freshSchema(t)
+		g := authoritytest.NewRig(t, newDurableEnv, authoritytest.Finance())
+		a := g.Env.(*durableEnv).admin
+		g.Issued(1)
+		g.Issued(2)
+		insert := func(job int, ref, reason string) error {
+			_, e := a.Exec(ctx, "INSERT INTO "+schema+"issue_cancellations(integration,source_tenant,job_id,ref,cancelled_at,reason) VALUES($1,'tenant_a',$2,$3,now(),$4)", g.SC.Owner.Integration, authoritytest.Job(job), ref, reason)
+			return e
+		}
+		ref := r.NewID()
+		for _, c := range []struct {
+			name        string
+			job         int
+			ref, reason string
+			code        string
+		}{
+			{"a job the source does not hold", 9, r.NewID(), "a reason", "23503"},
+			{"a reference that is not the source's", 1, "CXL-1", "a reason", "23514"},
+			{"no reason", 1, r.NewID(), "", "23514"},
+			{"a reason of 201 characters", 1, r.NewID(), strings.Repeat("因", 201), "23514"},
+			{"a reason of 200 characters", 1, ref, strings.Repeat("因", 200), ""},
+		} {
+			if e := insert(c.job, c.ref, c.reason); pgCode(e) != c.code {
+				t.Fatalf("%s: got %v, want SQLSTATE %q", c.name, e, c.code)
+			}
+		}
+		// one cancellation a job, one job a reference
+		if e := insert(1, r.NewID(), "a second cancellation of the job"); pgCode(e) != "23505" {
+			t.Fatal("a second cancellation of one job:", e)
+		}
+		if e := insert(2, ref, "the reference of another cancellation"); pgCode(e) != "23505" {
+			t.Fatal("a reference used twice:", e)
+		}
+		// the cancellation the test planted is the document's: the source answers it, and the issue row is what it was
+		res, e := g.Prepare(1, 0)
+		must(t, e)
+		rec := g.Holds(1, contractsim.IssueConfirmed, "AR-000001")
+		got, e := g.Src.CancelDocument(ctx, g.SC, r.IssueCancellation{JobID: res.JobID, ReservationRef: res.Ref, ConfirmationRef: rec.ConfirmationRef, Number: res.Number, Reason: "asked through the source"})
+		if e != nil || got.Ref != ref || !rec.Cancelled() || rec.CancelReason != strings.Repeat("因", 200) {
+			t.Fatalf("%+v %v, the record %+v", got, e, rec)
+		}
+	}},
+}
+
+// upgradeFromVersion2 turns a database into what the code before S24-A left: no cancellations table, profile version 2, with a
+// confirmed document, a reservation and a tombstone in it. Version 3 code opens it only when told to initialize; the upgrade adds the
+// table and nothing else, and the document that was confirmed under version 2 can then be cancelled.
+func upgradeFromVersion2(t *testing.T) {
+	g := authoritytest.NewRig(t, newDurableEnv, authoritytest.Finance())
+	env := g.Env.(*durableEnv)
+	a := env.admin
+	res, rc := g.Issued(1)
+	reserved := g.Reserve(2)
+	must(t, g.Src.VoidIssue(ctx, g.SC, authoritytest.Job(7), "EXECUTION_FAILED"))
+	exec(t, a, "DROP TABLE "+schema+"issue_cancellations;UPDATE "+schema+"profile SET version=2")
+	env.src.Close()
+	s, e := pgsource.Open(ctx, dsn, false)
+	if s != nil {
+		s.Close()
+	}
+	is(t, e, r.ErrDenied, "version 2 opened without initialize")
+	src, e := pgsource.Open(ctx, dsn, true)
+	must(t, e)
+	defer src.Close()
+	if v := scalar[int](t, a, "SELECT version FROM "+schema+"profile"); v != 3 || !scalar[bool](t, a, "SELECT to_regclass($1) IS NOT NULL", schema+"issue_cancellations") {
+		t.Fatal("the upgrade did not complete: version", v)
+	}
+	if n := scalar[int64](t, a, "SELECT count(*) FROM "+schema+"issue_cancellations"); n != 0 {
+		t.Fatal("the upgrade invented", n, "cancellations")
+	}
+	// What version 2 held is as it was: the confirmed document, the reservation, the tombstone, the sequence.
+	if rec, ok, e := src.IssueRecord(ctx, authoritytest.Job(1)); e != nil || !ok || rec.State != contractsim.IssueConfirmed || rec.Number != "AR-000001" || rec.Cancelled() || rec.ConfirmationRef != rc.Ref {
+		t.Fatal(rec, ok, e)
+	}
+	again, e := src.PrepareDocument(ctx, g.SC, g.Intent(2, 0))
+	if e != nil || again.Ref != reserved.Ref || again.Number != "AR-000002" {
+		t.Fatal(again, e)
+	}
+	if rec, ok, e := src.IssueRecord(ctx, authoritytest.Job(7)); e != nil || !ok || !rec.Tombstone() {
+		t.Fatal(rec, ok, e)
+	}
+	// The document confirmed under version 2 is cancelled under version 3, and its number stays used.
+	receipt, e := src.CancelDocument(ctx, g.SC, g.Cancellation(res, rc, "cancelled after the upgrade"))
+	if e != nil || !receipt.Valid() {
+		t.Fatal(receipt, e)
+	}
+	if rec, ok, e := src.IssueRecord(ctx, authoritytest.Job(1)); e != nil || !ok || !rec.Cancelled() || rec.CancellationRef != receipt.Ref || rec.State != contractsim.IssueConfirmed {
+		t.Fatal(rec, ok, e)
+	}
+	next, e := src.PrepareDocument(ctx, g.SC, g.Intent(3, 0))
+	if e != nil || next.Number != "AR-000003" {
+		t.Fatal(next, e)
+	}
+	// Initializing again changes nothing.
+	once, e := pgsource.Open(ctx, dsn, true)
+	must(t, e)
+	defer once.Close()
+	same, e := once.CancelDocument(ctx, g.SC, g.Cancellation(res, rc, "asked again"))
+	if e != nil || same.Ref != receipt.Ref || !same.CancelledAt.Equal(receipt.CancelledAt) {
+		t.Fatal(same, e)
+	}
 }
 
 // upgradeFromVersion1 turns a database into what S03-G's simulator left: no sequences or
@@ -580,11 +695,11 @@ func upgradeFromVersion1(t *testing.T) {
 	g := authoritytest.NewRig(t, newDurableEnv, authoritytest.Finance())
 	env := g.Env.(*durableEnv)
 	a := env.admin
-	exec(t, a, "DROP TABLE "+schema+"issues;DROP TABLE "+schema+"issue_numbers;UPDATE "+schema+"profile SET version=1;UPDATE "+schema+"grants SET data=data-'IssueDocuments',data_sha=encode(sha256(convert_to((data-'IssueDocuments')::text,'UTF8')),'hex')")
+	exec(t, a, "DROP TABLE "+schema+"issue_cancellations;DROP TABLE "+schema+"issues;DROP TABLE "+schema+"issue_numbers;UPDATE "+schema+"profile SET version=1;UPDATE "+schema+"grants SET data=data-'IssueDocuments',data_sha=encode(sha256(convert_to((data-'IssueDocuments')::text,'UTF8')),'hex')")
 	env.src.Close()
 	exists := func(table string) bool { return scalar[bool](t, a, "SELECT to_regclass($1) IS NOT NULL", schema+table) }
 
-	// version 2 code does not open a version 1 database unless told to initialize it
+	// the code does not open a version 1 database unless told to initialize it
 	s, e := pgsource.Open(ctx, dsn, false)
 	if s != nil {
 		s.Close()
@@ -608,11 +723,11 @@ func upgradeFromVersion1(t *testing.T) {
 		t.Fatal("the upgrade should have waited for the profile row until its context ended:", e)
 	}
 	must(t, holder.Rollback(ctx))
-	if exists("issue_numbers") || exists("issues") || scalar[int](t, a, "SELECT version FROM "+schema+"profile") != 1 {
-		t.Fatal("an upgrade that failed left part of version 2 behind")
+	if exists("issue_numbers") || exists("issues") || exists("issue_cancellations") || scalar[int](t, a, "SELECT version FROM "+schema+"profile") != 1 {
+		t.Fatal("an upgrade that failed left part of a later version behind")
 	}
 
-	// two initializing processes at once both succeed and leave one version 2 schema
+	// two initializing processes at once both succeed and leave one schema of the latest version
 	var wg sync.WaitGroup
 	errs := make([]error, 4)
 	for i := range errs {
@@ -632,7 +747,7 @@ func upgradeFromVersion1(t *testing.T) {
 			t.Fatal("concurrent upgrade", i, e)
 		}
 	}
-	if scalar[int](t, a, "SELECT version FROM "+schema+"profile") != 2 || !exists("issue_numbers") || !exists("issues") {
+	if scalar[int](t, a, "SELECT version FROM "+schema+"profile") != 3 || !exists("issue_numbers") || !exists("issues") || !exists("issue_cancellations") {
 		t.Fatal("the upgrade did not complete")
 	}
 

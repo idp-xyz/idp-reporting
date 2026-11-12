@@ -639,6 +639,44 @@ Deleted schedules stay as rows (the application role never deletes) and runs acc
 to the retention, remove old ones with the migrator if they grow (`DELETE FROM reporting_s01.schedule_runs WHERE finished_at < now() - interval '400 days'`).
 Migration 013 down drops both tables and the audit's schedule events.
 
+## Cancelled issues (S24-A, ADR 0025)
+
+Migration 014 adds `issue_cancellations`: one row for each issued document that its source product cancelled when the platform asked (the
+issue, the identity that owns it, the product's reference and time, the person's reason, when the platform recorded it), and lets the
+audit record `issue.cancel`. The issue record itself (`assets`, kind `issue`) is not touched: a cancellation is added beside it. The
+application role inserts and reads the table and never updates or deletes it, like `audit_events`: `reporting-migrate status` reports a
+role that can ("INSERT or UPDATE on issue_cancellations", "DELETE or TRUNCATE on issue_cancellations") and the server refuses to start as
+one. Row-level security keeps a row to the owner of its issue (policy `identity` reads; policy `issue_owner` inserts, and only for an
+issue record the identity can see); there is no policy for an update, a delete or a worker. The sweep never touches the table: a
+cancellation is permanent, like the record. The step creates a table, so run `reporting-migrate roles` after `up`; until then the server
+refuses to start at step store ("no INSERT on issue_cancellations"). Back it up with the rest of the database; it holds the reasons
+people wrote.
+
+`down --to 13` drops the table and deletes the audit's `issue.cancel` events. It is refused while the table has rows unless
+`--accept-data-loss` is passed, and the message says what would go: the register would show those documents as issued again and their
+files would be handed out while they last. The source products keep their own records of the cancellations; the platform cannot read
+them back.
+
+A cancellation is asked of the product first and recorded second, within one request (`POST /issues/{id}/cancellation`, docs/API.md
+"Cancelling an issued document"). Three things follow for an operator:
+
+- A document can be cancelled in the product and not yet in the platform: the product's answer was lost (503 `AUTHORITY_UNAVAILABLE`),
+  or the platform could not write the cancellation with its audit event (503 `AUDIT_UNAVAILABLE`). Nothing retries by itself. The
+  person asks again and the product, idempotent by the job id, answers the same receipt, which is then recorded. To find such
+  documents, compare the product's cancelled documents with the register by the job id (the platform's `issue_id`): the audit shows
+  `issue.cancel` `requested` followed by `failed` and no `succeeded` for the issue.
+- The reverse cannot happen through the platform: no row is inserted without the product's receipt. A row whose document the product
+  does not hold as cancelled means the product's data was restored from before the cancellation, or the table was written outside the
+  platform.
+- A product whose connection does not declare the capability (the adapter `http`: the option `cancellation`) is never asked: the route
+  answers 422, `GET /capabilities` says `issue_cancellation: false` for it, and its documents are cancelled in the product, with the
+  register not knowing. Declaring the capability later imports nothing: the register learns of a cancellation only when the issue's
+  owner asks for it through the platform.
+
+After a restore of the platform's database from before a cancellation, the register says issued again and the file is handed out
+again while it lasts; the same request closes it (the product answers its receipt). A restore of the product from before a cancellation
+is the product's to reconcile, as for a confirmation ("Issue jobs, the product and a restore older than the product" below).
+
 ## Backup and restore (S04-F)
 
 Since S04-E the platform's state is in two places: the PostgreSQL store (jobs, snapshots, artifact rows, issue records, the ledgers) and, with an object

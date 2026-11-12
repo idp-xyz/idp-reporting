@@ -1,12 +1,14 @@
-# The reporting source protocol, version 1 (S19-A; revision 1.1, S19-B and S20-A)
+# The reporting source protocol, version 1 (S19-A; revision 1.2, S24-A)
 
 2026-11-09; revision 1.1 on 2026-11-11 adds one optional route, `companies` (S19-B, ADR 0015), and, in `catalog`, a dataset's optional
-`filters` and `sorts` declarations, which a query of `reads` then carries (S20-A, ADR 0023; the checker gains F1–F6); it changes nothing
-else: a source written to the first revision is served unchanged, and gains nothing until it declares. What a source product implements
-so that the reporting platform reads it, through the platform's adapter `http` (`adapters/httpsource`), without the platform carrying Go
-code for the product. It is the adapter contract of docs/s00/INTERFACES.md (`DescribeCatalog`, `PrepareRead`, `ReadPage`,
-`AuthorizeCurrent`) and, optionally, the document authority of ADR 0003 (`PrepareDocument`, `ConfirmIssue`, `VoidIssue`) and the company
-directory of ADR 0015 (`ListCompanies`), carried as JSON over HTTPS. The machine-readable description is docs/source-openapi.json
+`filters` and `sorts` declarations, which a query of `reads` then carries (S20-A, ADR 0023; the checker gains F1–F6); the revision of
+S24-A, the title's, adds one optional route, `issue-cancellations` (ADR 0025; the checker gains X1–X4). A revision changes nothing
+else: a source written to an earlier one is served unchanged, and gains nothing until its connection declares. What a source product
+implements so that the reporting platform reads it, through the platform's adapter `http` (`adapters/httpsource`), without the platform
+carrying Go code for the product. It is the adapter contract of docs/s00/INTERFACES.md (`DescribeCatalog`, `PrepareRead`, `ReadPage`,
+`AuthorizeCurrent`) and, optionally, the document authority of ADR 0003 (`PrepareDocument`, `ConfirmIssue`, `VoidIssue`), the company
+directory of ADR 0015 (`ListCompanies`) and the cancellation of an issued document of ADR 0025 (`CancelDocument`), carried as JSON over
+HTTPS. The machine-readable description is docs/source-openapi.json
 (`TestTheOpenAPIDescriptionIsTheProtocol` holds it to the bodies the adapter sends and accepts); this page wins where they differ. The
 obligations behind each call (what a stable read is, what "covers the frozen scope" means, how numbers are accounted for) are those of
 docs/REAL_SOURCE_ONBOARDING.md and ADR 0003; this page says how they travel.
@@ -68,10 +70,12 @@ configured for the credential is `denied`. The platform never sends the person's
 | `POST /reporting-source/v1/issues/{job_id}/prepare` | `PrepareDocument` | `{context, intent}` → `{reservation}` |
 | `POST /reporting-source/v1/issues/{job_id}/confirm` | `ConfirmIssue` | `{context, confirmation}` → `{receipt}` |
 | `POST /reporting-source/v1/issues/{job_id}/void` | `VoidIssue` | `{context, job_id, reason}` → `{voided: true}` |
+| `POST /reporting-source/v1/issue-cancellations` | `CancelDocument` (optional, S24-A) | `{context, cancellation}` → `{receipt}` |
 
 The issue routes are needed only for a connection whose `issuance` is `rows` or `groups`; the `companies` route only for a connection with
-`companies: true` (the platform never asks it otherwise). `{ref}` and `{job_id}` repeat a value of the body (`read.ref`, `intent.job_id`,
-`confirmation.job_id`, `job_id`); a source refuses a mismatch with `invalid`.
+`companies: true`, and the `issue-cancellations` route only for a connection with `cancellation: true`, which needs an issuance (the
+platform never asks either otherwise). `{ref}` and `{job_id}` repeat a value of the body (`read.ref`, `intent.job_id`,
+`confirmation.job_id`, `job_id`); a source refuses a mismatch with `invalid`. A cancellation names its job in the body alone.
 
 ### catalog
 
@@ -202,6 +206,53 @@ The source authorizes a formal document, owns its number and confirms the file; 
   source holds for the job, reserved or confirmed, and answers `{"voided": true}`. Holding nothing is not an error, voiding twice is not
   either, and a void is **final** for the job id: a later `prepare` of it is `conflict`. It does not depend on the actor's current rights.
 
+### The cancellation of an issued document (optional; ADR 0025, S24-A)
+
+A person who may issue asks the platform to cancel a document that was issued; the platform asks the source, **and the source decides**.
+The platform never marks a document cancelled by itself: it records a cancellation only with the source's receipt in hand. A `void` is
+something else: the platform's own undo of a job that did not complete, which no person asks for.
+
+```json
+{"context": {…},
+ "cancellation": {"job_id": "0f3c5a…9a", "reservation_ref": "res-81", "confirmation_ref": "conf-81", "number": "AR-000123",
+                  "reason": "客户退回：金额有误"}}
+→ {"receipt": {"job_id": "0f3c5a…9a", "ref": "cxl-17", "cancelled_at": "2026-11-11T08:15:33Z"}}
+```
+
+The request names the document by the platform's job id and by what the source gave for it: the `ref` of its reservation, the `ref` of
+its confirmation's receipt and the `number`, each exactly as the source answered it. `reason` is what the person wrote: 1..200
+characters (not bytes) of UTF-8 text on one line, not blank, without control characters (C0, tab and line breaks included, DEL, U+FFFE,
+U+FFFF). It is personal text: bind it as data, and keep it out of logs, as the platform does. The platform sends nothing else: no file,
+no digest, no row.
+
+The source, in its own trusted transaction:
+
+- maps the context to its actor and decides by **its own rule** whether that actor may cancel this document now (`denied` otherwise:
+  an unknown subject, an actor without the right, a rule of the product that says no, such as a closed period). The reference source
+  lets whoever may issue cancel; a product may be stricter. Nothing in the request is authority;
+- finds what it holds for the job. A job it never reserved is `not_found`. Only a **confirmed** document is cancelled: a reservation
+  that was never confirmed (expired or not) and a voided job are `conflict`, and so is a request whose `reservation_ref`,
+  `confirmation_ref` or `number` is not the document's;
+- records the cancellation with a reference and a time of its own, and **keeps the number used**: a cancelled number is never given
+  to another document. A corrected document is a new issue with a new number;
+- answers the receipt: `job_id` the request's, `ref` 1..128 printable ASCII, `cancelled_at` a whole second in the canonical form, not
+  before the confirmation's `confirmed_at`.
+
+The route is **idempotent by the job id**: asked again about a document it has cancelled, the source answers the same receipt (the same
+`ref` and `cancelled_at`), whatever the reason says this time, and keeps the first reason. That is how a cancellation is reconciled.
+The platform asks the source first and records second, so a cancellation whose answer the platform did not receive (a timeout) or
+could not keep is cancelled at the source and not yet at the platform; the person's next request asks again and the same receipt is
+recorded. The reverse, cancelled at the platform and not at the source, cannot happen. A `void` of a job whose document was cancelled
+is, as for any job, not an error: the reference source answers `voided`, keeps the document cancelled and goes on answering its receipt.
+
+The platform verifies the receipt, and refuses with an integrity failure otherwise, recording nothing: `job_id` is the request's; `ref`
+is of the form above; `cancelled_at` is canonical, a whole second within the years 1970..9999 and not before the confirmation the
+platform recorded. With the receipt it keeps the source's reference and time and the person's reason beside its issue record, which
+itself does not change, shows them to the document's owner and no longer hands the file out (docs/API.md, "Cancelling an issued
+document": `ISSUE_CANCELLED`). A source without the route answers `unsupported`; the platform asks the route only for a connection with
+`cancellation: true` (docs/DEPLOYMENT.md), and answers its own route `UNSUPPORTED_COMBINATION` for every other connection, without
+asking.
+
 ## 4. Errors
 
 Every refusal is the status of its code with exactly this body: `{"code": "<code>"}`. The set is closed:
@@ -210,8 +261,8 @@ Every refusal is the status of its code with exactly this body: `{"code": "<code
 |---|---|---|---|
 | `invalid` | 400 | `INVALID_REQUEST` | The request is not well formed: a body, a cursor, a limit, a path that does not match the body. |
 | `denied` | 403 | `AUTH_SCOPE_DENIED` | The actor may not: unknown subject, a company or row outside its rights, rights that no longer cover a read, a read that is not the one the source made. |
-| `not_found` | 404 | `NOT_FOUND` | Issue routes only: a job the source never reserved. |
-| `conflict` | 409 | `IDEMPOTENCY_CONFLICT` | Issue routes only: another intent or digest under a job id, a voided job. |
+| `not_found` | 404 | `NOT_FOUND` | Issue routes only (the cancellation's among them): a job the source never reserved. |
+| `conflict` | 409 | `IDEMPOTENCY_CONFLICT` | Issue routes only (the cancellation's among them): another intent or digest under a job id, a voided job; a cancellation of what is not a confirmed document, or that names the document otherwise than the source did. |
 | `expired` | 410 | `AUTH_SCOPE_DENIED` | A read or a reservation the source no longer holds or that has expired. |
 | `unsupported` | 422 | `UNSUPPORTED_COMBINATION` | A dataset version or combination the source does not publish: a filter or a sort outside the dataset's declaration, an operator the source does not know. |
 | `integrity` | 422 | `INTEGRITY_FAILURE` | The request contradicts itself (a query hash that is not the query's). |
@@ -219,7 +270,7 @@ Every refusal is the status of its code with exactly this body: `{"code": "<code
 | `unavailable` | 503 | `AUTHORITY_UNAVAILABLE` | The source's authority or data cannot be reached now. |
 
 How the platform reads an answer that is not `200`: a well-formed error body whose code is in the table **and** sent with its own status
-is that code's error (`not_found` and `conflict` only from the issue routes). Otherwise: a redirect, 401, 407, 408, 429, any 5xx, or a 4xx
+is that code's error (`not_found` and `conflict` only from the issue routes and `issue-cancellations`). Otherwise: a redirect, 401, 407, 408, 429, any 5xx, or a 4xx
 without a well-formed body is **unavailable**; a well-formed body with an unknown code, a code with another status, or a code the route
 may not answer is an **integrity failure**, and so is a 2xx other than 200. A `200` that does not verify is an integrity failure: it is
 never passed on. The platform's texts for all of these are fixed: no URL, no credential, no byte of a body; a person sees the platform's
@@ -240,21 +291,22 @@ refusal (docs/API.md) and nothing of the source's.
 | Rows of a page; of a read | at most `limit` (1..100, the platform asks 50); 1000 and 1 MiB in all |
 | A cursor | 1..2048 printable ASCII, `""` for none |
 | A cell; an integer or decimal | 4096 bytes; 128 characters |
+| A cancellation's `reason`; a receipt's `ref` | 1..200 characters of UTF-8 text on one line, not blank, without control characters; 1..128 printable ASCII |
 | A request | the connection's `timeout`, 10 s by default, 1..60 s |
 
 ## 6. Idempotency and repetition
 
 `catalog`, `companies`, `pages` and `authorize` are reads: repeating one changes nothing. `reads` makes a new read each time (a repeated job prepares
 again; old reads expire by themselves; a source bounds how many it holds and answers `budget` beyond). The issue routes are idempotent by
-job id as section 3 says, so a job that a second worker re-runs reaches the same outcome. No `Idempotency-Key` header is used: the job id
-is the key.
+job id as section 3 says, so a job that a second worker re-runs reaches the same outcome, and so is `issue-cancellations`: a
+cancellation asked again answers the receipt it answered first. No `Idempotency-Key` header is used: the job id is the key.
 
 ## 7. Checking an implementation
 
 ```
 export PRODUCT_REPORTING_AUTH=…          # the credential the operator gave the product
 reporting-source-check -base-url https://product.staging.internal -auth-env PRODUCT_REPORTING_AUTH -ca-file /path/ca.pem \
-    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue] [-companies]
+    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue [-cancellation]] [-companies]
 ```
 
 `context.json` is a context object (section 2) of a test subject the product has granted; `query.json` a query inside that grant with at
@@ -269,9 +321,16 @@ direction the rows come back in that order with the same rows and totals; a filt
 or with a malformed value, and an undeclared sort, are refused `unsupported` or `invalid`; F1, F2, F4 and F5 are skipped when the
 dataset declares nothing), with `-companies` the company directory (D1–D2: the list verifies, at most 1000 companies with unique ids and
 texts within bounds; a read naming the listed companies, the first 100, is accepted and one naming a company the directory does not list
-is refused; skipped without the flag, as a connection without `companies: true` never asks) and, with `-issue`, the document authority
+is refused; skipped without the flag, as a connection without `companies: true` never asks), with `-issue` the document authority
 (I1: a reservation, the same reservation again, `conflict` for another intent, a void, a second void, `conflict` after the void; **this
-reserves and voids one number: never against production**): 28 rules in all. It prints `PASS`, `FAIL` or `SKIP` per rule with a fixed
+reserves and voids one number: never against production**) and, with `-issue -cancellation`, the cancellation of an issued document
+(X1–X4, S24-A, as a connection with `cancellation: true` would use it. X1: a document the check reserved and confirmed is cancelled,
+the receipt verifies and is not dated before the confirmation, and asking again with another reason answers the same receipt. X2: a
+reservation that was not confirmed is `conflict`, a job the source never reserved `not_found`. X3: a subject the product does not know
+is `denied`, before the document is cancelled and after. X4: a job reserved after the cancellation gets another number. They are
+skipped without the flag; a source that answers the route `unsupported` fails X1 and skips the rest, and a document the check could
+not cancel is voided. **This confirms and cancels one document and reserves and voids two more numbers: never against production**;
+`-cancellation` without `-issue` is a usage error): 32 rules in all. It prints `PASS`, `FAIL` or `SKIP` per rule with a fixed
 text and exits 0 when nothing failed, 1 when a rule failed, 2 for a usage error. It never prints the credential, a URL or a byte of an
 answer. Passing it is necessary, not sufficient: the reconciliation of the product's data (go-live item 18) is the product's and the
 platform's together.
@@ -285,4 +344,5 @@ platform's together.
 
 A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes and optional fields
 only, each a minor revision of this page (1.1: the `companies` route, S19-B; a dataset's `filters` and `sorts` and a query's filters and
-sort, S20-A).
+sort, S20-A. The title's: the `issue-cancellations` route, S24-A). The revision's number is written in this page's title, in
+docs/source-openapi.json (`info.version`) and in `protocol.Revision`, which a test holds together.

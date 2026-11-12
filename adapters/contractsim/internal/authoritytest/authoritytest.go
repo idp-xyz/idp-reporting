@@ -1,8 +1,9 @@
 // Package authoritytest is the conformance suite of the document-authority capability
-// (reporting.DocumentAuthority, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md, S03-H H5): the rules both
-// contract simulators implement, written once as scenarios and run against either of them. A
-// scenario isolates one cause of every refusal it checks. Time-dependent rules that need a clock
-// the test controls are tested in the simulators' own packages.
+// (reporting.DocumentAuthority, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md, S03-H H5) and of the
+// cancellation of what it issued (reporting.DocumentCanceller, docs/ADR_0025_ISSUE_OPERATIONS.md,
+// S24-A): the rules both contract simulators implement, written once as scenarios and run against
+// either of them. A scenario isolates one cause of every refusal it checks. Time-dependent rules
+// that need a clock the test controls are tested in the simulators' own packages.
 package authoritytest
 
 import (
@@ -15,11 +16,12 @@ import (
 	"time"
 )
 
-// Source is a contract simulator as the suite uses it: the adapter that freezes reads and the
-// document authority that issues from them.
+// Source is a contract simulator as the suite uses it: the adapter that freezes reads, the
+// document authority that issues from them and the canceller of what it issued (S24-A).
 type Source interface {
 	r.Adapter
 	r.DocumentAuthority
+	r.DocumentCanceller
 }
 
 // Env is one simulator under test with the fixture controls the scenarios need. A control acts on
@@ -179,6 +181,28 @@ func (g *Rig) Confirm(res r.IssueReservation) r.IssueReceipt {
 	return rc
 }
 
+// Issued reserves the n-th job on row 0 and confirms the scenario's file under it: a confirmed document.
+func (g *Rig) Issued(n int) (r.IssueReservation, r.IssueReceipt) {
+	g.t.Helper()
+	res := g.Reserve(n)
+	return res, g.Confirm(res)
+}
+
+// Cancellation asks the product to cancel the document of a reservation and its confirmation, for the reason.
+func (g *Rig) Cancellation(res r.IssueReservation, rc r.IssueReceipt, reason string) r.IssueCancellation {
+	return r.IssueCancellation{JobID: res.JobID, ReservationRef: res.Ref, ConfirmationRef: rc.Ref, Number: res.Number, Reason: reason}
+}
+
+// Cancel asks the product, as the scenario's principal, to cancel the document and fails unless it is cancelled.
+func (g *Rig) Cancel(res r.IssueReservation, rc r.IssueReceipt, reason string) r.IssueCancellationReceipt {
+	g.t.Helper()
+	receipt, e := g.Src.CancelDocument(context.Background(), g.SC, g.Cancellation(res, rc, reason))
+	if e != nil {
+		g.t.Fatalf("job %s was not cancelled: %v", res.JobID, e)
+	}
+	return receipt
+}
+
 // Record is what the simulator holds for the n-th job; the scenario fails if it holds nothing.
 func (g *Rig) Record(n int) contractsim.IssueRecord {
 	g.t.Helper()
@@ -221,6 +245,10 @@ func Run(t *testing.T, newEnv NewEnv) {
 	}
 	// Contract version 2 (S03-K): the intent of a row group of a schema 2.0 template.
 	for _, s := range groupScenarios {
+		t.Run(s.name, func(t *testing.T) { s.run(t, newEnv) })
+	}
+	// The cancellation of a confirmed document, asked of the product (S24-A, ADR 0025 decision 1).
+	for _, s := range cancelScenarios {
 		t.Run(s.name, func(t *testing.T) { s.run(t, newEnv) })
 	}
 }

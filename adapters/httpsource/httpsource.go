@@ -5,7 +5,8 @@
 // Nothing a source answers is passed on before it verifies against what was asked: the catalog's datasets, the read's query hash,
 // dataset, companies, zone, currency policy and expiry, every page's reference, hash, watermark, row widths and cell types, totals and
 // cursor, the authorization's answer, the reservation's job and number and every time, the directory's companies (S19-B, for a
-// connection that declares them). An answer that does not verify is
+// connection that declares them), the job, the reference and the time of a cancellation's receipt (S24-A, for a connection that
+// declares cancellation). An answer that does not verify is
 // reporting.ErrIntegrity; a source that cannot be reached, is too slow, redirects or answers a 5xx is reporting.ErrUnavailable; a refusal
 // in the protocol's closed set of codes is the platform error of its code. Error texts are fixed: never the URL, the credential or a byte
 // of the body. It is safe for concurrent use and depends on the standard library only.
@@ -76,6 +77,10 @@ type Config struct {
 	// reporting.CompanyDirectory and asks POST /reporting-source/v1/companies. Without it the route is never asked and the platform
 	// answers supported false, as for any adapter without the capability.
 	Companies bool
+	// Cancellation declares that the source can be asked to cancel a document it confirmed (ADR 0025, S24-A): the adapter is then a
+	// reporting.DocumentCanceller and asks POST /reporting-source/v1/issue-cancellations. It needs Issuance rows or groups: a source
+	// cancels the documents it issues. Without it the route is never asked and a cancellation through the connection is unsupported.
+	Cancellation bool
 	// Now is the clock a read's expiry is judged by; nil is time.Now.
 	Now func() time.Time
 }
@@ -93,6 +98,7 @@ type Options struct {
 	MaxResponseBytes int    `json:"max_response_bytes"`
 	Issuance         string `json:"issuance"`
 	Companies        bool   `json:"companies"`
+	Cancellation     bool   `json:"cancellation"`
 }
 
 var envName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
@@ -118,7 +124,7 @@ func Factory(options json.RawMessage, getenv func(string) string) (r.Adapter, er
 
 // Config resolves the options: reads the CA and the client certificate and its key, and the credential from the environment.
 func (o Options) Config(getenv func(string) string) (Config, error) {
-	c := Config{BaseURL: o.BaseURL, LoopbackHTTP: o.LoopbackHTTP, MaxResponseBytes: o.MaxResponseBytes, Issuance: o.Issuance, Companies: o.Companies}
+	c := Config{BaseURL: o.BaseURL, LoopbackHTTP: o.LoopbackHTTP, MaxResponseBytes: o.MaxResponseBytes, Issuance: o.Issuance, Companies: o.Companies, Cancellation: o.Cancellation}
 	if o.Timeout < 0 || o.Timeout > int(MaxTimeout/time.Second) {
 		return Config{}, errConfig("timeout", "must be 0 or 1..60 seconds")
 	}
@@ -178,7 +184,8 @@ func readFile(name string, secret bool) ([]byte, error) {
 }
 
 // Adapter is a source over the protocol. It implements reporting.Adapter; New returns it wrapped as a document authority when the
-// connection's issuance says so, and as a company directory when the connection declares companies.
+// connection's issuance says so, as a company directory when the connection declares companies, and as a canceller of the documents
+// it issued when the connection declares cancellation.
 type Adapter struct {
 	base    string
 	token   string
@@ -199,7 +206,8 @@ type catalogKey struct {
 
 // New checks the configuration and makes the adapter. Its errors are fixed texts naming the field. The value is the adapter wrapped for
 // the capabilities the connection declares: a document authority of the issuance's contract version, a company directory with
-// Companies; the method set of the value says what the connection declared, as it does for an adapter in process.
+// Companies, a canceller of issued documents with Cancellation (which needs an issuance: a source cancels the documents it issues); the
+// method set of the value says what the connection declared, as it does for an adapter in process.
 func New(c Config) (r.Adapter, error) {
 	a, err := newAdapter(c)
 	if err != nil {
@@ -207,20 +215,35 @@ func New(c Config) (r.Adapter, error) {
 	}
 	switch c.Issuance {
 	case "", IssuanceNone:
+		if c.Cancellation {
+			return nil, errConfig("cancellation", `needs issuance "rows" or "groups": a source cancels the documents it issues`)
+		}
 		if c.Companies {
 			return &Directory{Adapter: a}, nil
 		}
 		return a, nil
 	case IssuanceRows:
-		if c.Companies {
-			return &AuthorityDirectory{Authority: &Authority{Adapter: a}}, nil
+		authority := &Authority{Adapter: a}
+		switch {
+		case c.Companies && c.Cancellation:
+			return &CancellingAuthorityDirectory{AuthorityDirectory: &AuthorityDirectory{Authority: authority}}, nil
+		case c.Companies:
+			return &AuthorityDirectory{Authority: authority}, nil
+		case c.Cancellation:
+			return &CancellingAuthority{Authority: authority}, nil
 		}
-		return &Authority{Adapter: a}, nil
+		return authority, nil
 	case IssuanceGroups:
-		if c.Companies {
-			return &GroupAuthorityDirectory{GroupAuthority: &GroupAuthority{Authority{Adapter: a, groups: true}}}, nil
+		authority := &GroupAuthority{Authority{Adapter: a, groups: true}}
+		switch {
+		case c.Companies && c.Cancellation:
+			return &CancellingGroupAuthorityDirectory{GroupAuthorityDirectory: &GroupAuthorityDirectory{GroupAuthority: authority}}, nil
+		case c.Companies:
+			return &GroupAuthorityDirectory{GroupAuthority: authority}, nil
+		case c.Cancellation:
+			return &CancellingGroupAuthority{GroupAuthority: authority}, nil
 		}
-		return &GroupAuthority{Authority{Adapter: a, groups: true}}, nil
+		return authority, nil
 	}
 	return nil, errConfig("issuance", `must be "none", "rows" or "groups"`)
 }
@@ -730,6 +753,71 @@ func (a *Authority) VoidIssue(ctx context.Context, sc r.SourceContext, jobID, re
 	return nil
 }
 
+// cancelDocument asks the source to cancel the confirmed document of the job (ADR 0025 decision 1, S24-A) and verifies the receipt
+// against what was asked: it is of the request's job, carries the source's reference (reporting.ValidProductRef) and a time that is a
+// whole second in the protocol's canonical form. A request that is not of the contract's form (the platform's job id, the source's two
+// references and its number as it gave them, a reason of 1..200 characters of text on one line) is never sent: ErrInvalid. A receipt
+// that does not verify is an integrity failure and nothing of it is passed on; refusals and statuses map by the protocol's table, as
+// the other issue routes' do (denied, conflict, not_found, unavailable). The error texts are fixed: nothing of the reason, the number
+// or a reference is in them. Only the adapters of a connection that declares cancellation expose it (CancellingAuthority and its
+// forms).
+func (a *Authority) cancelDocument(ctx context.Context, sc r.SourceContext, c r.IssueCancellation) (r.IssueCancellationReceipt, error) {
+	if !validContext(sc) {
+		return r.IssueCancellationReceipt{}, fail("cancel", "the source context is incomplete", r.ErrDenied)
+	}
+	if !c.Valid() {
+		return r.IssueCancellationReceipt{}, fail("cancel", "the cancellation is not of the protocol's form", r.ErrInvalid)
+	}
+	var out protocol.CancelResponse
+	wire, body := protocol.ContextOf(sc), protocol.CancellationOf(c)
+	if err := a.call(ctx, "cancel", protocol.PathCancellations, true, protocol.CancelRequest{Context: &wire, Cancellation: &body}, &out); err != nil {
+		return r.IssueCancellationReceipt{}, err
+	}
+	rec := out.Receipt
+	if rec == nil || rec.JobID != c.JobID || !r.ValidProductRef(rec.Ref) {
+		return r.IssueCancellationReceipt{}, fail("cancel", "the receipt is not of the job or not of the protocol's form", r.ErrIntegrity)
+	}
+	at, ok := protocol.ParseTime(rec.CancelledAt)
+	if !ok || !r.ValidProductTime(at) {
+		return r.IssueCancellationReceipt{}, fail("cancel", "the receipt's time is not a whole second", r.ErrIntegrity)
+	}
+	return r.IssueCancellationReceipt{Ref: rec.Ref, CancelledAt: at}, nil
+}
+
+// CancellingAuthority is the adapter of a connection with issuance rows that declares cancellation (ADR 0025, S24-A): a document
+// authority of contract version 1 that can be asked to cancel a document it confirmed.
+type CancellingAuthority struct{ *Authority }
+
+// CancelDocument is the cancellation of ADR 0025 over the protocol.
+func (c *CancellingAuthority) CancelDocument(ctx context.Context, sc r.SourceContext, in r.IssueCancellation) (r.IssueCancellationReceipt, error) {
+	return c.cancelDocument(ctx, sc, in)
+}
+
+// CancellingGroupAuthority is the adapter of a connection with issuance groups that declares cancellation: a document authority of
+// contract version 2 that can be asked to cancel.
+type CancellingGroupAuthority struct{ *GroupAuthority }
+
+// CancelDocument is the cancellation of ADR 0025 over the protocol.
+func (c *CancellingGroupAuthority) CancelDocument(ctx context.Context, sc r.SourceContext, in r.IssueCancellation) (r.IssueCancellationReceipt, error) {
+	return c.cancelDocument(ctx, sc, in)
+}
+
+// CancellingAuthorityDirectory is the adapter of a connection with issuance rows that declares companies and cancellation.
+type CancellingAuthorityDirectory struct{ *AuthorityDirectory }
+
+// CancelDocument is the cancellation of ADR 0025 over the protocol.
+func (c *CancellingAuthorityDirectory) CancelDocument(ctx context.Context, sc r.SourceContext, in r.IssueCancellation) (r.IssueCancellationReceipt, error) {
+	return c.cancelDocument(ctx, sc, in)
+}
+
+// CancellingGroupAuthorityDirectory is the adapter of a connection with issuance groups that declares companies and cancellation.
+type CancellingGroupAuthorityDirectory struct{ *GroupAuthorityDirectory }
+
+// CancelDocument is the cancellation of ADR 0025 over the protocol.
+func (c *CancellingGroupAuthorityDirectory) CancelDocument(ctx context.Context, sc r.SourceContext, in r.IssueCancellation) (r.IssueCancellationReceipt, error) {
+	return c.cancelDocument(ctx, sc, in)
+}
+
 // cutReason makes a void's reason one the protocol carries: valid UTF-8 (U+FFFD for what is not, as JSON would) of at most
 // protocol.MaxReasonBytes, cut at a rune boundary. The platform's reasons are its error codes; the source keeps what it can.
 func cutReason(s string) string {
@@ -753,4 +841,14 @@ var (
 	_ r.CompanyDirectory   = (*AuthorityDirectory)(nil)
 	_ r.VersionedAuthority = (*GroupAuthorityDirectory)(nil)
 	_ r.CompanyDirectory   = (*GroupAuthorityDirectory)(nil)
+	_ r.DocumentCanceller  = (*CancellingAuthority)(nil)
+	_ r.DocumentAuthority  = (*CancellingAuthority)(nil)
+	_ r.DocumentCanceller  = (*CancellingGroupAuthority)(nil)
+	_ r.VersionedAuthority = (*CancellingGroupAuthority)(nil)
+	_ r.DocumentCanceller  = (*CancellingAuthorityDirectory)(nil)
+	_ r.CompanyDirectory   = (*CancellingAuthorityDirectory)(nil)
+	_ r.DocumentAuthority  = (*CancellingAuthorityDirectory)(nil)
+	_ r.DocumentCanceller  = (*CancellingGroupAuthorityDirectory)(nil)
+	_ r.CompanyDirectory   = (*CancellingGroupAuthorityDirectory)(nil)
+	_ r.VersionedAuthority = (*CancellingGroupAuthorityDirectory)(nil)
 )

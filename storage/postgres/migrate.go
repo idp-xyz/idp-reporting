@@ -377,6 +377,15 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 		if ledger > 0 || objects > 0 {
 			return fmt.Sprintf("%d rows of the sweeps ledger that count objects deleted, and %d artifacts whose files are in the object store (an older binary could not serve them, and their objects would be left for a reconciliation it does not run; they expire with their snapshots)", ledger, objects), nil
 		}
+	case cancellationsVersion:
+		// The cancellations of issued documents (S24-A) are the source products' decisions as the platform recorded them, and the table is
+		// dropped with its rows: the register would show those documents as issued again and their files would be handed out while they last.
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM reporting_s01.issue_cancellations").Scan(&n); err != nil {
+			return "", err
+		}
+		if n > 0 {
+			return fmt.Sprintf("%d cancellations of issued documents (the register would show them as issued again and hand out their files while they last; the source products keep their own records of them) and the audit's events of cancellations", n), nil
+		}
 	}
 	return "", nil
 }

@@ -94,6 +94,34 @@ func TestDocumentAuthorityFollowsTheSimulatorsClock(t *testing.T) {
 			t.Fatal("confirmed at", rc.ConfirmedAt, "before it was issued")
 		}
 	})
+	t.Run("the_cancellation_time_is_the_clock_to_the_second_and_never_before_the_confirmation", func(t *testing.T) {
+		g, env := setup(t)
+		env.set(at(12, 0, 2, 500_000_000))
+		res, other, late := g.Reserve(1), g.Reserve(2), g.Reserve(3)
+		env.set(at(12, 3, 0, 900_000_000))
+		rc, rcOther, rcLate := g.Confirm(res), g.Confirm(other), g.Confirm(late) // each confirmed at 12:03:00
+		env.set(at(12, 7, 15, 600_000_000))
+		if got := g.Cancel(res, rc, "cancelled four minutes later"); !got.CancelledAt.Equal(at(12, 7, 15, 0)) || got.CancelledAt.Location() != time.UTC {
+			t.Fatal("cancelled at", got.CancelledAt)
+		}
+		env.set(at(12, 1, 0, 0)) // the clock went back before the second document was confirmed
+		if got := g.Cancel(other, rcOther, "cancelled by a clock that went back"); !got.CancelledAt.Equal(at(12, 3, 0, 0)) {
+			t.Fatal("cancelled at", got.CancelledAt, "before it was confirmed")
+		}
+		// A cancellation stands on the document and not on the read it was issued from: long after the read and the
+		// reservation ended, the document is cancelled, and the first receipt is answered at any later time.
+		env.set(at(18, 30, 0, 0))
+		if e := g.Src.AuthorizeCurrent(ctx, g.SC, g.Prep); !errors.Is(e, r.ErrDenied) {
+			t.Fatal("the read is over:", e)
+		}
+		if got := g.Cancel(late, rcLate, "cancelled in the evening"); !got.CancelledAt.Equal(at(18, 30, 0, 0)) {
+			t.Fatal("cancelled at", got.CancelledAt)
+		}
+		env.set(at(23, 0, 0, 0))
+		if got := g.Cancel(res, rc, "asked again at night"); !got.CancelledAt.Equal(at(12, 7, 15, 0)) {
+			t.Fatal("the repeat moved the cancellation to", got.CancelledAt)
+		}
+	})
 	t.Run("the_void_time_is_the_clock_to_the_second", func(t *testing.T) {
 		g, env := setup(t)
 		g.Reserve(1)

@@ -162,6 +162,17 @@ func UnreadableJobCode(kind string, priorGeneration int64) string {
 	}
 	return ErrIntegrity.Error()
 }
+
+// ValidateCancellation holds a cancellation to the issue record it cancels, for a repository about to keep it and for whoever reads one
+// back (S24-A, ADR 0025 decision 3): it names the record, carries the product's reference (ValidProductRef) and a cancellation time that
+// is a whole second between the record's confirmation time and 9999, judged by value, and a reason (ValidCancellationReason). Anything
+// else is ErrInvalid; RecordedAt is the store's and is not judged.
+func ValidateCancellation(rec Issue, c IssueCancellationRecord) error {
+	if !validID(c.IssueID) || c.IssueID != rec.ID || !ValidProductRef(c.Ref) || !ValidProductTime(c.CancelledAt) || c.CancelledAt.Before(rec.ConfirmedAt) || !ValidCancellationReason(c.Reason) {
+		return ErrInvalid
+	}
+	return nil
+}
 func ClaimValid(actual Job, claim Claim, now time.Time) bool {
 	return actual.ID == claim.Job.ID && actual.Owner == claim.Job.Owner && actual.State == "running" && actual.Generation == claim.Job.Generation && actual.LeaseUntil.After(now)
 }
@@ -199,6 +210,11 @@ func ValidatePublication(j Job, p Publication) error {
 	case "issue":
 		v, rec := p.Artifact, p.Issue
 		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.ResultEnd()) || !carriesBasis(j, *v) || !ValidArtifactBody(*v) || v.Issue != j.ID || v.LayoutID != "" || v.LayoutVersion != 0 {
+			return ErrIntegrity
+		}
+		// A record is published as issued: a cancellation is the product's later decision and a row of its own (S24-A), never part of
+		// what a worker publishes.
+		if rec.Cancellation != nil {
 			return ErrIntegrity
 		}
 		if rec.ID != j.ID || rec.Owner != j.Owner || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || !rec.Group.Equal(j.Group) || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages {

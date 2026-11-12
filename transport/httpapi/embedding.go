@@ -17,7 +17,7 @@ func WithEmbedding(fallback http.Handler, service *r.Service, authenticate Authe
 	mux := http.NewServeMux()
 	mux.Handle("/", fallback)
 	mux.HandleFunc("GET /api/reporting/v1/capabilities", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, capabilities(service, config.Configured(p.Integrations)))
+		return send(w, 200, capabilities(service, p, config.Configured(p.Integrations)))
 	}))
 	return secured(mux), nil
 }
@@ -48,7 +48,7 @@ func WithProfile(fallback http.Handler, service *r.Service, authenticate Authent
 	mux := http.NewServeMux()
 	mux.Handle("/", fallback)
 	mux.HandleFunc("GET /api/reporting/v1/capabilities", authenticated(authenticate, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, capabilitiesLabelled(service, config.Configured(p.Integrations), label))
+		return send(w, 200, capabilitiesLabelled(service, p, config.Configured(p.Integrations), label))
 	}))
 	return secured(mux), nil
 }
