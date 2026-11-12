@@ -221,7 +221,7 @@ func (s *Service) validPrepared(sc SourceContext, q QuerySpec, p PreparedRead) e
 	if !s.now().Before(p.ExpiresAt) {
 		return ErrDenied
 	}
-	if p.ExpiresAt.After(s.now().Add(15 * time.Minute)) {
+	if p.ExpiresAt.After(s.now().Add(MaxReadLifetime)) {
 		return ErrIntegrity
 	}
 	return nil
@@ -236,7 +236,7 @@ func (s *Service) validScope(sc SourceContext, q QuerySpec, p PreparedRead) erro
 	if !s.now().Before(p.ScopeEnd()) {
 		return ErrDenied
 	}
-	if p.ExpiresAt.After(s.now().Add(15 * time.Minute)) {
+	if p.ExpiresAt.After(s.now().Add(MaxReadLifetime)) {
 		return ErrIntegrity
 	}
 	return nil
@@ -626,6 +626,9 @@ func (s *Service) CanIssue() bool { return s.issuer != nil }
 
 // Quotas is the per-identity admission limits in force (S04-D), every field resolved.
 func (s *Service) Quotas() Quotas { return s.quotas }
+
+// Retention is how long a result is kept after its read, by class, as in force (ADR 0026), every field resolved.
+func (s *Service) Retention() Retention { return s.retention }
 
 // IssueInput is what the caller freezes when it asks for an official issue: the published
 // version's canonical configuration as the template store holds it.
@@ -1185,6 +1188,12 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 	if e := s.authorizeJob(ctx, j); e != nil {
 		return e
 	}
+	// An export that no worker reached until its file's own time had passed is denied here, before anything is rendered or put: the
+	// store would refuse its publication (Job.PublishDeadline). Only a file kept beyond its read has such a time before its scope
+	// ends; every other job's deadline is the one authorizeJob has just held it to.
+	if j.Kind == "export" && !j.KeepUntil.IsZero() && !s.now().Before(j.KeepUntil) {
+		return ErrDenied
+	}
 	switch j.Kind {
 	case "snapshot":
 		result, e := s.collect(ctx, j.Owner, j.Query, j.Prepared, j.Columns)
@@ -1207,6 +1216,9 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 			}
 			return e
 		}
+		if !sameBasis(j, snap) {
+			return ErrIntegrity
+		}
 		var b []byte
 		if j.Presentation != nil {
 			// The frozen presentation (S23-A): the writer renders through it or the job is refused; without one the writer is called
@@ -1226,7 +1238,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 			return ErrBudget
 		}
 		layoutID, layoutVersion := layoutOf(j.Presentation)
-		if pub.Artifact, e = s.keep(ctx, withBasis(Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: j.ResultEnd(), LayoutID: layoutID, LayoutVersion: layoutVersion}, j), b); e != nil {
+		if pub.Artifact, e = s.keep(ctx, withBasis(Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: fileEnd(j, snap), LayoutID: layoutID, LayoutVersion: layoutVersion}, j), b); e != nil {
 			return e
 		}
 	case "issue":
@@ -1253,6 +1265,9 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		snap, e := s.snapshot(ctx, p, j.SnapshotID)
 		if e != nil {
 			return e
+		}
+		if !sameBasis(j, snap) {
+			return ErrIntegrity
 		}
 		// The frozen row or group must still be the verified snapshot's: the snapshot is frozen, so a mismatch is
 		// not a refusal of the caller's request but a store that does not agree with itself.
@@ -1306,7 +1321,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		// platform failed to keep, and a PUT that fails is a failure of the job like any other, voided at the product (S03-H). The row that
 		// names the object is published after the confirmation; an object whose row never comes is an orphan the sweep reconciles.
 		id := NewID()
-		if pub.Artifact, e = s.keep(ctx, withBasis(Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: j.ResultEnd(), Issue: j.ID}, j), b); e != nil {
+		if pub.Artifact, e = s.keep(ctx, withBasis(Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: fileEnd(j, snap), Issue: j.ID}, j), b); e != nil {
 			return e
 		}
 		receipt, e := authority.ConfirmIssue(ctx, sc, IssueConfirmation{JobID: j.ID, ReservationRef: res.Ref, SHA256: sum, Pages: result.Pages})

@@ -112,16 +112,28 @@ func TestTheSimulatorServesPagesWhileTheReadLastsAndAuthorizesWhileTheScopeDoes(
 	if e := authorized(longer); !errors.Is(e, r.ErrDenied) {
 		t.Fatal("a read with a scope the simulator did not give:", e)
 	}
-	// Preparing another read lets go of the data version of the read whose pages are over; its scope still answers, its pages still do not.
-	prepare()
+	// So far the simulator remembers the four reads it prepared, each with the data version it froze. Preparing another forgets the three
+	// that declared no scope and are over, and lets go of the data version of the one whose pages are over and whose scope goes on: two
+	// reads are remembered, and one data version, the new read's. The scope still answers, the pages still do not.
+	if reads, versions := contractsim.HeldForTests(s); reads != 4 || versions != 4 {
+		t.Fatalf("before another read is prepared: %d reads, %d data versions", reads, versions)
+	}
+	later := prepare()
+	if reads, versions := contractsim.HeldForTests(s); reads != 2 || versions != 1 {
+		t.Fatalf("after another read is prepared: %d reads, %d data versions", reads, versions)
+	}
 	if e := authorized(read); e != nil {
 		t.Fatal(e)
 	}
 	if e := pages(read); !errors.Is(e, r.ErrDenied) {
 		t.Fatal(e)
 	}
+	if e := pages(later); e != nil {
+		t.Fatal("the pages of the read prepared last:", e)
+	}
 
-	// At the scope's end the simulator answers no more, before it has forgotten the read and after.
+	// At the scope's end the simulator answers no more, before it has forgotten the read and after. The read prepared eleven minutes
+	// later is still within its scope: it is remembered, without its data version.
 	now = start.Add(3 * time.Hour)
 	if e := authorized(read); !errors.Is(e, r.ErrDenied) {
 		t.Fatal("at the scope's end:", e)
@@ -129,5 +141,11 @@ func TestTheSimulatorServesPagesWhileTheReadLastsAndAuthorizesWhileTheScopeDoes(
 	prepare()
 	if e := authorized(read); !errors.Is(e, r.ErrDenied) {
 		t.Fatal("after the scope, forgotten:", e)
+	}
+	if reads, versions := contractsim.HeldForTests(s); reads != 2 || versions != 1 {
+		t.Fatalf("after the first scope: %d reads, %d data versions", reads, versions)
+	}
+	if e := authorized(later); e != nil {
+		t.Fatal("the read whose scope goes on:", e)
 	}
 }

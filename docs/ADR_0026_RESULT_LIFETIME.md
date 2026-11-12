@@ -134,14 +134,27 @@ of the simulators. After the first product it costs that product a release.
 ## Slices
 
 - **S25-A**: the core and the stores. The three lifetimes, an artifact's own basis and expiry, the retention classes and their
-  configuration, the quota, the sweep; the memory and PostgreSQL contracts. With no source declaring a scope, every test of
-  today passes unchanged.
-- **S25-B**: the protocol's revision 1.2, the adapter `http`, `sourcetest`, both simulators (a scope they keep after the data),
-  the checker's rules.
+  configuration, the sweep; the in-memory simulator (a scope it keeps after the data); the memory and PostgreSQL contracts. With
+  no source declaring a scope, every test of today passes unchanged.
+- **S25-B**: the protocol's revision 1.2, the adapter `http`, `sourcetest`, the durable simulator, the checker's rules; the quota
+  of decision 7, with the index it needs; the reconciliation of the object store, on a cadence of its own.
 - **S25-C**: the views (`result_expires_at`), the console (the tasks, the issue register, a schedule's runs), the manual, and a
   baseline task (打开昨天的定时报表并下载).
 - **S25-D**: the documents. API, OPERATIONS, SECURITY_REVIEW, DEPLOYMENT, the onboarding guide; the notes in ADR 0003, 0020 and
   0025.
+
+Amended 2026-11-12, with S25-A (docs/S25A_SCOPE.md). The list above first had the quota in S25-A and both simulators in S25-B.
+No decision changed; what changed is which slice does what, and two conditions of S25-B that the first slice found:
+
+- The quota of decision 7 is in S25-B, and lands there before any source can vouch: counting the issued files out of
+  `stored_results` without reading every artifact's payload at every admission needs a partial index, so a migration, and the
+  three lifetimes need none (the expectation in "Consequences" held for them).
+- The in-memory simulator vouches for a scope in S25-A, because the lifetime contract of both stores runs against it.
+- The reconciliation of the object store lists the whole bucket at every sweep (S04-E). That was a day of files; with kept
+  results it would be the kept history. S25-B gives it a cadence of its own, or keys it can list by age, before a source can
+  vouch.
+- A server of the code before S25-A does not know a kept result. Every server on a store runs S25-A's code before a source of that
+  deployment declares a scope; S25-D writes the rule into docs/OPERATIONS.md.
 
 ## Questions for the product owner
 

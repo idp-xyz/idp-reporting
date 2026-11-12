@@ -105,6 +105,46 @@ func TestAResultIsKeptItsClasssTimeAfterTheReadAndNeverBeyondTheScope(t *testing
 	}
 }
 
+// A job, a snapshot and an artifact that keep nothing beyond their read are stored as the bytes they were before ADR 0026, so that for a
+// source that declares no scope neither a stored row nor its digest changes. The literals were written by the code before it (the same
+// values, encoded on main at bfb0613), not derived from this code.
+func TestAJobASnapshotAndAnArtifactThatKeepNothingAreEncodedAsBefore(t *testing.T) {
+	const (
+		ownerWas    = `{"Tenant":"t","Issuer":"i","Subject":"s","Integration":"n"}`
+		queryWas    = `{"schema_version":"1.0","integration_id":"n","dataset":{"id":"d","version":"1"},"company_ids":["c"],"metrics":[{"id":"m","version":"1"}],"dimensions":["x"],"filters":[{"field":"x","operator":"eq","value":"v"}],"sort":[],"as_of":"2026-11-11","timezone":"UTC","page":{"limit":50}}`
+		atWas       = `"2026-11-11T07:40:00.123456789Z"`
+		preparedWas = `{"Context":{"Owner":` + ownerWas + `,"SourceTenant":"st"},"Ref":"r","ScopeHandle":"h","QueryHash":"q","Dataset":{"id":"d","version":"1"},"Companies":["c"],"Timezone":"UTC","CurrencyPolicy":null,"Watermark":"w","ExpiresAt":` + atWas + `}`
+		columnsWas  = `[{"id":"x","label":"X","type":"text"}]`
+		restWas     = `"ArtifactID":"","ErrorCode":"","Generation":0,"LeaseUntil":"0001-01-01T00:00:00Z"}`
+	)
+	owner := r.Owner{Identity: r.Identity{Tenant: "t", Issuer: "i", Subject: "s"}, Integration: "n"}
+	read := time.Date(2026, 11, 11, 7, 40, 0, 123456789, time.UTC)
+	query := r.QuerySpec{SchemaVersion: "1.0", Integration: "n", Dataset: r.Ref{ID: "d", Version: "1"}, Companies: []string{"c"}, Metrics: []r.Ref{{ID: "m", Version: "1"}}, Dimensions: []string{"x"},
+		Filters: []r.Filter{{Field: "x", Operator: "eq", Value: "v"}}, Sort: []r.Sort{}, AsOf: "2026-11-11", Timezone: "UTC", Page: r.PageSpec{Limit: 50}}
+	prepared := r.PreparedRead{Context: r.SourceContext{Owner: owner, SourceTenant: "st"}, Ref: "r", ScopeHandle: "h", QueryHash: "q", Dataset: r.Ref{ID: "d", Version: "1"}, Companies: []string{"c"}, Timezone: "UTC", Watermark: "w", ExpiresAt: read}
+	columns := []r.Column{{ID: "x", Label: "X", Type: "text"}}
+	for name, c := range map[string]struct {
+		v   any
+		was string
+	}{
+		"a snapshot job": {r.Job{ID: "j1", Owner: owner, Kind: "snapshot", State: "queued", Key: "k", RequestHash: "h", Query: query, Prepared: prepared, Columns: columns},
+			`{"ID":"j1","Owner":` + ownerWas + `,"Kind":"snapshot","State":"queued","Key":"k","RequestHash":"h","Query":` + queryWas + `,"Prepared":` + preparedWas + `,"Columns":` + columnsWas + `,"SnapshotID":"",` + restWas},
+		"an export job": {r.Job{ID: "j2", Owner: owner, Kind: "export", State: "queued", Key: "k", RequestHash: "h", Query: query, Prepared: prepared, SnapshotID: "p", Format: "pdf"},
+			`{"ID":"j2","Owner":` + ownerWas + `,"Kind":"export","State":"queued","Key":"k","RequestHash":"h","Query":` + queryWas + `,"Prepared":` + preparedWas + `,"Columns":null,"SnapshotID":"p","Format":"pdf",` + restWas},
+		"a snapshot": {r.Snapshot{ID: "p", Owner: owner, Query: query, Prepared: prepared, Result: r.Result{Columns: columns, Rows: [][]string{{"v"}}, Totals: map[string]string{}, Completeness: "complete", Issues: []string{},
+			Evidence: r.Evidence{QueryHash: "q", SourceRef: "r", Watermark: "w", DataClass: "contract-simulator"}}, ExpiresAt: read, SHA256: "0"},
+			`{"ID":"p","Owner":` + ownerWas + `,"Query":` + queryWas + `,"Prepared":` + preparedWas + `,"Result":{"columns":` + columnsWas + `,"rows":[["v"]],"totals":{},"completeness":"complete","issues":[],"evidence":{"query_hash":"q","source_snapshot_ref":"r","source_watermark":"w","data_class":"contract-simulator"}},"ExpiresAt":` + atWas + `,"SHA256":"0"}`},
+		"an artifact that holds its file": {r.Artifact{ID: "a", Owner: owner, SnapshotID: "p", Format: "pdf", ExpiresAt: read, SHA256: "0", Content: []byte("x")},
+			`{"ID":"a","Owner":` + ownerWas + `,"SnapshotID":"p","Format":"pdf","ExpiresAt":` + atWas + `,"SHA256":"0","Content":"eA=="}`},
+		"an issued artifact whose file is an object": {r.Artifact{ID: "a", Owner: owner, SnapshotID: "p", Format: "pdf", ExpiresAt: read, SHA256: "0", Object: "artifacts/a", Size: 1, Issue: "j3"},
+			`{"ID":"a","Owner":` + ownerWas + `,"SnapshotID":"p","Format":"pdf","ExpiresAt":` + atWas + `,"SHA256":"0","Content":null,"Object":"artifacts/a","Size":1,"Issue":"j3"}`},
+	} {
+		if b, e := json.Marshal(c.v); e != nil || string(b) != c.was {
+			t.Errorf("%s is encoded as\n%s\nand was\n%s (%v)", name, b, c.was, e)
+		}
+	}
+}
+
 func TestTheRetentionTimesAreBounded(t *testing.T) {
 	got, e := r.Retention{}.Resolved()
 	if e != nil || got.Results != 7*24*time.Hour || got.Issued != 3650*24*time.Hour {

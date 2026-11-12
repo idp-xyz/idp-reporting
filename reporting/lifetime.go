@@ -18,6 +18,11 @@ import (
 // A source that declares no scope is served exactly as before: the scope is the read, nothing is kept beyond it, and no stored value
 // changes its encoding.
 
+// MaxReadLifetime is how far ahead of the platform's clock a read may expire (validPrepared): the longest a source is asked to serve the
+// pages of a data version it froze. A job is admitted while its read lasts or, an export, while its snapshot is kept; either way its
+// read's expiry is not later than this after the job's admission, which is what a store that cannot read a job's payload holds it to.
+const MaxReadLifetime = 15 * time.Minute
+
 // ScopeEnd is until when the source answers AuthorizeCurrent for the read: its ScopeExpiresAt, or its ExpiresAt when the source declared
 // none.
 func (p PreparedRead) ScopeEnd() time.Time {
@@ -31,12 +36,16 @@ func (p PreparedRead) ScopeEnd() time.Time {
 // it; where it is false every path of the service is the one it was before ADR 0026.
 func (p PreparedRead) vouched() bool { return p.ScopeEnd().After(p.ExpiresAt) }
 
-// validLifetimes: the scope a read declares is absent, or not before the read's own expiry and within the years a product's time may name.
-// The year is judged in the time's own zone as well: that is the year the time is encoded with, and one past 9999 cannot be encoded
-// (the last hours of 9999 UTC are year 10000 east of Greenwich).
+// validLifetimes: the scope a read declares is absent, or not before the read's own expiry, within the years a product's time may name,
+// and a time that can be encoded as it is: the stores keep it in the time's own zone, where the last hours of 9999 UTC are the year
+// 10000 east of Greenwich, and a zone a day or more from UTC cannot be written at all.
 func (p PreparedRead) validLifetimes() bool {
 	s := p.ScopeExpiresAt
-	return s.IsZero() || (!s.Before(p.ExpiresAt) && inProductYears(s) && s.Year() <= 9999)
+	if s.IsZero() {
+		return true
+	}
+	_, e := s.MarshalJSON()
+	return e == nil && !s.Before(p.ExpiresAt) && inProductYears(s)
 }
 
 // Retention is how long a result is kept after the read it was made from has expired, by its class (ADR 0026 decision 3), always within the
@@ -132,6 +141,25 @@ func carriesBasis(j Job, a Artifact) bool {
 		return a.Query == nil && a.Prepared == nil
 	}
 	return a.Query != nil && a.Prepared != nil && sameJSON(*a.Query, j.Query) && sameJSON(*a.Prepared, j.Prepared)
+}
+
+// fileEnd is the expiry a job gives the file it makes from a snapshot: the time the job keeps the file until, or, for a job that keeps
+// nothing beyond its read, the snapshot's own expiry, as before ADR 0026. The stores hold it to the job either way (ValidatePublication),
+// so a snapshot whose expiry is not its read's still cannot be exported or issued from.
+func fileEnd(j Job, snap Snapshot) time.Time {
+	if j.KeepUntil.IsZero() {
+		return snap.ExpiresAt
+	}
+	return j.KeepUntil
+}
+
+// sameBasis: the snapshot a job makes its file from is the snapshot of the query and the read the job froze. A job that keeps its file
+// beyond the read gives the file that query and that read as its basis (withBasis), and once the snapshot is gone the source is asked
+// by them alone, so the rows in the file must be the rows of that read: a snapshot that says another read is a store that does not agree
+// with itself, and nothing is made from it. A job that keeps nothing is not held to this: its file is served through its snapshot, by
+// the snapshot's own read, as it always was.
+func sameBasis(j Job, snap Snapshot) bool {
+	return j.KeepUntil.IsZero() || (sameJSON(snap.Query, j.Query) && sameJSON(snap.Prepared, j.Prepared))
 }
 
 // sameJSON compares two values by their encoding, as the stores keep them. A value that cannot be encoded equals nothing: the caller

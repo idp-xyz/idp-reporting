@@ -11,17 +11,25 @@ import (
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
+	"idp.local/reporting/storage/objects"
 )
 
 // The lifetime contract of ADR 0026 (docs/S25A_SCOPE.md), run on both stores: a result outlives the read it was frozen from when the
 // source vouches for the read's scope, every disclosure of it still asks the source, and a source that vouches for nothing is served as
 // before. A world lets time pass for its store, its services and its simulator together. The memory world's clock moves, so its reads last
-// ten minutes and its scope three hours; the durable world's clock is the database's, so its reads last four seconds and its scope ten,
-// and the world really waits them out.
+// ten minutes and its scope three hours; the durable world's clock is the database's, so its reads last six seconds and its scope
+// fourteen, and the world really waits them out.
+//
+// What the durable world does while a read lasts (a few jobs and a download, tenths of a second) and between a read's grace and the
+// scope's end has more than five seconds to spare, and nothing else in it depends on being fast: every other step waits for a time to be
+// past. A machine that stalls for longer in one of those stretches, or whose wall clock is stepped forward by as much (a virtual machine
+// under time correction: steps of up to three and a half seconds were seen where this was written), fails a subtest without the code
+// being wrong; the world says so when one fails (newLifetimeDurable).
 type lifetimeWorld struct {
 	t        *testing.T
 	repo     r.Repository
 	sim      *askCounter
+	objects  r.ObjectStore // where the services put their files; nil keeps them inline in their rows
 	p        r.Principal
 	owner    r.Owner
 	clock    func() time.Time    // the services' clock; nil is the real one
@@ -31,28 +39,55 @@ type lifetimeWorld struct {
 	scope    time.Duration       // how long, from a read's preparation, the simulator vouches for its scope once vouch is called
 	margin   time.Duration       // what the world waits beyond a time to be past it
 	hours    bool                // the world's results' time is shorter than its scope: its clock moves by hours
-	// deadline is the store's own deadline of a job, where the store has one to show: PostgreSQL's jobs.source_expires_at.
-	deadline func(jobID string) time.Time
+	rendered atomic.Int64        // the workbooks the world's services have rendered
+	// stored is a job's row as the store keeps it, where the store has one to show (PostgreSQL), read without its payload; unreadable
+	// makes a stored job one this binary cannot read, consistent with its own digest.
+	stored     func(jobID string) storedJob
+	unreadable func(jobID string)
+}
+
+// storedJob is what the durable store keeps of a job beside its payload: its state and code, when it was admitted, and its deadline
+// (jobs.source_expires_at).
+type storedJob struct {
+	State, Code       string
+	Created, Deadline time.Time
 }
 
 // lifetimeResults is Retention.Results of the worlds' services; issued documents keep the default, ten years.
 const lifetimeResults = time.Hour
 
-// askCounter is the simulator, counting how often the platform asks it whether a person's current rights still cover a read.
+// askCounter is the simulator, counting how often the platform asks it whether a person's current rights still cover a read, and how
+// often it asks it for a document.
 type askCounter struct {
 	*contractsim.Simulator
-	asked atomic.Int64
+	asked     atomic.Int64
+	documents atomic.Int64
 }
 
 func (a *askCounter) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.PreparedRead) error {
 	a.asked.Add(1)
 	return a.Simulator.AuthorizeCurrent(ctx, sc, p)
 }
+func (a *askCounter) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.IssueIntent) (r.IssueReservation, error) {
+	a.documents.Add(1)
+	return a.Simulator.PrepareDocument(ctx, sc, in)
+}
+
+// renderCounter is the workbook writer, counting the files it renders.
+type renderCounter struct {
+	xlsx.Writer
+	rendered *atomic.Int64
+}
+
+func (c renderCounter) Write(ctx context.Context, v r.Snapshot) ([]byte, error) {
+	c.rendered.Add(1)
+	return c.Writer.Write(ctx, v)
+}
 
 func (w *lifetimeWorld) svcWith(q r.Quotas, keep r.Retention) *r.Service {
 	w.t.Helper()
 	s, e := r.NewService(r.Config{Repository: w.repo, Connections: []r.Connection{{Tenant: w.p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: w.sim}},
-		CursorKey: []byte("01234567890123456789012345678901"), Writer: xlsx.Writer{}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDFWriter{}}, Issuer: &stampIssuer{}, Now: w.clock, Quotas: q, Retention: keep})
+		CursorKey: []byte("01234567890123456789012345678901"), Writer: renderCounter{rendered: &w.rendered}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDFWriter{}}, Issuer: &stampIssuer{}, Now: w.clock, Quotas: q, Retention: keep, Objects: w.objects})
 	if e != nil {
 		w.t.Fatal(e)
 	}
@@ -80,16 +115,34 @@ func newLifetimeDurable(t *testing.T) *lifetimeWorld {
 	v := newDurable(t)
 	admin := fixtureAdmin(t)
 	w := &lifetimeWorld{t: t, sim: &askCounter{Simulator: contractsim.Financial()}, p: v.p, repo: v.repo, now: time.Now, pass: time.Sleep,
-		readLife: 4 * time.Second, scope: 10 * time.Second, margin: 500 * time.Millisecond}
+		readLife: 6 * time.Second, scope: 14 * time.Second, margin: 500 * time.Millisecond}
 	w.owner = contractsim.DemoOwner(w.p, contractsim.FinanceIntegration)
 	w.sim.SetReadLifetime(w.readLife)
 	w.sim.Grant(w.owner, contractsim.DefaultGrant())
-	w.deadline = func(id string) time.Time {
-		var at time.Time
-		if e := admin.QueryRow(context.Background(), `SELECT source_expires_at FROM reporting_s01.jobs WHERE id=$1`, id).Scan(&at); e != nil {
+	started := time.Now()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("this subtest runs on the real clock, with reads of %s and a scope of %s, and took %s: a machine that stalls for seconds while a read or a scope lasts fails it without the code being wrong; the same contract on a clock the test moves is TestMemoryLifetimeContract",
+				w.readLife, w.scope, time.Since(started).Round(time.Millisecond))
+		}
+	})
+	w.stored = func(id string) storedJob {
+		var v storedJob
+		if e := admin.QueryRow(context.Background(), `SELECT state,error_code,created_at,source_expires_at FROM reporting_s01.jobs WHERE id=$1`, id).Scan(&v.State, &v.Code, &v.Created, &v.Deadline); e != nil {
 			t.Fatal(e)
 		}
-		return at
+		return v
+	}
+	// What a binary that knows more writes and this one cannot read: a payload consistent with its own digest, of a kind this one does not know.
+	w.unreadable = func(id string) {
+		for _, statement := range []string{
+			`UPDATE reporting_s01.jobs SET data=jsonb_set(data,'{Kind}','"kind-of-a-later-binary"') WHERE id=$1`,
+			`UPDATE reporting_s01.jobs SET data_sha256=encode(sha256(convert_to(data::text,'UTF8')),'hex') WHERE id=$1`,
+		} {
+			if _, e := admin.Exec(context.Background(), statement, id); e != nil {
+				t.Fatal(e)
+			}
+		}
 	}
 	return w
 }
@@ -97,9 +150,10 @@ func newLifetimeDurable(t *testing.T) *lifetimeWorld {
 // vouch makes the simulator vouch for the scope of the reads it prepares from now on.
 func (w *lifetimeWorld) vouch() { w.sim.SetScopeLifetime(w.scope) }
 
-// until lets time pass until just after at.
+// until lets time pass until just after at. It looks at the clock again after it has waited: the wall clock of a virtual machine is
+// corrected in steps, and one that steps back during the wait would otherwise leave the world before the time it waited for.
 func (w *lifetimeWorld) until(at time.Time) {
-	if d := at.Sub(w.now()) + w.margin; d > 0 {
+	for d := at.Sub(w.now()) + w.margin; d > 0; d = at.Sub(w.now()) + w.margin {
 		w.pass(d)
 	}
 }
@@ -121,10 +175,10 @@ func (w *lifetimeWorld) resultsEnd(read r.PreparedRead) time.Time {
 // deadlineIs holds the store's own deadline of a job to a time, to the microsecond the store keeps; the memory store has none to show.
 func (w *lifetimeWorld) deadlineIs(id string, at time.Time) {
 	w.t.Helper()
-	if w.deadline == nil {
+	if w.stored == nil {
 		return
 	}
-	if got := w.deadline(id); !got.Equal(at.Truncate(time.Microsecond)) {
+	if got := w.stored(id).Deadline; !got.Equal(at.Truncate(time.Microsecond)) {
 		w.t.Fatalf("the store's deadline of job %s is %s, want %s", id, got.UTC(), at.UTC())
 	}
 }
@@ -217,11 +271,20 @@ func TestMemoryLifetimeContract(t *testing.T) { runLifetimeContract(t, newLifeti
 func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld) {
 	ctx := context.Background()
 	const grace = time.Second
+	// sweep is one retention sweep, after a dry run that must have counted what the sweep then does: with results of several lifetimes
+	// in the store, too.
 	sweep := func(t *testing.T, s *r.Service) r.SweepResult {
 		t.Helper()
+		dry, e := s.Sweep(ctx, r.SweepOptions{Grace: grace, DryRun: true})
+		if e != nil {
+			t.Fatal(e)
+		}
 		res, e := s.Sweep(ctx, r.SweepOptions{Grace: grace})
 		if e != nil {
 			t.Fatal(e)
+		}
+		if dry.Artifacts != res.Artifacts || dry.Snapshots != res.Snapshots || dry.Jobs != res.Jobs {
+			t.Fatalf("the dry run counted %+v and the sweep did %+v", dry, res)
 		}
 		return res
 	}
@@ -231,9 +294,12 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		snap := w.freeze(s, "snap")
 		ex := w.export(s, snap.SnapshotID, "export")
 		is := w.issue(s, snap.SnapshotID, "issue")
+		if e := w.download(s, ex.ArtifactID); e != nil {
+			t.Fatal("the file cannot be downloaded while its read lasts:", e)
+		}
+		// So far the read had to last; what follows reads the store. Nothing is kept beyond the read, and nothing says otherwise: no job
+		// freezes a time, no file carries a basis of its own, and the store's deadline of every job is the read's expiry.
 		read := w.job(snap.ID).Prepared
-		// Nothing is kept beyond the read, and nothing says otherwise: no job freezes a time, no file carries a basis of its own, and the
-		// store's deadline of every job is the read's expiry.
 		for _, id := range []string{snap.ID, ex.ID, is.ID} {
 			if j := w.job(id); !j.KeepUntil.IsZero() || !j.Prepared.ScopeExpiresAt.IsZero() || !j.ResultEnd().Equal(j.Prepared.ExpiresAt) {
 				t.Fatalf("job %s keeps something: %+v", j.Kind, j)
@@ -244,9 +310,6 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 			if a := w.artifact(v.ArtifactID); a.Query != nil || a.Prepared != nil || !a.ExpiresAt.Equal(read.ExpiresAt) {
 				t.Fatalf("the file of the %s job: %+v", v.Kind, a)
 			}
-		}
-		if e := w.download(s, ex.ArtifactID); e != nil {
-			t.Fatal("the file cannot be downloaded while its read lasts:", e)
 		}
 		w.until(read.ExpiresAt)
 		// The read is over and so is everything made from it, exactly as before ADR 0026.
@@ -288,6 +351,11 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 			t.Fatalf("the kept file: %+v", a)
 		}
 		w.deadlineIs(ex.ID, want)
+		// A cancel of the job that has succeeded changes nothing: the file is kept, and so is the store's deadline of its job.
+		if v, e := s.Cancel(ctx, w.p, ex.ID); e != nil || v.State != "succeeded" {
+			t.Fatal(v, e)
+		}
+		w.deadlineIs(ex.ID, want)
 		// A person's freeze is working state: its job keeps nothing beyond the read.
 		if sj := w.job(snap.ID); !sj.KeepUntil.IsZero() {
 			t.Fatalf("the working snapshot keeps until %s", sj.KeepUntil)
@@ -312,6 +380,7 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 			t.Fatal("the export's view after its read:", v, e)
 		}
 		w.refusedByTheSource("the kept file", func() error { return w.download(s, ex.ArtifactID) })
+		w.refusedByTheSource("the poll of the kept file's job", func() error { _, e := s.Job(ctx, w.p, ex.ID); return e })
 		// The snapshot goes when its own time and the grace are past, and its job's payload with it. The file and its job stay, and the
 		// file is served without its snapshot, by the source's answer still.
 		w.until(read.ExpiresAt.Add(grace))
@@ -349,7 +418,14 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		w.vouch()
 		s := w.svc()
 		snap := w.freeze(s, "snap")
-		is := w.issue(s, snap.SnapshotID, "issue")
+		queued, e := s.SubmitIssue(ctx, w.p, issueInput(snap.SnapshotID, 0), "issue")
+		if e != nil {
+			t.Fatal(e)
+		}
+		// An issue needs the read itself: until the job has published, its deadline in the store is the read's expiry, although its file
+		// will be kept until the scope ends.
+		w.deadlineIs(queued.ID, w.job(snap.ID).Prepared.ExpiresAt)
+		is := w.done(s, queued, nil)
 		job, a := w.job(is.ID), w.artifact(is.ArtifactID)
 		read := job.Prepared
 		// Ten years of the class and the scope of this world: the scope is the earlier, and nothing is kept beyond it.
@@ -357,7 +433,7 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		if scope.IsZero() || !job.KeepUntil.Equal(scope) || !a.ExpiresAt.Equal(scope) || a.Issue != is.ID || a.Query == nil || a.Prepared == nil {
 			t.Fatalf("the issued file is kept until %s (scope %s): %+v", job.KeepUntil, scope, a)
 		}
-		// The job needed the read to publish; having succeeded, its deadline in the store is the time its file is kept until.
+		// Having succeeded, the job's deadline in the store is the time its file is kept until.
 		w.deadlineIs(is.ID, scope)
 		w.until(read.ExpiresAt)
 		// The formal file is there after its read, under its record.
@@ -405,7 +481,13 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		w := newWorld(t)
 		w.vouch()
 		s := w.svc()
-		run := w.keptFreeze(s, "run")
+		queued, e := s.SubmitKeptSnapshot(ctx, w.p, contractsim.FinancialQuery(), "run")
+		if e != nil {
+			t.Fatal(e)
+		}
+		// A freeze needs the read itself, a kept one too: until the job has published, its deadline in the store is the read's expiry.
+		w.deadlineIs(queued.ID, w.job(queued.ID).Prepared.ExpiresAt)
+		run := w.done(s, queued, nil)
 		job := w.job(run.ID)
 		read := job.Prepared
 		want := w.resultsEnd(read)
@@ -413,6 +495,7 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		if e != nil || !job.KeepUntil.Equal(want) || !snap.ExpiresAt.Equal(want) {
 			t.Fatalf("the kept snapshot expires at %s, its job keeps until %s, want %s (%v)", snap.ExpiresAt, job.KeepUntil, want, e)
 		}
+		// Having succeeded, the job's deadline in the store is the time its snapshot is kept until.
 		w.deadlineIs(run.ID, want)
 		w.until(read.ExpiresAt)
 		// Its rows are served after the read, by the source's answer, and say until when.
@@ -465,11 +548,14 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		}
 		// A queued export may publish for as long as its file would be served: that is its deadline in the store.
 		w.deadlineIs(late.ID, w.resultsEnd(read))
-		// Cancelled, it keeps nothing, and its deadline comes back to the read's expiry.
-		if v, e := s.Cancel(ctx, w.p, dropped.ID); e != nil || v.State != "cancelled" {
-			t.Fatal(v, e)
+		w.deadlineIs(dropped.ID, w.resultsEnd(read))
+		// Cancelled, it keeps nothing, and its deadline comes back to the read's expiry; cancelled again, nothing changes.
+		for range 2 {
+			if v, e := s.Cancel(ctx, w.p, dropped.ID); e != nil || v.State != "cancelled" {
+				t.Fatal(v, e)
+			}
+			w.deadlineIs(dropped.ID, read.ExpiresAt)
 		}
-		w.deadlineIs(dropped.ID, read.ExpiresAt)
 		// The worker reaches the other after the read: the scope goes on, the working snapshot has ended. The job is denied, as an export
 		// whose read had expired always was, and is not an integrity failure of the store. Failed, it keeps nothing either.
 		w.until(read.ExpiresAt)
@@ -496,11 +582,16 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 				t.Fatalf("job %s keeps its payload", id)
 			}
 		}
+		// A cancel repeated after the payload is gone finds no read to name, and leaves the store's deadline what it was.
+		if v, e := s.Cancel(ctx, w.p, dropped.ID); e != nil || v.State != "cancelled" {
+			t.Fatal(v, e)
+		}
+		w.deadlineIs(dropped.ID, read.ExpiresAt)
 	})
 	t.Run("after_the_scope_the_source_is_not_asked", func(t *testing.T) {
 		w := newWorld(t)
 		if !w.hours {
-			return // the service decides this before a store is asked; the durable world would only wait its scope out once more
+			t.Skip("the service decides this before a store is asked; the durable world would only wait its scope out once more")
 		}
 		w.vouch()
 		s := w.svc()
@@ -547,19 +638,33 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 	t.Run("an_export_whose_file_would_be_over_is_refused_at_admission", func(t *testing.T) {
 		w := newWorld(t)
 		if !w.hours {
-			return // the durable world's scope is shorter than the shortest results' time, so no file of it can be over before its snapshot
+			t.Skip("the durable world's scope is shorter than the shortest results' time, so no file of it can be over before its snapshot")
 		}
 		w.vouch()
 		long := w.svc()
 		run := w.keptFreeze(long, "run")
 		read := w.job(run.ID).Prepared
-		// The snapshot is kept for an hour after its read. A server whose results' time is a minute is asked for an export of it five
-		// minutes after the read: the file would have been over for four minutes. Nothing is admitted.
-		w.until(read.ExpiresAt.Add(4 * time.Minute))
+		// The snapshot is kept for an hour after its read. A server whose results' time is a minute admits an export of it while the read
+		// lasts: the file would live a minute after the read.
 		short := w.svcWith(r.Quotas{}, r.Retention{Results: time.Minute})
-		_, e := short.SubmitExport(ctx, w.p, run.SnapshotID, "late")
+		waiting, e := short.SubmitExport(ctx, w.p, run.SnapshotID, "waiting")
+		if e != nil || !w.job(waiting.ID).KeepUntil.Equal(read.ExpiresAt.Add(time.Minute)) {
+			t.Fatal(waiting, e)
+		}
+		// No worker reaches it until five minutes after the read. Its snapshot is still served and its scope goes on, and the file's own
+		// time is over: the job is denied before anything is rendered.
+		w.until(read.ExpiresAt.Add(4 * time.Minute))
+		rendered := w.rendered.Load()
+		if ran, e := short.RunOne(ctx); !ran || !errors.Is(e, r.ErrDenied) {
+			t.Fatal(ran, e)
+		}
+		if j := w.job(waiting.ID); j.State != "failed" || j.ErrorCode != r.ErrDenied.Error() || w.rendered.Load() != rendered {
+			t.Fatalf("the export that waited too long: %s %s, %d files rendered", j.State, j.ErrorCode, w.rendered.Load()-rendered)
+		}
+		// Asked now, the same server admits nothing: the file would have been over for four minutes.
+		_, e = short.SubmitExport(ctx, w.p, run.SnapshotID, "late")
 		mustError(t, e, r.ErrDenied)
-		if jobs, e := short.Jobs(ctx, w.p, r.JobListing{Limit: 10}); e != nil || len(jobs) != 1 {
+		if jobs, e := short.Jobs(ctx, w.p, r.JobListing{Limit: 10}); e != nil || len(jobs) != 2 {
 			t.Fatal("an export was admitted:", len(jobs), e)
 		}
 		// Under the results' time the snapshot was kept with, the same export is made.
@@ -584,9 +689,12 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 		mustError(t, again(func(j *r.Job) { j.KeepUntil = j.Prepared.ScopeExpiresAt.Add(time.Nanosecond) }), r.ErrInvalid)
 		mustError(t, again(func(j *r.Job) { j.KeepUntil = j.Prepared.ExpiresAt }), r.ErrInvalid)
 		mustError(t, again(func(j *r.Job) { j.Prepared.ScopeExpiresAt = time.Time{} }), r.ErrInvalid) // what it keeps is then beyond the read, its only scope
-		// A scope before its read is refused for itself, whatever the job keeps.
+		// A scope before its read is refused for itself, whatever the job keeps, and so is one in a zone no encoding can write.
 		mustError(t, again(func(j *r.Job) {
 			j.KeepUntil, j.Prepared.ScopeExpiresAt = time.Time{}, j.Prepared.ExpiresAt.Add(-time.Second)
+		}), r.ErrInvalid)
+		mustError(t, again(func(j *r.Job) {
+			j.Prepared.ScopeExpiresAt = j.Prepared.ScopeExpiresAt.In(time.FixedZone("a day away", 24*3600))
 		}), r.ErrInvalid)
 		// An export that keeps nothing under a scope is admitted: it is what a job admitted before this field existed is. It is taken out
 		// of the queue again; then the unchanged job is admitted.
@@ -628,6 +736,366 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 			t.Fatal("what the job froze is not published:", e)
 		}
 	})
+	t.Run("a_store_fences_a_publication_by_the_jobs_own_deadline", func(t *testing.T) {
+		w := newWorld(t)
+		if !w.hours {
+			t.Skip("the durable store's fence is its column against its clock, as before; what the column holds while a job can publish is checked where each kind of job is made")
+		}
+		w.vouch()
+		s := w.svc()
+		// claimedNear claims the oldest queued job ten seconds before a time, with a lease that outlasts it, and lets twenty seconds pass:
+		// the claim still holds the job, and the time is past.
+		claimedNear := func(at time.Time) r.Claim {
+			t.Helper()
+			w.pass(at.Add(-10 * time.Second).Sub(w.now()))
+			c, e := w.repo.Claim(ctx, time.Minute)
+			if e != nil || c == nil {
+				t.Fatal(c, e)
+			}
+			w.pass(20 * time.Second)
+			return *c
+		}
+		// A kept freeze needs the read itself: its snapshot would be kept for the hour, and its publication is refused once the read is
+		// over. The publication is one the store would take (ValidatePublication): only the time refuses it.
+		kept, e := s.SubmitKeptSnapshot(ctx, w.p, contractsim.FinancialQuery(), "kept")
+		if e != nil {
+			t.Fatal(e)
+		}
+		read := w.job(kept.ID).Prepared
+		c := claimedNear(read.ExpiresAt)
+		if c.Job.ID != kept.ID || !c.Job.KeepUntil.Equal(read.ExpiresAt.Add(lifetimeResults)) {
+			t.Fatalf("%+v", c.Job)
+		}
+		pub := publication(c)
+		pub.Snapshot.ExpiresAt = c.Job.KeepUntil
+		if e := r.ValidatePublication(c.Job, pub); e != nil {
+			t.Fatal(e)
+		}
+		mustError(t, w.repo.Publish(ctx, c, pub), r.ErrDenied)
+		if e := w.repo.Fail(ctx, c, r.ErrDenied.Error()); e != nil {
+			t.Fatal(e)
+		}
+		// An export needs its snapshot and the scope: it may publish after the read, until the time its file is kept until, which is
+		// before the scope's end here; then its publication is refused too.
+		run := w.keptFreeze(s, "run")
+		queued, e := s.SubmitExport(ctx, w.p, run.SnapshotID, "export")
+		if e != nil {
+			t.Fatal(e)
+		}
+		until := w.job(queued.ID).KeepUntil
+		if scope := w.job(queued.ID).Prepared.ScopeExpiresAt; until.IsZero() || !until.Before(scope.Add(-time.Hour)) {
+			t.Fatalf("the export keeps until %s under a scope until %s", until, scope)
+		}
+		c = claimedNear(until)
+		if c.Job.ID != queued.ID {
+			t.Fatalf("%+v", c.Job)
+		}
+		q, p := c.Job.Query, c.Job.Prepared
+		file := r.Publication{Artifact: &r.Artifact{ID: r.NewID(), Owner: c.Job.Owner, SnapshotID: c.Job.SnapshotID, ExpiresAt: until, SHA256: sha([]byte("x")), Content: []byte("x"), Query: &q, Prepared: &p}}
+		if e := r.ValidatePublication(c.Job, file); e != nil {
+			t.Fatal(e)
+		}
+		mustError(t, w.repo.Publish(ctx, c, file), r.ErrDenied)
+	})
+	t.Run("an_export_the_store_cannot_read_keeps_nothing", func(t *testing.T) {
+		w := newWorld(t)
+		if w.unreadable == nil {
+			t.Skip("the memory store knows a failed job's read (Job.ReduceAfter); only the durable store has to do without the payload")
+		}
+		s := w.svc()
+		queued := func(j r.JobView, e error) string {
+			t.Helper()
+			if e != nil || j.State != "queued" {
+				t.Fatal(j, e)
+			}
+			return j.ID
+		}
+		// Two snapshots: one of a read without a scope, one of a read whose scope lasts two hours.
+		plain := w.freeze(s, "plain")
+		plainRead := w.job(plain.ID).Prepared
+		w.sim.SetScopeLifetime(2 * time.Hour)
+		snap := w.freeze(s, "snap")
+		read := w.job(snap.ID).Prepared
+		// Three jobs that no worker has reached. Without a scope an export froze no time: its deadline is its read's expiry. With the
+		// scope an export froze its file's time, an hour after its read: that is its deadline while it can publish, far beyond the longest
+		// a read lasts. A kept freeze needs the read itself: its deadline is its read's expiry.
+		a := queued(s.SubmitExport(ctx, w.p, plain.SnapshotID, "a"))
+		b := queued(s.SubmitExport(ctx, w.p, snap.SnapshotID, "b"))
+		c := queued(s.SubmitKeptSnapshot(ctx, w.p, contractsim.FinancialQuery(), "c"))
+		keptRead := w.job(c).Prepared
+		if j := w.job(b); !j.KeepUntil.Equal(read.ExpiresAt.Add(lifetimeResults)) {
+			t.Fatalf("the export keeps until %s, want an hour after %s", j.KeepUntil, read.ExpiresAt)
+		}
+		w.deadlineIs(a, plainRead.ExpiresAt)
+		w.deadlineIs(b, read.ExpiresAt.Add(lifetimeResults))
+		w.deadlineIs(c, keptRead.ExpiresAt)
+		for _, id := range []string{a, b, c} {
+			w.unreadable(id)
+		}
+		// The worker's claim fails all three, and finds nothing to run.
+		if ran, e := s.RunOne(ctx); ran || e != nil {
+			t.Fatal(ran, e)
+		}
+		for _, id := range []string{a, b, c} {
+			if v := w.stored(id); v.State != "failed" || v.Code != r.ErrIntegrity.Error() {
+				t.Fatalf("job %s: %+v", id, v)
+			}
+		}
+		// Nothing of a payload that cannot be read is trusted, so the store cannot bring the export's deadline back to its read's expiry
+		// as Fail does. It brings it back to the latest the read can have expired: the longest a read lasts, after the job's admission.
+		// A job whose deadline was its read's expiry already keeps it, to the microsecond.
+		if v := w.stored(b); !v.Deadline.Equal(v.Created.Add(r.MaxReadLifetime)) {
+			t.Fatalf("the deadline of the export that cannot be read is %s, admitted %s", v.Deadline.UTC(), v.Created.UTC())
+		}
+		w.deadlineIs(a, plainRead.ExpiresAt)
+		w.deadlineIs(c, keptRead.ExpiresAt)
+	})
+}
+
+// alteredStore is a store that serves a snapshot or an artifact other than the one it holds: what a store that does not agree with itself
+// is to the service. What it holds is untouched; the change is made to what a read of it returns.
+type alteredStore struct {
+	r.Repository
+	snapshot func(*r.Snapshot)
+	artifact func(*r.Artifact)
+}
+
+func (s *alteredStore) Snapshot(ctx context.Context, i r.Identity, id string) (r.Snapshot, error) {
+	v, e := s.Repository.Snapshot(ctx, i, id)
+	if e == nil && s.snapshot != nil {
+		s.snapshot(&v)
+	}
+	return v, e
+}
+func (s *alteredStore) Artifact(ctx context.Context, i r.Identity, id string) (r.Artifact, error) {
+	v, e := s.Repository.Artifact(ctx, i, id)
+	if e == nil && s.artifact != nil {
+		s.artifact(&v)
+	}
+	return v, e
+}
+
+// newAlteredMemory is the memory world over a store whose reads a test can alter.
+func newAlteredMemory(t *testing.T) (*lifetimeWorld, *alteredStore) {
+	t.Helper()
+	w := newLifetimeMemory(t)
+	store := &alteredStore{Repository: w.repo}
+	w.repo = store
+	return w, store
+}
+
+// A file kept beyond its read is authorized, once its snapshot is gone, by the query and the read its job froze and by nothing else
+// (ADR 0026 decision 5), so it is made only from the snapshot of that read. A store whose row of the snapshot says another read does not
+// agree with itself: the export and the issue fail, nothing is rendered, and the product is not asked for a document.
+func TestAKeptFileIsMadeOnlyFromTheSnapshotOfTheReadItsJobFroze(t *testing.T) {
+	ctx := context.Background()
+	w, store := newAlteredMemory(t)
+	w.vouch()
+	s := w.svc()
+	first, second := w.freeze(s, "first"), w.freeze(s, "second")
+	export, e := s.SubmitExport(ctx, w.p, first.SnapshotID, "export")
+	if e != nil {
+		t.Fatal(e)
+	}
+	issue, e := s.SubmitIssue(ctx, w.p, issueInput(first.SnapshotID, 0), "issue")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, id := range []string{export.ID, issue.ID} {
+		if j := w.job(id); j.KeepUntil.IsZero() || j.Prepared.Ref != w.job(first.ID).Prepared.Ref {
+			t.Fatalf("the job does not keep its file by the first read: %+v", j)
+		}
+	}
+	// From here on the store serves the second freeze, its rows and its read, under the first one's id. The second snapshot is whole and
+	// its owner's own, so it passes every check a snapshot passes by itself.
+	other, e := store.Repository.Snapshot(ctx, w.p.Identity, second.SnapshotID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	store.snapshot = func(v *r.Snapshot) {
+		if v.ID == first.SnapshotID {
+			*v = other
+			v.ID = first.SnapshotID
+		}
+	}
+	rendered := w.rendered.Load()
+	for _, id := range []string{export.ID, issue.ID} {
+		if ran, e := s.RunOne(ctx); !ran || !errors.Is(e, r.ErrIntegrity) {
+			t.Fatal(ran, e)
+		}
+		if j := w.job(id); j.State != "failed" || j.ErrorCode != r.ErrIntegrity.Error() || j.ArtifactID != "" {
+			t.Fatalf("the %s job of a snapshot that is another read's: %+v", j.Kind, j)
+		}
+	}
+	if n := w.rendered.Load() - rendered; n != 0 {
+		t.Fatalf("%d files were rendered from a snapshot that is another read's", n)
+	}
+	if _, asked := w.sim.IssueRecord(issue.ID); asked {
+		t.Fatal("the product was asked for a document of a snapshot that is another read's")
+	}
+}
+
+// A kept file is served by its own basis, and only when its row agrees with itself (ADR 0026 decision 5): both halves of the basis, the
+// owner's, a time of its own that is after the read's and within the read's scope, and a read that is the query's. A row that says
+// otherwise is refused whole, before the source is asked. A kept file whose basis is gone altogether falls under the rule of the files
+// that have none, never later than its snapshot, and is refused by it.
+func TestAKeptFileWhoseRowDoesNotAgreeWithItsBasisIsNotServed(t *testing.T) {
+	w, store := newAlteredMemory(t)
+	w.vouch()
+	s := w.svc()
+	snap := w.freeze(s, "snap")
+	ex := w.export(s, snap.SnapshotID, "export")
+	if e := w.download(s, ex.ArtifactID); e != nil {
+		t.Fatal(e)
+	}
+	for name, change := range map[string]func(*r.Artifact){
+		"a query without a read":         func(a *r.Artifact) { a.Prepared = nil },
+		"a read without a query":         func(a *r.Artifact) { a.Query = nil },
+		"the basis of another owner":     func(a *r.Artifact) { p := *a.Prepared; p.Context.Owner.Subject += "-another"; a.Prepared = &p },
+		"a time that is the read's own":  func(a *r.Artifact) { a.ExpiresAt = a.Prepared.ExpiresAt },
+		"a time beyond the read's scope": func(a *r.Artifact) { a.ExpiresAt = a.Prepared.ScopeExpiresAt.Add(time.Nanosecond) },
+		"a read that is not the query's": func(a *r.Artifact) { q := *a.Query; q.AsOf = "2001-01-01"; a.Query = &q },
+		"a scope that ends before its read": func(a *r.Artifact) {
+			p := *a.Prepared
+			p.ScopeExpiresAt = p.ExpiresAt.Add(-time.Second)
+			a.Prepared = &p
+		},
+	} {
+		store.artifact = change
+		asked := w.sim.asked.Load()
+		if e := w.download(s, ex.ArtifactID); !errors.Is(e, r.ErrIntegrity) {
+			t.Errorf("%s: the download answered %v", name, e)
+		}
+		if n := w.sim.asked.Load() - asked; n != 0 {
+			t.Errorf("%s: the source was asked %d times", name, n)
+		}
+	}
+	store.artifact = func(a *r.Artifact) { a.Query, a.Prepared = nil, nil }
+	if e := w.download(s, ex.ArtifactID); !errors.Is(e, r.ErrIntegrity) {
+		t.Error("a kept file without its basis, later than its snapshot: the download answered", e)
+	}
+	store.artifact = nil
+	if e := w.download(s, ex.ArtifactID); e != nil {
+		t.Fatal("the file as the store holds it:", e)
+	}
+}
+
+// Without a scope a file takes its snapshot's expiry, as it always did, and the store holds it to the job's read: a snapshot whose expiry
+// is not its read's (a row changed outside the platform) is not exported from. The file's expiry is the job's own only where the job
+// keeps the file beyond the read (ADR 0026), so this is the refusal it was before.
+func TestAFileOfASnapshotWhoseExpiryIsNotItsReadsIsRefusedAsBefore(t *testing.T) {
+	ctx := context.Background()
+	w, store := newAlteredMemory(t)
+	s := w.svc()
+	snap := w.freeze(s, "snap")
+	store.snapshot = func(v *r.Snapshot) { v.ExpiresAt = v.ExpiresAt.Add(-time.Minute) }
+	export, e := s.SubmitExport(ctx, w.p, snap.SnapshotID, "export")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if ran, e := s.RunOne(ctx); !ran || !errors.Is(e, r.ErrIntegrity) {
+		t.Fatal(ran, e)
+	}
+	if j := w.job(export.ID); j.State != "failed" || j.ErrorCode != r.ErrIntegrity.Error() || j.ArtifactID != "" || !j.KeepUntil.IsZero() {
+		t.Fatalf("%+v", j)
+	}
+}
+
+// A snapshot job and an issue job need the read itself, also where the source goes on vouching for the read's scope (ADR 0026 decision
+// 6). Once the read is over, a job of either kind that no worker has reached is denied, and so is its poll; no page is read and the
+// product is not asked for a document, although the snapshot the issue is for is still kept and its scope still answers.
+func TestAFreezeAndAnIssueNeedTheReadItselfAlsoUnderAScope(t *testing.T) {
+	ctx := context.Background()
+	w := newLifetimeMemory(t)
+	w.vouch()
+	s := w.svc()
+	run := w.keptFreeze(s, "run")
+	queued := func(j r.JobView, e error) string {
+		t.Helper()
+		if e != nil || j.State != "queued" {
+			t.Fatal(j, e)
+		}
+		return j.ID
+	}
+	jobs := []string{
+		queued(s.SubmitIssue(ctx, w.p, issueInput(run.SnapshotID, 0), "issue")),
+		queued(s.SubmitSnapshot(ctx, w.p, contractsim.FinancialQuery(), "freeze")),
+		queued(s.SubmitKeptSnapshot(ctx, w.p, contractsim.FinancialQuery(), "kept")),
+	}
+	last := w.job(jobs[2]).Prepared
+	w.until(last.ExpiresAt)
+	// The snapshot is kept and its scope answers: its rows are served. What the three jobs lack is the read.
+	if _, e := s.Rows(ctx, w.p, run.SnapshotID, 10, ""); e != nil {
+		t.Fatal("the kept snapshot's rows after its read:", e)
+	}
+	pages, documents := w.sim.ReadCalls(), w.sim.documents.Load()
+	for _, id := range jobs {
+		if _, e := s.Job(ctx, w.p, id); !errors.Is(e, r.ErrDenied) {
+			t.Fatalf("the poll of a queued %s job whose read is over: %v", w.job(id).Kind, e)
+		}
+	}
+	for _, id := range jobs {
+		if ran, e := s.RunOne(ctx); !ran || !errors.Is(e, r.ErrDenied) {
+			t.Fatal(ran, e)
+		}
+		if j := w.job(id); j.State != "failed" || j.ErrorCode != r.ErrDenied.Error() || j.ArtifactID != "" {
+			t.Fatalf("%+v", j)
+		}
+	}
+	if n := w.sim.ReadCalls() - pages; n != 0 {
+		t.Fatalf("%d pages were read after the read", n)
+	}
+	if n := w.sim.documents.Load() - documents; n != 0 {
+		t.Fatalf("the product was asked for %d documents after the read", n)
+	}
+}
+
+// A kept file's object outlives the sweep that takes its snapshot, is read back for every download, and goes with its row at the file's
+// own time (S04-E, ADR 0026): with an object store, too, the file stands without its snapshot.
+func TestAKeptFilesObjectOutlivesItsSnapshotAndGoesWithItsRow(t *testing.T) {
+	ctx := context.Background()
+	const grace = time.Second
+	w := newLifetimeMemory(t)
+	bucket := objects.NewMemory(w.clock)
+	w.objects = bucket
+	w.repo = memory.New(w.clock).UseObjects(bucket)
+	w.vouch()
+	s := w.svc()
+	keys := func() int {
+		t.Helper()
+		page, next, e := bucket.List(ctx, r.ObjectPrefix, "", 1000)
+		if e != nil || next != "" {
+			t.Fatal(next, e)
+		}
+		return len(page)
+	}
+	sweep := func() r.SweepResult {
+		t.Helper()
+		res, e := s.Sweep(ctx, r.SweepOptions{Grace: grace})
+		if e != nil {
+			t.Fatal(e)
+		}
+		return res
+	}
+	snap := w.freeze(s, "snap")
+	ex := w.export(s, snap.SnapshotID, "export")
+	job := w.job(ex.ID)
+	if a := w.artifact(ex.ArtifactID); a.Object != r.ObjectKey(a.ID) || len(a.Content) != 0 || a.Query == nil || a.Prepared == nil || !a.ExpiresAt.Equal(job.KeepUntil) || keys() != 1 {
+		t.Fatalf("the kept file's row: %+v, %d objects", a, keys())
+	}
+	// The sweep after the read takes the working snapshot and neither the file's row nor its object; the file is read back from the
+	// object, by the source's answer.
+	w.until(job.Prepared.ExpiresAt.Add(grace))
+	if res := sweep(); res.Snapshots != 1 || res.Artifacts != 0 || res.Objects != 0 || keys() != 1 {
+		t.Fatalf("the sweep after the read: %+v, %d objects", res, keys())
+	}
+	w.refusedByTheSource("the kept file in the object store", func() error { return w.download(s, ex.ArtifactID) })
+	// At the file's own time the sweep takes the row and then the object.
+	w.until(job.KeepUntil.Add(grace))
+	if res := sweep(); res.Artifacts != 1 || res.Objects != 1 || res.ObjectsLeft != 0 || keys() != 0 {
+		t.Fatalf("the sweep after the file's time: %+v, %d objects", res, keys())
+	}
+	mustError(t, w.download(s, ex.ArtifactID), r.ErrNotFound)
 }
 
 // scopeForger is the simulator declaring a scope it makes up: what an adapter that answers with a malformed scope is to the service.
@@ -645,7 +1113,8 @@ func (f scopeForger) PrepareRead(ctx context.Context, sc r.SourceContext, q r.Qu
 }
 
 // A scope that is not well formed is an answer the service does not pass on (ADR 0026 decision 2): before the read's own expiry, beyond the
-// years a product's time may name, or in a year that cannot be encoded in the time's own zone. Nothing is admitted and nothing is read.
+// years a product's time may name, or a time that cannot be encoded as it is (a year after 9999 in its own zone, a zone a day from UTC).
+// Nothing is admitted and nothing is read.
 func TestAScopeThatIsNotWellFormedIsAnIntegrityFailure(t *testing.T) {
 	ctx := context.Background()
 	east := time.FixedZone("east", 8*3600)
@@ -653,6 +1122,7 @@ func TestAScopeThatIsNotWellFormedIsAnIntegrityFailure(t *testing.T) {
 		"a scope that ends before its read":                    func(read time.Time) time.Time { return read.Add(-time.Second) },
 		"a scope beyond the years a product may name":          func(time.Time) time.Time { return time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) },
 		"a scope whose year cannot be encoded in its own zone": func(time.Time) time.Time { return time.Date(9999, 12, 31, 20, 0, 0, 0, time.UTC).In(east) },
+		"a scope in a zone no encoding can write":              func(read time.Time) time.Time { return read.Add(time.Hour).In(time.FixedZone("a day away", 24*3600)) },
 	} {
 		clock := &retentionClock{t: time.Date(2026, 11, 11, 7, 30, 0, 0, time.UTC)}
 		sim := contractsim.Financial()

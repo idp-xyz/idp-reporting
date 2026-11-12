@@ -315,13 +315,23 @@ func keptUntil(j r.Job) *time.Time {
 }
 
 // readEnd is the read's expiry of a job that froze a later time for its result, or nil: what Fail and Cancel bring source_expires_at back
-// to, because a job that ends without a result keeps nothing. For a job that froze none the column is the read's expiry already.
+// to, because a job that ends without a result keeps nothing. For a job that froze none the column is the read's expiry already, and a
+// job whose payload was reduced (S04-B) has no read left to name: its column stays what it was when the job ended.
 func readEnd(j r.Job) *time.Time {
-	if j.KeepUntil.IsZero() {
+	if j.KeepUntil.IsZero() || j.Prepared.ExpiresAt.IsZero() {
 		return nil
 	}
 	return &j.Prepared.ExpiresAt
 }
+
+// unreadableJobSQL fails, at its claim, a job whose payload this binary cannot read ($1 its code, $2 its id). Nothing of the payload is
+// trusted, so the read's expiry cannot be taken from it as Fail takes it. An export that froze a later time for its file was admitted
+// with that time as its deadline, and would hold its frozen query until then; its deadline is brought back to the latest its read can
+// have expired instead: r.MaxReadLifetime ($3, in microseconds) after the job was admitted, never later than it was. Whether the job
+// froze such a time is a key of the payload: the key's presence is all that is read, and a job without it keeps its column as it is.
+const unreadableJobSQL = `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1,
+source_expires_at=CASE WHEN kind='export' AND jsonb_typeof(data)='object' AND data ? 'KeepUntil' THEN LEAST(source_expires_at, created_at+$3::bigint*interval '1 microsecond') ELSE source_expires_at END
+WHERE id=$2`
 
 // Claim claims the oldest job that is queued, or running with a lease that has run out, by the database's clock. A job whose stored
 // payload cannot be decoded (corrupt, or written by a binary this one cannot read) is failed in the transaction of its claim, terminally
@@ -367,7 +377,7 @@ func (s *Store) claimNext(ctx context.Context, lease time.Duration) (*r.Claim, b
 	if !errors.Is(e, r.ErrIntegrity) {
 		return nil, false, e
 	}
-	if _, e = tx.Exec(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1 WHERE id=$2`, r.UnreadableJobCode(kind, prior), id); e != nil {
+	if _, e = tx.Exec(ctx, unreadableJobSQL, r.UnreadableJobCode(kind, prior), id, r.MaxReadLifetime.Microseconds()); e != nil {
 		return nil, false, e
 	}
 	if e = tx.Commit(ctx); e != nil {
