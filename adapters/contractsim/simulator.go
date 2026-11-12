@@ -44,6 +44,9 @@ type Simulator struct {
 	unavailable bool
 	reads       int
 	revision    int
+	// The lifetimes of a read (ADR 0026): readLife is how long its pages are served (zero: DefaultReadLifetime), scopeLife how long, from
+	// its preparation, the simulator goes on answering AuthorizeCurrent for it (zero, or not longer than the read: it declares no scope).
+	readLife, scopeLife time.Duration
 	// The product-authority capability (authority.go): the number prefix, the last number given
 	// out and the record of every job per source, the approval switch and the clock.
 	prefix       string
@@ -84,6 +87,30 @@ func (s *Simulator) ReplaceRecords(v []Record) {
 	s.revision++
 }
 func (s *Simulator) ReadCalls() int { s.mu.Lock(); defer s.mu.Unlock(); return s.reads }
+
+// DefaultReadLifetime is how long the simulators serve the pages of a read they prepared.
+const DefaultReadLifetime = 10 * time.Minute
+
+// MaxScopes bounds the scopes the simulator remembers after their reads' pages are gone: beyond it PrepareRead answers ErrBudget, as it
+// does for the reads it holds.
+const MaxScopes = 100000
+
+// SetReadLifetime sets how long the pages of the reads prepared from now on are served (zero: DefaultReadLifetime). A Go-only fixture
+// control, like the others: a test that must outlive a read by the real clock makes it short.
+func (s *Simulator) SetReadLifetime(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readLife = d
+}
+
+// SetScopeLifetime makes the simulator vouch for the scope of the reads prepared from now on (ADR 0026 decision 2): for d from a read's
+// preparation it goes on answering AuthorizeCurrent for it, also after the read's pages are gone, and the read says so
+// (ScopeExpiresAt). Zero, or a time not longer than the read's own, declares no scope: the simulator as it was.
+func (s *Simulator) SetScopeLifetime(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scopeLife = d
+}
 func (s *Simulator) catalog(sc r.SourceContext) (Grant, error) {
 	if s.unavailable {
 		return Grant{}, r.ErrUnavailable
@@ -132,31 +159,57 @@ func (s *Simulator) PrepareRead(ctx context.Context, sc r.SourceContext, q r.Que
 		return r.PreparedRead{}, r.ErrDenied
 	}
 	now := s.now()
+	// A read is forgotten when its scope ends (its own expiry, when it declared none). One whose pages are over and whose scope goes on
+	// keeps what the scope needs, the grant it was frozen on, and lets go of the data version (ADR 0026 decision 2).
+	live := 0
 	for id, v := range s.frozen {
-		if !now.Before(v.prepared.ExpiresAt) {
+		switch {
+		case !now.Before(v.prepared.ScopeEnd()):
 			delete(s.frozen, id)
+		case now.Before(v.prepared.ExpiresAt):
+			live++
+		case v.records != nil:
+			v.records = nil
+			s.frozen[id] = v
 		}
 	}
-	if len(s.frozen) >= 10000 {
+	if live >= 10000 || len(s.frozen) >= MaxScopes {
 		return r.PreparedRead{}, r.ErrBudget
 	}
-	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: copyValue(q.CurrencyPolicy), Watermark: "fixture-v" + strconv.Itoa(s.revision), ExpiresAt: now.Add(10 * time.Minute)}
+	readLife := s.readLife
+	if readLife <= 0 {
+		readLife = DefaultReadLifetime
+	}
+	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: copyValue(q.CurrencyPolicy), Watermark: "fixture-v" + strconv.Itoa(s.revision), ExpiresAt: now.Add(readLife)}
+	if s.scopeLife > readLife {
+		p.ScopeExpiresAt = now.Add(s.scopeLife)
+	}
 	// Immutable version pointer; admission does not enumerate or query rows.
 	s.frozen[p.Ref] = frozen{prepared: copyValue(p), query: copyValue(q), grant: copyValue(g), records: s.records}
 	return p, nil
 }
+
+// authorize says whether the context's current grant still covers the read, as AuthorizeCurrent answers it: for as long as the read's
+// scope lasts. authorizeRead is the same for what needs the read itself, its pages or its frozen rows: only while the read lasts.
 func (s *Simulator) authorize(sc r.SourceContext, p r.PreparedRead) (frozen, error) {
-	return s.authorizeAt(s.now(), sc, p)
+	return s.authorizeAt(s.now(), sc, p, false)
+}
+func (s *Simulator) authorizeRead(sc r.SourceContext, p r.PreparedRead) (frozen, error) {
+	return s.authorizeAt(s.now(), sc, p, true)
 }
 
-// authorizeAt is authorize at the given time, for a caller that reads the clock once.
-func (s *Simulator) authorizeAt(now time.Time, sc r.SourceContext, p r.PreparedRead) (frozen, error) {
+// authorizeAt is authorize (read false) or authorizeRead (read true) at the given time, for a caller that reads the clock once.
+func (s *Simulator) authorizeAt(now time.Time, sc r.SourceContext, p r.PreparedRead, read bool) (frozen, error) {
 	g, e := s.catalog(sc)
 	if e != nil {
 		return frozen{}, e
 	}
+	end := p.ScopeEnd()
+	if read {
+		end = p.ExpiresAt
+	}
 	f, ok := s.frozen[p.Ref]
-	if !ok || r.Digest(f.prepared) != r.Digest(p) || sc != p.Context || !now.Before(p.ExpiresAt) {
+	if !ok || r.Digest(f.prepared) != r.Digest(p) || sc != p.Context || !now.Before(end) {
 		return frozen{}, r.ErrDenied
 	}
 	if g.Timezone != f.grant.Timezone || !reflect.DeepEqual(g.CurrencyPolicy, f.grant.CurrencyPolicy) {
@@ -190,7 +243,7 @@ func (s *Simulator) ReadPage(ctx context.Context, sc r.SourceContext, p r.Prepar
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	f, e := s.authorize(sc, p)
+	f, e := s.authorizeRead(sc, p)
 	if e != nil {
 		return r.SourcePage{}, e
 	}

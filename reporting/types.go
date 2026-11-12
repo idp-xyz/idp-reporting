@@ -271,7 +271,12 @@ type PreparedRead struct {
 	Timezone       string
 	CurrencyPolicy *Ref
 	Watermark      string
-	ExpiresAt      time.Time
+	// ExpiresAt is the read's own lifetime: until it passes the source serves the pages of the frozen data version.
+	ExpiresAt time.Time
+	// ScopeExpiresAt (ADR 0026) is until when the source goes on answering AuthorizeCurrent for the read's scope, after its pages are
+	// gone. The zero time means ExpiresAt (ScopeEnd): a source that vouches for no scope, and every read prepared before the field
+	// existed, whose encoding it leaves unchanged.
+	ScopeExpiresAt time.Time `json:",omitzero"`
 }
 type SourcePage struct {
 	Ref        string
@@ -343,6 +348,11 @@ type Artifact struct {
 	// named. Empty for an export of the whole snapshot and for an issued document.
 	LayoutID      string `json:",omitempty"`
 	LayoutVersion int    `json:",omitempty"`
+	// Query and Prepared are the artifact's own basis (ADR 0026 decision 5): the frozen query and source read it was made from, by
+	// which a file that outlives its read is authorized after its snapshot's rows are gone. Both are set, or neither: an artifact
+	// without them lives as long as its read and is served through its snapshot, as every artifact was before.
+	Query    *QuerySpec    `json:",omitempty"`
+	Prepared *PreparedRead `json:",omitempty"`
 }
 type Job struct {
 	ID          string
@@ -382,6 +392,11 @@ type Job struct {
 	// it named, which keep their ids in the job and its view. The job keeps what its view and the audit need: owner, kind,
 	// key, request hash, ids, format, state, code and, for an issue job, the frozen template and its row or group.
 	Reduced bool `json:",omitempty"`
+	// KeepUntil is the expiry of the result the job makes when that result outlives the read (ADR 0026 decision 3): frozen at
+	// admission as the read's expiry plus the time of the result's class, or the read's scope expiry when that is earlier. The zero
+	// time means the read's own expiry (ResultEnd): a working snapshot, a read whose source vouches for no scope, and every job
+	// admitted before the field existed, whose encoding it leaves unchanged.
+	KeepUntil time.Time `json:",omitzero"`
 }
 
 // Issue is the permanent record of one officially issued document: which template version,
@@ -420,9 +435,10 @@ type JobView struct {
 	ArtifactID string        `json:"artifact_id,omitempty"`
 	ErrorCode  string        `json:"error_code,omitempty"`
 	Issue      *IssueSummary `json:"issue,omitempty"`
-	// Expired is true for a job that succeeded and whose results are no longer served: the source read it was made from
-	// has expired (its snapshot and artifact are not downloadable) and, once the retention grace has passed, they are
-	// deleted (S04-B). State stays the job's own state, the audit of what happened; the ids stay as the job recorded them.
+	// Expired is true for a job that succeeded and whose results are no longer served: the result's own expiry has passed
+	// (the expiry of the source read it was made from, or the later time the job keeps its result until, ADR 0026), so its
+	// snapshot or artifact is not downloadable and, once the retention grace has passed, is deleted (S04-B). State stays
+	// the job's own state, the audit of what happened; the ids stay as the job recorded them.
 	Expired bool `json:"expired,omitempty"`
 	// Layout names the layout version an export job carries (S23-A, ADR 0024); absent for an export of the whole snapshot and for every
 	// other kind.
@@ -471,9 +487,10 @@ type IssueView struct {
 	ReservationRef  string `json:"reservation_ref,omitempty"`
 	ConfirmationRef string `json:"confirmation_ref,omitempty"`
 	ConfirmedAt     string `json:"confirmed_at,omitempty"` // RFC 3339, UTC
-	// Expired is true for an issue that succeeded whose file is no longer served: the snapshot's source read has expired, and
-	// once the retention grace has passed the PDF is deleted (S04-B). The record itself, with the product's number and
-	// references, the file's digest and page count, is permanent and unchanged.
+	// Expired is true for an issue that succeeded whose file is no longer served: the file's own expiry has passed (the
+	// expiry of the snapshot's source read, or the later time an issued document is kept until, ADR 0026), and once the
+	// retention grace has passed the PDF is deleted (S04-B). The record itself, with the product's number and references,
+	// the file's digest and page count, is permanent and unchanged.
 	Expired bool `json:"expired,omitempty"`
 }
 type Claim struct{ Job Job }
@@ -591,6 +608,7 @@ type Config struct {
 	Formats    map[string]WorkbookWriter // further export formats by name, such as "pdf"
 	Issuer     Issuer                    // renders issue jobs; without it issuing is unsupported
 	Quotas     Quotas                    // per-identity admission limits (S04-D); zero fields take the defaults
+	Retention  Retention                 // how long a result outlives its read, by class (ADR 0026); zero fields take the defaults
 	// Objects, when set, is where the worker puts the content of an artifact before it publishes the row, and where a download reads it back
 	// (S04-E). The repository must be one that accepts such rows (the durable store opened with the same object store, or the memory store);
 	// without it the content stays inline in the row, as before.

@@ -47,11 +47,16 @@ func TestSessionOverTLSWithRealTokens(t *testing.T) {
 	snap := goroutines()
 	w := newWorld(t)
 	w.cfg.Quotas.AdmissionsPerHour = 2
+	w.cfg.Retention.Results, w.cfg.Retention.Issued = 86400, 31536000
 	// An object store that only answers its readiness check, so that the keys are in play without a real one.
 	fake := newFakeS3(t)
 	w.cfg.ObjectStore = &ObjectStoreConfig{Endpoint: fake.URL, Bucket: "bucket", LoopbackHTTP: true}
 	s := startWorld(t, w)
 	good := mint(t, w.keys[0], claims{})
+	// The two times a result is kept after its read are the service's as the file says them (ADR 0026), not its defaults.
+	if got := s.svc.Retention(); got != (r.Retention{Results: 24 * time.Hour, Issued: 365 * 24 * time.Hour}) {
+		t.Fatalf("the service keeps results for %+v", got)
+	}
 
 	// Health and readiness need no token, carry the API's headers, and say nothing else.
 	for path, want := range map[string]string{"/healthz": `{"status":"ok"}`, "/readyz": `{"status":"ready"}`} {

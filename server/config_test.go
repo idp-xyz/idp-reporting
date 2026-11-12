@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // validDoc is a configuration document the loader accepts; the refusals below change one thing in it.
@@ -39,6 +40,19 @@ func TestConfigAcceptsAValidDocument(t *testing.T) {
 	}
 	if q, err := c.QuotaValues(); err != nil || q.JobsInFlight != 8 || q.QueriesInFlight != 4 {
 		t.Fatalf("%+v %v", q, err)
+	}
+	// The two times a result is kept after its read (ADR 0026): seven days and ten years unless the file says otherwise, in seconds.
+	if v, err := c.RetentionValues(); err != nil || v.Results != 7*24*time.Hour || v.Issued != 3650*24*time.Hour {
+		t.Fatalf("%+v %v", v, err)
+	}
+	d := validDoc()
+	d["retention"] = map[string]any{"results": 86400, "issued": 3153600000}
+	c, err = ParseConfig(encode(t, d))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := c.RetentionValues(); err != nil || v.Results != 24*time.Hour || v.Issued != 36500*24*time.Hour {
+		t.Fatalf("%+v %v", v, err)
 	}
 }
 
@@ -114,6 +128,15 @@ func TestConfigRefusalsCarryNoSecret(t *testing.T) {
 		"a shutdown grace out of its bound":  with(func(d map[string]any) { d["shutdown_grace"] = 601 }),
 		"a sweep interval under a minute":    with(func(d map[string]any) { d["retention"] = map[string]any{"sweep_interval": 5} }),
 		"a sweep batch over its bound":       with(func(d map[string]any) { d["retention"] = map[string]any{"batch": 10001} }),
+		"results kept under a minute":        with(func(d map[string]any) { d["retention"] = map[string]any{"results": 59} }),
+		"results kept over 366 days":         with(func(d map[string]any) { d["retention"] = map[string]any{"results": 31622401} }),
+		"issued files kept over 100 years":   with(func(d map[string]any) { d["retention"] = map[string]any{"issued": 3153600001} }),
+		"a negative retention time":          with(func(d map[string]any) { d["retention"] = map[string]any{"issued": -1} }),
+		// 18446744134 seconds is 2^64 nanoseconds and sixty seconds more: as a duration it wraps around to a minute, which the bounds of a
+		// duration would accept. Each is refused as the number of seconds it is.
+		"a grace that wraps around":          with(func(d map[string]any) { d["retention"] = map[string]any{"grace": int64(18446744134)} }),
+		"a results' time that wraps around":  with(func(d map[string]any) { d["retention"] = map[string]any{"results": int64(18446744134)} }),
+		"an issued time that wraps around":   with(func(d map[string]any) { d["retention"] = map[string]any{"issued": int64(18446744134)} }),
 		"half a pdf section":                 with(func(d map[string]any) { d["pdf"] = map[string]any{"typst": "/usr/bin/typst"} }),
 		"an object store without a bucket":   with(func(d map[string]any) { d["object_store"] = map[string]any{"endpoint": "https://s3.example"} }),
 		"an embed origin that is http":       with(func(d map[string]any) { d["embed_origins"] = map[string]any{"i": []string{"http://127.0.0.1:1"}} }),

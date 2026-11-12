@@ -251,6 +251,7 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		return refuse(StepConfig, err.Error())
 	}
 	quotas, _ := cfg.QuotaValues()
+	retention, _ := cfg.RetentionValues()
 	embed, _ := cfg.Embedding()
 	inFlight := cfg.MaxInFlight
 	// 2. The secrets: the cursor keys, the issuer files, the connection string and the object store's keys.
@@ -462,9 +463,9 @@ func (s *Server) start(ctx context.Context, reg Registry, getenv func(string) st
 		s.defer_(func() { dashboardStore.Close() })
 	}
 	// 7. The service and the handler.
-	svc, err := r.NewService(r.Config{Repository: s.store, Connections: connections, CursorKeys: keys, Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas, Objects: objectStore})
+	svc, err := r.NewService(r.Config{Repository: s.store, Connections: connections, CursorKeys: keys, Writer: xlsx.Writer{}, Formats: formats, Issuer: issuer, Quotas: quotas, Retention: retention, Objects: objectStore})
 	if err != nil {
-		return refuse(StepService, "the service refused the connections, the cursor ring or the quotas")
+		return refuse(StepService, "the service refused the connections, the cursor ring, the quotas or the retention times")
 	}
 	s.svc = svc
 	authenticate := verifier.Authenticate

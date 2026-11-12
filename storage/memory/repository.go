@@ -237,7 +237,9 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 	if !r.ClaimValid(j, c, s.now()) {
 		return r.ErrLease
 	}
-	if !s.now().Before(j.Prepared.ExpiresAt) {
+	// The job's own deadline (ADR 0026): the read's expiry for a snapshot or an issue job, which need the read itself; for an export the
+	// time its file is kept until.
+	if !s.now().Before(j.PublishDeadline()) {
 		return r.ErrDenied
 	}
 	if p.Snapshot != nil {
@@ -609,7 +611,8 @@ func (c *retained) reducible(gone func(r.Job) bool) []string {
 	var out []string
 	for _, id := range c.s.order {
 		j := c.s.jobs[id]
-		if r.Terminal(j.State) && !j.Reduced && j.Prepared.ExpiresAt.Before(c.cutoff) && gone(j) {
+		// By the job's own time (r.Job.ReduceAfter, ADR 0026): its result's expiry when it succeeded, its read's when it made nothing.
+		if r.Terminal(j.State) && !j.Reduced && j.ReduceAfter().Before(c.cutoff) && gone(j) {
 			out = append(out, id)
 		}
 	}

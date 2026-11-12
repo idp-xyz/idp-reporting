@@ -97,7 +97,8 @@ func (s *Simulator) PrepareDocument(ctx context.Context, sc r.SourceContext, in 
 		return r.IssueReservation{}, r.ErrDenied
 	}
 	now := s.now()
-	f, e := s.authorizeAt(now, sc, in.Prepared)
+	// The read itself, not only its scope: the row is checked against the rows the read froze (ADR 0026 decision 6).
+	f, e := s.authorizeAt(now, sc, in.Prepared, true)
 	if e != nil {
 		return r.IssueReservation{}, e
 	}

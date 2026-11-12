@@ -213,11 +213,15 @@ type QuotasConfig struct {
 	QueriesInFlight   int `json:"queries_in_flight"`
 }
 
-// RetentionConfig is the sweep loop; SweepInterval 0 (the default) turns it off.
+// RetentionConfig is the sweep loop (SweepInterval 0, the default, turns it off) and how long a result is kept after the read it was made
+// from has expired, by its class (ADR 0026 decision 3), in seconds: Results for export files and the snapshots of scheduled runs, Issued for
+// the files of issued documents; 0 is the default of each (7 days, 10 years). Nothing is kept beyond the scope the source vouches for.
 type RetentionConfig struct {
-	SweepInterval int `json:"sweep_interval"`
-	Grace         int `json:"grace"`
-	Batch         int `json:"batch"`
+	SweepInterval int   `json:"sweep_interval"`
+	Grace         int   `json:"grace"`
+	Batch         int   `json:"batch"`
+	Results       int64 `json:"results"`
+	Issued        int64 `json:"issued"`
 }
 
 // PDFConfig is the pinned Typst renderer: the three fields together.
@@ -588,8 +592,16 @@ func (c *Config) Validate() error {
 	if ret.SweepInterval != 0 && (ret.SweepInterval < MinSweepInterval || ret.SweepInterval > MaxSweepInterval) {
 		return configProblem("retention.sweep_interval must be 0 (off, the default) or between %d and %d seconds", MinSweepInterval, MaxSweepInterval)
 	}
+	// The grace is held to its bounds as a number of seconds, before it becomes a duration: a number of seconds too large for a duration
+	// wraps around, and could land on a short grace that the bounds of the duration accept. A slip may only keep data longer (S04-B).
+	if graceProblem := ret.Grace < 0 || int64(ret.Grace) > int64(r.MaxSweepGrace/time.Second); graceProblem {
+		return configProblem("retention.grace is 0 (the default, 24 hours) up to %d seconds and retention.batch 0 (the default, %d) up to %d", int64(r.MaxSweepGrace.Seconds()), r.DefaultSweepBatch, r.MaxSweepBatch)
+	}
 	if _, err := (r.SweepOptions{Grace: seconds(ret.Grace), Batch: ret.Batch}).Resolved(); err != nil {
 		return configProblem("retention.grace is 0 (the default, 24 hours) up to %d seconds and retention.batch 0 (the default, %d) up to %d", int64(r.MaxSweepGrace.Seconds()), r.DefaultSweepBatch, r.MaxSweepBatch)
+	}
+	if _, err := c.RetentionValues(); err != nil {
+		return err
 	}
 	if p := c.PDF; p != nil && (p.Typst == "" || p.SHA256 == "" || p.Fonts == "") {
 		return configProblem("pdf needs typst, sha256 and fonts together")
@@ -720,6 +732,27 @@ func (c *Config) QuotaValues() (r.Quotas, error) {
 	resolved, err := r.Quotas{JobsInFlight: q.JobsInFlight, StoredResults: q.StoredResults, AdmissionsPerHour: q.AdmissionsPerHour, QueriesInFlight: q.QueriesInFlight}.Resolved()
 	if err != nil {
 		return r.Quotas{}, configProblem("the quotas are out of their bounds")
+	}
+	return resolved, nil
+}
+
+// RetentionValues resolves the two times a result is kept after its read (ADR 0026; zero is the default of each); a value out of its bounds
+// is a configuration problem naming both fields. Each is held to its bounds as a number of seconds, before it becomes a duration, so that
+// a number too large for a duration cannot wrap around into the accepted range.
+func (c *Config) RetentionValues() (r.Retention, error) {
+	problem := func() (r.Retention, error) {
+		return r.Retention{}, configProblem("retention.results must be 0 (the default, 7 days) or between %d and %d seconds, and retention.issued 0 (the default, 10 years) or between %d and %d",
+			int64(r.MinRetention/time.Second), int64(r.MaxResultsRetention/time.Second), int64(r.MinRetention/time.Second), int64(r.MaxIssuedRetention/time.Second))
+	}
+	within := func(v int64, max time.Duration) bool {
+		return v == 0 || (v >= int64(r.MinRetention/time.Second) && v <= int64(max/time.Second))
+	}
+	if !within(c.Retention.Results, r.MaxResultsRetention) || !within(c.Retention.Issued, r.MaxIssuedRetention) {
+		return problem()
+	}
+	resolved, err := r.Retention{Results: time.Duration(c.Retention.Results) * time.Second, Issued: time.Duration(c.Retention.Issued) * time.Second}.Resolved()
+	if err != nil {
+		return problem()
 	}
 	return resolved, nil
 }
