@@ -239,7 +239,12 @@ func admit(ctx context.Context, q querier, j r.Job) (r.Job, error) {
 	if e != nil {
 		return r.Job{}, e
 	}
-	v, e := scanJob(q.QueryRow(ctx, admitSQL, j.ID, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, j.Kind, j.Key, j.RequestHash, j.Prepared.ExpiresAt, b, j.SnapshotID))
+	// source_expires_at is the job's deadline (ADR 0026). While the job can still publish it is the time after which it may not
+	// (r.Job.PublishDeadline: the read's expiry for a snapshot or an issue job, as it always was; for an export the time its file is kept
+	// until), and Publish is fenced by it. Once the job has ended it is the time after which the sweep may reduce its payload
+	// (r.Job.ReduceAfter): Publish sets it to the result's expiry when the job keeps its result beyond the read, Fail and Cancel bring it
+	// back to the read's expiry (keptUntil, readEnd). For a job that keeps nothing all three are the read's expiry, written once, here.
+	v, e := scanJob(q.QueryRow(ctx, admitSQL, j.ID, j.Owner.Tenant, j.Owner.Integration, j.Owner.Issuer, j.Owner.Subject, j.Kind, j.Key, j.RequestHash, j.PublishDeadline(), b, j.SnapshotID))
 	var pgerr *pgconn.PgError
 	if errors.As(e, &pgerr) && pgerr.Code == "23505" {
 		return r.Job{}, r.ErrConflict
@@ -287,9 +292,35 @@ func (s *Store) Cancel(ctx context.Context, i r.Identity, id string) (r.Job, err
 state=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN 'cancelled' ELSE state END,
 lease_until=CASE WHEN state='queued' OR (state='running' AND kind<>'issue') THEN NULL ELSE lease_until END
 WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 RETURNING `+jobFields, id, i.Tenant, i.Issuer, i.Subject))
+		if err != nil {
+			return err
+		}
+		// A cancelled job keeps nothing: its payload may be reduced once its read is over (r.Job.ReduceAfter), not when the file it would
+		// have made would have been (ADR 0026). Only a job that froze such a time has a later deadline to bring back.
+		if end := readEnd(j); j.State == "cancelled" && end != nil {
+			_, err = tx.Exec(ctx, `UPDATE reporting_s01.jobs SET source_expires_at=LEAST(source_expires_at,$5) WHERE id=$1 AND tenant=$2 AND issuer=$3 AND subject=$4 AND state='cancelled'`, id, i.Tenant, i.Issuer, i.Subject, end)
+		}
 		return err
 	})
 	return j, e
+}
+
+// keptUntil is the time a job keeps its result until when that is later than its read's expiry (r.Job.KeepUntil), or nil: what Publish
+// sets source_expires_at to, so that a job whose result is kept is not a candidate for reduction until the result's time has passed.
+func keptUntil(j r.Job) *time.Time {
+	if j.KeepUntil.IsZero() {
+		return nil
+	}
+	return &j.KeepUntil
+}
+
+// readEnd is the read's expiry of a job that froze a later time for its result, or nil: what Fail and Cancel bring source_expires_at back
+// to, because a job that ends without a result keeps nothing. For a job that froze none the column is the read's expiry already.
+func readEnd(j r.Job) *time.Time {
+	if j.KeepUntil.IsZero() {
+		return nil
+	}
+	return &j.Prepared.ExpiresAt
 }
 
 // Claim claims the oldest job that is queued, or running with a lease that has run out, by the database's clock. A job whose stored
@@ -401,8 +432,10 @@ func (s *Store) Publish(ctx context.Context, c r.Claim, p r.Publication) error {
 			return e
 		}
 	}
-	result, e := tx.Exec(ctx, `UPDATE reporting_s01.jobs SET state='succeeded',lease_until=NULL,snapshot_id=$1,artifact_id=$2
-WHERE id=$3 AND state='running' AND generation=$4 AND lease_until>clock_timestamp() AND source_expires_at>clock_timestamp()`, snapshotID, artifactID, j.ID, c.Job.Generation)
+	// The fence reads the deadline the job was admitted with; the job that succeeds then carries the time its result is kept until, when
+	// that is later than its read's expiry (keptUntil; j is the stored job, read under the row's lock above).
+	result, e := tx.Exec(ctx, `UPDATE reporting_s01.jobs SET state='succeeded',lease_until=NULL,snapshot_id=$1,artifact_id=$2,source_expires_at=COALESCE($5,source_expires_at)
+WHERE id=$3 AND state='running' AND generation=$4 AND lease_until>clock_timestamp() AND source_expires_at>clock_timestamp()`, snapshotID, artifactID, j.ID, c.Job.Generation, keptUntil(j))
 	if e != nil {
 		return e
 	}
@@ -427,8 +460,11 @@ WHERE id=$1 AND state='running' AND generation=$2 AND lease_until>clock_timestam
 
 // Fail fails a job that is running, at the claim's generation, with a lease that has not run out by
 // the store's clock (clock_timestamp()); anything else is ErrLease and changes nothing.
+//
+// A failed job keeps nothing: its deadline comes back to its read's expiry (readEnd, r.Job.ReduceAfter), so that its payload is reduced as
+// that of any job whose read is over. It can only come back: LEAST never moves it later, and for a job that froze no later time it stays.
 func (s *Store) Fail(ctx context.Context, c r.Claim, code string) error {
-	return s.workerUpdate(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND state='running' AND generation=$7 AND lease_until>clock_timestamp()`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation)
+	return s.workerUpdate(ctx, `UPDATE reporting_s01.jobs SET state='failed',lease_until=NULL,error_code=$1,source_expires_at=LEAST(source_expires_at,COALESCE($8,source_expires_at)) WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND state='running' AND generation=$7 AND lease_until>clock_timestamp()`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation, readEnd(c.Job))
 }
 
 // workerUpdate runs one fenced update in a transaction of the worker scope: exactly one row changes, or it is ErrLease and none does.

@@ -119,6 +119,10 @@ func ValidateAdmission(j Job) error {
 	if !validID(j.ID) || !j.Owner.Identity.Valid() || j.Owner.Integration == "" || !validKey(j.Key) || j.State != "queued" || j.Generation != 0 || j.RequestHash == "" || j.Prepared.Context.Owner != j.Owner || j.Prepared.QueryHash != QueryHash(j.Query) || j.Reduced {
 		return ErrInvalid
 	}
+	// The three lifetimes (ADR 0026): the scope a read declares is not before the read, and what the job keeps is within the scope.
+	if !j.Prepared.validLifetimes() || !validKeep(j) {
+		return ErrInvalid
+	}
 	switch j.Kind {
 	case "snapshot":
 		if j.SnapshotID != "" || j.Format != "" || j.RequestHash != Digest(Normalize(j.Query)) {
@@ -161,11 +165,14 @@ func UnreadableJobCode(kind string, priorGeneration int64) string {
 func ClaimValid(actual Job, claim Claim, now time.Time) bool {
 	return actual.ID == claim.Job.ID && actual.Owner == claim.Job.Owner && actual.State == "running" && actual.Generation == claim.Job.Generation && actual.LeaseUntil.After(now)
 }
+
+// ValidatePublication holds what a job publishes to the job. A result's expiry is the one the job froze (Job.ResultEnd, ADR 0026): the
+// read's own expiry unless the job keeps its result longer, and a file that is kept longer carries its own basis (carriesBasis).
 func ValidatePublication(j Job, p Publication) error {
 	switch j.Kind {
 	case "snapshot":
 		v := p.Snapshot
-		if v == nil || p.Artifact != nil || !validID(v.ID) || v.Owner != j.Owner || !reflect.DeepEqual(v.Query, j.Query) || !reflect.DeepEqual(v.Prepared, j.Prepared) || !reflect.DeepEqual(v.Result.Columns, j.Columns) || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || v.SHA256 != Digest(v.Result) || v.Result.Completeness != "complete" || v.Result.Evidence.QueryHash != j.Prepared.QueryHash || v.Result.Evidence.SourceRef != j.Prepared.Ref || v.Result.Evidence.Watermark != j.Prepared.Watermark {
+		if v == nil || p.Artifact != nil || !validID(v.ID) || v.Owner != j.Owner || !reflect.DeepEqual(v.Query, j.Query) || !reflect.DeepEqual(v.Prepared, j.Prepared) || !reflect.DeepEqual(v.Result.Columns, j.Columns) || !v.ExpiresAt.Equal(j.ResultEnd()) || v.SHA256 != Digest(v.Result) || v.Result.Completeness != "complete" || v.Result.Evidence.QueryHash != j.Prepared.QueryHash || v.Result.Evidence.SourceRef != j.Prepared.Ref || v.Result.Evidence.Watermark != j.Prepared.Watermark {
 			return ErrIntegrity
 		}
 		// The evidence says where the data comes from in one of the three words (S08-A, ADR 0012 decision 6): a snapshot is never
@@ -182,7 +189,7 @@ func ValidatePublication(j Job, p Publication) error {
 		}
 	case "export":
 		v := p.Artifact
-		if v == nil || p.Snapshot != nil || p.Issue != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != j.Format || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || !ValidArtifactBody(*v) || v.Issue != "" {
+		if v == nil || p.Snapshot != nil || p.Issue != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != j.Format || !v.ExpiresAt.Equal(j.ResultEnd()) || !carriesBasis(j, *v) || !ValidArtifactBody(*v) || v.Issue != "" {
 			return ErrIntegrity
 		}
 		// The artifact records the layout version the job's presentation named, and none when the job has none (S23-A).
@@ -191,7 +198,7 @@ func ValidatePublication(j Job, p Publication) error {
 		}
 	case "issue":
 		v, rec := p.Artifact, p.Issue
-		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.Prepared.ExpiresAt) || !ValidArtifactBody(*v) || v.Issue != j.ID || v.LayoutID != "" || v.LayoutVersion != 0 {
+		if v == nil || rec == nil || p.Snapshot != nil || !validID(v.ID) || v.Owner != j.Owner || v.SnapshotID != j.SnapshotID || v.Format != "pdf" || !v.ExpiresAt.Equal(j.ResultEnd()) || !carriesBasis(j, *v) || !ValidArtifactBody(*v) || v.Issue != j.ID || v.LayoutID != "" || v.LayoutVersion != 0 {
 			return ErrIntegrity
 		}
 		if rec.ID != j.ID || rec.Owner != j.Owner || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || len(rec.SnapshotSHA256) != 64 || rec.RowIndex != j.RowIndex || !rec.Group.Equal(j.Group) || rec.ArtifactID != v.ID || rec.SHA256 != v.SHA256 || rec.Pages < 1 || rec.Pages > MaxIssuePages {

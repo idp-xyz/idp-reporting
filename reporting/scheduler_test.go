@@ -327,6 +327,65 @@ func TestAScheduledRunFreezesExportsAndIsDelivered(t *testing.T) {
 	}
 }
 
+// The file of a scheduled run is there when its mail is read (ADR 0026): with a source that vouches for the scope of its reads, the run's
+// snapshot and its export are kept results, served two hours after the run and for the results' time (seven days by default); with a
+// source that vouches for nothing they end with the read, as they always did.
+func TestAScheduledRunsResultsAreKeptWhenTheSourceVouchesForTheScope(t *testing.T) {
+	ctx := context.Background()
+	for _, vouch := range []bool{false, true} {
+		w := newScheduleWorld(t, 0)
+		if vouch {
+			w.source.SetScopeLifetime(30 * 24 * time.Hour)
+		}
+		in := dailyAt("08:00")
+		in.Format = "xlsx"
+		v, e := w.schedules.Create(ctx, w.p, in, "k1")
+		if e != nil {
+			t.Fatal(e)
+		}
+		w.clock.Advance(23 * time.Hour)
+		for range 3 { // the run starts, its snapshot is frozen, its export is made
+			w.tick(t)
+			w.work(t)
+			w.clock.Advance(r.RunRecheck)
+		}
+		w.tick(t)
+		run := w.runs(t, v.ID)[0]
+		if run.State != r.RunSucceeded || run.SnapshotID == "" || run.ArtifactID == "" {
+			t.Fatalf("vouch %v: %+v", vouch, run)
+		}
+		read := func() (rows, file error) {
+			_, rows = w.svc.Rows(ctx, w.p, run.SnapshotID, 10, "")
+			_, file = w.svc.Download(ctx, w.p, run.ArtifactID)
+			return rows, file
+		}
+		// Two hours later the owner follows the mail's link.
+		w.clock.Advance(2 * time.Hour)
+		rows, file := read()
+		if !vouch {
+			if !errors.Is(rows, r.ErrIntegrity) || !errors.Is(file, r.ErrIntegrity) {
+				t.Fatalf("without a scope the run's results end with the read: %v, %v", rows, file)
+			}
+			continue
+		}
+		if rows != nil || file != nil {
+			t.Fatalf("the run's snapshot and file are refused two hours after the run: %v, %v", rows, file)
+		}
+		// The source still decides: a revocation reaches what is kept.
+		owner := contractsim.DemoOwner(w.p, contractsim.FinanceIntegration)
+		w.source.Revoke(owner)
+		if rows, file = read(); !errors.Is(rows, r.ErrDenied) || !errors.Is(file, r.ErrDenied) {
+			t.Fatalf("a revocation does not reach the kept results: %v, %v", rows, file)
+		}
+		w.source.Grant(owner, contractsim.DefaultGrant())
+		// And the results' time ends them.
+		w.clock.Advance(8 * 24 * time.Hour)
+		if rows, file = read(); !errors.Is(rows, r.ErrIntegrity) || !errors.Is(file, r.ErrIntegrity) {
+			t.Fatalf("eight days later the results are still served: %v, %v", rows, file)
+		}
+	}
+}
+
 // After a downtime the missed occurrences are caught up once, by the oldest, and the schedule goes on from the next occurrence after now.
 func TestAScheduleCatchesUpOnceAfterADowntime(t *testing.T) {
 	ctx := context.Background()

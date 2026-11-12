@@ -25,6 +25,7 @@ type Service struct {
 	issuer      Issuer                    // nil: issuing is unsupported
 	now         func() time.Time
 	quotas      Quotas      // resolved: every field in its bounds
+	retention   Retention   // resolved: how long a result outlives its read, by class (ADR 0026)
 	objects     ObjectStore // nil: artifact content stays inline in the row (S04-E)
 	gate        queryGate   // the reads running per identity (S04-G)
 }
@@ -38,7 +39,11 @@ func NewService(c Config) (*Service, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Service{quotas: quotas, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, classes: map[[2]string]string{}, keys: ring, writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
+	retention, e := c.Retention.Resolved()
+	if e != nil {
+		return nil, e
+	}
+	s := &Service{quotas: quotas, retention: retention, objects: c.Objects, repo: c.Repository, connections: map[[2]string]Connection{}, classes: map[[2]string]string{}, keys: ring, writers: map[string]WorkbookWriter{}, issuer: c.Issuer, now: c.Now}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -205,8 +210,12 @@ func (s *Service) prepare(ctx context.Context, p Principal, q QuerySpec) (QueryS
 	}
 	return q, d, prepared, nil
 }
+
+// validPrepared holds a prepared read to its query and its context while the read itself lasts: the pages can still be read and a
+// product can still check a row against its own frozen rows. The read is the query's and the context's and its lifetimes are well formed
+// (ErrIntegrity), it has not expired (ErrDenied), and it expires at most 15 minutes from now (ErrIntegrity).
 func (s *Service) validPrepared(sc SourceContext, q QuerySpec, p PreparedRead) error {
-	if p.Context != sc || p.Ref == "" || p.ScopeHandle == "" || p.Watermark == "" || p.QueryHash != QueryHash(q) || p.Dataset != q.Dataset || !slices.Equal(p.Companies, q.Companies) || p.Timezone != q.Timezone || !reflect.DeepEqual(p.CurrencyPolicy, q.CurrencyPolicy) {
+	if !boundRead(sc, q, p) {
 		return ErrIntegrity
 	}
 	if !s.now().Before(p.ExpiresAt) {
@@ -217,6 +226,28 @@ func (s *Service) validPrepared(sc SourceContext, q QuerySpec, p PreparedRead) e
 	}
 	return nil
 }
+
+// validScope is validPrepared for what needs the source's authorization and not its pages (ADR 0026): the read's scope has not expired.
+// Without a declared scope the scope is the read, and the two are the same check.
+func (s *Service) validScope(sc SourceContext, q QuerySpec, p PreparedRead) error {
+	if !boundRead(sc, q, p) {
+		return ErrIntegrity
+	}
+	if !s.now().Before(p.ScopeEnd()) {
+		return ErrDenied
+	}
+	if p.ExpiresAt.After(s.now().Add(15 * time.Minute)) {
+		return ErrIntegrity
+	}
+	return nil
+}
+
+// boundRead: the read is the query's, in the context it is used in, and the scope it declares is not before its own expiry.
+func boundRead(sc SourceContext, q QuerySpec, p PreparedRead) bool {
+	return p.Context == sc && p.Ref != "" && p.ScopeHandle != "" && p.Watermark != "" && p.QueryHash == QueryHash(q) && p.Dataset == q.Dataset && slices.Equal(p.Companies, q.Companies) && p.Timezone == q.Timezone && reflect.DeepEqual(p.CurrencyPolicy, q.CurrencyPolicy) && p.validLifetimes()
+}
+
+// current asks the source whether the owner's current rights still cover the read, while the read itself lasts.
 func (s *Service) current(ctx context.Context, o Owner, q QuerySpec, p PreparedRead) error {
 	c, sc, e := s.sourceOwner(o)
 	if e != nil {
@@ -226,6 +257,29 @@ func (s *Service) current(ctx context.Context, o Owner, q QuerySpec, p PreparedR
 		return e
 	}
 	return c.Adapter.AuthorizeCurrent(ctx, sc, p)
+}
+
+// currentScope asks the same of the source while the read's scope lasts (ADR 0026 decision 4): what every disclosure of a kept result
+// checks, after the read's pages are gone. A refusal is a refusal and a source that cannot be asked is an error: nothing falls back to the
+// owner alone.
+func (s *Service) currentScope(ctx context.Context, o Owner, q QuerySpec, p PreparedRead) error {
+	c, sc, e := s.sourceOwner(o)
+	if e != nil {
+		return e
+	}
+	if e = s.validScope(sc, q, p); e != nil {
+		return e
+	}
+	return c.Adapter.AuthorizeCurrent(ctx, sc, p)
+}
+
+// authorizeJob asks the source for a job as its kind and state need (ADR 0026 decision 6): a snapshot or an issue job that is not finished
+// needs the read itself; an export, and any finished job, whose result may be kept beyond the read, needs the read's scope.
+func (s *Service) authorizeJob(ctx context.Context, j Job) error {
+	if j.Kind == "export" || Terminal(j.State) {
+		return s.currentScope(ctx, j.Owner, j.Query, j.Prepared)
+	}
+	return s.current(ctx, j.Owner, j.Query, j.Prepared)
 }
 func (s *Service) collect(ctx context.Context, o Owner, q QuerySpec, p PreparedRead, cols []Column) (Result, error) {
 	var out Result
@@ -304,7 +358,20 @@ func (s *Service) Query(ctx context.Context, p Principal, q QuerySpec) (Result, 
 	}
 	return result, nil
 }
+
+// SubmitSnapshot admits a person's freeze of a query: a working snapshot, which lives as long as its read (ADR 0026 decision 3).
 func (s *Service) SubmitSnapshot(ctx context.Context, p Principal, q QuerySpec, key string) (JobView, error) {
+	return s.submitSnapshot(ctx, p, q, key, 0)
+}
+
+// SubmitKeptSnapshot admits a freeze whose snapshot is itself a result someone asked to have later, a scheduled run's (ADR 0020): it is
+// kept as an export file is (Retention.Results), within the read's scope. With a source that vouches for no scope it is SubmitSnapshot.
+// It is the scheduler's; no route of the API reaches it.
+func (s *Service) SubmitKeptSnapshot(ctx context.Context, p Principal, q QuerySpec, key string) (JobView, error) {
+	return s.submitSnapshot(ctx, p, q, key, s.retention.Results)
+}
+
+func (s *Service) submitSnapshot(ctx context.Context, p Principal, q QuerySpec, key string, class time.Duration) (JobView, error) {
 	if !validKey(key) {
 		return JobView{}, ErrInvalid
 	}
@@ -312,16 +379,19 @@ func (s *Service) SubmitSnapshot(ctx context.Context, p Principal, q QuerySpec, 
 	if e != nil {
 		return JobView{}, e
 	}
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: prepared.Context.Owner, Kind: "snapshot", State: "queued", Key: key, RequestHash: Digest(q), Query: q, Prepared: prepared, Columns: d.Columns}, s.quotas)
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: prepared.Context.Owner, Kind: "snapshot", State: "queued", Key: key, RequestHash: Digest(q), Query: q, Prepared: prepared, Columns: d.Columns, KeepUntil: kept(prepared, class)}, s.quotas)
 	if e != nil {
 		return JobView{}, e
 	}
-	if j.Reduced {
-		// The key names a job whose read has expired and been cleared (S04-B): a replay of an expired job is denied before its payload is
-		// cleared (current, below, fails on the expiry), and it is after.
+	if j.Reduced || (j.Prepared.vouched() && s.expired(j)) {
+		// The key names a finished job whose result is over: a replay of it is denied, the same before the sweep has cleared its payload
+		// (S04-B) and after. Where the read's scope goes on after the read, the result's own time decides (expired): the scope would
+		// still answer for a working snapshot that has ended. Without a declared scope the authorization below denies it, as it always did.
 		return JobView{}, ErrDenied
 	}
-	if e = s.current(ctx, j.Owner, j.Query, j.Prepared); e != nil {
+	// A replay answers the job the key already names: its own read, asked as that job's state needs (a finished job whose snapshot is kept
+	// is asked by its scope, ADR 0026; a queued or running one needs the read itself, and is denied once that is over, as it always was).
+	if e = s.authorizeJob(ctx, j); e != nil {
 		return JobView{}, e
 	}
 	return view(j), nil
@@ -342,7 +412,9 @@ func (s *Service) snapshot(ctx context.Context, p Principal, id string) (Snapsho
 	if !s.now().Before(v.ExpiresAt) || v.SHA256 != Digest(v.Result) || !ValidDataClass(v.Result.Evidence.DataClass) {
 		return Snapshot{}, ErrIntegrity
 	}
-	if e = s.current(ctx, v.Owner, v.Query, v.Prepared); e != nil {
+	// The source is asked by the read's scope (ADR 0026 decision 4): for a working snapshot, which ends with its read, that is the check
+	// it always was; a kept snapshot is authorized after its read's pages are gone, for as long as it is kept.
+	if e = s.currentScope(ctx, v.Owner, v.Query, v.Prepared); e != nil {
 		return Snapshot{}, e
 	}
 	return v, nil
@@ -456,7 +528,15 @@ func (s *Service) SubmitExportWith(ctx context.Context, p Principal, id string, 
 		}
 	}
 	layoutID, layoutVersion := layoutOf(presentation)
-	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHashWithLayout(id, format, layoutID, layoutVersion), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format, Presentation: presentation}, s.quotas)
+	// An export file is a kept result (ADR 0026 decision 3): it lives the results' time after the read it came from, within the read's
+	// scope; with a source that vouches for no scope it lives as long as its read, as it always did.
+	keep := kept(snap.Prepared, s.retention.Results)
+	if !keep.IsZero() && !s.now().Before(keep) {
+		// The file would be over before it is made: its snapshot was kept under a longer results' time than the one in force now.
+		// Refused here, rather than rendered and stored and then refused at its publication.
+		return JobView{}, ErrDenied
+	}
+	j, e := s.repo.Admit(ctx, Job{ID: NewID(), Owner: snap.Owner, Kind: "export", State: "queued", Key: key, RequestHash: ExportRequestHashWithLayout(id, format, layoutID, layoutVersion), Query: snap.Query, Prepared: snap.Prepared, SnapshotID: id, Format: format, Presentation: presentation, KeepUntil: keep}, s.quotas)
 	if e != nil {
 		return JobView{}, e
 	}
@@ -489,10 +569,19 @@ func issueSummary(j Job) *IssueSummary {
 	return s
 }
 
-// expired says whether a finished job's results are over: its source read has expired by the service's clock, or retention cleared its
-// frozen read. A queued or running job is never expired in this sense (its read decides its fate when a worker meets it).
+// expired says whether a finished job's results are over: retention cleared its frozen read, or its time has passed by the service's
+// clock. For a job that succeeded that time is its result's expiry (the read's own, or the later time the job keeps its result until,
+// ADR 0026); a job that made nothing is over when its read is. A queued or running job is never expired in this sense (its read decides
+// its fate when a worker meets it).
 func (s *Service) expired(j Job) bool {
-	return Terminal(j.State) && (j.Reduced || !s.now().Before(j.Prepared.ExpiresAt))
+	if !Terminal(j.State) {
+		return false
+	}
+	end := j.Prepared.ExpiresAt
+	if j.State == "succeeded" {
+		end = j.ResultEnd()
+	}
+	return j.Reduced || !s.now().Before(end)
 }
 
 // expiredView is the view of a finished job past its expiry: Expired is true for a job that succeeded, whose snapshot and artifact are
@@ -573,6 +662,12 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 	if e != nil {
 		return JobView{}, e
 	}
+	// The product checks the row against its own frozen rows (ADR 0003), so an issue needs the read itself and not only its scope
+	// (ADR 0026 decision 6): a kept snapshot whose read has expired is shown and exported, and not issued from. A snapshot that ends
+	// with its read was refused above when the read was over, as it always was.
+	if snap.ExpiresAt.After(snap.Prepared.ExpiresAt) && !s.now().Before(snap.Prepared.ExpiresAt) {
+		return JobView{}, ErrDenied
+	}
 	c, _, e := s.source(p, snap.Owner.Integration)
 	if e != nil {
 		return JobView{}, e
@@ -581,8 +676,9 @@ func (s *Service) SubmitIssue(ctx context.Context, p Principal, in IssueInput, k
 		return JobView{}, ErrUnsupported
 	}
 	sum := bytesDigest(in.Template)
+	// An issued document's file is kept the issued documents' time after its read, within the read's scope (ADR 0026 decision 3).
 	job := Job{ID: NewID(), Owner: snap.Owner, Kind: "issue", State: "queued", Key: key, Query: snap.Query, Prepared: snap.Prepared, SnapshotID: in.SnapshotID, Format: "pdf",
-		TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: sum, Template: string(in.Template)}
+		TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: sum, Template: string(in.Template), KeepUntil: kept(snap.Prepared, s.retention.Issued)}
 	if in.Space == "team" {
 		job.TemplateSpace = "team"
 	} else if in.Space != "" {
@@ -765,12 +861,13 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 		return JobView{}, e
 	}
 	if s.expired(j) {
-		// A finished job whose source read has expired, or whose frozen read was cleared (S04-B), no longer discloses anything: there
-		// is no result to authorize, so it is not asked of the source, and the view says what is left: the job's own state, its ids,
-		// its code, and, for an issue, the number its permanent record holds.
+		// A finished job whose result is over (its read has expired and it keeps nothing longer, or what it kept has expired too), or
+		// whose frozen read was cleared (S04-B), no longer discloses anything: there is no result to authorize, so it is not asked of
+		// the source, and the view says what is left: the job's own state, its ids, its code, and, for an issue, the number its
+		// permanent record holds.
 		return s.expiredView(ctx, p, j)
 	}
-	if e = s.current(ctx, j.Owner, j.Query, j.Prepared); e != nil {
+	if e = s.authorizeJob(ctx, j); e != nil {
 		return JobView{}, e
 	}
 	out := view(j)
@@ -868,12 +965,25 @@ func (s *Service) artifactRow(ctx context.Context, p Principal, id string) (Arti
 	if _, _, e = s.source(p, a.Owner.Integration); e != nil {
 		return Artifact{}, e
 	}
-	snap, e := s.snapshot(ctx, p, a.SnapshotID)
-	if e != nil {
-		return Artifact{}, e
-	}
-	if snap.Owner != a.Owner || !s.now().Before(a.ExpiresAt) || a.ExpiresAt.After(snap.ExpiresAt) || !ValidArtifactBody(a) {
-		return Artifact{}, ErrIntegrity
+	if a.Query != nil || a.Prepared != nil {
+		// A file that outlives its read stands without its snapshot (ADR 0026 decisions 4 and 5): it carries the query and the read it was
+		// made from, its own expiry is later than the read's and not later than the read's scope (what a job may keep, validKeep), and the
+		// source is asked by that scope now. Its snapshot may be gone; it is not read.
+		if a.Query == nil || a.Prepared == nil || a.Prepared.Context.Owner != a.Owner || !s.now().Before(a.ExpiresAt) || !a.ExpiresAt.After(a.Prepared.ExpiresAt) || a.ExpiresAt.After(a.Prepared.ScopeEnd()) || !ValidArtifactBody(a) {
+			return Artifact{}, ErrIntegrity
+		}
+		if e = s.currentScope(ctx, a.Owner, *a.Query, *a.Prepared); e != nil {
+			return Artifact{}, e
+		}
+	} else {
+		// A file that lives as long as its read is served through its snapshot and never later than it, as every file was.
+		snap, e := s.snapshot(ctx, p, a.SnapshotID)
+		if e != nil {
+			return Artifact{}, e
+		}
+		if snap.Owner != a.Owner || !s.now().Before(a.ExpiresAt) || a.ExpiresAt.After(snap.ExpiresAt) || !ValidArtifactBody(a) {
+			return Artifact{}, ErrIntegrity
+		}
 	}
 	if a.Issue != "" {
 		// An issued PDF is served only as the record it was issued under describes it.
@@ -1070,7 +1180,9 @@ func validReceipt(res IssueReservation, receipt IssueReceipt) bool {
 func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttempt) error {
 	j := claim.Job
 	var pub Publication
-	if e := s.current(ctx, j.Owner, j.Query, j.Prepared); e != nil {
+	// A snapshot job and an issue job need the read itself (the pages; the product's own frozen rows), an export its snapshot and the
+	// read's scope (ADR 0026 decision 6): authorizeJob asks accordingly, here and before the publication.
+	if e := s.authorizeJob(ctx, j); e != nil {
 		return e
 	}
 	switch j.Kind {
@@ -1079,7 +1191,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		if e != nil {
 			return e
 		}
-		pub.Snapshot = &Snapshot{ID: NewID(), Owner: j.Owner, Query: j.Query, Prepared: j.Prepared, Result: result, ExpiresAt: j.Prepared.ExpiresAt, SHA256: Digest(result)}
+		pub.Snapshot = &Snapshot{ID: NewID(), Owner: j.Owner, Query: j.Query, Prepared: j.Prepared, Result: result, ExpiresAt: j.ResultEnd(), SHA256: Digest(result)}
 	case "export":
 		w := s.writers[j.Format]
 		if w == nil {
@@ -1088,6 +1200,11 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		p := Principal{Identity: j.Owner.Identity, Integrations: []string{j.Owner.Integration}}
 		snap, e := s.snapshot(ctx, p, j.SnapshotID)
 		if e != nil {
+			// Only an export whose scope goes on after its read can meet its snapshot's end here (the authorization above passed by the
+			// scope); with a source that vouches for no scope the error is what it always was.
+			if j.Prepared.vouched() && s.snapshotEnded(ctx, j, e) {
+				return ErrDenied
+			}
 			return e
 		}
 		var b []byte
@@ -1109,7 +1226,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 			return ErrBudget
 		}
 		layoutID, layoutVersion := layoutOf(j.Presentation)
-		if pub.Artifact, e = s.keep(ctx, Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: snap.ExpiresAt, LayoutID: layoutID, LayoutVersion: layoutVersion}, b); e != nil {
+		if pub.Artifact, e = s.keep(ctx, withBasis(Artifact{ID: NewID(), Owner: j.Owner, SnapshotID: snap.ID, Format: j.Format, ExpiresAt: j.ResultEnd(), LayoutID: layoutID, LayoutVersion: layoutVersion}, j), b); e != nil {
 			return e
 		}
 	case "issue":
@@ -1189,7 +1306,7 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 		// platform failed to keep, and a PUT that fails is a failure of the job like any other, voided at the product (S03-H). The row that
 		// names the object is published after the confirmation; an object whose row never comes is an orphan the sweep reconciles.
 		id := NewID()
-		if pub.Artifact, e = s.keep(ctx, Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: snap.ExpiresAt, Issue: j.ID}, b); e != nil {
+		if pub.Artifact, e = s.keep(ctx, withBasis(Artifact{ID: id, Owner: j.Owner, SnapshotID: snap.ID, Format: "pdf", ExpiresAt: j.ResultEnd(), Issue: j.ID}, j), b); e != nil {
 			return e
 		}
 		receipt, e := authority.ConfirmIssue(ctx, sc, IssueConfirmation{JobID: j.ID, ReservationRef: res.Ref, SHA256: sum, Pages: result.Pages})
@@ -1204,13 +1321,39 @@ func (s *Service) execute(ctx context.Context, claim Claim, attempt *issueAttemp
 	default:
 		return ErrIntegrity
 	}
-	if e := s.current(ctx, j.Owner, j.Query, j.Prepared); e != nil {
+	if e := s.authorizeJob(ctx, j); e != nil {
 		return e
 	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}
 	return s.repo.Publish(ctx, claim, pub)
+}
+
+// snapshotEnded says whether an export's snapshot could not be read (e) because it has ended, rather than because the store disagrees
+// with itself: a working snapshot ends with its read, and an export whose scope goes on may meet it after that (ADR 0026), stored but
+// expired, or already swept. Such a job is denied, as an export whose read had expired always was.
+func (s *Service) snapshotEnded(ctx context.Context, j Job, e error) bool {
+	if errors.Is(e, ErrNotFound) {
+		return !s.now().Before(j.Prepared.ExpiresAt)
+	}
+	if !errors.Is(e, ErrIntegrity) {
+		return false
+	}
+	v, e := s.repo.Snapshot(ctx, j.Owner.Identity, j.SnapshotID)
+	return e == nil && !s.now().Before(v.ExpiresAt)
+}
+
+// withBasis gives an artifact its own basis when its job keeps it beyond the read (ADR 0026 decision 5): the job's frozen query and read,
+// by which the file is authorized after its snapshot's rows are gone. An artifact that lives as long as its read gets none, and is
+// encoded as it always was.
+func withBasis(a Artifact, j Job) Artifact {
+	if j.KeepUntil.IsZero() {
+		return a
+	}
+	q, p := j.Query, j.Prepared
+	a.Query, a.Prepared = &q, &p
+	return a
 }
 
 // keep makes the artifact for the file b: inline with the content when no object store is configured, else the file is put in the object

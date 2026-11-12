@@ -6,9 +6,10 @@ import (
 	"time"
 )
 
-// Retention (S04-B, docs/S04B_SCOPE.md). What the platform stores of a result lives as long as the source read it was made
-// from (the expiry every download and page already enforces) plus a grace period; then it is deleted. What is kept for good: the issue
-// records, and the rows of the jobs, whose payload is reduced to what their view and the audit need.
+// Retention (S04-B, docs/S04B_SCOPE.md). What the platform stores of a result lives until the result's own expiry (the one every download
+// and page already enforces: the expiry of the source read it was made from, or, where the source vouches for the read's scope, the later
+// time its class keeps it until, ADR 0026, lifetime.go) plus a grace period; then it is deleted. What is kept for good: the issue records,
+// and the rows of the jobs, whose payload is reduced to what their view and the audit need.
 const (
 	// DefaultSweepGrace is how long after its expiry an asset is still held, so that a download in flight, a worker whose
 	// clock lags and an operator who looks for it the next morning find it.

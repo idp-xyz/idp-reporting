@@ -565,6 +565,7 @@ func TestDurablePostgresContract(t *testing.T) {
 	// transactions, the ledger of the sweeps, the sweep's locks).
 	t.Run("retention", func(t *testing.T) { runRetentionContract(t, newRetentionDurable) })
 	t.Run("retention_durable", durableRetention)
+	t.Run("lifetimes", func(t *testing.T) { runLifetimeContract(t, newLifetimeDurable) })
 	t.Run("fixture_v1_upgrade_preserves_existing_assets", func(t *testing.T) {
 		v := newDurable(t)
 		j := durableFreeze(t, v, contractsim.FinancialQuery(), "one")

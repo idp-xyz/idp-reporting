@@ -473,7 +473,8 @@ func (s *Schedules) step(ctx context.Context, c RunClaim, run *ScheduleRun, rech
 		if !ok {
 			return true
 		}
-		v, e := s.svc.SubmitSnapshot(ctx, p, run.Query, "schedule:"+run.ID)
+		// A scheduled run's snapshot is what its owner asked to have later: a kept result, like the run's export (ADR 0026 decision 3).
+		v, e := s.svc.SubmitKeptSnapshot(ctx, p, run.Query, "schedule:"+run.ID)
 		if e != nil {
 			return refusal(e, true)
 		}

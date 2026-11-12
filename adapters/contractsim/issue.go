@@ -116,6 +116,7 @@ func ValidateConfirmation(c r.IssueConfirmation) error {
 // A row intent has no group and digests as it did before groups existed.
 func IntentDigest(in r.IssueIntent) string {
 	in.Prepared.ExpiresAt = in.Prepared.ExpiresAt.UTC()
+	in.Prepared.ScopeExpiresAt = in.Prepared.ScopeExpiresAt.UTC() // the zero time stays zero, and absent from the digest (ADR 0026)
 	if in.Group != nil {
 		g := in.Group.Clone()
 		in.Group = &g
