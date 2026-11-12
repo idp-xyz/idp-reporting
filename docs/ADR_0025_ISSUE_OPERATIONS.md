@@ -1,8 +1,13 @@
 # ADR 0025 · Issue operations: a cancellation is the product's decision, and a batch is many issues by one person
 
-Date: 2026-11-11. Status: accepted, by the decision the product owner delegated to engineering that day ("按你的建议全面开始吧"; the
-functional review's fourth gap). Extends ADR 0003 (it changes none of its decisions) and amends ADR 0013 decision 5 in one respect.
-Implementation: S24-A (cancellation on the server), S24-B (batches on the server), S24-C (the console's issue page).
+Date: 2026-11-11. Status: **accepted** by the product owner on 2026-11-11. It is a contract-level decision (the adapter contract and
+the source protocol, what the platform stores of business data, who may see what), so it is the owner's own (CODING_STANDARDS.md).
+Engineering's acceptance of the same day under the owner's general delegation ("按你的建议全面开始吧"; the functional review's fourth
+gap) was not that answer; the ADR was then put to the owner as one question, and the answer is at the end. Extends ADR 0003 (it
+changes none of its decisions) and amends ADR 0013 decision 5 in one respect. ADR 0026 (accepted the same day) changes, once its
+slices have landed, two sentences here about how long a file lives; they are marked where they stand.
+Implementation: S24-A (cancellation on the server: written, docs/S24A_SCOPE.md), S24-B (batches on the server), S24-C (the console's
+issue page).
 
 ## Context
 
@@ -29,6 +34,14 @@ What bounds the answers:
 - An issue is a person's decision: it is never scheduled (ADR 0020 decision 1), an `issuer`'s (ADR 0018), and its audit event must be
   written or the issue is refused (ADR 0018 Q4).
 - The record of an issue is permanent; the file lives while the snapshot's read does and the retention's grace after it (S04-B).
+
+  *Note, 2026-11-12 (ADR 0026, accepted 2026-11-11).* This holds until ADR 0026's slices (S25-A to S25-D) have landed. S25-A, in
+  the code since 2026-11-12, separates the read, the scope and the result in the core and the stores, and keeps a file beyond its
+  read only within a scope its source vouches for; no source of a deployment can vouch before S25-B, so until then every file
+  still ends with its read. After that an issued file is kept by its class, 10 years by default, and handed out for as long, each
+  download still authorized by the source (ADR 0026 decisions 3 to 5). What does not change: issuing still needs the read (ADR
+  0026 decision 6), so the second bound above stands and a batch is over when the read is; and the refusal of a cancelled file
+  (decision 4 below) stands for as long as the file is kept, which S24-A is built and tested for on S25-A's code.
 
 ## Decision
 
@@ -91,6 +104,11 @@ What bounds the answers:
     expires are not issued, the page says which, and the person freezes again and plans the rest (group keys carry over; row indices do
     not, and the page says so). It is never scheduled.
 
+    *Note, 2026-11-12 (ADR 0026, accepted 2026-11-11).* "It does not outlive its snapshot" is about issuing, and stays true when
+    ADR 0026's slices have landed: an issue is admitted and rendered only while the read lasts (ADR 0026 decision 6). What changes
+    then is that the batch's files outlive it: until a source can vouch for a scope (S25-B) each file is downloaded while the
+    snapshot's read lasts, and after that the files are kept by their class and downloaded from the register afterwards.
+
 ### The console (S24-C)
 
 11. The issue page's register gets 作废… on an issued document of a product that can cancel: a dialog that names the number, asks the
@@ -138,3 +156,13 @@ docs/DEPLOYMENT.md says so. The manual source (S08-D) implements one more capabi
   description, the documents. No console change.
 - **S24-C** — the console's issue page: 作废 and 批量出具, the English catalogue, the DOM tests, the two baseline tasks. After S24-A, S24-B
   and S09-G.
+
+## The owner's answer (2026-11-11)
+
+The ADR was put to the product owner as one question with three answers: (a) both parts as recommended — a cancellation is asked of
+the product, which decides, and a cancelled file is no longer handed out (decisions 1 to 6); a batch is planned by the server and
+paced by the client (decisions 7 to 10); (b) the cancellation alone, the batches left for later; (c) nothing of either until ADR
+0026's slices have landed.
+
+- **(a), both parts as recommended.** The owner chose (a) over (b) and (c). The decisions above are unchanged by the answer; what
+  ADR 0026 changes about a file's lifetime is noted where the two sentences stand, and changes nothing of what S24-A builds.

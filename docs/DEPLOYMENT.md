@@ -181,13 +181,15 @@ strictly (an unknown field, `null` or a repeated key refuses the start; the erro
 | `max_response_bytes` | 1048576 | 0 (default) or 4096..1048576. |
 | `issuance` | `none` | `none` (issuing through the connection is unsupported), `rows` (the document authority of ADR 0003, one row per document) or `groups` (contract version 2, a row group per document, S03-K). |
 | `companies` | `false` | `true` declares that the product implements the company directory of ADR 0015 (`POST /reporting-source/v1/companies`, protocol revision 1.1, S19-B): the platform then asks it for `GET /companies` and the console can offer a picker. Without it the route is never asked and the platform answers `supported: false`. Declare it only after `reporting-source-check -companies` passes. |
+| `cancellation` | `false` | `true` declares that the product can be asked to cancel a document it issued (ADR 0025, `POST /reporting-source/v1/issue-cancellations`, S24-A): the platform then asks it for `POST /issues/{id}/cancellation`, and `GET /capabilities` says `issue_cancellation: true` for the product. It needs `issuance` `rows` or `groups` (a source cancels the documents it issues; with `none` the start is refused). Without it the route is never asked, the platform answers 422 `UNSUPPORTED_COMBINATION` and documents are cancelled in the product, as before, with the platform's register not knowing. Declare it only after `reporting-source-check -issue -cancellation` passes, never against production (it confirms and cancels one document). |
 
 A connection needs a credential: `auth_env`, a client certificate, or both (`loopback_http` alone is accepted for tests). The adapter follows no redirect,
 uses TLS 1.2 or later and no proxy from the environment, and verifies every answer before it is used (an answer that does not verify is
 `INTEGRITY_FAILURE`, a product that cannot be reached, is too slow or answers 5xx is `AUTHORITY_UNAVAILABLE`, 503 to the caller). Each request carries a
 random `X-Request-Id` and the request's `traceparent`; the product logs them. **Before** a connection is added the product passes `reporting-source-check`
 (docs/SOURCE_HTTP_PROTOCOL.md section 7) against the endpoint the platform will use, with the credential and CA the connection will use, and with
-`-companies` when the connection will declare `companies`. Rotating the credential
+`-companies` when the connection will declare `companies` and, against the product's test system, `-issue -cancellation` when it will declare
+`cancellation`. Rotating the credential
 is a restart, rolled one server at a time, with the product accepting the old and the new credential for the while.
 
 ## What a start does, in order
@@ -360,7 +362,7 @@ Moving an existing deployment from the directories to the database: stop the ser
 ## Upgrade procedure
 
 1. Build or install the new binary beside the old one. Run `reporting-server check-config -config …` with it (offline).
-2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs`, 012 `audit_events` and 013 `schedules` and `schedule_runs` do: without `roles` the server refuses to start at step store, "no INSERT … on designs", "on audit_events" or "on schedules") (docs/OPERATIONS.md "Schema lifecycle").
+2. `reporting-migrate status`, then `reporting-migrate up` as the migrator role, then `reporting-migrate roles …` if a step created a table (011 `designs`, 012 `audit_events`, 013 `schedules` and `schedule_runs` and 014 `issue_cancellations` do: without `roles` the server refuses to start at step store, "no INSERT … on designs", "on audit_events", "on schedules" or "on issue_cancellations") (docs/OPERATIONS.md "Schema lifecycle").
    The ledger check goes both ways: an **older binary refuses to start against a newer ledger, and a running older server turns `/readyz` 503 `schema`** the moment `up` has been applied. That is the check doing its work, so
    roll the servers right after the migration; a migration is not a thing to apply and then leave for a day.
 3. Roll the servers **one at a time**: take one out of the balancer (`kill -TERM`; `/readyz` says `draining`), wait for it to exit (0), start the new binary, wait for `/readyz` 200, put it back, next. Binaries that read the jobs of a newer version may destroy them (docs/OPERATIONS.md "Workers and issue jobs"): never run an older worker against a store that holds newer jobs.

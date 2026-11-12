@@ -14,15 +14,15 @@ it does not change the simulator data classification or qualify a real issuer.
 | Method and path | Request / response |
 |---|---|
 | GET /session | Trusted authenticated platform identity and integration IDs; no token, business data or service credentials. The integrations are the principal's that the server has a connection for (ADR 0016); a bound product without a connection is not listed `roles` (S12-A) are the binding's effective roles. |
-| (every route) | S12-A (ADR 0018): a route needs a role, from its pattern: a `.../release` a `publisher`, `POST /issues` an `issuer`, any other change of a layout, dashboard, template, background or image (and its catalog, a sample's copy) a `designer`; reading, querying, freezing, exporting, previews and checks a `viewer`. A principal without it gets 403 `{"error":"AUTH_ROLE_DENIED"}` before the route does anything. |
-| GET /audit?limit=N&before=ID&scope=tenant | S12-B (ADR 0018): people's actions, newest first (N 1..200, default 50): the caller's own `{id, at, action, object_kind, object_id?, outcome, code?}`; with `scope=tenant` (the `administrator` role, else 403 `AUTH_ROLE_DENIED`) the tenant's and issuer's, each with its `subject`. Recorded: `design.change`, `design.release`, `issue.submit`, `export.submit`, `artifact.download`, `role.refused`, and (S16-A) `schedule.change` and `schedule.run`, each with its outcome (`succeeded`, `refused`, `failed`); a publication, a withdrawal and an official issue are first recorded as `requested` and refused with 503 `{"error":"AUDIT_UNAVAILABLE"}` when that cannot be written. 404 when the server keeps no audit. |
+| (every route) | S12-A (ADR 0018): a route needs a role, from its pattern: a `.../release` a `publisher`, `POST /issues` and (S24-A) `POST /issues/{id}/cancellation` an `issuer`, any other change of a layout, dashboard, template, background or image (and its catalog, a sample's copy) a `designer`; reading, querying, freezing, exporting, previews and checks a `viewer`. A principal without it gets 403 `{"error":"AUTH_ROLE_DENIED"}` before the route does anything. |
+| GET /audit?limit=N&before=ID&scope=tenant | S12-B (ADR 0018): people's actions, newest first (N 1..200, default 50): the caller's own `{id, at, action, object_kind, object_id?, outcome, code?}`; with `scope=tenant` (the `administrator` role, else 403 `AUTH_ROLE_DENIED`) the tenant's and issuer's, each with its `subject`. Recorded: `design.change`, `design.release`, `issue.submit`, `export.submit`, `artifact.download`, `role.refused`, (S16-A) `schedule.change` and `schedule.run`, and (S24-A) `issue.cancel`, each with its outcome (`succeeded`, `refused`, `failed`); a publication, a withdrawal, an official issue and the cancellation of one are first recorded as `requested` and refused with 503 `{"error":"AUDIT_UNAVAILABLE"}` when that cannot be written. The `succeeded` event of `issue.cancel` is written with the cancellation itself, in one step ("Cancelling an issued document" below). 404 when the server keeps no audit. |
 | /team/document-templates…, POST /team/issues | S12-C (ADR 0018): the template routes over the tenant's shared design space instead of the caller's own (same bodies, roles and audit). Every version records who saved it; `GET /team/document-templates/{id}?version=N` answers `saved_by_me`; publishing a version by the person who saved it is 409 `{"error":"APPROVAL_REQUIRED"}` (another publisher approves by publishing it); a withdrawal is any publisher's. An issue of a team template reads its publication in the shared space. The samples copy into the caller's own space. |
 | POST /schedules | S16-A (ADR 0020, "Scheduled reports" below): `{name, query, export_format?, as_of?, recurrence}` + one Idempotency-Key → 201 the schedule and `Location`. A `viewer`'s. 400 for a request outside the forms, 422 for a dataset or format the server does not have, 403 for a product the caller does not hold, 429 `QUOTA_EXCEEDED` with `quota: "schedules"` over the limit. |
 | GET /schedules?limit=N&before=ID | The caller's schedules under the products the caller holds, newest first (N 1..100, default 50); `before` is the last `schedule_id` of the previous page. |
 | GET /schedules/{id} | One of the caller's schedules: `{schedule_id, name, integration_id, state, recurrence, as_of, export_format?, query, next_run_at?, created_at}`. Another identity's or a deleted one is 404. |
 | POST /schedules/{id}/pause, POST /schedules/{id}/resume, DELETE /schedules/{id} | No body. The schedule after the change (`paused` without `next_run_at`; `active` from the next occurrence after now, the catalog checked again; `deleted`, then 404). Each is `schedule.change` in the audit. |
 | GET /schedules/{id}/runs?limit=N&before=ID | The schedule's runs, newest occurrence first: `{run_id, schedule_id, due_at, state, as_of, snapshot_job_id?, export_job_id?, snapshot_id?, artifact_id?, export_format?, error_code?, delivery, finished_at?}`. The jobs and results are read through their own routes, as the owner. |
-| GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below |
+| GET /capabilities | Exact simulator capability profile; production_approved=false. `quotas` (S04-D) is `{jobs_in_flight, stored_results, admissions_per_hour, queries_in_flight}`, the numbers in force for every identity; see "Quotas" below. `embedding` (S03-N) is true when embedding is configured for at least one of the caller's integrations, else false (never the origins); see "Embedding" below. `issue_cancellation` (S24-A, ADR 0025) is an object with one boolean per product the server serves for the caller (the session's `integrations`): whether a cancellation of an issued document can be asked of that product; see "Cancelling an issued document" below |
 | GET /catalog?integration_id=… | Only a product explicitly allowed for the authenticated principal. Each dataset version carries, when it declares any, `filters: [{field, operators, values?, required?}]` and `sorts: [{field, directions}]` (S20-A, ADR 0023): the columns a query may narrow by and order by, with their operators, an optional closed list of values and whether a filter on the field is required. Each entry also carries `data_class` (S08-A, ADR 0012 decision 6, "Data class" below): where the data of that connection comes from, `contract-simulator`, `manual-entry` or `business-data` |
 | GET /companies?integration_id=… | S19-B (ADR 0015): the companies the principal may choose in that product, under the catalog's authority and refusals (`integration_id` exactly once, else 400; a product the principal does not hold 403). Exactly `{"supported": true, "partial": false, "companies": [{"id", "name"}, …]}`: at most 1000 entries in the product's order, each id and name 1–128 characters, no id twice; for an adapter without the capability `{"supported": false, "partial": false, "companies": []}` (200, not an error); `partial` true when the product cut the list, and the person may still type an id. The list is advisory: a read still names company ids and the source authorizes it as before; nothing of it is stored, cached across requests or logged, and the answer carries the API's `Cache-Control: no-store`. The source's failure is the catalogue's 503; a list outside the bounds is 409 `INTEGRITY_FAILURE` and none of it is shown. A `viewer`'s |
 | POST /queries | QuerySpec from S00 examples; typed columns, string cells, totals, completeness, issues, evidence. `filters` and `sort` within what the catalog entry declares (below); the rows and the totals are the narrowed scope's |
@@ -32,7 +32,7 @@ it does not change the simulator data classification or qualify a real issuer.
 | POST /jobs/{id}/cancel | Empty body; idempotent cleanup; no output references returned. A running issue job is not cancelled (the source product may already hold a reservation for it): it is returned unchanged, and a queued one is cancelled |
 | GET /snapshots/{id}/rows?limit=1&cursor=… | Frozen rows; total_row_count; HMAC cursor bound to owner/product/query/snapshot; limits 1..100 |
 | POST /exports | `{ "snapshot_id": "…", "format": "pdf", "layout_id": "…" }` + one Idempotency-Key; asynchronous. `format` is optional: absent or `xlsx` is the workbook, `pdf` needs a server started with PDF (listed in capabilities `formats`); other values are 422 UNSUPPORTED_COMBINATION. The job view carries `format` for non-workbook exports. `layout_id` (S23-A, ADR 0024, "Layouts and presented exports" below) is optional: the export is rendered through the latest saved version of that layout and the job view carries `layout: {id, version}`. The file of a snapshot whose query has filters or a sort says so (S20-C, "The exports say the scope" below) |
-| GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256; an issued PDF is named `issued-<issue id>.pdf` (the console saves it as `issued-<number>.pdf`) |
+| GET /artifacts/{id}/content | Current whole-scope authority, expiry, private XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `report-{id}.xlsx`) or PDF (`application/pdf`, `report-{id}.pdf`), exact byte length and SHA-256; an issued PDF is named `issued-<issue id>.pdf` (the console saves it as `issued-<number>.pdf`). The file of an issue that was cancelled is not handed out: 409 `{"error":"ISSUE_CANCELLED"}` (S24-A, ADR 0025 decision 4) |
 
 The standalone HTML/CSS/JS console is served at /console/. Static assets contain
 no credentials or private rows; they do not bypass protected API routes.
@@ -183,8 +183,9 @@ demo has the matching directories, and previews when it has the PDF flags:
 | GET, POST /document-images | Private images of schema 2.1 templates (S03-M, ADR 0005): list the caller's images of the datasets the caller may still read; upload `{binding, image}` (PNG or JPEG in base64, at most 512 KiB, 2000 x 2000 pixels, the format read from the content) and get `201 {id, sha256, binding, format, width, height}`; mounted with the backgrounds; the answers of the three image routes are `no-store` and `nosniff` |
 | GET /document-images/{id}/content | The bytes of one image to its owner only (another identity's id is 404), while the caller may read its dataset (else 403): `Content-Type` `image/png` or `image/jpeg`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox; frame-ancestors 'none'`, `X-Content-SHA256` (the digest the template names) |
 | POST /issues | Official issue under the source product's authority (S03-G, docs/S03G_SCOPE.md; S03-H, docs/S03H_SCOPE.md, docs/ADR_0003_SOURCE_CONFIRMED_ISSUE.md): `{template_id, version, snapshot_id, row_index}` (a schema 2.0 template: `row_index` or `group`, see "Issue by group" below) with an Idempotency-Key admits a job of kind "issue" (202, `Location: /jobs/{id}`); the version must be the published one (409 TEMPLATE_NOT_PUBLISHED), the row must exist (400), the fields and background must be authorized (403), and the snapshot's integration must have an adapter that can issue, else 422 UNSUPPORTED_COMBINATION, nothing admitted; the job view carries `issue: {template_id, template_version, template_sha256, row_index}` (a group issue: `group` in place of `row_index`), and the product's `number` once the job succeeded (read from its record), wherever the job is shown: the 202 of a request repeated with the key of a job that has succeeded (a client whose answer was lost asks again), `GET /jobs/{id}` and the 200 of `POST /jobs/{id}/cancel` |
-| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC), and `expired: true` once the file is no longer served (S04-B). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it |
+| GET /issues?limit=N | The caller's issue jobs, newest first (N 1..100, default 25): `issue_id, integration_id` (S24-A: the product the issue was made under), `state, error_code, template_*, snapshot_id, row_index` (a group issue: `group`) for every job, and, once it succeeded, its record: `number` (the product's string, such as `AR-000012`), `artifact_id, snapshot_sha256, sha256, pages, stamp, issued_at` and the product's references `reservation_ref, confirmation_ref, confirmed_at` (RFC 3339, UTC), and `expired: true` once the file is no longer served (S04-B). A queued, running, failed or cancelled job has none of them; a failed job shows no number even when the product had reserved one (it is voided there), unless it failed with ISSUE_UNRECONCILED, where the product may still hold it. An issue whose document the source product cancelled (S24-A) carries `cancellation: {ref, cancelled_at, reason}` and keeps every other field, its `state` (`succeeded`) included |
 | GET /issues/{id} | One issue job with its record; 404 for any other job or another identity's. The listing and the record read fail closed: a record that cannot be read as published (tampered, missing) is 409 INTEGRITY_FAILURE for the whole page. A succeeded issue job's `GET /jobs/{id}` re-authorizes the source and checks the download like an export's while the snapshot's read is valid; once it expired the job view says `expired: true` without asking the source (S04-B; the download is 409 inside the grace period and 404 once swept), and `GET /issues/{id}` answers with `expired: true` and the unchanged record; the job view also requires the artifact to claim the record and the record to name the artifact (409 otherwise) |
+| POST /issues/{id}/cancellation | S24-A (ADR 0025, "Cancelling an issued document" below): exactly `{"reason": "…"}` (1..200 characters on one line; strict JSON, at most 4 KiB), no Idempotency-Key (the issue id is the key). An `issuer`'s, for an issue of the caller's own that succeeded. The platform asks the issue's source product within the request, and the product decides; with its receipt the platform records the cancellation and answers 200 with the issue as `GET /issues/{id}` shows it, now with `cancellation: {ref, cancelled_at, reason}`. Asking again answers the same, without asking the product again. 422 when the product cannot be asked (`issue_cancellation` in the capabilities), 404 for another identity's issue or anything that is no issue, 409 for an issue job that did not succeed, the product's refusal as 403, its outage as 503 |
 
 An issue job (S03-G) freezes the published version's canonical configuration and digest, the snapshot and the
 row. The source product, not the platform, authorizes the issue, owns the number and confirms the file (S03-H);
@@ -516,6 +517,91 @@ signature/audience/token-purpose/scope checks are locally qualified. Real
 delegated subjects, issuer/membership authority and source authorization SLA
 remain S02 contracts, not simulated by a service account.
 
+## Cancelling an issued document (S24-A, docs/ADR_0025_ISSUE_OPERATIONS.md, docs/S24A_SCOPE.md)
+
+A document that was issued correctly and should not stand (the wrong customer, a cancelled order) is withdrawn by asking the source
+product, which decides. The platform never marks a document cancelled by itself: it records a cancellation only with the product's
+receipt in hand. The number stays used; a corrected document is a new issue with a new number. This is not `POST /jobs/{id}/cancel`
+(which stops a job that has not run) and not the product's void (the platform's own undo of an issue job that failed).
+
+```
+POST /api/reporting/v1/issues/0f3c5a…9a/cancellation
+{"reason": "客户退回：金额有误"}
+```
+
+The body is exactly that object: `reason` is what the person wrote, 1..200 characters (not bytes) of text on one line, not blank, without
+control characters. The route is an `issuer`'s. The platform, in this order:
+
+1. records `issue.cancel` `requested` in the audit, and refuses (503 `AUDIT_UNAVAILABLE`) when it cannot: nothing has been asked;
+2. finds the issue: the caller's own (another identity's is 404, as every record is), an issue job that succeeded;
+3. answers at once, with the cancellation it holds, when the issue is already cancelled: the product is not asked again;
+4. asks the product through the issue's connection, once, within the request (`CancelDocument`: the job id, the product's reservation
+   and confirmation references, the number, and the reason). The product's refusal is the answer, and nothing is recorded;
+5. verifies the product's receipt (its reference, a whole second not before the confirmation) and records the cancellation and the
+   audit's `issue.cancel` `succeeded` in one step: both or neither;
+6. answers the issue as `GET /issues/{id}` shows it:
+
+```json
+{"issue_id": "0f3c5a…9a", "integration_id": "erp-finance", "state": "succeeded", "snapshot_id": "7b1e…04",
+ "number": "AR-000123", "template_id": "5d2a…c1", "template_version": 3, "template_sha256": "9e4b…77", "row_index": 2,
+ "cancellation": {"ref": "cxl-17", "cancelled_at": "2026-11-11T08:15:33Z", "reason": "客户退回：金额有误"},
+ "artifact_id": "a41f…e2", "snapshot_sha256": "c07d…1b", "sha256": "5e88…d8", "pages": 2,
+ "stamp": "ISSUED No. AR-000123 - 2026-11-11T06:12:03Z - 0f3c5a…9a", "issued_at": "2026-11-11T06:12:03Z",
+ "reservation_ref": "res-81", "confirmation_ref": "conf-81", "confirmed_at": "2026-11-11T06:12:05Z"}
+```
+
+`cancellation.ref` and `cancelled_at` (RFC 3339, UTC) are the product's; `reason` is the one the platform recorded. Every other field is
+what it was: the record of an issue is never changed, the cancellation is a row of its own beside it, and `state` stays `succeeded`, so
+that a client that does not know cancellations reads what it read. `GET /issues`, `GET /issues/{id}` and the `issue` object of the job's
+view (`GET /jobs/{id}`, `GET /jobs`) carry the same `cancellation`, to the issue's owner and to nobody else. A request repeated after
+the cancellation was recorded answers the same body, whatever reason it carries.
+
+The refusals, each `{"error": CODE}` and nothing else (never the reason, the number or a reference):
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | The body is not exactly `{"reason": "…"}` (an unknown field, `null`, a repeated key, something after the object), or the reason is empty, blank, over 200 characters or not text on one line. |
+| 401 | `AUTH_SCOPE_DENIED` | No token, or one that does not verify. |
+| 403 | `AUTH_ROLE_DENIED` | The caller is not an `issuer`. |
+| 403 | `AUTH_SCOPE_DENIED` | The caller no longer holds the issue's product; or the product refuses: the person may not cancel there, or the product's own rules say no (a closed period, a settled document). |
+| 404 | `NOT_FOUND` | Nothing of the caller's that is an issue has this id: another identity's issue, a job of another kind, an id that does not exist. |
+| 409 | `IDEMPOTENCY_CONFLICT` | The issue job has not succeeded (queued, running, failed, or cancelled before it ran): there is no issued document. Or the product does not hold the document as a confirmed one. |
+| 409 | `INTEGRITY_FAILURE` | The product's answer cannot be trusted: a receipt that does not verify or is dated before the confirmation, a job it says it never reserved, another receipt than the one recorded. Or the issue's record cannot be read as published. |
+| 413 | `REQUEST_TOO_LARGE` | The body is over 4 KiB. |
+| 422 | `UNSUPPORTED_COMBINATION` | The issue's product cannot be asked for a cancellation. Nothing is asked. |
+| 503 | `AUDIT_UNAVAILABLE` | The audit could not be written: at step 1 (nothing was asked), or at step 5 (the product has cancelled; nothing is recorded yet). |
+| 503 | `AUTHORITY_UNAVAILABLE` | The product did not answer in time or cannot be reached. Nothing is recorded. |
+
+**Nothing is atomic across the two systems, and every outcome is reconcilable by the issue id.** The product is asked first and the
+platform records second, so the platform never says cancelled of a document the product did not cancel. The other way round can
+happen for a while: when the product's answer is lost (a timeout, 503) or the platform cannot record it (503 at step 5), the document
+is cancelled in the product and not yet in the platform, whose register still says issued and whose file is still handed out. The
+person's next request closes it: the product answers a cancellation it has made with the same receipt, whatever the reason says the
+second time, and the platform records it. The platform does not retry by itself: a cancellation is a person's act. In that case the
+platform's row carries the reason of the request it recorded; the product keeps the first.
+
+**The file.** `GET /artifacts/{id}/content` of a cancelled issue answers 409 `{"error":"ISSUE_CANCELLED"}` for as long as the file is
+held (and 404 once retention has removed it, like any file). The platform cannot recall copies already downloaded and does not alter
+the file; it stops being the place the document comes from, and its register goes on saying the number, the digest and the page count
+of what was cancelled, so that any copy can be checked against the record. A cancellation needs neither the snapshot nor the file: an
+issue is cancelled long after both are gone, and the cancellation is permanent, like the record.
+
+**Whether it can be asked.** `GET /capabilities` carries `issue_cancellation`, one boolean per product the server serves for the caller:
+
+```json
+"issue_cancellation": {"erp-finance": true, "wms": false}
+```
+
+`true` when the product's connection has the capability (an adapter that implements `reporting.DocumentCanceller`; for the adapter
+`http`, the connection option `cancellation`, docs/DEPLOYMENT.md). An entry of the register names its product in `integration_id`, so a
+client offers the cancellation only where it can be asked. It promises nothing about one document: the product decides each request.
+For a product that cannot be asked the route answers 422, and its documents are cancelled in the product itself, as before S24-A, with
+the platform's register not knowing.
+
+**The audit.** `issue.cancel` on the issue's id: `requested` for every request the role allowed, then `refused` or `failed` for one
+that was not carried out, and `succeeded`, once, for the cancellation that was recorded, written with it. A repeat of a recorded
+cancellation leaves `requested` alone. No event carries the reason, the number or a reference. The console's 作废 is S24-C.
+
 ## Layouts and presented exports (S23-A, docs/ADR_0024_TABLE_REPORT_FORMATTING.md, docs/S23A_SCOPE.md)
 
 A layout (`layouts.Document`, routes `GET, POST /layouts`, `GET /layouts/{id}?version=N`, `GET, POST /layouts/{id}/release`,
@@ -666,7 +752,7 @@ HTTP/1.1 413 Request Entity Too Large
 | Routes | Bound |
 |---|---|
 | `POST /queries`, `POST /snapshot-jobs` | 64 KiB |
-| `POST /exports`, `POST /issues`, `POST /layouts/{id}/release`, `POST /dashboards/{id}/release`, `POST /document-templates/{id}/release`, `PUT /document-templates/{id}/catalog`, `POST /document-templates/samples/{kind}/previews` | 4 KiB |
+| `POST /exports`, `POST /issues`, `POST /issues/{id}/cancellation`, `POST /layouts/{id}/release`, `POST /dashboards/{id}/release`, `POST /document-templates/{id}/release`, `PUT /document-templates/{id}/catalog`, `POST /document-templates/samples/{kind}/previews` | 4 KiB |
 | `POST /layouts`, `POST /dashboards`, `POST /document-templates`, `POST /document-templates/samples/{kind}/copy`, `POST /document-templates/{id}/previews`, `POST /document-previews`, `POST /document-checks`, `POST /document-backgrounds`, `POST /document-images` | 1 MiB (`MaxResultBytes`; an image or a background is base64 of at most 512 KiB, which fits) |
 | `POST /jobs/{id}/cancel` | no body: one byte is read and a body is 400 |
 

@@ -196,6 +196,10 @@ func TestEveryRouteAnswersWithTheSecurityHeaders(t *testing.T) {
 			{"issue refused", "GET", base + "issues/" + missing, nil, 404, nil},
 			// The core API alone cannot issue; the template mount overrides this route.
 			{"issue unsupported", "POST", base + "issues", v.input(2), 422, nil},
+			// S24-A: the cancellation of the issued document, a refusal first; then the download's refusal of the cancelled file.
+			{"cancellation refused", "POST", base + "issues/" + missing + "/cancellation", map[string]any{"reason": "the wrong customer"}, 404, nil},
+			{"cancellation", "POST", base + "issues/" + issueID + "/cancellation", map[string]any{"reason": "the wrong customer"}, 200, nil},
+			{"artifact of a cancelled issue", "GET", base + "artifacts/" + issued.ArtifactID + "/content", nil, 409, nil},
 		}, private(base+"layouts", layout.ID, layout.ID, map[string]any{"id": "", "expected_version": 0, "layout": layouts.Document{Schema: "1.0", Binding: layouts.Binding{Integration: binding.Integration, Dataset: binding.Dataset}, Columns: []layouts.Column{{ID: catalog[0].Columns[0].ID, Align: "left"}}}})...)},
 		{"dashboards", withDashboards, private(base+"dashboards", board.ID, board.ID, map[string]any{"id": "", "expected_version": 0, "config": dashboards.Document{Schema: "1.0", Kind: "dashboard", Binding: dashboards.Binding{Integration: binding.Integration, Dataset: binding.Dataset}, Widgets: []dashboards.Widget{{Type: "metric", Field: &numeric}}}})},
 		{"embedding", withEmbedding, []headerCase{

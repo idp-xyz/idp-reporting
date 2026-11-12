@@ -89,6 +89,19 @@
 - 测试：`integration/fencing_test.go` 的 `TestLeaseGenerationAndAtomicPublication`；`reporting/issue_test.go`（`TestIssueFailureDoesNotVoidWhatAnotherOutcomeOwns`、`TestIssueAdapterAnsweringWithTheLeaseErrorIsAnIntegrityFailure`）；`TestIssueRefusedByTheLayoutLeavesNothingReservedAtTheProduct`、`TestIssuerRendersOnlyThePublishedFrozenVersion`；PostgreSQL 上的 `TestDurablePostgresIssues`。
 - 已知不覆盖：还没有任何真实产品的出具合同与对账（上线清单第 17、18 项）。
 
+**作废已出具的单据（S24-A，ADR 0025 决定 1–6，docs/S24A_SCOPE.md）。** 这是一条由人触发、到达来源产品的写路径，理由是其中唯一的自由文本。
+
+- 要成立的：由来源产品决定——平台只有拿到产品的回执才记录作废，从不自己把单据标成已作废；编号不再使用；出具记录的每个字段都不变，作废是它旁边一条只增不改的行；应用角色对这张表只能插入与读取，不能改、不能删；行级安全把它限定在出具记录的所有者；作废的审计事件写不进，整个请求失败、什么都不留；`VoidIssue` 与 worker 的失败路径不变；没有该能力的适配器或连接，行为与此前完全相同；错误、日志与指标不带理由、编号或任何数据值；一切有界。
+- 次序与对账：`POST /issues/{id}/cancellation` 需要 `issuer` 角色，只对本人已成功的出具（他人的一律 404）；执行前写审计 `issue.cancel` 的 `requested`（写不进则 503，产品未被询问）；先问产品、后记录，所以“平台说已作废而产品没有作废”不会出现；反过来（产品已作废而平台没记下：回执丢失，或记录与其审计事件写不进）由同一个人再次请求补齐——产品按任务 ID 幂等，回答同一张回执。产品的回执按合同核验（属于该任务、引用为 1–128 个可打印 ASCII、整秒、不早于确认时间），不合格即 `INTEGRITY_FAILURE` 且不记录；产品说“没预留过”这个平台持有其确认的任务，或用平台自己的拒绝码回答，同样按不可信处理。
+- 理由：1–200 个字符（按字符计，不按字节）、单行、无控制字符（`ValidCancellationReason`，与其他人写文本同一条规则）；请求体只能是 `{"reason": "…"}`（严格 JSON，4 KiB）；原样交给产品（协议里按数据传递）并存入作废行，只回显给出具记录的所有者；不进入任何错误文本、日志行、指标标签或审计事件。
+- 已作废的文件不再提供下载：`GET /artifacts/{id}/content` 回 409 `ISSUE_CANCELLED`，由该文件自己的出具记录判定；记录继续给出编号、摘要与页数，供核对已流出的副本。平台不改文件、不追回副本。
+- 存储：迁移 014 的 `issue_cancellations`，主键即出具 ID（一张单据至多一条）；策略 `identity`（SELECT，本身份）与 `issue_owner`（INSERT，本身份且该出具记录对它可见）；没有 UPDATE/DELETE 策略，也没有 worker 策略；清理（sweep）不碰它。角色检查拒绝对它持有 UPDATE、DELETE 的应用角色。
+- 能力：`GET /capabilities` 的 `issue_cancellation` 按产品给出布尔值，只说明连接是否声明了能力，不泄露产品的任何规则；`http` 适配器靠连接选项 `cancellation` 声明，且要求连接可出具。
+- 代码：`reporting/issue_cancellation.go`（`CancelIssue`、`fromCanceller`、`ValidCancellationReason`）、`reporting/service.go`（`artifact`、`issueRecord`）、`reporting/repository_contract.go`（`ValidateCancellation`）、`storage/memory/repository.go`、`storage/postgres/cancellations.go`、`storage/postgres/production.go`（`appendTables`、`cancellationPolicies`）、迁移 `014_issue_cancellations`、`transport/httpapi/api.go`（路由、`RequiredRole`、`AuditAction`、`classify`）、`adapters/httpsource/httpsource.go`（`cancelDocument`）、`adapters/httpsource/sourcetest`、`adapters/httpsource/conformance/cancellation.go`（X1–X4）、两个合同模拟器的 `CancelDocument`。
+- 测试：`reporting/issue_cancellation_test.go`（`TestCancelIssueAsksTheProductThenRecordsTheReceipt`、`TestCancelIssueRefusesBeforeTheProductIsAsked`、`TestCancelIssueRefusedByTheProductWritesNothing`、`TestCancelIssueHoldsTheReceiptToTheContract`、`TestCancelIssueIsCompletedByARetryAfterThePlatformFailed`、`TestCancelIssueFailsClosedWhenItsAuditEventCannotBeWritten`、`TestConcurrentCancellationsOfOneIssueRecordOnce`、`TestDownloadRefusesACancelledIssuesFileByItsOwnRecord`、`TestCancellationReasonRequestAndReceiptForms`）；两个存储同一份合同 `an_issue_cancellation_is_kept_once_beside_its_record_with_its_audit_event`（`TestMemoryContract`、`TestPostgresContract`）；PostgreSQL 上 `TestPostgresMigrations` 的 `issue_cancellations_step_…` 与 `row_level_security` 下的 `a_cancellation_is_its_issues_owners_and_is_never_rewritten`；`TestDurableDocumentAuthority`（持久模拟器的作废场景与并发）；`transport/httpapi/issue_cancellation_test.go`（四个测试：路由、拒绝、能力、审计失败与重试补齐）；`adapters/httpsource/cancellation_test.go`（回执被篡改的 22 种情形等）；`cmd/reporting-source-check` 的 `TestASourceThatCancelsWronglyFailsTheCancellationRules`；`server` 的 `TestTheShippedServerCancelsAnIssueThroughAnHTTPSource`（日志不含理由、编号、引用、凭据或来源地址）。
+- 审查时看：新加的错误文本与日志行是否仍然只带代码；`fromCanceller` 之外是否有路径把适配器的错误原样交给调用方；`issue_owner` 策略的 EXISTS 子查询依赖 `assets` 上 007 的策略——改动后者时要重看前者。
+- 已知不覆盖：没有任何真实产品实现作废路由；平台不自动重试（作废是人的行为，由人再次请求补齐）；同租户的同事不能作废他人的单据（记录属于其所有者，登记簿是否对租户开放另行决定）；理由作为业务文本存库并进入备份；产品侧是否在所有情况下拒绝无权主体，是产品的义务，检查器的 X3 只证明一个未知主体被拒。
+
 ## 8. 存储、密钥与日志
 
 - 数据库连接：生产存储要求 `sslmode=verify-full`；连接串解析失败时不回显它（可能含密码）。代码：`storage/postgres/production.go`；测试：`TestOpenProductionRefusalsCarryNoPassword`。

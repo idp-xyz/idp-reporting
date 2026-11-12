@@ -266,7 +266,7 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		return send(w, 200, map[string]any{"identity": map[string]string{"tenant": p.Tenant, "issuer": p.Issuer, "subject": p.Subject}, "integrations": service.Served(p), "roles": p.EffectiveRoles()})
 	})
 	bind("GET "+base+"/capabilities", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
-		return send(w, 200, capabilities(service, false))
+		return send(w, 200, capabilities(service, p, false))
 	})
 	bind("GET "+base+"/catalog", func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
 		values := req.URL.Query()
@@ -476,6 +476,27 @@ func Handler(service *r.Service, authenticate Authenticate, layoutStores ...*lay
 		}
 		return send(w, 200, v)
 	})
+	// S24-A (ADR 0025 decision 2): the cancellation of a document the caller issued, asked of the source product within the request.
+	// The body is exactly {"reason": "…"} (strict JSON, the small bound); an issuer's (RequiredRole); recorded before the product is
+	// asked and refused when that cannot be written (AuditAction: issue.cancel, mandatory). The answer is the issue as GET /issues/{id}
+	// shows it, with its cancellation; asking again answers the same, without asking the product again. The reason reaches the
+	// product and the store and nothing else: no error, no log line and no metric carries it.
+	bind("POST "+cancellationPath, func(w http.ResponseWriter, req *http.Request, p r.Principal) error {
+		var input struct {
+			Reason *string `json:"reason"`
+		}
+		if e := decode(w, req, &input, bodySmall); e != nil {
+			return e
+		}
+		if input.Reason == nil {
+			return r.ErrInvalid
+		}
+		v, e := service.CancelIssue(req.Context(), p, req.PathValue("id"), *input.Reason)
+		if e != nil {
+			return e
+		}
+		return send(w, 200, v)
+	})
 	return secured(mux), nil
 }
 
@@ -533,16 +554,21 @@ func jobListing(req *http.Request) (r.JobListing, error) {
 	return f, nil
 }
 
-// capabilities is the one capability document. embedding is whether embed pages are configured for the caller's integrations
-// (WithEmbedding computes it; the core API alone says false); it never carries the origins.
-func capabilities(service *r.Service, embedding bool) map[string]any {
-	return capabilitiesLabelled(service, embedding, "S01-B-contract-simulators")
+// capabilities is the one capability document, for the caller. embedding is whether embed pages are configured for the caller's
+// integrations (WithEmbedding computes it; the core API alone says false); it never carries the origins.
+func capabilities(service *r.Service, p r.Principal, embedding bool) map[string]any {
+	return capabilitiesLabelled(service, p, embedding, "S01-B-contract-simulators")
 }
 
 // capabilitiesLabelled is the capability document with the given profile label. production_approved is never a parameter: it is false in
 // this code until a code change after the admission decision says otherwise.
-func capabilitiesLabelled(service *r.Service, embedding bool, profile string) map[string]any {
-	view := map[string]any{"profile": profile, "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "routes": []string{"GET /catalog", "GET /companies", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
+//
+// issue_cancellation (S24-A, ADR 0025 decision 5) says, for each product the service serves for the caller (the session's
+// integrations), whether a cancellation of an issued document can be asked of it: whether the product's connection has the capability.
+// It is the one part of the document that depends on the caller, and it promises nothing about a document: whether the product lets
+// this person cancel that one is the product's answer to the request.
+func capabilitiesLabelled(service *r.Service, p r.Principal, embedding bool, profile string) map[string]any {
+	view := map[string]any{"profile": profile, "production_approved": false, "query_shapes": "published catalog only", "formats": service.Formats(), "source_interfaces": []string{"DescribeCatalog", "PrepareRead", "ReadPage", "AuthorizeCurrent"}, "issuance": service.CanIssue(), "issue_cancellation": service.CanCancel(p), "routes": []string{"GET /catalog", "GET /companies", "POST /queries", "POST /snapshot-jobs", "GET /jobs/{id}", "POST /jobs/{id}/cancel", "GET /snapshots/{id}/rows", "POST /exports", "GET /artifacts/{id}/content", "GET /issues", "GET /issues/{id}", "POST /issues/{id}/cancellation"}, "template_routes": []string{"POST /issues", "GET, POST /document-templates", "GET /document-templates/{id}", "GET, POST /document-templates/{id}/release", "GET /document-templates/{id}/published", "POST /document-templates/{id}/previews"}}
 	view["embedding"] = embedding
 	q := service.Quotas()
 	view["quotas"] = map[string]int{r.QuotaJobsInFlight: q.JobsInFlight, r.QuotaStoredResults: q.StoredResults, r.QuotaAdmissionsPerHour: q.AdmissionsPerHour, r.QuotaQueriesInFlight: q.QueriesInFlight}
@@ -633,7 +659,7 @@ func classify(e error) (code string, status int, ok bool) {
 	for _, candidate := range []struct {
 		err    error
 		status int
-	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrAuditUnavailable, 503}, {privatedocs.ErrApprovalRequired, 409}, {r.ErrNotFound, 404}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
+	}{{r.ErrInvalid, 400}, {r.ErrUnsupported, 422}, {r.ErrDenied, 403}, {r.ErrRoleDenied, 403}, {r.ErrAuditUnavailable, 503}, {privatedocs.ErrApprovalRequired, 409}, {r.ErrNotFound, 404}, {r.ErrIssueCancelled, 409}, {r.ErrConflict, 409}, {r.ErrIntegrity, 409}, {r.ErrBudget, 413}, {r.ErrUnavailable, 503}, {r.ErrLease, 409}, {r.ErrUnpublished, 409}} {
 		if errors.Is(e, candidate.err) {
 			return candidate.err.Error(), candidate.status, true
 		}
@@ -696,7 +722,13 @@ func auditLogOf(ctx context.Context) r.AuditLog {
 }
 
 // AuditAction is what a route records (S12-B): the action, the kind of object, and whether the action must not run unrecorded (a
-// publication or withdrawal, an official issue). "" for a route that records nothing (reading, querying, previews).
+// publication or withdrawal, an official issue, the cancellation of one). "" for a route that records nothing (reading, querying,
+// previews).
+//
+// A cancellation (S24-A, ADR 0025 decision 2) is recorded as `requested` before the product is asked, like every mandatory action,
+// and its `succeeded` event is the store's: written with the cancellation, in its transaction, so that the event exists exactly when
+// the cancellation does (reporting.Repository.RecordCancellation). The route therefore adds no `succeeded` event of its own
+// (authenticated): a repeat, which answers the recorded cancellation without writing anything, leaves `requested` alone.
 func AuditAction(method, pattern string) (action, kind string, mandatory bool) {
 	path := routePath(pattern)
 	designKind := func() string {
@@ -716,6 +748,8 @@ func AuditAction(method, pattern string) (action, kind string, mandatory bool) {
 		return "design.release", designKind(), true
 	case strings.HasSuffix(path, "/api/reporting/v1/issues"):
 		return "issue.submit", "issue", true
+	case strings.HasSuffix(path, cancellationPath):
+		return r.AuditIssueCancel, "issue", true
 	case strings.HasSuffix(path, "/api/reporting/v1/exports"):
 		return "export.submit", "export", false
 	case strings.Contains(path, "/api/reporting/v1/schedules"):
@@ -776,10 +810,14 @@ func routePath(pattern string) string {
 // is a designer's (S12-A).
 var designPaths = []string{"/layouts", "/dashboards", "/document-templates", "/document-backgrounds", "/document-images"}
 
+// cancellationPath is the path of the cancellation of an issued document (S24-A), as the role and the audit of a route read it.
+const cancellationPath = "/api/reporting/v1/issues/{id}/cancellation"
+
 // RequiredRole is the role a route needs (S12-A, ADR 0018), from its method and the pattern the mux matched: a publication or withdrawal
-// (".../release") is a publisher's, an official issue an issuer's, any other change of a design a designer's; reading, querying, freezing,
-// exporting, previewing and checking are a viewer's, and so is a schedule's every route (S16-A): a schedule submits a viewer's jobs, as its
-// owner, at each run. Every /admin/ route is an administrator's (S18-B). A route added later falls under the same rules.
+// (".../release") is a publisher's, an official issue an issuer's and so is its cancellation (S24-A, ADR 0025 decision 2), any other
+// change of a design a designer's; reading, querying, freezing, exporting, previewing and checking are a viewer's, and so is a
+// schedule's every route (S16-A): a schedule submits a viewer's jobs, as its owner, at each run. Every /admin/ route is an
+// administrator's (S18-B). A route added later falls under the same rules.
 func RequiredRole(method, pattern string) string {
 	path := routePath(pattern)
 	// S18-B: every route under /admin/ is an administrator's, reads included.
@@ -792,7 +830,7 @@ func RequiredRole(method, pattern string) string {
 	switch {
 	case strings.HasSuffix(path, "/release"):
 		return r.RolePublisher
-	case strings.HasSuffix(path, "/api/reporting/v1/issues"):
+	case strings.HasSuffix(path, "/api/reporting/v1/issues"), strings.HasSuffix(path, cancellationPath):
 		return r.RoleIssuer
 	case strings.HasSuffix(path, "/previews"):
 		return r.RoleViewer
@@ -849,6 +887,11 @@ func authenticated(authenticate Authenticate, fn func(http.ResponseWriter, *http
 			w = rec
 			defer func() {
 				event.ID, event.Outcome = r.NewID(), outcomeOf(rec.status)
+				// A cancellation's `succeeded` is the store's, written with the cancellation in its transaction (S24-A; AuditAction):
+				// a second one here would say a repeat cancelled again. Its refusals and failures are recorded here like any other's.
+				if action == r.AuditIssueCancel && event.Outcome == "succeeded" {
+					return
+				}
 				_ = audit.Record(context.WithoutCancel(req.Context()), event)
 			}()
 		}

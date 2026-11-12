@@ -35,7 +35,7 @@ func TestDeploymentExampleIsAValidConfiguration(t *testing.T) {
 			t.Errorf("the example's connection %q is not an http connection the adapter reads", conn.Integration)
 		}
 	}
-	for _, option := range []string{"base_url", "loopback_http", "timeout", "ca_file", "client_cert_file", "client_key_file", "auth_env", "max_response_bytes", "issuance", "companies"} {
+	for _, option := range []string{"base_url", "loopback_http", "timeout", "ca_file", "client_cert_file", "client_key_file", "auth_env", "max_response_bytes", "issuance", "companies", "cancellation"} {
 		if !strings.Contains(string(doc), "`"+option+"`") {
 			t.Errorf("the http options table does not list %s", option)
 		}

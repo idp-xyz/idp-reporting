@@ -39,6 +39,10 @@ func TestRequiredRoleOfEachRouteClass(t *testing.T) {
 		{"POST", "POST /api/reporting/v1/dashboards/{id}/release", r.RolePublisher},
 		{"POST", "POST /api/reporting/v1/document-templates/{id}/release", r.RolePublisher},
 		{"POST", "POST /api/reporting/v1/issues", r.RoleIssuer},
+		// S24-A (ADR 0025 decision 2): the cancellation of an issue is an issuer's, as the issue is; reading the issues stays a viewer's.
+		{"POST", "POST /api/reporting/v1/issues/{id}/cancellation", r.RoleIssuer},
+		{"GET", "GET /api/reporting/v1/issues/{id}", r.RoleViewer},
+		{"GET", "GET /api/reporting/v1/issues", r.RoleViewer},
 		// S16-A: a schedule's routes are a viewer's, the role of the jobs its runs submit.
 		{"POST", "POST /api/reporting/v1/schedules", r.RoleViewer},
 		{"GET", "GET /api/reporting/v1/schedules/{id}/runs", r.RoleViewer},
