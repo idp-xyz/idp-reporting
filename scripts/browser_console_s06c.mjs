@@ -263,12 +263,14 @@ const bgOf=el=>{const layers=[];for(let e=el;e;e=e.parentElement){const c=parse(
 const out=[],root=document.body,walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),seen=new Set();let n;
 const controls=root.querySelectorAll('input,select,textarea');
 const visible=el=>{const cs=getComputedStyle(el);if(cs.visibility==='hidden'||cs.display==='none')return false;const b=el.getBoundingClientRect();return b.width>0&&b.height>0&&b.right>0&&b.bottom>0&&b.left<innerWidth&&b.top<innerHeight*4;};
+// The content of a closed <details> (other than its summary) is not on screen; a newer Chrome keeps it as skipped content whose boxes still report a size, so it is left out by name.
+const closedDetails=el=>{for(let d=el.closest('details');d;d=d.parentElement?d.parentElement.closest('details'):null){if(!d.open){const s=d.querySelector(':scope > summary');if(!(s&&s.contains(el)))return true;}}return false;};
 const audit=(el,t)=>{if(!visible(el))return;const cs=getComputedStyle(el);const fg=parse(cs.color),bg=bgOf(el),f2=over({...fg,a:fg.a*(parseFloat(cs.opacity)||1)},bg),L1=lum(f2),L2=lum(bg),r=(Math.max(L1,L2)+.05)/(Math.min(L1,L2)+.05);out.push({text:String(t).slice(0,28),ratio:Math.round(r*100)/100,size:cs.fontSize,disabled:!!el.closest('button:disabled,[aria-disabled="true"],:disabled'),id:el.id||String(el.className).slice(0,24)});};
 while(n=walker.nextNode()){const t=n.nodeValue.trim();if(!t)continue;const el=n.parentElement;if(seen.has(el))continue;seen.add(el);
  if(el.closest('svg')||el.closest('.sr-only')||el.closest('[hidden]')||el.closest('[aria-hidden="true"]')||el.closest('.empty-icon')||el.closest('noscript')||el.closest('.overlay:not(.open)')&&!el.closest('#page-dashboard')||el.closest('.connection-overlay')&&document.getElementById('connection-overlay').hidden)continue;
- if(el.closest('[inert]'))continue;
+ if(el.closest('[inert]')||closedDetails(el))continue;
  audit(el,t);}
-for(const c of controls){if(c.closest('[hidden]')||c.closest('[inert]'))continue;if(c.tagName==='SELECT'&&c.selectedOptions[0])audit(c,c.selectedOptions[0].text);else if(c.value)audit(c,c.value);}
+for(const c of controls){if(c.closest('[hidden]')||c.closest('[inert]')||closedDetails(c))continue;if(c.tagName==='SELECT'&&c.selectedOptions[0])audit(c,c.selectedOptions[0].text);else if(c.value)audit(c,c.value);}
 const bad=out.filter(o=>o.ratio<4.5&&!o.disabled);return {total:out.length,failing:bad.length,worst:bad.sort((a,b)=>a.ratio-b.ratio).slice(0,12)};})()`;
 const contrast = async (name, least = 10) => {
   const r = await evalJs(AUDIT);
@@ -282,7 +284,8 @@ const contrast = async (name, least = 10) => {
 // viewport: 225px, measured as the top of the workbench's query panel, the document studio's canvas area and the dashboard's desk.
 const SMALL_ALLOWED =
   '.eyebrow,.library-eyebrow,.wordmark small,.pill,.badge,.state-badge,.nav-count,.nav-item small,.nav-item b,.rail-help,.toolrail small,kbd,.ribbon-tip,.canvas-hint,.environment';
-const LEGIBILITY = `(()=>{const vis=e=>{const b=e.getBoundingClientRect();const cs=getComputedStyle(e);return b.width>0&&b.height>0&&cs.visibility!=='hidden'&&cs.opacity!=='0'&&!e.closest('[hidden]')&&!e.closest('[inert]')&&!e.closest('svg')&&!e.closest('.cv-panel,.cv-scroll,#st-ruler,.ruler');};
+const LEGIBILITY = `(()=>{const closedDetails=el=>{for(let d=el.closest('details');d;d=d.parentElement?d.parentElement.closest('details'):null){if(!d.open){const s=d.querySelector(':scope > summary');if(!(s&&s.contains(el)))return true;}}return false;};
+const vis=e=>{const b=e.getBoundingClientRect();const cs=getComputedStyle(e);return b.width>0&&b.height>0&&cs.visibility!=='hidden'&&cs.opacity!=='0'&&!e.closest('[hidden]')&&!e.closest('[inert]')&&!e.closest('svg')&&!e.closest('.cv-panel,.cv-scroll,#st-ruler,.ruler')&&!closedDetails(e);};
 let min=99,minText='',minSmall=99,minSmallText='';const sizes={};
 for(const e of document.querySelectorAll('body *')){if(!vis(e))continue;if(![...e.childNodes].some(n=>n.nodeType===3&&n.nodeValue.trim()))continue;const s=parseFloat(getComputedStyle(e).fontSize);if(!s)continue;sizes[s]=(sizes[s]||0)+1;
  if(e.closest(${JSON.stringify(SMALL_ALLOWED)})){if(s<minSmall){minSmall=s;minSmallText=e.textContent.trim().slice(0,30);}}else if(s<min){min=s;minText=e.textContent.trim().slice(0,30)+' <'+(e.id||e.className)+'>';}}
@@ -719,8 +722,89 @@ async function main() {
   await contrast('layout version dialog 1440 light');
   await key('Escape');
   await sleep(150);
-  await click('#report-designer > summary');
+
+  // S23-B (ADR 0024 decision 5): the designer formats the table report. A title and a footnote, 余额 as the metric's label with its format
+  // (parentheses for negatives, a dash for zero), subtotals by customer and one mark on negative balances; saved as version 2, the table shows
+  // what the workbook prints: the title above, the labels, (0.24) in a marked cell with the exact value as its tooltip, a 小计 row after each
+  // customer, the note that the screen groups the rows it shows, and 导出 Excel names the saved version. The designer stays open from here on,
+  // so the later passes (1440 dark; 1280, 768 and 390 in both schemes) look at its controls and at the formatted table too.
+  const designerRow = label =>
+    `[...document.querySelectorAll('#designer-columns .designer-row')].find(r=>r.querySelector('label')?.textContent===${JSON.stringify(label)})`;
+  const pick = async (expr, value) => {
+    await evalJs(
+      `(()=>{const s=${expr};s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`
+    );
+    await sleep(120);
+  };
+  const typeExpr = async (expr, text) => {
+    await clickExpr(expr, text);
+    await evalJs(`${expr}.select()`);
+    await send('Input.insertText', {text});
+    await sleep(120);
+  };
+  await typeInto('#layout-title', '应收账龄报表');
+  await typeInto('#layout-footnote', '金额为账面值，未做汇率换算。');
+  await typeExpr(`${designerRow('应收余额')}.querySelector('input[type=text]')`, '余额');
+  await pick(`${designerRow('应收余额')}.querySelectorAll('.designer-format select')[0]`, 'parentheses');
+  await pick(`${designerRow('应收余额')}.querySelectorAll('.designer-format select')[1]`, 'dash');
+  await pick(`document.getElementById('layout-subtotals')`, 'customer.id');
+  await clickBtn('#report-designer', '添加规则');
   await sleep(150);
+  const ruleSelect = n => `document.querySelector('#layout-marks .mark-rule').querySelectorAll('select')[${n}]`;
+  await pick(ruleSelect(0), 'ar.open_balance');
+  await pick(ruleSelect(1), 'lt');
+  await typeExpr(`document.querySelector('#layout-marks .mark-rule input[type=text]')`, '0');
+  await pick(ruleSelect(2), 'bad');
+  await clickBtn('#report-designer .designer-bar', '保存');
+  await waitFor(
+    `document.getElementById('layout-server-status').textContent.includes('版本 2')`,
+    'the layout saved as version 2',
+    30000
+  );
+  await idle();
+  await sleep(200);
+  const formatted = await evalJs(
+    `(()=>{const t=document.getElementById('result-table');const rows=[...t.tBodies[0].rows];const marked=t.querySelector('td.mark-bad');return {heads:[...t.tHead.rows[0].cells].map(c=>c.textContent),title:document.getElementById('result-layout-title').textContent,footnote:document.getElementById('result-layout-footnote').textContent,noteShown:!document.getElementById('result-layout-note').hidden,subtotals:rows.filter(r=>r.classList.contains('layout-subtotal')).map(r=>[...r.cells].map(c=>c.textContent)),marked:marked&&{text:marked.textContent,title:marked.title},exportTitle:document.getElementById('export').title,state:document.getElementById('layout-state').textContent};})()`
+  );
+  check(
+    'the formatted report (S23-B): the title above the table, 余额 as the label, (0.24) marked with -0.24 as its tooltip, a 小计 row after each of the three customers, the note on screen grouping, and 导出 Excel says it prints version 2',
+    formatted.title === '应收账龄报表' &&
+      formatted.footnote === '金额为账面值，未做汇率换算。' &&
+      formatted.heads.includes('余额') &&
+      formatted.marked?.text === '(0.24)' &&
+      formatted.marked?.title === '-0.24' &&
+      formatted.subtotals.length === 3 &&
+      formatted.subtotals.every(r => r.includes('小计')) &&
+      formatted.noteShown &&
+      /版本 2/.test(formatted.exportTitle),
+    formatted
+  );
+  // The look of it at a width and scheme: the designer with its controls, then the table with its subtotal rows and the marked cell, whose text
+  // keeps 4.5:1 on the 差 colour (ADR 0024: the marks are fills behind the regular ink).
+  const MARKED = `(()=>{const td=document.querySelector('#result-table td.mark-bad');if(!td)return null;const parse=c=>{const m=c.match(/rgba?\\(([^)]+)\\)/);const p=m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number);return {r:p[0],g:p[1],b:p[2]};};const lum=c=>{const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);};return .2126*f(c.r)+.7152*f(c.g)+.0722*f(c.b);};const cs=getComputedStyle(td),L1=lum(parse(cs.color)),L2=lum(parse(cs.backgroundColor));const b=td.getBoundingClientRect();return {text:td.textContent,ratio:Math.round((Math.max(L1,L2)+.05)/(Math.min(L1,L2)+.05)*100)/100,visible:b.width>0&&b.top>=0&&b.bottom<=innerHeight,subtotalRows:document.querySelectorAll('#result-table tr.layout-subtotal').length};})()`;
+  const layoutLook = async tag => {
+    await nav('workspace');
+    await evalJs(`document.getElementById('report-designer').scrollIntoView({block:'start'})`);
+    await sleep(250);
+    const o = await overflow();
+    check(`no horizontal overflow with the layout designer and its controls at ${tag}`, !o.over, o);
+    await contrast(`layout designer ${tag}`);
+    await legibility(`layout designer ${tag}`);
+    await shot(`console-layout-designer-${tag}`);
+    await evalJs(`document.getElementById('result-layout-title').scrollIntoView({block:'start'})`);
+    await sleep(250);
+    const m = await evalJs(MARKED);
+    check(
+      `the formatted table at ${tag}: three 小计 rows, the marked cell (0.24) on screen with contrast ≥ 4.5:1`,
+      !!m && m.text === '(0.24)' && m.ratio >= 4.5 && m.visible && m.subtotalRows === 3,
+      m
+    );
+    await contrast(`formatted table ${tag}`);
+    await shot(`console-layout-table-${tag}`);
+    await evalJs(`scrollTo(0,0)`);
+    await sleep(150);
+  };
+  await layoutLook('1440-light');
 
   // ---- the session: the dashboard studio ----------------------------------------------------------------------------------------------
   await nav('dashboard');
@@ -742,11 +826,12 @@ async function main() {
   );
   // S21-A: a line and a pie from the two tools after the bar's; drawn from the snapshot's page (three rows, one of them negative), their
   // legends print the cells' literal values; a title typed into the line's card becomes its heading, and the pie takes the full width.
+  // Since S23-B the workbench table is formatted by the saved layout: the literal value is a formatted cell's title, and the 小计 rows are not data.
   await clickBtn('#bd-sidebar', '添加折线图');
   await clickBtn('#bd-sidebar', '添加饼图');
   await sleep(300);
   const charts = await evalJs(
-    `(()=>{const cards=[...document.getElementById('board-widgets').children],line=cards[3],pie=cards[4];const cells=[...document.querySelectorAll('#result-table tbody tr')].map(r=>r.cells[2].textContent);const values=el=>[...el.querySelectorAll('.board-legend strong')].map(s=>s.textContent);return {count:cards.length,status:document.getElementById('bd-status-count').textContent,cells,points:line?line.querySelectorAll('.board-line circle.board-point').length:0,lineValues:line?values(line):[],slices:pie?pie.querySelectorAll('.board-pie .board-slice').length:0,pieValues:pie?values(pie):[],notDrawn:pie?[...pie.querySelectorAll('.board-legend em')].map(e=>e.textContent):[],note:pie?(pie.querySelector('.board-note')||{}).textContent:null,headings:cards.map(c=>c.querySelector('h3').textContent),styled:document.querySelectorAll('#board-widgets .board-line [style],#board-widgets .board-pie [style]').length,svg:[...document.querySelectorAll('#board-widgets svg[role=img]')].map(s=>s.getAttribute('aria-label'))};})()`
+    `(()=>{const cards=[...document.getElementById('board-widgets').children],line=cards[3],pie=cards[4];const cells=[...document.querySelectorAll('#result-table tbody tr:not(.layout-subtotal)')].map(r=>r.cells[2].title||r.cells[2].textContent);const values=el=>[...el.querySelectorAll('.board-legend strong')].map(s=>s.textContent);return {count:cards.length,status:document.getElementById('bd-status-count').textContent,cells,points:line?line.querySelectorAll('.board-line circle.board-point').length:0,lineValues:line?values(line):[],slices:pie?pie.querySelectorAll('.board-pie .board-slice').length:0,pieValues:pie?values(pie):[],notDrawn:pie?[...pie.querySelectorAll('.board-legend em')].map(e=>e.textContent):[],note:pie?(pie.querySelector('.board-note')||{}).textContent:null,headings:cards.map(c=>c.querySelector('h3').textContent),styled:document.querySelectorAll('#board-widgets .board-line [style],#board-widgets .board-pie [style]').length,svg:[...document.querySelectorAll('#board-widgets svg[role=img]')].map(s=>s.getAttribute('aria-label'))};})()`
   );
   check(
     'S21-A: a line of one point a row and a pie of one slice a positive row, the negative row listed and not drawn, the legends the literal cells, five widgets counted, no style attribute in the charts (the bar sets its widths through the CSSOM)',
@@ -991,6 +1076,7 @@ async function main() {
     check(`no horizontal overflow at 1440 dark (${p})`, !(await overflow()).over, await overflow());
     if (['workspace', 'dashboard'].includes(p)) await shot(`console-1440-dark-${p}`);
   }
+  await layoutLook('1440-dark');
   await viewport(1440, 900, 'light');
 
   // ---- alone at 1280, 768, 390, light and dark ---------------------------------------------------------------------------------------------
@@ -1054,6 +1140,11 @@ async function main() {
       await sleep(250);
     }
     if (w === 390) {
+      // S23-B: the designer's controls and the formatted table at the phone width, light and dark.
+      await layoutLook('390-light');
+      await viewport(w, h, 'dark', mobile);
+      await layoutLook('390-dark');
+      await viewport(w, h, 'light', mobile);
       // S09-D: the company picker at 390, where it goes with the query panel: the data drawer. It fits the drawer, no overflow, contrast.
       await nav('workspace');
       await click('#sh-data-chip');

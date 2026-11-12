@@ -260,6 +260,7 @@ function english(intercept, search = '?lang=en') {
     'board.js',
     'companies.js',
     'filters.js',
+    'present.js',
     'app.js',
   ])
     w.eval(scripts[name]);

@@ -9,7 +9,7 @@ import {createServer} from 'node:net';
 import {createServer as createHttpServer} from 'node:http';
 import {randomBytes, webcrypto, createHash} from 'node:crypto';
 import {JSDOM, VirtualConsole} from 'jsdom';
-import {inflateSync, deflateSync, crc32} from 'node:zlib';
+import {inflateSync, inflateRawSync, deflateSync, crc32} from 'node:zlib';
 
 const root = resolve(import.meta.dirname, '..');
 const html = await readFile(join(root, 'console/assets/index.html'), 'utf8');
@@ -24,6 +24,7 @@ const issueScript = await readFile(join(root, 'console/assets/issue.js'), 'utf8'
 const boardScript = await readFile(join(root, 'console/assets/board.js'), 'utf8');
 const companiesScript = await readFile(join(root, 'console/assets/companies.js'), 'utf8');
 const filtersScript = await readFile(join(root, 'console/assets/filters.js'), 'utf8');
+const presentScript = await readFile(join(root, 'console/assets/present.js'), 'utf8');
 const token = randomBytes(32).toString('hex');
 const artifactDir = process.env.REPORTING_S03A_EVIDENCE_DIR;
 const pdfConfigured = ['REPORTING_TYPST', 'REPORTING_TYPST_SHA256', 'REPORTING_PDF_FONTS'].every(k => process.env[k]);
@@ -193,6 +194,7 @@ function app(intercept, options) {
   w.eval(documentsScript);
   w.eval(companiesScript);
   w.eval(filtersScript);
+  w.eval(presentScript);
   w.eval(script);
   const $ = id => w.document.getElementById(id);
   const input = (id, value) => {
@@ -18280,6 +18282,720 @@ test("S20-B: a declaration that breaks ADR 0023's rules is a catalogue the conso
       value: 'v16',
     });
     assert.equal(JSON.parse(sent[0].filters[1].value).length, 32);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+// ---- S23-B (ADR 0024 decision 5): the layout designer formats the table report, and the exports carry the layout ----
+// A workbook is a zip whose entries the central directory names (Go's archive/zip streams them with data descriptors, so the local headers
+// carry no sizes); a worksheet's cells are shared strings (t="s"), inline strings or numbers.
+function unzip(buffer) {
+  let eocd = buffer.length - 22;
+  while (eocd >= 0 && buffer.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+  if (eocd < 0) throw new Error('no zip directory');
+  const count = buffer.readUInt16LE(eocd + 10),
+    offset = buffer.readUInt32LE(eocd + 16),
+    files = new Map();
+  let p = offset;
+  for (let i = 0; i < count; i++) {
+    if (buffer.readUInt32LE(p) !== 0x02014b50) throw new Error('bad central directory');
+    const method = buffer.readUInt16LE(p + 10),
+      size = buffer.readUInt32LE(p + 20),
+      nameLength = buffer.readUInt16LE(p + 28),
+      extraLength = buffer.readUInt16LE(p + 30),
+      commentLength = buffer.readUInt16LE(p + 32),
+      local = buffer.readUInt32LE(p + 42);
+    const name = buffer.subarray(p + 46, p + 46 + nameLength).toString('utf8');
+    const start = local + 30 + buffer.readUInt16LE(local + 26) + buffer.readUInt16LE(local + 28);
+    const data = buffer.subarray(start, start + size);
+    files.set(name, method === 8 ? inflateRawSync(data) : Buffer.from(data));
+    p += 46 + nameLength + extraLength + commentLength;
+  }
+  return files;
+}
+const xmlText = s =>
+  s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+// The cells of the named sheet, by row: an object of column letter → text, shared strings resolved and numbers as written.
+function sheetRows(files, name) {
+  const workbook = files.get('xl/workbook.xml').toString('utf8'),
+    rels = files.get('xl/_rels/workbook.xml.rels').toString('utf8');
+  const rid = (workbook.match(new RegExp('<sheet[^>]*name="' + name + '"[^>]*r:id="([^"]+)"')) || [])[1];
+  const target = (rels.match(new RegExp('<Relationship[^>]*Id="' + rid + '"[^>]*Target="([^"]+)"')) || [])[1];
+  if (!target) throw new Error('no sheet ' + name);
+  const xml = files.get('xl/' + target.replace(/^\/?xl\//, '').replace(/^\//, '')).toString('utf8');
+  const sst = files.has('xl/sharedStrings.xml')
+    ? [
+        ...files
+          .get('xl/sharedStrings.xml')
+          .toString('utf8')
+          .matchAll(/<si>([\s\S]*?)<\/si>/g),
+      ].map(m => [...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t => xmlText(t[1])).join(''))
+    : [];
+  const rows = [];
+  for (const row of xml.matchAll(/<row [^>]*>([\s\S]*?)<\/row>/g)) {
+    const cells = {};
+    for (const c of row[1].matchAll(/<c r="([A-Z]+)(\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const attrs = c[3],
+        inner = c[4] || '',
+        v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1],
+        type = (attrs.match(/ t="(\w+)"/) || [])[1] || 'n';
+      const text =
+        v === undefined && type !== 'inlineStr'
+          ? ''
+          : type === 's'
+            ? sst[Number(v)]
+            : type === 'str' || type === 'inlineStr'
+              ? xmlText((inner.match(/<t[^>]*>([\s\S]*?)<\/t>/) || ['', ''])[1])
+              : v;
+      cells[c[1]] = text;
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+// The designer as a test reads it: the column rows and their controls, the mark rules and theirs.
+const ld = {
+  rows: a => [...a.$('designer-columns').querySelectorAll('.designer-row')],
+  row: (a, label) =>
+    ld.rows(a).find(r => r.querySelector('label').textContent === label) ||
+    (() => {
+      throw new Error('no ld row ' + label);
+    })(),
+  check: row => row.querySelector('input[type=checkbox]'),
+  up: row => row.querySelector('button'),
+  align: row => row.querySelectorAll(':scope > select')[0],
+  label: row => row.querySelector('input[type=text]'),
+  grouping: row => row.querySelector('.designer-format input[type=checkbox]'),
+  negative: row => row.querySelectorAll('.designer-format select')[0],
+  zero: row => row.querySelectorAll('.designer-format select')[1],
+  rules: a => [...a.$('layout-marks').querySelectorAll('.mark-rule')],
+  rule: rule => ({
+    column: rule.querySelectorAll('select')[0],
+    when: rule.querySelectorAll('select')[1],
+    value: rule.querySelector('input[type=text]'),
+    mark: rule.querySelectorAll('select')[2],
+    remove: rule.querySelector('button'),
+  }),
+};
+const change = (a, el, value) => {
+  el.value = value;
+  el.dispatchEvent(new a.w.Event('change', {bubbles: true}));
+};
+const bTypeIn = (a, el, value) => {
+  el.value = value;
+  el.dispatchEvent(new a.w.Event('input', {bubbles: true}));
+};
+const tableCells = a => [...a.$('result-table').tBodies[0].rows].map(r => [...r.cells].map(c => c.textContent));
+const tableTitles = a => [...a.$('result-table').tBodies[0].rows].map(r => [...r.cells].map(c => c.title));
+const layoutJSON = a => {
+  a.click('layout-save');
+  return JSON.parse(a.$('layout-json').value);
+};
+const bindingOf = () => ({integration_id: 'brant-contract-demo', dataset: {id: 'receivables.aging', version: '1.0.0'}});
+// The full-featured layout the tests design and expect the server to keep: a title and a footnote, a centred dimension, a labelled and
+// formatted metric (no grouping, parentheses, a dash for zero), subtotals by the customer and one mark on negative balances.
+const fullLayout = () => ({
+  schema_version: '1.1',
+  binding: bindingOf(),
+  title: '应收账龄报表',
+  footnote: '金额为账面值，未做汇率换算。',
+  columns: [
+    {id: 'customer.id', align: 'center'},
+    {id: 'aging.bucket', align: 'left'},
+    {
+      id: 'ar.open_balance',
+      align: 'right',
+      label: '余额',
+      format: {grouping: false, negative: 'parentheses', zero: 'dash'},
+    },
+  ],
+  subtotals: {by: 'customer.id'},
+  marks: [{column: 'ar.open_balance', when: 'lt', value: '0', mark: 'bad'}],
+});
+async function frozen(a) {
+  await a.login();
+  a.configure();
+  a.click('snapshot');
+  await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('preview').disabled, 'frozen');
+}
+const layoutsPost = (layout, id = '', expected = 0) =>
+  fetch(url + '/api/reporting/v1/layouts', {
+    method: 'POST',
+    headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
+    body: JSON.stringify({id, expected_version: expected, layout}),
+  });
+const savedId = a => a.$('layout-server-status').textContent.match(/[a-f0-9]{32}/)[0];
+
+test('S23-B B1: every control of the layout designer builds the documented 1.1 document, which the server keeps as saved; a layout that uses nothing of 1.1 stays 1.0 exactly as before', async () => {
+  const a = app();
+  try {
+    await frozen(a);
+    // The plain layout of a result is 1.0 with the three keys, as it always was.
+    assert.deepEqual(Object.keys(layoutJSON(a)).sort(), ['binding', 'columns', 'schema_version']);
+    assert.equal(layoutJSON(a).schema_version, '1.0');
+    assert.equal(a.$('layout-state').textContent, '草稿');
+    // The controls: the texts, 居中 in every alignment, a label on every column, a format on the numeric column only, the subtotal
+    // column among the shown dimensions, no mark rule yet.
+    const rows = ld.rows(a);
+    assert.deepEqual(
+      rows.map(r => r.querySelector('label').textContent),
+      ['客户', '账龄区间', '应收余额']
+    );
+    for (const row of rows) {
+      assert.deepEqual(
+        [...ld.align(row).options].map(o => o.textContent),
+        ['左对齐', '居中', '右对齐']
+      );
+      assert.ok(ld.label(row), 'a 列标签 field');
+    }
+    assert.equal(rows[0].querySelector('.designer-format'), null, 'no format on a string column');
+    assert.ok(rows[2].querySelector('.designer-format'), 'a format on the decimal column');
+    assert.equal(ld.grouping(rows[2]).checked, true, 'a metric is grouped by default');
+    assert.deepEqual(
+      [...a.$('layout-subtotals').options].map(o => [o.value, o.textContent]),
+      [
+        ['', '无'],
+        ['customer.id', '客户'],
+        ['aging.bucket', '账龄区间'],
+      ]
+    );
+    assert.equal(ld.rules(a).length, 0);
+    assert.equal(a.$('layout-mark-add').disabled, false);
+    // Before any 1.1 choice the table is as it always was: the frozen strings.
+    assert.equal(tableCells(a)[2][2], '9007199254740893.00');
+    // The texts follow each keystroke; the table shows the title and the footnote, and from the first 1.1 choice on it shows what the
+    // exports print: the metric grouped.
+    a.$('layout-title').focus();
+    bTypeIn(a, a.$('layout-title'), '应收账龄报表');
+    assert.equal(a.$('result-layout-title').hidden, false);
+    assert.equal(a.$('result-layout-title').textContent, '应收账龄报表');
+    assert.equal(layoutJSON(a).schema_version, '1.1');
+    assert.equal(tableCells(a)[2][2], '9,007,199,254,740,893.00');
+    assert.equal(tableTitles(a)[2][2], '9007199254740893.00', 'the exact value is the title');
+    assert.equal(a.w.document.activeElement, a.$('layout-title'), 'the field keeps the focus');
+    bTypeIn(a, a.$('layout-footnote'), '金额为账面值，未做汇率换算。');
+    assert.equal(a.$('result-layout-footnote').textContent, '金额为账面值，未做汇率换算。');
+    // 居中 on the customer; a label on the balance (the header's currency goes with the dataset's label, into the title).
+    change(a, ld.align(ld.row(a, '客户')), 'center');
+    assert.equal(a.$('result-table').tHead.rows[0].cells[0].className, 'layout-center');
+    assert.equal(a.$('result-table').tBodies[0].rows[0].cells[0].className, 'layout-center');
+    bTypeIn(a, ld.label(ld.row(a, '应收余额')), '余额');
+    assert.equal(a.$('result-table').tHead.rows[0].cells[2].textContent, '余额');
+    assert.equal(a.$('result-table').tHead.rows[0].cells[2].title, '应收余额 (CNY)');
+    // The format: no grouping, parentheses, a dash for zero.
+    const balance = ld.row(a, '应收余额');
+    change(a, ld.negative(balance), 'parentheses');
+    assert.equal(tableCells(a)[1][2], '(0.24)');
+    assert.equal(tableTitles(a)[1][2], '-0.24');
+    ld.grouping(ld.row(a, '应收余额')).click();
+    assert.equal(tableCells(a)[2][2], '9007199254740893.00');
+    change(a, ld.zero(ld.row(a, '应收余额')), 'dash');
+    assert.deepEqual(layoutJSON(a).columns[2].format, {grouping: false, negative: 'parentheses', zero: 'dash'});
+    // The subtotals: one group per customer here (the fixture's customers are distinct), each followed by its 小计 row with the exact sum.
+    change(a, a.$('layout-subtotals'), 'customer.id');
+    const cells = tableCells(a);
+    assert.equal(cells.length, 6, 'three rows, three subtotal rows');
+    assert.deepEqual(cells[1], ['小计', '', '100.25']);
+    assert.deepEqual(cells[3], ['小计', '', '(0.24)']);
+    assert.deepEqual(tableTitles(a)[3], ['', '', '-0.24']);
+    assert.equal(
+      [...a.$('result-table').tBodies[0].rows].filter(r => r.classList.contains('layout-subtotal')).length,
+      3
+    );
+    assert.equal(a.$('result-layout-note').hidden, false);
+    assert.equal(a.$('result-layout-note').textContent, '小计按屏幕上显示的行分组计算；导出文件按整个快照分组。');
+    // A mark: a new rule starts valid (blank on the first, a text column), is moved to the balance (equal to 0), then less than 0, bad.
+    a.click('layout-mark-add');
+    assert.equal(ld.rules(a).length, 1);
+    let rule = ld.rule(ld.rules(a)[0]);
+    assert.equal(rule.column.value, 'customer.id');
+    assert.equal(rule.when.value, 'blank');
+    assert.equal(rule.value.hidden, true);
+    change(a, rule.column, 'ar.open_balance');
+    rule = ld.rule(ld.rules(a)[0]);
+    assert.equal(rule.when.value, 'eq');
+    assert.equal(rule.value.value, '0');
+    assert.deepEqual(
+      [...rule.when.options].map(o => o.textContent),
+      ['小于', '小于等于', '大于', '大于等于', '等于', '不等于']
+    );
+    change(a, rule.when, 'lt');
+    rule = ld.rule(ld.rules(a)[0]);
+    change(a, rule.mark, 'bad');
+    rule = ld.rule(ld.rules(a)[0]);
+    assert.equal(rule.mark.value, 'bad');
+    assert.equal(ld.rules(a)[0].querySelector('.mark-swatch').className, 'mark-swatch mark-bad');
+    const marked = [...a.$('result-table').tBodies[0].rows].map(r =>
+      [...r.cells].map(c => c.classList.contains('mark-bad'))
+    );
+    assert.deepEqual(marked[2], [false, false, true], 'the negative balance is marked');
+    assert.deepEqual(marked[3], [false, false, false], 'its subtotal row is not');
+    assert.deepEqual(marked[0], [false, false, false]);
+    // The document, as the designer builds it and as the server keeps it.
+    assert.deepEqual(layoutJSON(a), fullLayout());
+    a.click('layout-server-save');
+    await until(() => a.$('layout-state').textContent === '已保存 v1' && !a.$('preview').disabled, 'saved');
+    const id = savedId(a);
+    const entry = await (
+      await fetch(url + '/api/reporting/v1/layouts/' + id + '?version=1', {headers: {Authorization: 'Bearer ' + token}})
+    ).json();
+    assert.deepEqual(entry.layout, fullLayout(), 'the server kept the document as designed');
+    // Undoing every 1.1 choice makes the layout 1.0 again, as before S23-B (and a change from the saved 1.1 version).
+    bTypeIn(a, a.$('layout-title'), '');
+    bTypeIn(a, a.$('layout-footnote'), '');
+    change(a, ld.align(ld.row(a, '客户')), 'left');
+    bTypeIn(a, ld.label(ld.row(a, '应收余额')), '');
+    ld.grouping(ld.row(a, '应收余额')).click();
+    change(a, ld.negative(ld.row(a, '应收余额')), 'minus');
+    change(a, ld.zero(ld.row(a, '应收余额')), 'digits');
+    change(a, a.$('layout-subtotals'), '');
+    ld.rule(ld.rules(a)[0]).remove.click();
+    assert.deepEqual(layoutJSON(a), {
+      schema_version: '1.0',
+      binding: bindingOf(),
+      columns: fullLayout().columns.map(c => ({id: c.id, align: c.id === 'customer.id' ? 'left' : c.align})),
+    });
+    assert.equal(a.$('layout-state').textContent, '已保存 v1 · 有未保存修改');
+    assert.equal(a.$('result-layout-title').hidden, true);
+    assert.equal(tableCells(a)[2][2], '9007199254740893.00', 'a 1.0 layout shows the frozen strings as before');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S23-B B2: the designer refuses what the server refuses, naming the rule, and the server answers 400 to the same document; a mark value that is not a number holds 保存 and 发布 with the reason', async () => {
+  const a = app();
+  try {
+    await frozen(a);
+    const importLayout = layout => {
+      a.$('layout-json').value = JSON.stringify(layout);
+      a.click('layout-open');
+      return a.$('layout-status').textContent;
+    };
+    const base = fullLayout();
+    const cases = [
+      [l => (l.columns[0].format = {grouping: true}), '格式只能用于数值列：客户 不是数值列。'],
+      [l => (l.subtotals = {by: 'ar.open_balance'}), '小计列必须是维度列：应收余额 不是维度。'],
+      [
+        l => {
+          l.columns.splice(1, 1);
+          l.subtotals = {by: 'aging.bucket'};
+        },
+        '小计列必须是布局里显示的列。',
+      ],
+      [
+        l =>
+          (l.marks = Array.from({length: 9}, () => ({
+            column: 'ar.open_balance',
+            when: 'gt',
+            value: '1',
+            mark: 'note',
+          }))),
+        '标记规则最多 8 条。',
+      ],
+      [
+        l => (l.marks = [{column: 'customer.id', when: 'lt', value: 'a', mark: 'warn'}]),
+        '标记规则 1：文本列的关系只有 等于、不等于、为空。',
+      ],
+      [
+        l => (l.marks = [{column: 'ar.open_balance', when: 'lt', value: 'abc', mark: 'warn'}]),
+        '标记规则 1：数值列比较的值必须是一个数（如 0、-12.50）。',
+      ],
+      [
+        l => (l.marks = [{column: 'customer.id', when: 'blank', value: 'x', mark: 'warn'}]),
+        '标记规则 1：“为空”不带值，等于与不等于要带值。',
+      ],
+      [
+        l => (l.marks = [{column: 'customer.id', when: 'eq', value: 'x', mark: 'pink'}]),
+        '标记规则 1：标记只有 好、注意、差、备注 四种。',
+      ],
+      [l => (l.title = 'x'.repeat(121)), '标题最多 120 个字符，不能含控制字符。'],
+      [l => (l.footnote = 'x'.repeat(401)), '脚注最多 400 个字符，不能含控制字符。'],
+      [l => (l.columns[2].label = 'x'.repeat(65)), '列标签最多 64 个字符，不能含控制字符。'],
+      [
+        l => {
+          l.schema_version = '1.0';
+        },
+        '1.0 版式没有标题、脚注、列标签、格式、居中、小计或标记规则：请把 schema_version 写成 1.1。',
+      ],
+    ];
+    for (const [mutate, reason] of cases) {
+      const bad = structuredClone(base);
+      mutate(bad);
+      assert.equal(importLayout(bad), reason);
+      assert.equal(a.$('result-table').tHead.rows[0].cells.length, 3, 'the table kept the layout that stood');
+      assert.equal((await layoutsPost(bad)).status, 400, 'the server refuses the same document: ' + reason);
+    }
+    // What the server accepts, the designer accepts: the full document, imported, is applied and saved.
+    assert.equal(importLayout(base), '布局已应用；数据和授权范围保持当前查询。');
+    assert.equal((await layoutsPost(base)).status, 201);
+    // Typing a value that is not a number: not applied, the field says so, 保存 and 发布 wait with the reason; a number frees them.
+    const rule = ld.rule(ld.rules(a)[0]);
+    bTypeIn(a, rule.value, '1.2.3');
+    assert.equal(rule.value.getAttribute('aria-invalid'), 'true');
+    assert.equal(
+      a.$('layout-status').textContent,
+      '标记规则 1：数值列比较的值必须是一个数（如 0、-12.50）；改正后才能保存。'
+    );
+    assert.equal(a.$('layout-server-save').disabled, true);
+    assert.equal(
+      a.$('layout-server-save').title,
+      '标记规则 1：数值列比较的值必须是一个数（如 0、-12.50）；改正后才能保存。'
+    );
+    assert.equal(a.$('layout-publish').disabled, true);
+    assert.equal(layoutJSON(a).marks[0].value, '0', 'the layout keeps the value that stood');
+    bTypeIn(a, rule.value, '50');
+    assert.equal(rule.value.getAttribute('aria-invalid'), null);
+    assert.equal(a.$('layout-server-save').disabled, false);
+    assert.equal(a.$('layout-server-save').title, '保存为新的布局版本');
+    assert.equal(layoutJSON(a).marks[0].value, '50');
+    // Eight rules fill the list: 添加规则 is then disabled with the reason, so a ninth is never offered.
+    while (ld.rules(a).length < 8) a.click('layout-mark-add');
+    assert.equal(a.$('layout-mark-add').disabled, true);
+    assert.equal(a.$('layout-mark-add').title, '最多 8 条规则');
+    // Hiding a column takes its subtotal and its rules with it, instead of leaving a document the server would refuse.
+    ld.check(ld.row(a, '应收余额')).click();
+    assert.equal(ld.rules(a).length, 7, 'the rules on the hidden column are gone');
+    ld.check(ld.row(a, '客户')).click();
+    assert.equal(layoutJSON(a).subtotals, undefined);
+    assert.equal(a.$('layout-subtotals').value, '');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S23-B B3: the table view shows what the workbook prints: the same headers, texts, exact values and subtotal rows, and the sums are exact; the export carries the saved layout and the task names it', async () => {
+  const a = app();
+  try {
+    await frozen(a);
+    a.$('layout-json').value = JSON.stringify(fullLayout());
+    a.click('layout-open');
+    a.click('layout-server-save');
+    await until(() => a.$('layout-state').textContent === '已保存 v1' && !a.$('preview').disabled, 'saved');
+    const id = savedId(a);
+    assert.equal(a.$('export').title, '导出使用已保存的布局（版本 1）');
+    // The export: the request names the layout, the job names its version, the task row says so, the file downloads.
+    a.click('export');
+    await until(() => a.downloads.length === 1 && !a.$('preview').disabled, 'workbook', 20000);
+    const posted = a.trace.find(t => t.path.endsWith('/exports') && t.method === 'POST');
+    assert.ok(posted);
+    const job = [...a.$('tasks-body').rows].find(r => r.cells[0].textContent.startsWith('Excel 导出'));
+    assert.equal(job.cells[0].textContent, 'Excel 导出 · 布局版本 1');
+    assert.equal(job.cells[0].title, '布局 ' + id + ' · 版本 1');
+    assert.match(a.$('notice').textContent, /下载已发起/);
+    // The workbook, read back: the Data sheet's headers and rows against the table.
+    const files = unzip(Buffer.from(await a.downloads[0].blob.arrayBuffer()));
+    const data = sheetRows(files, 'Data');
+    assert.deepEqual([data[0].A, data[0].B, data[0].C, data[0].D], ['客户', '账龄区间', '余额', '余额（精确）']);
+    const screen = tableCells(a),
+      titles = tableTitles(a);
+    assert.equal(
+      data.length - 1,
+      screen.length,
+      'as many printed rows as rows on screen (three rows, three subtotal rows)'
+    );
+    screen.forEach((row, i) => {
+      const printed = data[i + 1];
+      assert.equal(printed.A, row[0], 'row ' + i + ' customer');
+      assert.equal(printed.B || '', row[1], 'row ' + i + ' bucket');
+      assert.equal(printed.D, titles[i][2], 'row ' + i + ': the exact column is the cell title');
+    });
+    const subtotalRows = [...a.$('result-table').tBodies[0].rows].map(r => r.classList.contains('layout-subtotal'));
+    assert.deepEqual(subtotalRows, [false, true, false, true, false, true]);
+    // The metadata names the layout; the Totals sheet's exact total is the exact sum of the three frozen values, as present.js adds them.
+    const metadata = Object.fromEntries(sheetRows(files, 'Metadata').map(r => [r.A, r.B]));
+    assert.equal(metadata.layout_id, id);
+    assert.equal(metadata.layout_version, '1');
+    assert.equal(metadata.layout_title, '应收账龄报表');
+    assert.equal(metadata.subtotal_by, 'customer.id');
+    const totals = sheetRows(files, 'Totals');
+    assert.equal(totals[0].C, 'exact_value');
+    assert.equal(totals[1].C, '9007199254740993.01');
+    const present = a.w.reportingPresent;
+    assert.equal(present.sum(['100.25', '-0.24', '9007199254740893.00'], 2), '9007199254740993.01');
+    // The exact arithmetic and the formats, against cases the server's tests pin (export/present).
+    assert.equal(present.sum(['0.1', '0.2'], 0), '0.3');
+    assert.equal(present.sum(['1', '2'], 2), '3.00');
+    assert.equal(present.sum(['1.5', '-2.25'], 0), '-0.75');
+    assert.equal(present.sum(['9007199254740993', '1'], 0), '9007199254740994');
+    assert.equal(present.sum([], 2), '0.00');
+    assert.equal(present.compare('9007199254740993', '9007199254740992'), 1);
+    assert.equal(present.compare('-0.24', '0'), -1);
+    assert.equal(present.compare('1.50', '1.5'), 0);
+    assert.equal(present.groupDigits('-1234567.5'), '-1,234,567.5');
+    assert.equal(present.format('-1234.5', {grouping: true, negative: 'parentheses', zero: 'digits'}), '(1,234.5)');
+    assert.equal(present.format('0.00', {grouping: true, negative: 'minus', zero: 'dash'}), '—');
+    assert.equal(present.format('-0', {grouping: true, negative: 'parentheses', zero: 'dash'}), '—');
+    assert.equal(present.format('abc', present.formats.default), 'abc');
+    assert.equal(present.holds({when: 'ge', value: '100.25'}, '100.250', true), true);
+    assert.equal(present.holds({when: 'blank'}, '', false), true);
+    assert.equal(present.holds({when: 'ne', value: 'x'}, 'x', false), false);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S23-B B4: exporting with unsaved edits says so and offers 保存后导出 or the export as it would be; without a saved layout the export is the plain one; the refusals name the layout', async () => {
+  let refuse = null;
+  const a = app(async (path, options) => {
+    if (refuse && path.endsWith('/exports') && options.method === 'POST') return problem(...refuse);
+  });
+  try {
+    await frozen(a);
+    const posts = () => a.trace.filter(t => t.path.endsWith('/exports') && t.method === 'POST').map(t => t.path);
+    const bodies = () => posts().length;
+    // The plain layout, never saved: the export is the plain one, no dialog, no layout_id.
+    a.click('export');
+    await until(() => a.downloads.length === 1 && !a.$('preview').disabled, 'plain export', 20000);
+    assert.equal(a.$('ly-d-export').hidden, true);
+    assert.equal(a.$('export').title, '');
+    assert.equal([...a.$('tasks-body').rows][0].cells[0].textContent, 'Excel 导出');
+    // A design that was never saved: the dialog says the file would carry no layout; 不带布局导出 exports without one.
+    bTypeIn(a, a.$('layout-title'), '未保存的标题');
+    a.click('export');
+    await flush();
+    assert.equal(a.$('ly-d-export').hidden, false);
+    assert.equal(
+      a.$('ly-export-note').textContent,
+      '布局尚未保存：导出文件不带布局（列、格式与小计都不会打印）。要让它进入文件，先保存。'
+    );
+    assert.equal(a.$('ly-export-saved').textContent, '不带布局导出');
+    assert.equal(a.w.document.activeElement, a.$('ly-export-save'));
+    a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+    assert.equal(a.$('ly-d-export').hidden, true);
+    assert.equal(bodies(), 1, '取消 exports nothing');
+    a.click('export');
+    await flush();
+    a.click('ly-export-saved');
+    await until(() => a.downloads.length === 2 && !a.$('preview').disabled, 'export without a layout', 20000);
+    assert.equal([...a.$('tasks-body').rows][0].cells[0].textContent, 'Excel 导出');
+    // 保存后导出: the design becomes version 1 and the file carries it.
+    a.click('export');
+    await flush();
+    a.click('ly-export-save');
+    await until(() => a.downloads.length === 3 && !a.$('preview').disabled, 'save then export', 20000);
+    assert.equal(a.$('layout-state').textContent, '已保存 v1');
+    const id = savedId(a);
+    assert.equal([...a.$('tasks-body').rows][0].cells[0].textContent, 'Excel 导出 · 布局版本 1');
+    assert.equal(a.$('export').title, '导出使用已保存的布局（版本 1）');
+    // Unsaved edits on a saved layout: the dialog names the saved version; 按已保存的版本导出 prints version 1 while the editor keeps its edit.
+    bTypeIn(a, a.$('layout-footnote'), '新脚注');
+    assert.equal(a.$('layout-state').textContent, '已保存 v1 · 有未保存修改');
+    assert.equal(a.$('export').title, '布局有未保存的修改：导出使用已保存的版本 1');
+    a.click('export');
+    await flush();
+    assert.equal(a.$('ly-d-export').hidden, false);
+    assert.equal(
+      a.$('ly-export-note').textContent,
+      '布局有未保存的修改。导出文件使用已保存的版本 1；要让这次修改进入文件，先保存。'
+    );
+    assert.equal(a.$('ly-export-saved').textContent, '按已保存的版本导出');
+    a.click('ly-export-saved');
+    await until(() => a.downloads.length === 4 && !a.$('preview').disabled, 'export of the saved version', 20000);
+    assert.equal([...a.$('tasks-body').rows][0].cells[0].textContent, 'Excel 导出 · 布局版本 1');
+    assert.equal(a.$('layout-state').textContent, '已保存 v1 · 有未保存修改', 'the edit stays unsaved');
+    // 保存后导出: version 2 is saved and printed.
+    a.click('export');
+    await flush();
+    a.click('ly-export-save');
+    await until(() => a.downloads.length === 5 && !a.$('preview').disabled, 'save then export again', 20000);
+    assert.equal(a.$('layout-state').textContent, '已保存 v2');
+    assert.equal([...a.$('tasks-body').rows][0].cells[0].textContent, 'Excel 导出 · 布局版本 2');
+    assert.equal([...a.$('tasks-body').rows][0].cells[0].title, '布局 ' + id + ' · 版本 2');
+    const bodiesSent = a.trace.filter(t => t.path.endsWith('/exports') && t.method === 'POST');
+    assert.equal(bodiesSent.length, 5);
+    // The server's refusals of a layout the export cannot use, told as the layout's.
+    refuse = [422, 'UNSUPPORTED_COMBINATION'];
+    a.click('export');
+    await until(() => a.$('notice').textContent.includes('不属于当前快照的数据集') && !a.$('preview').disabled, '422');
+    refuse = [400, 'INVALID_REQUEST'];
+    a.click('export');
+    await until(() => a.$('notice').textContent.includes('不再符合数据集的规则') && !a.$('preview').disabled, '400');
+    assert.equal(a.$('result-kind').textContent, '冻结快照', 'the refusal concerns the layout, the snapshot stays');
+    assert.equal(posts().length, 7);
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+test('S23-B B5: a saved 1.1 layout opened again (历史 › 打开, the JSON under 高级) restores every control, and the table with it', async () => {
+  const a = app();
+  try {
+    await frozen(a);
+    a.$('layout-json').value = JSON.stringify(fullLayout());
+    a.click('layout-open');
+    a.click('layout-server-save');
+    await until(() => a.$('layout-state').textContent === '已保存 v1' && !a.$('preview').disabled, 'saved');
+    a.click('layout-reset');
+    assert.equal(a.$('layout-title').value, '');
+    assert.equal(ld.rules(a).length, 0);
+    assert.equal(a.$('result-layout-title').hidden, true);
+    assert.equal(a.$('layout-state').textContent, '已保存 v1 · 有未保存修改');
+    const restored = () => {
+      assert.equal(a.$('layout-title').value, '应收账龄报表');
+      assert.equal(a.$('layout-footnote').value, '金额为账面值，未做汇率换算。');
+      assert.equal(ld.align(ld.row(a, '客户')).value, 'center');
+      const balance = ld.row(a, '应收余额');
+      assert.equal(ld.label(balance).value, '余额');
+      assert.equal(ld.grouping(balance).checked, false);
+      assert.equal(ld.negative(balance).value, 'parentheses');
+      assert.equal(ld.zero(balance).value, 'dash');
+      assert.equal(a.$('layout-subtotals').value, 'customer.id');
+      const rule = ld.rule(ld.rules(a)[0]);
+      assert.deepEqual(
+        [rule.column.value, rule.when.value, rule.value.value, rule.mark.value],
+        ['ar.open_balance', 'lt', '0', 'bad']
+      );
+      assert.equal(a.$('result-layout-title').textContent, '应收账龄报表');
+      assert.deepEqual(tableCells(a)[1], ['小计', '', '100.25']);
+      assert.deepEqual(layoutJSON(a), fullLayout());
+    };
+    // 历史 › 打开: the saved version's content comes back as the draft.
+    a.$('layout-versions').click();
+    await until(() => a.$('ly-version-list').children.length === 1 && !a.$('preview').disabled, 'history');
+    a.$('ly-ver-restore').click();
+    await until(() => a.$('layout-status').textContent.startsWith('已打开 v1') && !a.$('preview').disabled, 'opened');
+    restored();
+    assert.equal(a.$('layout-state').textContent, '已保存 v1');
+    // The JSON under 高级: the same document pasted and opened.
+    a.click('layout-reset');
+    a.$('layout-json').value = JSON.stringify(fullLayout());
+    a.click('layout-open');
+    restored();
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
+  }
+});
+
+// S23-B with S20-B: the two slices on one page. The query panel's filters and sort narrow the snapshot above; the layout designer and the
+// table view present it below: the 小计 rows are of the filtered rows, the subtitle already says the scope is narrowed, and the workbook
+// exported with the layout says both the layout (S23-A's Metadata rows) and the scope (S20-C's rows at the end of the Metadata sheet).
+const exportsInto = bodies => async (path, options) => {
+  if (path.endsWith('/exports') && options?.method === 'POST') bodies.push(JSON.parse(options.body));
+};
+test('S23-B B6: a narrowed snapshot (S20-B) through a layout with subtotals: the 小计 rows are of the filtered rows in the sorted order, the subtitle says the scope is narrowed, and the workbook exported with the layout names the layout and the scope (S20-C)', async () => {
+  const bodies = [];
+  const a = app(exportsInto(bodies));
+  try {
+    await a.login();
+    a.configure();
+    const n = narrowOf(a);
+    n.add('filter', 'aging.bucket');
+    n.choose('filter', 'aging.bucket', 'in');
+    n.tick('aging.bucket', '1_30');
+    n.tick('aging.bucket', '31_60');
+    n.add('sort', 'ar.open_balance');
+    n.choose('sort', 'ar.open_balance', 'desc');
+    a.click('snapshot');
+    await until(
+      () => a.$('result-kind').textContent === '冻结快照' && !a.$('export').disabled,
+      'the narrowed snapshot'
+    );
+    assert.deepEqual(resultRows(a), [AR.c, AR.b], 'two rows of the three, the largest balance first');
+    assert.match(a.$('result-subtitle').textContent, / · 已按 1 个筛选缩小范围，合计是筛选后的范围$/);
+    const snapshotJob = a.$('tasks-body').rows[0].cells[1].textContent;
+    assert.match(snapshotJob, /^[a-f0-9]{32}$/);
+    // The layout with subtotals by customer, saved: the table is the narrowed snapshot as the exports print it.
+    a.$('layout-json').value = JSON.stringify(fullLayout());
+    a.click('layout-open');
+    a.click('layout-server-save');
+    await until(() => a.$('layout-state').textContent === '已保存 v1' && !a.$('preview').disabled, 'saved');
+    const id = savedId(a);
+    const rows = [...a.$('result-table').tBodies[0].rows].map(r => ({
+      subtotal: r.classList.contains('layout-subtotal'),
+      cells: [...r.cells].map(c => c.textContent),
+      titles: [...r.cells].map(c => c.title),
+    }));
+    assert.deepEqual(
+      rows.map(r => r.subtotal),
+      [false, true, false, true],
+      'a 小计 row after each of the two filtered customers, none for the one the filter left out'
+    );
+    assert.deepEqual(
+      rows[0].cells,
+      ['customer_c', '31_60', '9007199254740893.00'],
+      'the sort is kept: the largest balance first'
+    );
+    assert.deepEqual(rows[1].cells, ['小计', '', '9007199254740893.00']);
+    assert.deepEqual(rows[2].cells, ['customer_b', '1_30', '(0.24)']);
+    assert.equal(rows[2].titles[2], '-0.24');
+    assert.deepEqual(rows[3].cells, ['小计', '', '(0.24)']);
+    assert.match(
+      a.$('result-subtitle').textContent,
+      / · 已按 1 个筛选缩小范围，合计是筛选后的范围$/,
+      'the subtitle still says the scope with the layout applied'
+    );
+    assert.equal(a.$('result-layout-note').hidden, false);
+    assert.equal(a.$('result-layout-title').textContent, '应收账龄报表');
+    // The export carries the layout; the workbook says the layout and the scope.
+    a.click('export');
+    await until(() => a.downloads.length === 1 && !a.$('preview').disabled, 'the workbook', 20000);
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].layout_id, id);
+    const job = [...a.$('tasks-body').rows].find(r => r.cells[0].textContent.startsWith('Excel 导出'));
+    assert.equal(job.cells[0].textContent, 'Excel 导出 · 布局版本 1');
+    const files = unzip(Buffer.from(await a.downloads[0].blob.arrayBuffer()));
+    const data = sheetRows(files, 'Data');
+    assert.deepEqual([data[0].A, data[0].B, data[0].C, data[0].D], ['客户', '账龄区间', '余额', '余额（精确）']);
+    assert.equal(data.length - 1, 4, 'two filtered rows and their two 小计 rows, as on screen');
+    assert.deepEqual(
+      data.slice(1).map(r => [r.A, r.D]),
+      rows.map(r => [r.cells[0], r.subtotal ? r.cells[2].replace(/[()]/g, m => (m === '(' ? '-' : '')) : r.titles[2]]),
+      'the printed rows are the screen rows: the customers and 小计 in order, the exact values'
+    );
+    const metadata = Object.fromEntries(sheetRows(files, 'Metadata').map(r => [r.A, r]));
+    assert.equal(metadata.layout_id.B, id);
+    assert.equal(metadata.layout_version.B, '1');
+    assert.equal(metadata.layout_title.B, '应收账龄报表');
+    assert.equal(metadata.subtotal_by.B, 'customer.id');
+    assert.deepEqual(
+      [metadata.query_scope.B, metadata.query_scope.C, metadata.query_scope.D, metadata.query_scope.E],
+      ['filters', '1', 'sort_keys', '1'],
+      "S20-C's scope row counts the filter and the sort key"
+    );
+    assert.deepEqual([metadata.filter_1.C, metadata.filter_1.D], ['aging.bucket', 'in']);
+    assert.match(metadata.filter_1.E, /1_30/);
+    assert.match(metadata.filter_1.E, /31_60/);
+    assert.deepEqual([metadata.sort_1.C, metadata.sort_1.D], ['ar.open_balance', 'desc']);
+    // The total is the narrowed scope's, and present.js adds the two filtered values to the same digits.
+    const totals = sheetRows(files, 'Totals');
+    assert.equal(totals[0].C, 'exact_value');
+    assert.equal(totals[1].C, '9007199254740892.76');
+    assert.equal(a.w.reportingPresent.sum(['9007199254740893.00', '-0.24'], 2), '9007199254740892.76');
+    // A later session restores the snapshot without its query (S20-B: the server's job view carries none): the designer still renders —
+    // with no dimension known, 小计 offers 无 only — and the table is as today, since no saved layout is bound to a snapshot whose dataset
+    // the page cannot name.
+    a.click('logout');
+    await a.login();
+    a.input('restore-id', snapshotJob);
+    a.click('restore-job');
+    await until(() => a.$('notice').textContent.includes('已恢复') && !a.$('preview').disabled, 'the job restored');
+    [...a.$('tasks-body').querySelectorAll('button')].find(b => b.textContent === '查看结果').click();
+    await until(() => a.$('result-kind').textContent === '冻结快照' && !a.$('preview').disabled, 'the snapshot again');
+    assert.deepEqual(
+      [...a.$('layout-subtotals').options].map(o => o.textContent),
+      ['无'],
+      'no dimension is known: 小计 offers none'
+    );
+    assert.deepEqual(
+      resultRows(a),
+      [AR.c, AR.b],
+      'the table as today: no layout is bound to a snapshot the page cannot name the dataset of'
+    );
+    assert.equal(a.$('result-layout-title').hidden, true);
+    assert.equal(a.$('result-subtitle').textContent, '同一快照分页 · 原数据时点 · 原快照时区 · 筛选与排序以原快照为准');
     assert.equal(a.errors.length, 0, a.errors.join('|'));
   } finally {
     a.close();

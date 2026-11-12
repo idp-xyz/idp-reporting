@@ -1887,7 +1887,7 @@ tbody tr:last-child td {
   border-bottom: 1px solid var(--line);
 }
 .designer-row label {
-  flex: 1;
+  flex: 1 1 auto; /* S23-B: its own width first, so a column's name keeps its characters together when the row wraps at 390 */
   font-size: 12px;
   color: var(--text);
 }
@@ -1908,8 +1908,128 @@ tbody tr:last-child td {
 .layout-left {
   text-align: left;
 }
+.layout-center {
+  text-align: center;
+}
 #designer-columns {
   padding: 4px 20px;
+}
+/* S23-B (ADR 0024 decision 5): the table report's presentation on screen. The marks are the closed palette of export/present (light tints,
+   near-black text whatever the colour scheme, so that a marked cell's text stays legible in the dark scheme too); a subtotal row is bold
+   with a rule above it, as in the PDF; the title and the footnote stand above and under the table. */
+:root {
+  --mark-good: #d9ead3;
+  --mark-warn: #fff2cc;
+  --mark-bad: #f4cccc;
+  --mark-note: #cfe2f3;
+  --mark-ink: #1b1f24;
+}
+td.mark-good,
+td.mark-warn,
+td.mark-bad,
+td.mark-note {
+  color: var(--mark-ink);
+}
+td.mark-good,
+.mark-swatch.mark-good {
+  background: var(--mark-good);
+}
+td.mark-warn,
+.mark-swatch.mark-warn {
+  background: var(--mark-warn);
+}
+td.mark-bad,
+.mark-swatch.mark-bad {
+  background: var(--mark-bad);
+}
+td.mark-note,
+.mark-swatch.mark-note {
+  background: var(--mark-note);
+}
+tr.layout-subtotal td {
+  font-weight: 600;
+  color: var(--ink);
+  border-top: 1px solid var(--muted);
+  background: var(--soft);
+}
+.layout-title {
+  padding: 12px 20px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.layout-footnote {
+  padding: 10px 20px 0;
+  font-size: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.layout-note {
+  padding: 6px 20px 0;
+}
+.designer-texts {
+  display: grid;
+  gap: 8px;
+  padding: 10px 20px 4px;
+}
+.designer-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+.designer-text > span {
+  flex: 0 0 3em;
+}
+.designer-text > input {
+  flex: 1;
+  min-width: 0;
+}
+.designer-row input[type="text"] {
+  width: 120px;
+  font-size: 12px;
+}
+.designer-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.designer-row label.designer-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.designer-subtotals > label {
+  flex: 0 0 auto;
+}
+.designer-marks {
+  padding: 10px 20px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.designer-marks .help {
+  margin: 6px 0 0;
+}
+.designer-marks .between {
+  gap: 12px;
+}
+.mark-rule {
+  padding: 8px 0;
+}
+.mark-rule .mark-index {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.mark-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
 }
 /* tasks and system */
 .restore-panel,

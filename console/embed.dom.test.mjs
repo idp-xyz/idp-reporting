@@ -27,6 +27,7 @@ const [
   languageScript,
   companiesScript,
   filtersScript,
+  presentScript,
 ] = await Promise.all(
   [
     'index.html',
@@ -43,6 +44,7 @@ const [
     'lang.js',
     'companies.js',
     'filters.js',
+    'present.js',
   ].map(read)
 );
 const token = randomBytes(32).toString('hex');
@@ -327,6 +329,7 @@ async function embedPage({
   w.eval(embedScript);
   w.eval(companiesScript);
   w.eval(filtersScript);
+  w.eval(presentScript);
   w.eval(appScript);
   const $ = id => w.document.getElementById(id);
   const input = (id, value) => {
@@ -1132,6 +1135,7 @@ test('the console page loads none of the embed code, and answers no message', as
   w.eval(boardScript);
   w.eval(companiesScript);
   w.eval(filtersScript);
+  w.eval(presentScript);
   w.eval(appScript);
   const other = new JSDOM('', {url: HOST + '/'}).window;
   w.dispatchEvent(
@@ -1548,6 +1552,7 @@ test("S09-D: the embed page's 公司范围 is the same picker as the console's, 
       'the embed page loads the picker before app.js'
     );
     assert.ok(embedHtml.indexOf('companies.js') < embedHtml.indexOf('app.js'));
+    assert.ok(embedHtml.indexOf('present.js') < embedHtml.indexOf('app.js'));
     a.give();
     await a.connected();
     const picker = a.$('query-companies-picker');
@@ -1694,5 +1699,28 @@ test("S20-B: the embed page's query panel filters and sorts as the console's doe
     assert.equal(b.errors.length, 0, b.errors.join('|'));
   } finally {
     b.close();
+  }
+});
+
+// S23-B: the embedded report view shares the layout designer (the section is byte for byte the console's, tested above): its new controls
+// are there, and a 1.1 choice shows the table as the exports print it.
+test('the embedded report view shares the layout designer: its controls, the title above the table and the formatted metric', async () => {
+  const a = await embedPage({view: 'report'});
+  try {
+    a.give();
+    await a.connected();
+    await queried(a);
+    for (const id of ['layout-title', 'layout-footnote', 'layout-subtotals', 'layout-mark-add', 'ly-d-export'])
+      assert.ok(a.$(id), id + ' is in the embed page');
+    assert.equal(a.$('result-table').tBodies[0].rows[2].cells[2].textContent, '9007199254740893.00');
+    a.$('layout-title').value = '嵌入的报表';
+    a.$('layout-title').dispatchEvent(new a.w.Event('input', {bubbles: true}));
+    assert.equal(a.$('result-layout-title').hidden, false);
+    assert.equal(a.$('result-layout-title').textContent, '嵌入的报表');
+    assert.equal(a.$('result-table').tBodies[0].rows[2].cells[2].textContent, '9,007,199,254,740,893.00');
+    assert.equal(a.$('result-table').tBodies[0].rows[2].cells[2].title, '9007199254740893.00');
+    assert.equal(a.errors.length, 0, a.errors.join('|'));
+  } finally {
+    a.close();
   }
 });

@@ -1,7 +1,8 @@
 # ADR 0024 · Table reports: a layout is the report's presentation, and the exports carry it
 
-Date: 2026-11-11. Status: accepted. Implementation: S23-A (layouts 1.1, exports with a layout, typed workbook cells),
-S23-B (the console's layout designer and table view, baseline task T11).
+Date: 2026-11-11. Status: accepted. Implementation: S23-A (layouts 1.1, exports with a layout, typed workbook cells; built,
+docs/S23A_SCOPE.md), S23-B (the console's layout designer and table view, the exports with the saved layout, baseline task T11;
+built 2026-11-12, docs/S23B_SCOPE.md).
 
 ## Context
 

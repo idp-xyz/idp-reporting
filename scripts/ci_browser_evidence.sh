@@ -2,7 +2,7 @@
 # Runs the real-browser evidence of the console in one go (CI job "browser", docs/CONSOLE.md "真实浏览器检查"):
 #   1. scripts/browser_console_s06c.mjs  – the shell, the pages, the drawers and panels at 1440 → 390, light and dark, contrast
 #   2. scripts/browser_library_s06b.mjs  – the template centre, its samples, PDF previews and wizard
-#   3. scripts/ux_baseline_s07.mjs       – the nine-task baseline (T8 出具 since S09-G, T9 筛选后冻结并导出 since S20-B), held to the numbers of docs/UX_BASELINE_S07.md
+#   3. scripts/ux_baseline_s07.mjs       – the core-task baseline (T8 出具 since S09-G, T9 筛选后冻结并导出 since S20-B, T11 格式与小计 since S23-B), held to the numbers of docs/UX_BASELINE_S07.md
 #   4. the same script with --tasks team – the three team-space tasks of two people (S12-D), held to their own numbers there
 #   5. scripts/browser_english_s17a.mjs  – the English console (S17-A) at 1440 and 390: overflow, cut-off controls, Chinese left
 # Each run gets a fresh reporting-demo (memory store, its own directories) and a fresh headless Chrome profile: the scripts assume an
@@ -78,7 +78,9 @@ if(over.length){console.error("== baseline: over the documented numbers: "+over.
 # T1 and T2 no longer type the company (texts 5 → 3), the one listed company being chosen already (docs/UX_BASELINE_S07.md "公司选择器").
 # S20-B added task T9 (筛选后冻结并导出: the data drawer, a filter, a sort key, the snapshot, the workbook): its own 9 clicks and 1 page
 # switch are in these totals (T1–T8 measure 35 / 10 on the same run and on main; docs/UX_BASELINE_S07.md "T9：筛选后冻结并导出").
-hold "$out/baseline.json" 44 11 0 0 || failed=1
+# S23-B added task T11 (选列、设置格式和小计、保存、导出 Excel) after T9: its own 5 clicks are in these totals, and no page switch (T9 leaves
+# the person on the workbench; T1–T9 measure 44 / 11 on the same run and on main; docs/UX_BASELINE_S07.md "T11：格式与小计").
+hold "$out/baseline.json" 49 11 0 0 || failed=1
 # S12-D: the team tasks. Their one dead end is the approver's: the studio needs their own authorized data before it opens a template.
 hold "$out/baseline-team.json" 25 8 0 1 || failed=1
 exit $failed
