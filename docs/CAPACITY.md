@@ -180,7 +180,7 @@ logs and asserts them. Before 009 the stored-results count is a `Seq Scan` on `a
 | Statement | Plan after migration 009 |
 |---|---|
 | jobs in flight | Index Only Scan `jobs_identity_in_flight` |
-| stored results | Index Only Scan `assets_identity_kind_expires` (a bitmap scan of it for the identity with the long history) |
+| stored results | Index Only Scan `assets_identity_kind_expires` (a bitmap scan of it for the identity with the long history). Since migration `kept_results` (S25-B1) the count leaves the issued files out and is held to `assets_identity_results`, which takes this index's place: "Migration `kept_results`" below |
 | admissions in the last hour | Index Only Scan `jobs_identity_created` (a bitmap scan of it for the long history) |
 | issue listing | typical identity: Index Scan on the unique key; long history at 30,000 rows: Index Scan `jobs_identity_created`; long history at 1,000,000 rows: Bitmap Heap Scan on the unique key and a sort of 20,000 rows (150 ms) |
 | job listing (S07-C, `GET /jobs`, 50) | the issue listing's statement without `kind='issue'`: at 30,000 rows an Index Scan of `jobs_identity_created` for both identities (the plan test logs it; held to the issue listing's rule, no sequential scan); not measured at a million rows |
@@ -217,6 +217,69 @@ either way.
 The tool times the steps it applies over the seeded history together: 009 alone took 5.42 and 4.67 s on main, 009 and 010 took 5.44 and
 5.38 s, so 010 adds less than the runs differ by.
 
+## Migration `kept_results`: the stored-results count without the issued files (S25-B1, 2026-11-12)
+
+ADR 0026 decision 7 takes the files of issued documents out of `stored_results`. Since S25-A such a file is kept for years where the source
+vouches for the scope of its reads, so the number an identity holds only grows. The count names them by a key of their payload
+(`AND NOT (data ? 'Issue')`). Migration `kept_results` adds the partial index `assets_identity_results`, which holds an identity's
+snapshots and export files and none of its issued files, and the step after it, `stored_results_index_cleanup`, drops
+`assets_identity_kind_expires` (docs/OPERATIONS.md "Quotas").
+**The tables above were measured before the two steps and were not measured again**: where they name `assets_identity_kind_expires`, a store at the
+latest version has `assets_identity_results`. The plan test holds the count to it for a typical identity and for the one with the long
+history, and to a plan with no filter on the payload; the seed now makes two in fifteen of the assets issued files with nine years left.
+
+**The count alone.** A scratch database whose schema `reporting-migrate` made, first at the version before `kept_results` and then at the
+latest version, after both steps (PostgreSQL 16.15 in a throwaway container on loopback, default configuration, `shared_buffers=128MB`, `work_mem=4MB`). One identity holds
+20,000 issued files with nine years left, each with its file inline (12 KB that does not compress, stored out of line: an artifact kept
+without an object store), 300 unexpired snapshots and export files, and 20,000 issue records, beside 100,000 assets of 500 other identities;
+the table is 323 MB. The statement was run with `EXPLAIN (ANALYZE, BUFFERS)` as a role with the application role's privileges, in the
+identity's context under row-level security, three times each, warm:
+
+| Store and statement | It counts | Plan | Buffers | Time |
+|---|---|---|---|---|
+| the version before, the count as it was | 20,300: the issued files with the results | Index Only Scan `assets_identity_kind_expires` | 130 | 5.5 to 8.9 ms |
+| the version before, the new count without its index | 300 | Bitmap Heap Scan by `assets_identity_kind_expires`, then the payload of each of the 20,300 rows read to tell an issued file | 95,275 | 100 to 108 ms |
+| the latest version, the new count | 300 | Index Only Scan `assets_identity_results` | 5 | 0.10 to 0.13 ms |
+
+The second row is why the count needs a migration and not a changed statement alone: without the index every admission of that identity fetches the
+payload of each of its unexpired artifacts (95,275 page accesses here, in a table of 323 MB, most of them for the files themselves), and
+the figure grows with every document the identity issues. With an object store the payloads are small and the row would cost less; the plan
+would be the same. With the index the count reads what it counts.
+
+**When PostgreSQL looks at the rows after all.** Where the pages are not marked all-visible the planner reads the index through a bitmap.
+A bitmap's recheck condition repeats the index's predicate, and it is evaluated only for the pages of a bitmap that outgrew `work_mem`
+(a lossy bitmap remembers pages, not rows, and every row of such a page is checked, the other identities' too). Measured on the
+platform's schema with the index, identities with one unexpired result a page, the plain index paths switched off so that the bitmap is taken:
+
+| `work_mem` | Pages with a result of the identity | Heap blocks of the bitmap scan |
+|---|---|---|
+| 64 kB (the smallest setting) | 900 | exact 900 |
+| 64 kB | 1,300 | exact 782, lossy 518 (12,432 rows rechecked and removed) |
+| 1 MB | 12,000 | exact 12,000 |
+| 1 MB | 20,000 | exact 11,730, lossy 8,270 (198,480 rows rechecked and removed) |
+| 4 MB (the default) | 20,000 | exact 20,000 |
+
+That agrees with one entry of about 64 bytes a page: room for about 1,000 pages at 64 kB, 16,000 at 1 MB and 65,000 at the default 4 MB
+(the last was not reached in the measurement). The default quota allows an identity 512 results, so the case takes a quota raised above
+the pages `work_mem` has room for (above a thousand at the smallest `work_mem`, tens of thousands at the default), results spread over
+as many pages, and a plan that goes through the bitmap; it costs time and never changes the count.
+
+**In the tool.** `scripts/capacity_run.sh -sizes 1000000 -phases after` on the same container, twice on main before the two steps
+(steps up to 014; its seed has no issued files) and twice with them (500,000 assets, of which 66,667 are issued files and 50,000 issue
+records), alternating, each run seeding the rows anew:
+
+| Case | main, two runs: p50 / p95 (ms) | with the two steps, two runs: p50 / p95 (ms) |
+|---|---|---|
+| admit, identity with a long history | 38.00 / 78.79; 30.70 / 74.66 | 26.19 / 30.16; 32.74 / 71.15 |
+| admit, typical identity | 4.60 / 6.18; 4.31 / 5.60 | 4.27 / 5.44; 3.70 / 4.87 |
+| admit, fresh identity (no history) | 3.76 / 5.29; 3.06 / 3.97 | 3.39 / 4.50; 2.97 / 3.94 |
+
+The long-history admission varies between runs of either tree, as it did before ("Migration 010"; another run with the two steps in a
+busier hour had 65 ms at the median, with every other case slower too), so these runs say that the steps do not slow an admission down
+and nothing finer; the count alone, above, is the measurement. The steps applied over the seeded history took 6.75 and 6.03 s on main
+and 7.29 and 8.38 s with the two steps: the index over 500,000 assets is built in a second or two. `assets_identity_results` is 3.7 MB
+(383,333 entries; `assets_identity_kind_expires` held all 500,000 rows in 6.3 MB).
+
 ## Growth (G4)
 
 Bytes, from the real service writing the rows (`-growth`), with `pg_column_size` of the whole row (the stored size of the row's columns; a heap
@@ -242,6 +305,7 @@ Seeded tables (`capacity_rowsizes.txt`, after `VACUUM FULL`, table and toast): 1
 and 500,000 assets: `jobs_pkey` 77.9 MB, the unique key 157.9 MB, `jobs_claim` 47.1 MB, **`jobs_identity_created` 50.2 MB, `jobs_identity_in_flight` 0.16 MB**,
 `assets_pkey` 47.3 MB, `assets_expires_at` 4.1 MB, **`assets_identity_kind_expires` 6.3 MB**, **`jobs_reducible` 7.0 MB** (from a later run of the tool); the table `jobs` is 1,961.8 MB before
 and after (the new indexes add 50.4 MB, 2.6% of the table's heap). At 200,000 rows the two new `jobs` indexes are 10.4 MB and 0.10 MB, and at 10,000 rows 1.1 MB and 0.05 MB.
+(A store at the latest version has `assets_identity_results` in place of `assets_identity_kind_expires`: 3.7 MB over the same number of assets in one later run, section "Migration `kept_results`" above.)
 
 ### Rows per year at the default quotas
 

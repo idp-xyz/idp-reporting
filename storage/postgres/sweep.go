@@ -110,12 +110,13 @@ func sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions, objects r.
 	if e != nil {
 		return res, e
 	}
-	if e = sweepable(ctx, pool, o.DryRun); e != nil {
+	if e = sweepable(ctx, pool, o.DryRun, objects != nil && o.Reconcile > 0); e != nil {
 		return res, e
 	}
 	grace := o.Grace.Microseconds()
 	complete := false
 	left := map[string]bool{} // the keys this sweep meant to delete and could not: the reconciliation does not count them twice
+	var began time.Time       // when this sweep's listing of the bucket began, by the database's clock, if it reconciled
 	if o.DryRun {
 		// A dry run reads the rows of every identity, so it too is a transaction of the worker scope (S04-C).
 		var named int
@@ -128,7 +129,7 @@ func sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions, objects r.
 			res.ObjectsLeft = named
 		}
 		if e == nil && objects != nil {
-			e = reconcile(ctx, pool, objects, now, o, left, &res)
+			_, e = reconcileWhenDue(ctx, pool, objects, now, o, left, &res)
 		}
 		complete = e == nil
 	} else {
@@ -143,18 +144,41 @@ func sweep(ctx context.Context, pool *pgxpool.Pool, o r.SweepOptions, objects r.
 			}
 		}
 		if e == nil && objects != nil {
-			e = reconcile(ctx, pool, objects, now, o, left, &res)
+			began, e = reconcileWhenDue(ctx, pool, objects, now, o, left, &res)
 		}
 		complete = e == nil
 	}
 	// The ledger row is written even when the sweep was cut short (a cancelled context, a failed batch): what it already deleted is audit.
+	// It says whether the sweep reconciled the object store and how many objects it left behind (S25-B1), and a reconciliation that left
+	// none says since when the bucket is settled: the next sweeps read it to know whether the bucket is due (bucketSettled).
 	record, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if _, le := pool.Exec(record, `INSERT INTO reporting_s01.sweeps(dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches, objects, orphans) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		o.DryRun, complete, int64(o.Grace/time.Second), o.Batch, res.Artifacts, res.Snapshots, res.Jobs, res.Batches, res.Objects, res.Orphans); le != nil && e == nil {
-		e = fmt.Errorf("the sweep ran but its ledger row could not be written: %w", le)
+	if _, le := pool.Exec(record, `INSERT INTO reporting_s01.sweeps(dry_run, complete, grace_seconds, batch, artifacts, snapshots, jobs, batches, objects, orphans, reconciled, objects_left, settled_from) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		o.DryRun, complete, int64(o.Grace/time.Second), o.Batch, res.Artifacts, res.Snapshots, res.Jobs, res.Batches, res.Objects, res.Orphans, res.Reconciled, res.ObjectsLeft, settledFrom(res, complete, o.Grace, began)); le != nil {
+		e = unrecorded(e, le)
 	}
 	return res, e
+}
+
+// unrecorded is the error of a sweep whose ledger row could not be written (unwritten is why), after the sweep itself ended with swept.
+// Such a sweep has told the next sweeps nothing of what it left behind, so the caller hears of it also when the sweep had failed already:
+// the error is then still the sweep's own, with the ledger's added to what it says.
+func unrecorded(swept, unwritten error) error {
+	if swept == nil {
+		return fmt.Errorf("the sweep ran but its ledger row could not be written: %w", unwritten)
+	}
+	return fmt.Errorf("%w (and its ledger row could not be written: %v)", swept, unwritten)
+}
+
+// settledFrom is what a sweep's ledger row says of the bucket being settled: of a sweep that ran to its end, reconciled the bucket and left
+// no object behind, the time its listing began; of every other sweep, and of every dry run, nothing. Nor does a sweep whose grace is
+// under r.MinOrphanAge say it: the reconciliation takes an object no row names only when it is older than that floor, so an object such
+// a sweep left may have been too young for it, and with so short a grace every sweep reconciles, as before S25-B1.
+func settledFrom(res r.SweepResult, complete bool, grace time.Duration, began time.Time) *time.Time {
+	if res.DryRun || !complete || !res.Reconciled || res.ObjectsLeft != 0 || grace < r.MinOrphanAge {
+		return nil
+	}
+	return &began
 }
 
 // artifactBatches deletes the expired artifacts in batches, as batches does, and after each batch commits deletes the objects the rows named
@@ -264,8 +288,9 @@ func batch(ctx context.Context, pool *pgxpool.Pool, sql string, grace int64, lim
 	return int(tag.RowsAffected()), nil
 }
 
-// sweepable refuses a store the sweep cannot run on, and a role that lacks what the sweep needs, before anything is changed.
-func sweepable(ctx context.Context, pool *pgxpool.Pool, dryRun bool) error {
+// sweepable refuses a store the sweep cannot run on, and a role that lacks what the sweep needs, before anything is changed. readsLedger
+// says that the sweep will read the ledger of the sweeps to know when the object store was last reconciled (S25-B1).
+func sweepable(ctx context.Context, pool *pgxpool.Pool, dryRun, readsLedger bool) error {
 	st, e := Status(ctx, pool)
 	if e != nil {
 		return e
@@ -276,9 +301,10 @@ func sweepable(ctx context.Context, pool *pgxpool.Pool, dryRun bool) error {
 	if st.Legacy || st.Current() != st.Latest() {
 		return fmt.Errorf("schema at version %d, the binary needs %d (run reporting-migrate up): %w", st.Current(), st.Latest(), r.ErrDenied)
 	}
-	var del, lock, upd, ins bool
+	var del, lock, upd, ins, sel bool
 	if e = pool.QueryRow(ctx, `SELECT has_table_privilege(current_user,'reporting_s01.assets','DELETE'), has_table_privilege(current_user,'reporting_s01.assets','UPDATE'),
-has_table_privilege(current_user,'reporting_s01.jobs','UPDATE'), has_table_privilege(current_user,'reporting_s01.sweeps','INSERT')`).Scan(&del, &lock, &upd, &ins); e != nil {
+has_table_privilege(current_user,'reporting_s01.jobs','UPDATE'), has_table_privilege(current_user,'reporting_s01.sweeps','INSERT'),
+has_table_privilege(current_user,'reporting_s01.sweeps','SELECT')`).Scan(&del, &lock, &upd, &ins, &sel); e != nil {
 		return e
 	}
 	var missing []string
@@ -293,6 +319,9 @@ has_table_privilege(current_user,'reporting_s01.jobs','UPDATE'), has_table_privi
 	}
 	if !ins {
 		missing = append(missing, "INSERT on sweeps")
+	}
+	if readsLedger && !sel {
+		missing = append(missing, "SELECT on sweeps (when the object store was last reconciled)")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("the connected role cannot sweep, it lacks %s (the application role never deletes: run the sweep as the sweep role or the migrator, see reporting-migrate roles --sweep-role): %w", strings.Join(missing, ", "), r.ErrDenied)

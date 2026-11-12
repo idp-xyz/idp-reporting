@@ -344,7 +344,7 @@ func (e *env) verifyStep(ctx context.Context) error {
 func (e *env) sizes(ctx context.Context) error {
 	rows, err := e.admin.Query(ctx, `SELECT c.relname, c.relkind, pg_relation_size(c.oid), (SELECT reltuples::bigint FROM pg_class t WHERE t.oid = coalesce(i.indrelid, c.oid))
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_index i ON i.indexrelid=c.oid WHERE n.nspname='reporting_s01' AND c.relkind IN ('r','i') AND c.relname IN
-('jobs','assets','jobs_pkey','jobs_claim','jobs_reducible','jobs_identity_created','jobs_identity_in_flight','assets_pkey','assets_expires_at','assets_identity_kind_expires') OR c.relname LIKE 'jobs_tenant_integration%' AND n.nspname='reporting_s01' ORDER BY 1`)
+('jobs','assets','jobs_pkey','jobs_claim','jobs_reducible','jobs_identity_created','jobs_identity_in_flight','assets_pkey','assets_expires_at','assets_identity_kind_expires','assets_identity_results') OR c.relname LIKE 'jobs_tenant_integration%' AND n.nspname='reporting_s01' ORDER BY 1`)
 	if err != nil {
 		return err
 	}
@@ -473,7 +473,9 @@ func (e *env) runSize(ctx context.Context) error {
 			if err := postgres.Up(ctx, e.admin, 0, "capacity"); err != nil {
 				return err
 			}
-			fmt.Fprintf(e.out, "migration 009 applied (its indexes built over the history) in %.2f s\n", time.Since(t).Seconds())
+			// Every step after 008 is applied over the seeded history: the indexes of 009, the statistics of 010 and, of the later
+			// steps, the index of kept_results (S25-B1), which is built over the assets.
+			fmt.Fprintf(e.out, "migrations 009 to %03d applied (their indexes built over the history) in %.2f s\n", postgres.LatestVersion(), time.Since(t).Seconds())
 		}
 		if _, err := e.admin.Exec(ctx, "ANALYZE reporting_s01.jobs; ANALYZE reporting_s01.assets"); err != nil {
 			return err

@@ -17,9 +17,16 @@ import (
 // row-level policies (S04-C) add their predicates as they do in production. Enough rows are seeded, and analyzed, for the planner to prefer an
 // index; no timing is asserted. The same statements are run before migration 009 (they must not use its indexes: the test discriminates) and
 // after (each must use its index by name, and no sequential scan of jobs or assets may remain in any of them).
+//
+// The stored-results count is held to assets_identity_results (S25-B1, migration kept_results): the partial index that holds an identity's
+// snapshots and export files and none of its issued documents' files, of which the seed has many with years left. The count names the
+// issued files by a key of their payload; only a plan that reads this index answers it without reading a payload, and the policies do not
+// keep the planner from it (the predicate is the index's, not a condition evaluated on a row).
 
 type planNode struct {
 	Type, Relation, Index string
+	// Filter is what the node evaluates on every row it reads, as the plan prints it.
+	Filter string
 }
 
 func collectPlan(t *testing.T, node map[string]any, out *[]planNode) {
@@ -28,6 +35,7 @@ func collectPlan(t *testing.T, node map[string]any, out *[]planNode) {
 	n.Type, _ = node["Node Type"].(string)
 	n.Relation, _ = node["Relation Name"].(string)
 	n.Index, _ = node["Index Name"].(string)
+	n.Filter, _ = node["Filter"].(string)
 	*out = append(*out, n)
 	if kids, ok := node["Plans"].([]any); ok {
 		for _, k := range kids {
@@ -98,12 +106,12 @@ func capacityPlans(t *testing.T, admin *pgxpool.Pool) {
 	// Which index each statement is held to, and the relation it reads.
 	want := map[string][2]string{
 		"jobs in flight":              {"jobs", "jobs_identity_in_flight"},
-		"stored results":              {"assets", "assets_identity_kind_expires"},
+		"stored results":              {"assets", "assets_identity_results"},
 		"admissions in the last hour": {"jobs", "jobs_identity_created"},
 		"issue listing":               {"jobs", "jobs_identity_created"},
 		"job listing":                 {"jobs", "jobs_identity_created"},
 	}
-	newIndexes := []string{"jobs_identity_in_flight", "assets_identity_kind_expires", "jobs_identity_created"}
+	newIndexes := []string{"jobs_identity_in_flight", "assets_identity_kind_expires", "assets_identity_results", "jobs_identity_created"}
 	describe := func(nodes []planNode) string {
 		var parts []string
 		for _, n := range nodes {
@@ -156,6 +164,16 @@ func capacityPlans(t *testing.T, admin *pgxpool.Pool) {
 					}
 					if n.Type == "Seq Scan" && (n.Relation == "jobs" || n.Relation == "assets") {
 						t.Errorf("%s (hot=%t) still scans %s sequentially: %s", st.Name, hot, n.Relation, describe(nodes))
+					}
+					// The count of the stored results does not look into a payload to leave the issued files out: what tells an issued
+					// file from an export is the index's own predicate, so no filter evaluates it on the rows read, and the rows read
+					// are the index's, among which no issued file is (S25-B1). The planner reads the index alone or, where the pages
+					// are not yet marked all-visible, through a bitmap. A bitmap's recheck condition repeats the predicate, and
+					// PostgreSQL evaluates it only on the pages of a bitmap that outgrew work_mem: at the default 4 MB that takes
+					// one identity's unexpired results on more than some sixty thousand pages, which only a quota near its largest
+					// bound allows (measured at smaller settings: docs/CAPACITY.md "Migration `kept_results`").
+					if st.Name == "stored results" && strings.Contains(n.Filter, "data ?") {
+						t.Errorf("%s (hot=%t) reads the payloads to leave the issued files out: %s", st.Name, hot, n.Filter)
 					}
 				}
 				if !found && ((st.Name != "issue listing" && st.Name != "job listing") || (hot && st.Name == "issue listing")) {

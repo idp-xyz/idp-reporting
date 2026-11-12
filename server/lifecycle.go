@@ -179,12 +179,14 @@ func (s *Server) worker() {
 
 // sweepLoop runs the retention sweep every retention.sweep_interval seconds and logs its counts, or the code of its failure. The store the
 // production opener returns is the application role's, which never deletes (S04-A): there the sweep is refused and logged by its code, and
-// the sweep is run by `reporting-migrate sweep`; the loop is for a store whose role may sweep, and is off by default.
+// the sweep is run by `reporting-migrate sweep`; the loop is for a store whose role may sweep, and is off by default. The object store is
+// reconciled by the sweep that finds the bucket due: no reconciliation that left nothing within retention.reconcile_interval (23 hours
+// by default), or a sweep since that left objects or did not complete (S25-B1). The line says whether the sweep reconciled.
 func (s *Server) sweepLoop() {
 	defer s.workers.Done()
 	tick, stop := s.opts.sweepTicker(seconds(s.cfg.Retention.SweepInterval))
 	defer stop()
-	opts := r.SweepOptions{Grace: seconds(s.cfg.Retention.Grace), Batch: s.cfg.Retention.Batch}
+	opts := s.cfg.Retention.SweepOptions()
 	for {
 		select {
 		case <-s.loopCtx.Done():
@@ -205,7 +207,7 @@ func (s *Server) sweepOnce(opts r.SweepOptions) {
 	s.busy.Add(1)
 	defer s.busy.Add(-1)
 	res, err := s.svc.Sweep(s.workCtx, opts)
-	fields := map[string]any{"artifacts": res.Artifacts, "snapshots": res.Snapshots, "jobs": res.Jobs, "objects": res.Objects, "orphans": res.Orphans, "objects_left": res.ObjectsLeft}
+	fields := map[string]any{"artifacts": res.Artifacts, "snapshots": res.Snapshots, "jobs": res.Jobs, "objects": res.Objects, "orphans": res.Orphans, "objects_left": res.ObjectsLeft, "reconciled": res.Reconciled}
 	if err != nil {
 		fields["code"] = codeOf(err)
 		s.log.warn("sweep_failed", fields)

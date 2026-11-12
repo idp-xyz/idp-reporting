@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"idp.local/reporting/adapters/contractsim"
 	r "idp.local/reporting/reporting"
+	"idp.local/reporting/storage/objects"
 	"idp.local/reporting/storage/postgres"
 	"os"
 	"strings"
@@ -642,6 +643,8 @@ func TestPostgresMigrations(t *testing.T) {
 	t.Run("capacity_indexes_step_adds_three_indexes_and_accepts_the_ones_made_beforehand", func(t *testing.T) { migration009(t, admin) })
 	t.Run("kind_statistics_step_adds_the_statistics_and_refuses_others_under_its_name", func(t *testing.T) { migration010(t, admin) })
 	t.Run("issue_cancellations_step_adds_the_table_its_policies_and_the_audits_action_and_refuses_to_lose_cancellations", func(t *testing.T) { migrationCancellations(t, admin) })
+	t.Run("kept_results_step_adds_the_index_of_the_stored_results_and_gives_the_ledger_its_word_on_reconciliations", func(t *testing.T) { migrationKeptResults(t, admin) })
+	t.Run("stored_results_index_cleanup_step_drops_the_index_of_009_and_its_down_builds_it_again", func(t *testing.T) { migrationResultsIndexCleanup(t, admin) })
 	t.Run("capacity_plans_use_the_new_indexes_under_row_level_security", func(t *testing.T) { capacityPlans(t, admin) })
 	t.Run("concurrent_migrators_serialize_on_the_lock", func(t *testing.T) {
 		// Several rounds on a pool whose connections have seen the schema absent (a negative
@@ -1265,6 +1268,47 @@ func retentionRoles(t *testing.T, admin, appPool *pgxpool.Pool, appDSN string) {
 	}
 	if problems, e := postgres.SweeperProblems(ctx, sweepPool); e != nil || len(problems) != 0 {
 		t.Fatal("grants did not repair the sweep role", problems, e)
+	}
+	// S25-B1: a sweep that has the object store and an interval reads the ledger to know whether the bucket is due. `roles` gives the sweep
+	// role that privilege (it reads every table), so a role without it is one that was narrowed by hand: it is refused before anything is
+	// changed or listed, and is told what it lacks. Without an interval, or without the object store, a sweep reads no ledger and runs.
+	if _, e := admin.Exec(ctx, "REVOKE SELECT ON reporting_s01.sweeps FROM "+role); e != nil {
+		t.Fatal(e)
+	}
+	if problems, e := postgres.SweeperProblems(ctx, sweepPool); e != nil || len(problems) != 1 || problems[0] != "no SELECT on sweeps" {
+		t.Fatal(problems, e)
+	}
+	bucket := &faultyStore{ObjectStore: objects.NewMemory(time.Now)}
+	// An export three days past its expiry, which any sweep that gets to the rows deletes: the refused sweeps must not.
+	const expired = `{"ID":"an-expired-export","SnapshotID":"a-snapshot-long-gone"}`
+	if _, e := admin.Exec(ctx, `INSERT INTO reporting_s01.assets(id,tenant,integration,issuer,subject,kind,data,data_sha256,expires_at)
+VALUES('an-expired-export','t','i','x','y','artifact',$1::jsonb,encode(sha256(convert_to($1::jsonb::text,'UTF8')),'hex'),clock_timestamp()-interval '3 days')`, expired); e != nil {
+		t.Fatal(e)
+	}
+	held := func() bool {
+		return count(t, admin, "SELECT count(*) FROM reporting_s01.assets WHERE id='an-expired-export'") == 1
+	}
+	ledger := count(t, admin, "SELECT count(*) FROM reporting_s01.sweeps")
+	for _, dry := range []bool{false, true} {
+		if _, e := postgres.SweepWithObjects(ctx, sweepPool, r.SweepOptions{Reconcile: time.Hour, DryRun: dry}, bucket, nil); !errors.Is(e, r.ErrDenied) || !strings.Contains(e.Error(), "SELECT on sweeps") {
+			t.Fatalf("a sweep that cannot read when the bucket was last reconciled ran (dry run %t): %v", dry, e)
+		}
+	}
+	if !held() || bucket.listings() != 0 || count(t, admin, "SELECT count(*) FROM reporting_s01.sweeps") != ledger {
+		t.Fatal("the refused sweeps deleted a row, listed the bucket or wrote the ledger")
+	}
+	if res, e := postgres.SweepWithObjects(ctx, sweepPool, r.SweepOptions{}, bucket, nil); e != nil || !res.Reconciled || bucket.listings() != 1 || res.Artifacts < 1 || held() {
+		t.Fatal("a sweep that reconciles every time needs to read the ledger, or did not sweep:", res, e)
+	}
+	if res, e := postgres.Sweep(ctx, sweepPool, r.SweepOptions{Reconcile: time.Hour}); e != nil || res.Reconciled {
+		t.Fatal("a sweep of the rows alone needs to read the ledger:", res, e)
+	}
+	if e := postgres.GrantSweeper(ctx, admin, "reporting_migrator_t", "reporting_app_t", role); e != nil {
+		t.Fatal(e)
+	}
+	// Repaired: the reconciliation a moment ago left nothing, so by the ledger the bucket is settled and this sweep does not list it.
+	if res, e := postgres.SweepWithObjects(ctx, sweepPool, r.SweepOptions{Reconcile: time.Hour}, bucket, nil); e != nil || res.Reconciled || bucket.listings() != 1 {
+		t.Fatal("the repaired sweep role does not read the ledger as the sweep does:", res, e)
 	}
 }
 

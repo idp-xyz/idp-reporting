@@ -697,13 +697,18 @@ cancelled job is reduced like any other once its own read's expiry plus the grac
 ## Quotas (S04-D, docs/S04D_SCOPE.md, docs/OPERATIONS.md "Quotas")
 
 Every identity (tenant, issuer, subject) is bounded in what it may hold: `jobs_in_flight` (queued and running jobs, default 8),
-`stored_results` (snapshots and artifacts not yet expired, default 64; an issue record never counts) and `admissions_per_hour` (jobs
+`stored_results` (snapshots and export files not yet expired, default 512) and `admissions_per_hour` (jobs
 admitted in the last hour, default 120), all by the store's clock, and, since S04-G, `queries_in_flight` (below). `GET /capabilities` carries
 the numbers in force:
 
 ```json
-"quotas": {"jobs_in_flight": 8, "stored_results": 64, "admissions_per_hour": 120, "queries_in_flight": 4}
+"quotas": {"jobs_in_flight": 8, "stored_results": 512, "admissions_per_hour": 120, "queries_in_flight": 4}
 ```
+
+An issued document is not a stored result (S25-B1, docs/ADR_0026_RESULT_LIFETIME.md decision 7): neither its record nor its file counts
+toward `stored_results`, and `POST /issues` is never refused for that quota, since an issue adds nothing to what it counts. Issuing is
+bounded by `jobs_in_flight` and `admissions_per_hour`. Until S25-B1 the file counted while it lived, a quarter of an hour at most, and
+the default was 64.
 
 A submission that would take the identity over one of them (`POST /snapshot-jobs`, `POST /exports`, `POST /issues`) is refused with
 

@@ -57,6 +57,17 @@ platform can review; the memory store and the fixture path keep working without 
    operator's `reporting-migrate sweep` takes the same object store configuration to delete objects; without it,
    it deletes rows only and says the objects wait for a reconciliation.
 
+Amended 2026-11-12, with S25-B1 (docs/S25B1_SCOPE.md, docs/ADR_0026_RESULT_LIFETIME.md). No decision changed; three sentences
+read differently once a file can be kept for years. The reconciliation of decision 3 was a step of every sweep that had the
+object store; it is a step of the sweeps that find the bucket due: about once a day by default, and at once after a sweep that
+left objects behind or did not complete, because the listing costs what the bucket holds. So the orphan of decision 3, the
+object of a publication that failed, is deleted by the next reconciliation after the grace, up to the interval later than it
+was (23 hours by default, 30 days at the most an operator can set). Decision 4's "an orphan for the next reconciliation" still
+means the next sweep, since a sweep that leaves an object says so in the ledger and the next one reconciles; a sweep that is
+killed between its rows and their objects says nothing, and those objects wait like decision 3's. And decision 7's "an
+artifact is one stored result" holds for an export file; the file of an issued document is not a stored result (ADR 0026
+decision 7).
+
 ## Consequences
 
 The database stops growing with files. A deployment needs a second service with its own credentials, backups and

@@ -386,9 +386,26 @@ func dataLoss(ctx context.Context, tx pgx.Tx, m Migration) (string, error) {
 		if n > 0 {
 			return fmt.Sprintf("%d cancellations of issued documents (the register would show them as issued again and hand out their files while they last; the source products keep their own records of them) and the audit's events of cancellations", n), nil
 		}
+	case keptResultsVersion:
+		// The ledger's word on which sweeps reconciled the object store, on the objects each left behind and on since when the bucket is
+		// settled (S25-B1) goes with the step; the counts of what each sweep deleted stay. A row that says since when the bucket is
+		// settled says that the sweep reconciled, so the two conditions find every row that says any of the three. The index the step
+		// adds is derived from the rows and loses nothing.
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM reporting_s01.sweeps WHERE reconciled OR objects_left > 0").Scan(&n); err != nil {
+			return "", err
+		}
+		if n > 0 {
+			return fmt.Sprintf("the record of which sweeps reconciled the object store and of the objects they left behind (%d rows of the sweeps ledger say one or the other; the counts of what each sweep deleted stay)", n), nil
+		}
 	}
 	return "", nil
 }
+
+// keptResultsVersion is the step that readies the store for results kept beyond their read (kept_results, S25-B1): the index of the
+// stored-results count without the issued files, and the ledger's record of the reconciliations and of the objects left behind.
+// TestMigrationSetRules holds the number to the step's name, and the step after it to being the one that drops the index the count
+// read before (stored_results_index_cleanup).
+const keptResultsVersion = 15
 
 // step runs one migration in one transaction under the advisory lock, re-reading the ledger
 // inside the lock so that two migrators cannot both apply the same step.

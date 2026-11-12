@@ -23,6 +23,8 @@ type Store struct {
 	order     []string              // job ids in admission order, for the issue listing
 	admitted  map[string]time.Time  // when each job was admitted, by this store's clock (the quota of jobs per hour, S04-D)
 	objects   r.ObjectStore         // only for the sweep's deletes and reconciliation (UseObjects); nil: none
+	swept     objectsSwept          // the newest thing a sweep did about the object store (S25-B1)
+	moment    uint64                // counts the moments those entries are ordered by
 	audit     []r.AuditEvent        // S12-B, in the order recorded
 	schedules map[string]r.Schedule // S16-A, by id; made by the first schedule
 	runs      map[string]*storedRun // S16-A, by id
@@ -30,6 +32,50 @@ type Store struct {
 	// swept. auditDown, when set, is what every write of an audit event fails with (SetAuditFailure).
 	cancellations map[string]r.IssueCancellationRecord
 	auditDown     error
+}
+
+// objectsSwept is what the store remembers of its sweeps about the object store, as the durable store reads it from its ledger of sweeps
+// (S25-B1): the newest entry, dry runs apart, among the sweeps that left objects behind or did not complete, which count from when they
+// ended, and the reconciliations that ran to their end and left none, which count from when their listing began; settled says that it
+// is such a reconciliation, and at is then when its listing began by this store's clock. The zero value is a store that remembers no
+// such sweep.
+//
+// Which entry is the newest is decided by moment, the store's own count of these events, and not by the clock: the durable store has
+// the database's clock, which always moves between two of them, and this store's clock is whatever it was given, a test's that stands
+// still included.
+type objectsSwept struct {
+	moment  uint64
+	at      time.Time
+	settled bool
+}
+
+// listing is when a reconciliation's listing of the bucket began: the store's clock, and its count of such moments.
+type listing struct {
+	at     time.Time
+	moment uint64
+}
+
+// record remembers what a sweep that has ended did about the object store, when it is the newest entry: a reconciliation that ran to
+// its end and left nothing counts from when its listing began, so that it does not hide an object another sweep left after that; a
+// sweep that left objects, or that failed, counts from now, when it ended. This store always knows what a failed sweep left; the
+// durable one does not (a commit that was not answered), and a failed sweep unsettles the bucket in both. A reconciliation of a sweep
+// whose grace is under r.MinOrphanAge settles nothing, in both: an object it left may have been too young for it. Called without the
+// mutex.
+func (s *Store) record(res r.SweepResult, began listing, failed bool, grace time.Duration) {
+	settled := res.Reconciled && res.ObjectsLeft == 0 && !failed && grace >= r.MinOrphanAge
+	if res.DryRun || !(settled || res.ObjectsLeft > 0 || failed) {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.moment++
+	entry := objectsSwept{moment: s.moment}
+	if settled {
+		entry = objectsSwept{moment: began.moment, at: began.at, settled: true}
+	}
+	if entry.moment > s.swept.moment {
+		s.swept = entry
+	}
 }
 
 // UseObjects tells the store which object store the artifacts it is given have their files in (S04-E), so that its sweep deletes the objects
@@ -94,7 +140,7 @@ func (s *Store) Admit(ctx context.Context, j r.Job, quotas r.Quotas) (r.Job, err
 	if _, ok := s.jobs[j.ID]; ok {
 		return r.Job{}, r.ErrConflict
 	}
-	if q := s.overQuota(j.Owner.Identity, quotas); q != "" {
+	if q := s.overQuota(j.Owner.Identity, quotas, j.Kind); q != "" {
 		return r.Job{}, &r.QuotaError{Quota: q}
 	}
 	if len(s.jobs) >= 10000 {
@@ -112,10 +158,11 @@ func (s *Store) Admit(ctx context.Context, j r.Job, quotas r.Quotas) (r.Job, err
 }
 
 // overQuota names the first quota (jobs in flight, stored results, admissions per hour) that the identity has reached, or "". Only the
-// identity's own rows count: queued and running jobs of any kind; snapshots and artifacts whose expiry is after the store's clock (an
-// expired one waits for the sweep and does not count; an issue record is not among them); jobs admitted within the last hour. Called
-// under the mutex.
-func (s *Store) overQuota(i r.Identity, q r.Quotas) string {
+// identity's own rows count: queued and running jobs of any kind; snapshots and export files whose expiry is after the store's clock (an
+// expired one waits for the sweep and does not count; an issue record is not among them, and neither is an issued document's file,
+// which is kept for years and bounded by the admissions per hour, ADR 0026 decision 7); jobs admitted within the last hour. The stored
+// results refuse a job of a kind that makes one (r.MakesStoredResult): never an issue. Called under the mutex.
+func (s *Store) overQuota(i r.Identity, q r.Quotas, kind string) string {
 	now := s.now()
 	inFlight, results, lastHour := 0, 0, 0
 	for id, j := range s.jobs {
@@ -135,14 +182,14 @@ func (s *Store) overQuota(i r.Identity, q r.Quotas) string {
 		}
 	}
 	for _, v := range s.artifacts {
-		if v.Owner.Identity == i && v.ExpiresAt.After(now) {
+		if v.Owner.Identity == i && v.Issue == "" && v.ExpiresAt.After(now) {
 			results++
 		}
 	}
 	switch {
 	case inFlight >= q.JobsInFlight:
 		return r.QuotaJobsInFlight
-	case results >= q.StoredResults:
+	case results >= q.StoredResults && r.MakesStoredResult(kind):
 		return r.QuotaStoredResults
 	case lastHour >= q.AdmissionsPerHour:
 		return r.QuotaAdmissionsPerHour
@@ -460,10 +507,14 @@ func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, err
 	if o.DryRun {
 		s.dryRun(o, &res)
 		if objects != nil {
-			e = s.reconcile(ctx, objects, o, nil, &res)
+			_, e = s.reconcileWhenDue(ctx, objects, o, nil, &res)
 		}
 		return res, e
 	}
+	// What this sweep does about the object store is remembered when it ends, however it ends, as the durable store writes the ledger row
+	// of a sweep that was cut short too: that it reconciled the bucket and since when, or that it left objects behind (S25-B1).
+	var began listing
+	defer func() { s.record(res, began, e != nil, o.Grace) }()
 	// One kind of row at a time, in batches until a batch is short: each takes the lock, picks at most Batch rows by the store's
 	// clock as it is then, changes them and lets go. The objects the rows named are deleted after the lock is let go (the row first, then
 	// the object: ADR 0007 decision 4); one that cannot be deleted is left for the reconciliation.
@@ -521,9 +572,32 @@ func (s *Store) Sweep(ctx context.Context, o r.SweepOptions) (r.SweepResult, err
 		return res, e
 	}
 	if objects != nil {
-		e = s.reconcile(ctx, objects, o, left, &res)
+		began, e = s.reconcileWhenDue(ctx, objects, o, left, &res)
 	}
 	return res, e
+}
+
+// reconcileWhenDue reconciles the object store unless the sweep's options put it off (r.SweepOptions.Reconcile, S25-B1). With an interval
+// the bucket is left alone while it is settled: the newest entry the store remembers (objectsSwept) is a reconciliation that left
+// nothing, and its listing began less than the interval ago by the store's clock. That is the durable store's rule, which reads it from
+// its ledger. A reconciliation that ran to the end of its listing is said in the result, and began is then when its listing began; one
+// that failed is not said, so the next sweep tries again.
+func (s *Store) reconcileWhenDue(ctx context.Context, objects r.ObjectStore, o r.SweepOptions, left map[string]bool, res *r.SweepResult) (began listing, err error) {
+	s.mu.Lock()
+	settled := o.Reconcile > 0 && s.swept.settled && s.now().Before(s.swept.at.Add(o.Reconcile))
+	if !settled {
+		s.moment++
+		began = listing{at: s.now(), moment: s.moment}
+	}
+	s.mu.Unlock()
+	if settled {
+		return began, nil
+	}
+	if e := s.reconcile(ctx, objects, o, left, res); e != nil {
+		return began, e
+	}
+	res.Reconciled = true
+	return began, nil
 }
 
 // dryRun counts what the three steps would do in turn, under the lock.

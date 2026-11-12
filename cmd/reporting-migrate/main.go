@@ -29,10 +29,11 @@ func main() {
 }
 
 func usage() error {
-	return errors.New(`usage: reporting-migrate <status|plan [--to N]|up [--to N]|down --to N [--accept-data-loss]|roles --migrator-role NAME --app-role NAME [--sweep-role NAME]|init-profile <production|contract-simulator-only>|sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint URL --object-store-bucket NAME [--object-store-region R] [--object-store-ca FILE] [--object-store-loopback-http]]|verify-objects [--deep] [--ids] --object-store-endpoint URL --object-store-bucket NAME [...as for sweep]>
+	return errors.New(`usage: reporting-migrate <status|plan [--to N]|up [--to N]|down --to N [--accept-data-loss]|roles --migrator-role NAME --app-role NAME [--sweep-role NAME]|init-profile <production|contract-simulator-only>|sweep [--grace D] [--batch N] [--dry-run] [--object-store-endpoint URL --object-store-bucket NAME [--object-store-region R] [--object-store-ca FILE] [--object-store-loopback-http] [--reconcile-every D]]|verify-objects [--deep] [--ids] --object-store-endpoint URL --object-store-bucket NAME [...as for sweep]>
 the store is REPORTING_STORE_DSN; up/down/roles/init-profile run as the migrator role (or an owner); sweep runs as the sweep role or the migrator;
-sweep deletes the objects of the artifacts it deletes, and reconciles the bucket, when the object store flags are given (the keys are in
-REPORTING_OBJECT_STORE_ACCESS_KEY and REPORTING_OBJECT_STORE_SECRET_KEY, never flags); without them it deletes rows only;
+sweep deletes the objects of the artifacts it deletes when the object store flags are given (the keys are in
+REPORTING_OBJECT_STORE_ACCESS_KEY and REPORTING_OBJECT_STORE_SECRET_KEY, never flags), and reconciles the bucket unless the ledger says a
+reconciliation within --reconcile-every (default 23h; 0 reconciles at every sweep) left nothing behind; without the flags it deletes rows only;
 import-designs --issuer URL --bindings FILE [--layout-directory D] [--dashboard-directory D] [--template-directory D] [--background-directory D] [--replace]
 copies the designs of the bound identities from the server's private directories into the store (design_store database, S11-C), the server stopped;
 verify-objects only reads (it needs the object store flags and prints counts; --deep reads every object, --ids also prints the artifact ids that fail)`)
@@ -77,6 +78,7 @@ func run(args []string, out io.Writer) error {
 	grace := fs.Duration("grace", r.DefaultSweepGrace, "sweep: how long after its expiry an artifact or a snapshot is kept")
 	batch := fs.Int("batch", r.DefaultSweepBatch, "sweep: rows per transaction")
 	dryRun := fs.Bool("dry-run", false, "sweep: count what would be deleted, delete nothing")
+	reconcileEvery := fs.Duration("reconcile-every", r.DefaultReconcileInterval, "sweep, with the object store flags: how long a reconciliation that left nothing behind settles the bucket for; until then, and unless a sweep leaves objects, the bucket is not listed again (0: reconcile at every sweep; at most 720h)")
 	deep := fs.Bool("deep", false, "verify-objects: read every object once and compare its length and SHA-256 with the row's (slow)")
 	ids := fs.Bool("ids", false, "verify-objects: also print the artifact ids of the missing, mismatched and invalid rows (identifiers on stdout)")
 	objectStore := objects.Register(fs)
@@ -210,8 +212,12 @@ func run(args []string, out io.Writer) error {
 		if *grace <= 0 || *batch <= 0 {
 			return fmt.Errorf("--grace and --batch must be positive: %w", r.ErrInvalid)
 		}
-		// With the object store flags the sweep also deletes the files of the artifacts it deletes and reconciles the bucket; the bucket is
-		// reached first, so that a sweep never deletes rows whose files it was asked to delete and then cannot.
+		// The reconciliation cannot be put off for good: it is what removes a file whose row is gone.
+		if *reconcileEvery < 0 || *reconcileEvery > r.MaxReconcileInterval {
+			return fmt.Errorf("--reconcile-every must be 0 (at every sweep) up to %s: %w", r.MaxReconcileInterval, r.ErrInvalid)
+		}
+		// With the object store flags the sweep also deletes the files of the artifacts it deletes and, when it is due, reconciles the
+		// bucket; the bucket is reached first, so that a sweep never deletes rows whose files it was asked to delete and then cannot.
 		client, err := objectStore.Client(os.Getenv)
 		if err != nil {
 			return err
@@ -223,21 +229,32 @@ func run(args []string, out io.Writer) error {
 			}
 			bucket = client
 		}
-		res, err := postgres.SweepWithObjects(ctx, pool, r.SweepOptions{Grace: *grace, Batch: *batch, DryRun: *dryRun}, bucket, nil)
+		res, err := postgres.SweepWithObjects(ctx, pool, r.SweepOptions{Grace: *grace, Batch: *batch, DryRun: *dryRun, Reconcile: *reconcileEvery}, bucket, nil)
 		prefix := "swept"
 		if res.DryRun {
 			prefix = "dry run, would sweep"
 		}
 		// Counts only, also for a sweep that stopped part way: they are what it did.
 		fmt.Fprintf(out, "%s: %d artifacts, %d snapshots, %d job payloads reduced (grace %s, batch %d, %d transactions)\n", prefix, res.Artifacts, res.Snapshots, res.Jobs, *grace, *batch, res.Batches)
-		if bucket == nil {
-			fmt.Fprintf(out, "objects: no object store configured, rows only; the files of %d deleted artifacts that were in an object store, and any orphan, wait for a reconciliation (run the sweep with the object store flags)\n", res.ObjectsLeft)
-		} else {
-			verb := "deleted"
-			if res.DryRun {
-				verb = "would be deleted"
-			}
+		verb := "deleted"
+		if res.DryRun {
+			verb = "would be deleted"
+		}
+		switch {
+		case bucket == nil:
+			// The ledger records the files this sweep left, and the next sweep that has the flags then reconciles; when it left none, an
+			// orphan waits for the bucket to be due, as with the flags.
+			fmt.Fprintf(out, "objects: no object store configured, rows only; the files of %d deleted artifacts that were in an object store wait for a reconciliation, which the next sweep with the object store flags does when there are any (--reconcile-every 0 with the flags reconciles in any case)\n", res.ObjectsLeft)
+		case res.Reconciled:
 			fmt.Fprintf(out, "objects: %d %s, %d orphans %s, %d left for the next reconciliation\n", res.Objects, verb, res.Orphans, verb, res.ObjectsLeft)
+		case err == nil:
+			// Not reconciled, and not because it failed: by the ledger the bucket is settled. No orphan was looked for, which is not the
+			// same as none being there, so the line does not count any.
+			fmt.Fprintf(out, "objects: %d %s, %d left for the next reconciliation; the bucket was not reconciled: its last reconciliation left nothing behind and is within the last %s (--reconcile-every 0 reconciles now)\n", res.Objects, verb, res.ObjectsLeft, *reconcileEvery)
+		default:
+			// The sweep failed, before the reconciliation or in the middle of its listing: the orphans are those it had deleted by then,
+			// and the next sweep reconciles.
+			fmt.Fprintf(out, "objects: %d %s, %d orphans %s, %d left for the next reconciliation; the sweep failed before the bucket was reconciled to the end of its listing\n", res.Objects, verb, res.Orphans, verb, res.ObjectsLeft)
 		}
 		return err
 	case "verify-objects":

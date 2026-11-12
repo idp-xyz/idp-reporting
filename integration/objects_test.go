@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -26,11 +27,34 @@ import (
 // calls that matter. Tampering with what the store holds goes to the real one.
 type faultyStore struct {
 	r.ObjectStore
-	mu       sync.Mutex
-	down     map[string]bool
-	onDelete func(key string) // runs before a delete is passed on
-	puts     []string
-	deletes  []string
+	mu        sync.Mutex
+	down      map[string]bool
+	onDelete  func(key string) // runs before a delete is passed on
+	onDeleted func(key string) // runs after a delete was passed on and succeeded
+	puts      []string
+	deletes   []string
+	lists     int // the listings asked of the store, failed ones included: what a reconciliation costs
+	pageSize  int // when positive, the most keys a listing gives back whatever it was asked for: a bucket of several pages
+	failList  int // when positive, the listing that many calls from now fails, once
+}
+
+// pages makes the store answer every listing with at most size keys; failing makes the listing that many calls from now fail, once.
+func (f *faultyStore) pages(size int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pageSize = size
+}
+func (f *faultyStore) failing(listings int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failList = listings
+}
+
+// listings is how many listings the store was asked for so far.
+func (f *faultyStore) listings() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lists
 }
 
 func (f *faultyStore) fail(ops ...string) {
@@ -76,10 +100,29 @@ func (f *faultyStore) Delete(ctx context.Context, key string) error {
 	}
 	f.mu.Lock()
 	f.deletes = append(f.deletes, key)
+	after := f.onDeleted
 	f.mu.Unlock()
-	return f.ObjectStore.Delete(ctx, key)
+	e := f.ObjectStore.Delete(ctx, key)
+	if e == nil && after != nil {
+		after(key)
+	}
+	return e
 }
 func (f *faultyStore) List(ctx context.Context, prefix, after string, limit int) ([]r.Object, string, error) {
+	f.mu.Lock()
+	f.lists++
+	fails := false
+	if f.failList > 0 {
+		f.failList--
+		fails = f.failList == 0
+	}
+	if f.pageSize > 0 && f.pageSize < limit {
+		limit = f.pageSize
+	}
+	f.mu.Unlock()
+	if fails {
+		return nil, "", &r.ObjectStoreError{Status: 503}
+	}
 	if e := f.check("list"); e != nil {
 		return nil, "", e
 	}
@@ -629,6 +672,288 @@ func runObjectContract(t *testing.T, newWorld func(*testing.T) *objWorld) {
 		w.age(2 * time.Minute)
 		if res := w.sweep(r.SweepOptions{Grace: time.Second}); res.Orphans != 1 || len(w.keys()) != 0 {
 			t.Fatalf("%+v", res)
+		}
+	})
+	// S25-B1. The listing of the bucket is the one step of a sweep that costs what the bucket holds, and the bucket holds every file that
+	// is kept (ADR 0026): a sweep given an interval leaves the bucket alone while a reconciliation that left nothing behind is more recent
+	// than the interval, and reconciles at once after a sweep that left objects, as every sweep did before.
+	t.Run("the_bucket_is_reconciled_when_it_is_due_and_not_at_every_sweep", func(t *testing.T) {
+		w := newWorld(t)
+		const every = 6 * time.Hour
+		const old = objGrace + 5*time.Minute // the age at which an object no row names is an orphan
+		orphan := func() string {
+			t.Helper()
+			key := r.ObjectKey(r.NewID())
+			b := []byte("an orphan " + key)
+			if e := w.raw.Put(ctx, key, b, sha(b)); e != nil {
+				t.Fatal(e)
+			}
+			return key
+		}
+		holds := func(key string) bool { return slices.Contains(w.keys(), key) }
+		// sweep is one sweep, and how many listings it asked of the object store.
+		sweep := func(o r.SweepOptions) (r.SweepResult, int) {
+			t.Helper()
+			before := w.store.listings()
+			res := w.sweep(o)
+			return res, w.store.listings() - before
+		}
+		with := r.SweepOptions{Grace: objGrace, Reconcile: every}
+		dry := r.SweepOptions{Grace: objGrace, Reconcile: every, DryRun: true}
+		// No reconciliation is on record: the first sweep reconciles, whatever interval it is given, and says so.
+		first := orphan()
+		w.age(old)
+		if res, listed := sweep(with); !res.Reconciled || res.Orphans != 1 || listed == 0 || holds(first) {
+			t.Fatalf("the first sweep: %+v, %d listings", res, listed)
+		}
+		// An hour later another object is an orphan. A sweep within the interval asks the store for no listing: the orphan stays, and
+		// the result says that the bucket was not reconciled, which is why it counts no orphan. A dry run is the same.
+		second := orphan()
+		w.age(old)
+		if res, listed := sweep(with); res.Reconciled || res.Orphans != 0 || listed != 0 || !holds(second) {
+			t.Fatalf("a sweep within the interval: %+v, %d listings", res, listed)
+		}
+		if res, listed := sweep(dry); res.Reconciled || res.Orphans != 0 || listed != 0 {
+			t.Fatalf("a dry run within the interval: %+v, %d listings", res, listed)
+		}
+		// The interval passes. A dry run lists and counts and deletes nothing, and it is not a reconciliation: the sweep after it
+		// reconciles.
+		w.age(every)
+		if res, listed := sweep(dry); !res.Reconciled || res.Orphans != 1 || listed == 0 || !holds(second) {
+			t.Fatalf("a dry run after the interval: %+v, %d listings", res, listed)
+		}
+		if res, listed := sweep(with); !res.Reconciled || res.Orphans != 1 || listed == 0 || holds(second) {
+			t.Fatalf("the sweep after the interval: %+v, %d listings", res, listed)
+		}
+		// Without an interval a sweep reconciles every time, as every sweep did before, however recent the last one is.
+		third := orphan()
+		w.age(old)
+		if res, _ := sweep(with); res.Reconciled || !holds(third) {
+			t.Fatalf("a sweep within the interval: %+v", res)
+		}
+		if res, listed := sweep(r.SweepOptions{Grace: objGrace}); !res.Reconciled || res.Orphans != 1 || listed == 0 || holds(third) {
+			t.Fatalf("a sweep without an interval: %+v, %d listings", res, listed)
+		}
+		// A listing that fails is not a reconciliation: the sweep fails after its rows, and the next one reconciles although the
+		// failed attempt was a moment ago.
+		fourth := orphan()
+		w.age(every + old)
+		w.store.fail("list")
+		if res, e := w.s.Sweep(ctx, with); e == nil || res.Reconciled {
+			t.Fatalf("a reconciliation that could not list the bucket: %+v %v", res, e)
+		}
+		w.store.fail()
+		if res, _ := sweep(with); !res.Reconciled || res.Orphans != 1 || holds(fourth) {
+			t.Fatalf("the sweep after a listing that failed: %+v", res)
+		}
+		// A sweep of the rows alone, without the object store, reconciles nothing and is not taken for a reconciliation by the next.
+		fifth := orphan()
+		w.age(every + old)
+		if res := w.rowsOnly(with); res.Reconciled || res.Orphans != 0 || !holds(fifth) {
+			t.Fatalf("a sweep without the object store: %+v", res)
+		}
+		if res, _ := sweep(with); !res.Reconciled || res.Orphans != 1 || holds(fifth) {
+			t.Fatalf("the sweep after one without the object store: %+v", res)
+		}
+		// What a sweep leaves behind does not wait for the interval. An export's row is past its grace 71 minutes after the reconciliation
+		// above, well within the six hours; its object's delete fails. That sweep does not reconcile (the bucket is settled), deletes the
+		// row and leaves the object; the next one reconciles although the interval has not passed, and takes the object.
+		expired := func(key string) string {
+			t.Helper()
+			snap := w.freeze("snap " + key)
+			ex := w.export(snap.SnapshotID, key)
+			w.pastGrace()
+			return r.ObjectKey(ex.ArtifactID)
+		}
+		object := expired("a delete that fails")
+		w.store.fail("delete")
+		if res, listed := sweep(with); res.Artifacts != 1 || res.ObjectsLeft != 1 || res.Objects != 0 || res.Reconciled || listed != 0 || !holds(object) {
+			t.Fatalf("the sweep whose delete failed: %+v, %d listings", res, listed)
+		}
+		w.store.fail()
+		if res, listed := sweep(with); !res.Reconciled || res.Orphans != 1 || res.ObjectsLeft != 0 || listed == 0 || holds(object) {
+			t.Fatalf("the sweep after one that left an object: %+v, %d listings", res, listed)
+		}
+		// That reconciliation left nothing, so the bucket is settled again.
+		if res, listed := sweep(with); res.Reconciled || listed != 0 {
+			t.Fatalf("the sweep after the object was taken: %+v, %d listings", res, listed)
+		}
+		// A reconciliation that itself leaves an object does not settle the bucket: the next sweep reconciles again. Here the bucket is
+		// due (the store is asked without an interval), the row's object cannot be deleted, and the reconciliation that follows in the
+		// same sweep does not try it again.
+		object = expired("a reconciliation that leaves an object")
+		w.store.fail("delete")
+		if res, _ := sweep(r.SweepOptions{Grace: objGrace}); res.Artifacts != 1 || res.ObjectsLeft != 1 || !res.Reconciled || !holds(object) {
+			t.Fatalf("the reconciling sweep whose delete failed: %+v", res)
+		}
+		w.store.fail()
+		if res, listed := sweep(with); !res.Reconciled || res.Orphans != 1 || listed == 0 || holds(object) {
+			t.Fatalf("the sweep after a reconciliation that left an object: %+v, %d listings", res, listed)
+		}
+		// And a sweep of the rows alone, without the object store, leaves the objects of the rows it deletes: the next sweep that has
+		// the object store reconciles, within the interval too.
+		object = expired("rows only")
+		if res := w.rowsOnly(with); res.Artifacts != 1 || res.ObjectsLeft != 1 || res.Reconciled || !holds(object) {
+			t.Fatalf("the sweep of the rows alone: %+v", res)
+		}
+		if res, listed := sweep(with); !res.Reconciled || res.Orphans != 1 || listed == 0 || holds(object) {
+			t.Fatalf("the sweep after one of the rows alone that left an object: %+v, %d listings", res, listed)
+		}
+		// An interval beyond the bound, or a negative one, is refused before anything is swept: an export past its grace is still there
+		// afterwards, row and object, and the bucket was not listed.
+		object = expired("an interval out of bounds")
+		listed := w.store.listings()
+		for _, bad := range []time.Duration{-time.Second, r.MaxReconcileInterval + time.Second} {
+			if _, e := w.s.Sweep(ctx, r.SweepOptions{Grace: objGrace, Reconcile: bad}); !errors.Is(e, r.ErrInvalid) {
+				t.Errorf("an interval of %s: %v", bad, e)
+			}
+		}
+		if id, _ := r.ObjectID(object); !holds(object) || w.store.listings() != listed || !w.held("artifact", id) {
+			t.Error("a sweep with an interval out of bounds swept something or listed the bucket")
+		}
+		// The largest interval is one.
+		if res := w.sweep(r.SweepOptions{Grace: objGrace, Reconcile: r.MaxReconcileInterval}); res.Artifacts != 1 || holds(object) {
+			t.Errorf("a sweep with the largest interval: %+v", res)
+		}
+	})
+	// S25-B1. A reconciliation is one when its listing ran to its end. A listing that fails on a later page, after the orphans of the pages
+	// before it were deleted, has reconciled nothing: the result does not say so, and the sweep after it lists the bucket from the start.
+	t.Run("a_listing_that_fails_on_a_later_page_is_not_a_reconciliation", func(t *testing.T) {
+		w := newWorld(t)
+		with := r.SweepOptions{Grace: objGrace, Reconcile: 6 * time.Hour}
+		// Three objects no row names, old enough to be taken, in a bucket that gives one key a page.
+		for range 3 {
+			key := r.ObjectKey(r.NewID())
+			b := []byte("an orphan " + key)
+			if e := w.raw.Put(ctx, key, b, sha(b)); e != nil {
+				t.Fatal(e)
+			}
+		}
+		w.age(objGrace + 5*time.Minute)
+		w.store.pages(1)
+		w.store.failing(2) // the first page is listed and its orphan deleted; the listing of the second fails
+		res, e := w.s.Sweep(ctx, with)
+		if e == nil || res.Reconciled || res.Orphans != 1 || len(w.keys()) != 2 {
+			t.Fatalf("the sweep whose listing failed on its second page: %+v %v, bucket %v", res, e, w.keys())
+		}
+		before := w.store.listings()
+		next := w.sweep(with)
+		if !next.Reconciled || next.Orphans != 2 || len(w.keys()) != 0 || w.store.listings()-before < 2 {
+			t.Fatalf("the sweep after it: %+v, %d listings, bucket %v", next, w.store.listings()-before, w.keys())
+		}
+		// That one ran to the end of its listing and left nothing: the bucket is settled.
+		before = w.store.listings()
+		if again := w.sweep(with); again.Reconciled || w.store.listings() != before {
+			t.Fatalf("the sweep after the bucket was settled: %+v", again)
+		}
+	})
+	// S25-B1. Two sweeps at once. A listing knows the bucket as it was when it began: an object that another sweep leaves while a
+	// reconciliation is under way, at a key the listing has passed, is not seen by it, although the reconciliation ends later and its
+	// word is the newer one. A reconciliation therefore settles only what was left before its listing began, and the sweep after these
+	// two reconciles within the interval.
+	t.Run("a_reconciliation_does_not_settle_what_another_sweep_left_while_it_was_listing", func(t *testing.T) {
+		w := newWorld(t)
+		with := r.SweepOptions{Grace: objGrace, Reconcile: 6 * time.Hour}
+		holds := func(key string) bool { return slices.Contains(w.keys(), key) }
+		// An object no row names, and an export. Sixty-five minutes later the first is old enough to be an orphan, and the export's row
+		// expired fifty-five minutes ago: within the grace of the reconciling sweep, an hour, and past the grace of the other, half an hour.
+		stray := r.ObjectKey(r.NewID())
+		b := []byte("an orphan " + stray)
+		if e := w.raw.Put(ctx, stray, b, sha(b)); e != nil {
+			t.Fatal(e)
+		}
+		snap := w.freeze("snap")
+		export := r.ObjectKey(w.export(snap.SnapshotID, "export").ArtifactID)
+		w.age(objGrace + 5*time.Minute)
+		// The reconciling sweep lists the bucket, finds the export named by its row and the stray by none, and goes to delete the stray.
+		// At that moment the other sweep runs, of the rows alone: it deletes the export's row and leaves its object.
+		var other r.SweepResult
+		ran := 0
+		w.store.onDelete = func(key string) {
+			if key == stray {
+				ran++
+				other = w.rowsOnly(r.SweepOptions{Grace: 30 * time.Minute, Reconcile: 6 * time.Hour})
+			}
+		}
+		res := w.sweep(with)
+		w.store.onDelete = nil
+		if ran != 1 || other.Artifacts != 1 || other.ObjectsLeft != 1 || other.Reconciled {
+			t.Fatalf("the sweep of the rows alone, during the listing (ran %d times): %+v", ran, other)
+		}
+		if !res.Reconciled || res.Artifacts != 0 || res.Orphans != 1 || res.ObjectsLeft != 0 || holds(stray) || !holds(export) {
+			t.Fatalf("the reconciling sweep: %+v, bucket %v", res, w.keys())
+		}
+		// The reconciliation left nothing and ended last, and the bucket holds a file whose row is gone. The next sweep reconciles,
+		// well within the six hours, and takes it.
+		before := w.store.listings()
+		if next := w.sweep(with); !next.Reconciled || next.Orphans != 1 || next.ObjectsLeft != 0 || w.store.listings() == before || holds(export) {
+			t.Fatalf("the sweep after the two: %+v, bucket %v", next, w.keys())
+		}
+		// That one began after everything was left, and left nothing: the bucket is settled.
+		before = w.store.listings()
+		if again := w.sweep(with); again.Reconciled || w.store.listings() != before {
+			t.Fatalf("the sweep after the bucket was settled: %+v", again)
+		}
+	})
+	// S25-B1. A reconciliation takes an object no row names only when it is older than the sweep's grace and than the least age of an
+	// orphan, a quarter of an hour. A sweep whose grace is shorter than that can leave an object that its own next reconciliation finds
+	// too young, so its reconciliations settle nothing: with such a grace every sweep reconciles, as every sweep did before.
+	t.Run("a_reconciliation_with_a_grace_under_an_orphans_least_age_settles_nothing", func(t *testing.T) {
+		w := newWorld(t)
+		listed := func(o r.SweepOptions) (r.SweepResult, int) {
+			t.Helper()
+			before := w.store.listings()
+			res := w.sweep(o)
+			return res, w.store.listings() - before
+		}
+		short := r.SweepOptions{Grace: r.MinOrphanAge - time.Second, Reconcile: 6 * time.Hour}
+		for i := range 3 {
+			if res, n := listed(short); !res.Reconciled || n == 0 {
+				t.Fatalf("sweep %d with a grace under a quarter of an hour: %+v, %d listings", i+1, res, n)
+			}
+		}
+		// With the least grace that is not under it, the first sweep reconciles and settles the bucket, for the short sweeps too.
+		floor := r.SweepOptions{Grace: r.MinOrphanAge, Reconcile: 6 * time.Hour}
+		if res, n := listed(floor); !res.Reconciled || n == 0 {
+			t.Fatalf("the first sweep with a grace of a quarter of an hour: %+v, %d listings", res, n)
+		}
+		for name, o := range map[string]r.SweepOptions{"the same grace": floor, "the short grace": short} {
+			if res, n := listed(o); res.Reconciled || n != 0 {
+				t.Fatalf("a sweep with %s after the bucket was settled: %+v, %d listings", name, res, n)
+			}
+		}
+	})
+	// S25-B1. A sweep that is cut short or fails cannot always say what it left (the durable store may have deleted the rows of a batch
+	// whose commit was never answered), so it does not leave the bucket settled: the next sweep reconciles within the interval.
+	t.Run("a_sweep_that_does_not_complete_makes_the_next_one_reconcile", func(t *testing.T) {
+		w := newWorld(t)
+		with := r.SweepOptions{Grace: objGrace, Reconcile: 6 * time.Hour}
+		if res := w.sweep(with); !res.Reconciled || res.ObjectsLeft != 0 {
+			t.Fatalf("the first sweep: %+v", res)
+		}
+		// An export whose row is past its grace, 71 minutes later: the bucket is settled for nearly five hours more.
+		snap := w.freeze("snap")
+		w.export(snap.SnapshotID, "export")
+		w.pastGrace()
+		// The sweep deletes the export's row and then its object, and is stopped at that moment: it knows of nothing that it left, and it
+		// did not get to the snapshots.
+		stopped, stop := context.WithCancel(ctx)
+		defer stop()
+		w.store.onDeleted = func(string) { stop() }
+		res, e := w.s.Sweep(stopped, with)
+		w.store.onDeleted = nil
+		if e == nil || res.Artifacts != 1 || res.Objects != 1 || res.ObjectsLeft != 0 || res.Snapshots != 0 || res.Reconciled {
+			t.Fatalf("the sweep that was stopped: %+v %v", res, e)
+		}
+		before := w.store.listings()
+		next := w.sweep(with)
+		if !next.Reconciled || next.Snapshots != 1 || w.store.listings() == before {
+			t.Fatalf("the sweep after one that did not complete: %+v", next)
+		}
+		// That one ran to its end and left nothing: the bucket is settled again.
+		before = w.store.listings()
+		if again := w.sweep(with); again.Reconciled || w.store.listings() != before {
+			t.Fatalf("the sweep after the bucket was settled: %+v", again)
 		}
 	})
 	t.Run("an_artifact_stored_before_stays_inline_and_is_served_and_swept_as_before", func(t *testing.T) {

@@ -48,4 +48,34 @@ func TestMigrationSetRules(t *testing.T) {
 			t.Errorf("migration %03d does not name the schema", m.Version)
 		}
 	}
+	// A step whose down has a rule of its own is found by its number (dataLoss): the number is held to the step's name, so that a step
+	// renumbered before it is merged cannot leave the rule on another step.
+	if keptResultsVersion < 1 || keptResultsVersion > len(real) || real[keptResultsVersion-1].Name != "kept_results" {
+		t.Errorf("keptResultsVersion is %d, which is not the step kept_results", keptResultsVersion)
+	}
+	// The index the stored-results count had is dropped by the step after kept_results and not by kept_results itself (S25-B1): a
+	// transaction that builds an index on a table and then drops one of the same table asks for the table's exclusive lock while it
+	// holds the lock of the build, and a writer that has read the table is then in a deadlock with the migration.
+	if keptResultsVersion < len(real) {
+		next := real[keptResultsVersion]
+		if next.Name != "stored_results_index_cleanup" || strings.TrimSpace(lastStatement(next.Up)) != "DROP INDEX IF EXISTS reporting_s01.assets_identity_kind_expires" {
+			t.Errorf("the step after kept_results is %q and does not only drop the index of 009", next.Name)
+		}
+	} else {
+		t.Error("no step after kept_results drops the index the count no longer reads")
+	}
+	if strings.Contains(real[keptResultsVersion-1].Up, "DROP INDEX") || strings.Contains(real[keptResultsVersion-1].Down, "CREATE INDEX") {
+		t.Error("kept_results builds an index and drops one, on the same table, in one transaction")
+	}
+}
+
+// lastStatement is the SQL of a migration file without its comment lines, and without the final semicolon: for a file of one statement.
+func lastStatement(sql string) string {
+	var out []string
+	for _, line := range strings.Split(sql, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "--") && strings.TrimSpace(line) != "" {
+			out = append(out, strings.TrimSpace(line))
+		}
+	}
+	return strings.TrimSuffix(strings.Join(out, " "), ";")
 }

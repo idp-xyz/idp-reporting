@@ -137,14 +137,20 @@ const (
 	admitLockSQL = `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`
 	// admitReplaySQL finds the job a key already names: a replay is settled before anything is counted.
 	admitReplaySQL = `SELECT EXISTS (SELECT 1 FROM reporting_s01.jobs WHERE tenant=$1 AND integration=$2 AND issuer=$3 AND subject=$4 AND kind=$5 AND idem_key=$6)`
-	// The three counts of the identity's own rows, by the database's clock: the queued and running jobs; the snapshots and artifacts whose
-	// expiry is still in the future (an issue record is another kind and never counts; an expired one waits for the sweep and does not
-	// count; a NULL expiry is not in the future); the jobs admitted in the last hour.
+	// The three counts of the identity's own rows, by the database's clock: the queued and running jobs; the snapshots and export files
+	// whose expiry is still in the future (an issue record is another kind and never counts; an expired one waits for the sweep and does
+	// not count; a NULL expiry is not in the future); the jobs admitted in the last hour.
+	//
+	// The file of an issued document is not a stored result (ADR 0026 decision 7, S25-B1): it is kept for years, and what bounds it is the
+	// admissions per hour. The count tells it from an export by the key the issue gave its payload, written exactly as the predicate of
+	// the partial index assets_identity_results (migration kept_results) has it, so that the planner answers from the index, which holds
+	// no issued file, and does not look into a payload to tell one: the payload of an artifact stored without an object store is the
+	// file itself.
 	admitInFlightSQL = `SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND state IN ('queued','running')`
-	admitResultsSQL  = `SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND expires_at > clock_timestamp()`
+	admitResultsSQL  = `SELECT count(*) FROM reporting_s01.assets WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND kind IN ('snapshot','artifact') AND NOT (data ? 'Issue') AND expires_at > clock_timestamp()`
 	admitHourSQL     = `SELECT count(*) FROM reporting_s01.jobs WHERE tenant=$1 AND issuer=$2 AND subject=$3 AND created_at > clock_timestamp() - interval '1 hour'`
-	// admitCountSQL is the three counts in one round trip; the indexes of migration 009 (S04-G) serve them: jobs_identity_in_flight,
-	// assets_identity_kind_expires and jobs_identity_created, in this order.
+	// admitCountSQL is the three counts in one round trip; the indexes of migrations 009 (S04-G) and kept_results (S25-B1) serve them:
+	// jobs_identity_in_flight, assets_identity_results and jobs_identity_created, in this order.
 	admitCountSQL = `SELECT (` + admitInFlightSQL + `), (` + admitResultsSQL + `), (` + admitHourSQL + `)`
 	// issueListingSQL is the listing of an identity's issue jobs, newest first (Store.Issues); jobs_identity_created serves it.
 	issueListingSQL = "SELECT " + jobFields + " FROM reporting_s01.jobs WHERE kind='issue' AND tenant=$1 AND issuer=$2 AND subject=$3 AND integration=ANY($4) ORDER BY created_at DESC, id DESC LIMIT $5"
@@ -220,7 +226,8 @@ func (s *Store) Admit(ctx context.Context, j r.Job, quotas r.Quotas) (r.Job, err
 			switch {
 			case inFlight >= quotas.JobsInFlight:
 				return &r.QuotaError{Quota: r.QuotaJobsInFlight}
-			case results >= quotas.StoredResults:
+			case results >= quotas.StoredResults && r.MakesStoredResult(j.Kind):
+				// An issue makes no stored result (its file is not one, ADR 0026 decision 7), so this quota does not refuse it.
 				return &r.QuotaError{Quota: r.QuotaStoredResults}
 			case lastHour >= quotas.AdmissionsPerHour:
 				return &r.QuotaError{Quota: r.QuotaAdmissionsPerHour}
