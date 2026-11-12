@@ -106,11 +106,16 @@ func TestTheSimulatorServesPagesWhileTheReadLastsAndAuthorizesWhileTheScopeDoes(
 	if e := authorized(read); e != nil {
 		t.Fatal("under the rights the read was frozen on:", e)
 	}
-	// A read that says another scope than the one the simulator gave is not the simulator's read.
+	// A read that says another scope than the one the simulator gave, or none, is not the simulator's read.
 	longer := read
 	longer.ScopeExpiresAt = read.ScopeExpiresAt.Add(time.Hour)
 	if e := authorized(longer); !errors.Is(e, r.ErrDenied) {
 		t.Fatal("a read with a scope the simulator did not give:", e)
+	}
+	without := read
+	without.ScopeExpiresAt = time.Time{}
+	if e := authorized(without); !errors.Is(e, r.ErrDenied) {
+		t.Fatal("a read without the scope the simulator gave:", e)
 	}
 	// So far the simulator remembers the four reads it prepared, each with the data version it froze. Preparing another forgets the three
 	// that declared no scope and are over, and lets go of the data version of the one whose pages are over and whose scope goes on: two

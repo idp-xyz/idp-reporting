@@ -24,7 +24,24 @@ var schema string
 type Source struct {
 	pool  *pgxpool.Pool
 	reads atomic.Int64
+	// The lifetimes of the reads this value prepares (ADR 0026, S25-B2), in nanoseconds: how long a read's pages are served (zero:
+	// contractsim.DefaultReadLifetime) and for how long, from its preparation, the source goes on answering AuthorizeCurrent for it
+	// (zero, or not longer than the read: it declares no scope). They are settings of this value, as the in-memory simulator's are of
+	// its own; what a read was given is in its stored row, so a read keeps its times over a reopening and under other settings.
+	readLife, scopeLife atomic.Int64
 }
+
+// SetReadLifetime sets how long the pages of the reads prepared from now on are served (zero: contractsim.DefaultReadLifetime; the
+// platform refuses a read of more than fifteen minutes). A Go-only fixture control, like the in-memory simulator's. The source keeps
+// whole microseconds, as its database does: what is left of d under one is dropped, and a d under a microsecond is the default.
+func (s *Source) SetReadLifetime(d time.Duration) { s.readLife.Store(int64(d)) }
+
+// SetScopeLifetime makes the source vouch for the scope of the reads it prepares from now on (ADR 0026 decision 2), as the in-memory
+// simulator's SetScopeLifetime does: for d from a read's preparation it goes on answering AuthorizeCurrent for it, also after the
+// read's pages are gone, and the read says so (ScopeExpiresAt). Zero, or a time not longer than the read's own, declares no scope:
+// the source as it was.
+func (s *Source) SetScopeLifetime(d time.Duration) { s.scopeLife.Store(int64(d)) }
+
 type savedRead struct {
 	Prepared r.PreparedRead
 	Query    r.QuerySpec
@@ -372,7 +389,18 @@ func (s *Source) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QueryS
 	if v.Grant.Timezone != q.Timezone || !reflect.DeepEqual(v.Grant.CurrencyPolicy, q.CurrencyPolicy) {
 		return r.PreparedRead{}, r.ErrDenied
 	}
-	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: q.CurrencyPolicy, Watermark: "fixture-" + v.Version, ExpiresAt: v.Now.UTC().Truncate(time.Microsecond).Add(10 * time.Minute)}
+	// The read's times are whole microseconds of the database's clock, which is what the column and the stored read both keep.
+	now := v.Now.UTC().Truncate(time.Microsecond)
+	readLife := time.Duration(s.readLife.Load()).Truncate(time.Microsecond)
+	if readLife <= 0 {
+		readLife = contractsim.DefaultReadLifetime
+	}
+	p := r.PreparedRead{Context: sc, Ref: r.NewID(), ScopeHandle: r.NewID(), QueryHash: hash, Dataset: q.Dataset, Companies: slices.Clone(q.Companies), Timezone: q.Timezone, CurrencyPolicy: q.CurrencyPolicy, Watermark: "fixture-" + v.Version, ExpiresAt: now.Add(readLife)}
+	// The scope the source vouches for (ADR 0026): kept with the read, in its stored row. The source need not keep the data version for
+	// it, and this one keeps none per read: a version is a row of its own that every read of it shares.
+	if scope := time.Duration(s.scopeLife.Load()).Truncate(time.Microsecond); scope > readLife {
+		p.ScopeExpiresAt = now.Add(scope)
+	}
 	state := savedRead{Prepared: p, Query: q, Grant: v.Grant, Version: v.Version}
 	b, e := json.Marshal(state)
 	if e != nil {
@@ -387,7 +415,19 @@ func (s *Source) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QueryS
 	}
 	return p, nil
 }
-func authorize(ctx context.Context, tx pgx.Tx, sc r.SourceContext, p r.PreparedRead) (savedRead, error) {
+
+// authorize says whether the context's current grant still covers the read, by the source's own record of it: the stored read must be
+// the read that was sent, the scope it vouches for included (a read that comes back with another scope expiry, or without the one it
+// was given, is not the read the source made). Until when is the source's own word too, never the request's: with read false, for as
+// long as the stored read's scope lasts (AuthorizeCurrent; its own expiry when it declared none); with read true, only while the read
+// itself lasts, which is what its pages and a document's row check need (ADR 0026 decision 6), as in the in-memory simulator.
+//
+// Two refusals are kept apart (S25-B2). A stored row that does not agree with itself (its digest, its version, its query, its
+// expiry's column) is the source's own store being wrong: ErrIntegrity. A read that came back as another read than the stored one,
+// in any field, is refused: ErrDenied, as the in-memory simulator refuses it and as the protocol says of a read that is not the one
+// the source made. Before, both were ErrIntegrity, and the durable source behind the reference source would have answered
+// `integrity` where the protocol's table says `denied`.
+func authorize(ctx context.Context, tx pgx.Tx, sc r.SourceContext, p r.PreparedRead, read bool) (savedRead, error) {
 	var saved savedRead
 	var raw []byte
 	var hash, version string
@@ -402,14 +442,21 @@ func authorize(ctx context.Context, tx pgx.Tx, sc r.SourceContext, p r.PreparedR
 	if e = fixturedb.Decode(raw, hash, &saved); e != nil {
 		return saved, e
 	}
-	if r.Digest(saved.Prepared) != r.Digest(p) || p.Context != sc || saved.Query.Integration != sc.Owner.Integration || saved.Version != version || p.Watermark != "fixture-"+version || saved.Prepared.QueryHash != r.QueryHash(saved.Query) || !expires.Equal(p.ExpiresAt) {
+	if saved.Query.Integration != sc.Owner.Integration || saved.Version != version || saved.Prepared.Watermark != "fixture-"+version || saved.Prepared.QueryHash != r.QueryHash(saved.Query) || !expires.Equal(saved.Prepared.ExpiresAt) {
 		return saved, r.ErrIntegrity
+	}
+	if r.Digest(saved.Prepared) != r.Digest(p) || p.Context != sc {
+		return saved, r.ErrDenied
 	}
 	v, e := loadSource(ctx, tx, sc, false)
 	if e != nil {
 		return saved, e
 	}
-	if !v.Now.Before(expires) {
+	end := expires
+	if !read {
+		end = saved.Prepared.ScopeEnd()
+	}
+	if !v.Now.Before(end) {
 		return saved, r.ErrDenied
 	}
 	if v.Grant.Timezone != saved.Grant.Timezone || !reflect.DeepEqual(v.Grant.CurrencyPolicy, saved.Grant.CurrencyPolicy) {
@@ -433,7 +480,7 @@ func (s *Source) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.P
 		return e
 	}
 	defer rollback(ctx, tx)
-	if _, e = authorize(ctx, tx, sc, p); e != nil {
+	if _, e = authorize(ctx, tx, sc, p, false); e != nil {
 		return e
 	}
 	if tx.Commit(ctx) != nil {
@@ -468,7 +515,7 @@ func (s *Source) ReadPage(ctx context.Context, sc r.SourceContext, p r.PreparedR
 		return r.SourcePage{}, e
 	}
 	defer rollback(ctx, tx)
-	saved, e := authorize(ctx, tx, sc, p)
+	saved, e := authorize(ctx, tx, sc, p, true)
 	if e != nil {
 		return r.SourcePage{}, e
 	}

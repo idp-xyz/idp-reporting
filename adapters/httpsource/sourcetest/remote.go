@@ -13,7 +13,9 @@ import (
 // adapter's behaviour as the platform sees it through the protocol. The issuance follows the wrapped adapter (groups for a version-2
 // document authority, rows for a version-1 one, none otherwise), and so do the company directory (declared when the wrapped adapter
 // is one, S19-B) and the cancellation (declared when the wrapped adapter issues and cancels, S24-A); the server and the adapter's
-// connections end with the test.
+// connections end with the test. The connection declares kept results (S25-B2): whether the wrapped adapter vouches for the scope of a
+// read is its own answer, read by read, and the composition takes it as the platform takes it from an adapter in process; a test that
+// wants a connection that does not declare them can turn the declaration off in its options.
 //
 // The data class follows the wrapped adapter too (S08-A, ADR 0012 decision 6). The protocol carries no data class, and the platform's
 // adapter of a product says none (a product behind the protocol is business data); but this is a test's own composition, which knows
@@ -36,7 +38,7 @@ func Remote(tb testing.TB, a r.Adapter, options ...func(*httpsource.Config)) r.A
 	}
 	_, companies := a.(r.CompanyDirectory)
 	_, cancels := a.(r.DocumentCanceller)
-	c := httpsource.Config{BaseURL: srv.URL, RootCAs: pool, Token: token, Issuance: issuance, Companies: companies, Cancellation: cancels}
+	c := httpsource.Config{BaseURL: srv.URL, RootCAs: pool, Token: token, Issuance: issuance, Companies: companies, Cancellation: cancels, KeptResults: true}
 	for _, o := range options {
 		o(&c)
 	}

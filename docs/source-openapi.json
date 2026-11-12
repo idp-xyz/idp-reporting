@@ -3,9 +3,9 @@
   "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
   "info": {
     "title": "Reporting source protocol",
-    "version": "1.2",
-    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A; revision 1.1 adds the optional companies route, S19-B, and a dataset's optional filters and sorts declarations with a query's filters and sort, S20-A, ADR 0023; the revision of S24-A adds the optional issue-cancellations route, ADR 0025).",
-    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups; the companies route only for a connection with companies true (ADR 0015); the issue-cancellations route only for a connection with cancellation true, which needs an issuance (ADR 0025). A dataset may declare filters and sorts (S20-A); a query then carries them, and the source applies them as parameters."
+    "version": "1.3",
+    "summary": "What a source product implements so that the reporting platform's adapter `http` reads it (S19-A; revision 1.1 adds the optional companies route, S19-B, and a dataset's optional filters and sorts declarations with a query's filters and sort, S20-A, ADR 0023; the revision of S24-A adds the optional issue-cancellations route, ADR 0025; the revision of S25-B2 adds a read's optional scope_expires_at, ADR 0026).",
+    "description": "docs/SOURCE_HTTP_PROTOCOL.md is the prose reference and wins where they differ; TestTheOpenAPIDescriptionIsTheProtocol (adapters/httpsource) holds this file to the bodies the adapter sends and accepts. Every request is POST with a JSON body of at most 1 MiB; every answer is application/json of at most 1 MiB, one object, no unknown field, no null, no duplicate key, nothing after it. Values are strings where the platform has exact decimals. The issue routes are needed only for a connection whose issuance is rows or groups; the companies route only for a connection with companies true (ADR 0015); the issue-cancellations route only for a connection with cancellation true, which needs an issuance (ADR 0025). A dataset may declare filters and sorts (S20-A); a query then carries them, and the source applies them as parameters. A read may say until when the source vouches for its scope (scope_expires_at, ADR 0026): the source then answers authorize for the read until that time, also after expires_at, and the platform takes a scope beyond expires_at only from a connection with kept_results true."
   },
   "servers": [
     {
@@ -428,7 +428,7 @@
     "/reporting-source/v1/reads/{ref}/authorize": {
       "post": {
         "operationId": "authorizeCurrent",
-        "summary": "Whether the context's current rights still cover the whole frozen read.",
+        "summary": "Whether the context's current rights still cover the whole frozen read. Answered while the read's scope lasts: until expires_at, or until scope_expires_at for a read that vouches for one (then also after its pages have expired).",
         "parameters": [
           {
             "$ref": "#/components/parameters/RequestID"
@@ -1505,10 +1505,15 @@
           },
           "expires_at": {
             "type": "string",
-            "description": "RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in a fraction); the platform sends a read's expires_at back exactly as it was given. After the platform's now, at most 15 minutes ahead."
+            "description": "RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in a fraction); the platform sends a read's expires_at back exactly as it was given. After the platform's now, at most 15 minutes ahead. Until it passes the source serves the read's pages."
+          },
+          "scope_expires_at": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Optional (S25-B2, ADR 0026): until when the source goes on answering authorize for the read, also after expires_at, when its pages have expired. The same form as expires_at; not before expires_at, not after 9999-12-31T23:59:59Z. Absent, the scope ends with the read, as before the field existed; the key is never sent with an empty text. The platform sends it back exactly as it was given, and takes a time after expires_at only from a connection with kept_results true. The source decides by its own record of this time, never by the one a request carries."
           }
         },
-        "description": "A prepared read. The platform keeps it and sends every field back unchanged in later requests; the source must check it against its own record."
+        "description": "A prepared read. The platform keeps it and sends every field back unchanged in later requests, scope_expires_at among them when the source gave one; the source must check it against its own record."
       },
       "CatalogRequest": {
         "type": "object",

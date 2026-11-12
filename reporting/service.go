@@ -244,7 +244,7 @@ func (s *Service) validScope(sc SourceContext, q QuerySpec, p PreparedRead) erro
 
 // boundRead: the read is the query's, in the context it is used in, and the scope it declares is not before its own expiry.
 func boundRead(sc SourceContext, q QuerySpec, p PreparedRead) bool {
-	return p.Context == sc && p.Ref != "" && p.ScopeHandle != "" && p.Watermark != "" && p.QueryHash == QueryHash(q) && p.Dataset == q.Dataset && slices.Equal(p.Companies, q.Companies) && p.Timezone == q.Timezone && reflect.DeepEqual(p.CurrencyPolicy, q.CurrencyPolicy) && p.validLifetimes()
+	return p.Context == sc && p.Ref != "" && p.ScopeHandle != "" && p.Watermark != "" && p.QueryHash == QueryHash(q) && p.Dataset == q.Dataset && slices.Equal(p.Companies, q.Companies) && p.Timezone == q.Timezone && reflect.DeepEqual(p.CurrencyPolicy, q.CurrencyPolicy) && p.ValidLifetimes()
 }
 
 // current asks the source whether the owner's current rights still cover the read, while the read itself lasts.
@@ -887,7 +887,7 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 		return s.expiredView(ctx, p, j)
 	}
 	if e = s.authorizeJob(ctx, j); e != nil {
-		return JobView{}, e
+		return s.endedMeanwhile(ctx, p, j, e)
 	}
 	out := view(j)
 	if j.State == "succeeded" {
@@ -908,10 +908,26 @@ func (s *Service) Job(ctx context.Context, p Principal, id string) (JobView, err
 			}
 		}
 		if e != nil {
-			return JobView{}, e
+			return s.endedMeanwhile(ctx, p, j, e)
 		}
 	}
 	return out, nil
+}
+
+// endedMeanwhile answers a poll whose checks failed with e. A poll looks at the clock more than once: first to see whether the job's
+// result is over, then, after the source has been asked, when it reads the result's row. When the result's time lies between two of
+// those looks, the first says the result lasts and a later one refuses it as a result that has ended (a working snapshot at its
+// read's expiry, and a kept file at its own time: ErrIntegrity, as an expired result always was; a result kept until its read's scope
+// ends: ErrDenied). So the clock is looked at once more: when the result is over by now, the job is what a poll a moment later
+// finds, a finished job whose result is over, and it is answered as that, whatever the check that failed had said (it may have been
+// the source's own refusal, or its being unreachable, an instant before the end; a result that is over discloses nothing, and
+// needs no answer from the source). While the result lasts, the error stands. This is asked only of a read whose scope goes on
+// after it (ADR 0026): under a source that vouches for nothing, a poll at that instant is answered as it always was.
+func (s *Service) endedMeanwhile(ctx context.Context, p Principal, j Job, e error) (JobView, error) {
+	if j.Prepared.vouched() && s.expired(j) {
+		return s.expiredView(ctx, p, j)
+	}
+	return JobView{}, e
 }
 func (s *Service) Cancel(ctx context.Context, p Principal, id string) (JobView, error) {
 	if !p.Identity.Valid() || !validID(id) {

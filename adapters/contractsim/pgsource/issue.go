@@ -173,7 +173,8 @@ func (s *Source) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.I
 	if !v.Grant.IssueDocuments {
 		return r.IssueReservation{}, r.ErrDenied
 	}
-	saved, e := authorize(ctx, tx, sc, in.Prepared)
+	// The read itself, not only its scope: the row is checked against the rows of the version the read froze (ADR 0026 decision 6).
+	saved, e := authorize(ctx, tx, sc, in.Prepared, true)
 	if e != nil {
 		return r.IssueReservation{}, e
 	}

@@ -9,7 +9,10 @@
 // declares it would use it. With Issue set they also reserve a number for a job id of their own and void it at once, which a product
 // must be able to account for (do not set it against production). With Cancellation set as well they check the cancellation of an
 // issued document (ADR 0025, S24-A; X1–X4, cancellation.go): one document of the check's own is confirmed and cancelled, and two more
-// numbers are reserved and voided, which a product must be able to account for in the same way.
+// numbers are reserved and voided, which a product must be able to account for in the same way. With KeptResults set they take the
+// sample read as a connection that declares `kept_results` would, with the scope the source vouches for, and check it (ADR 0026,
+// S25-B2; K1–K2, kept.go); without it a read that vouches for a scope does not verify, as through a connection that does not declare
+// kept results.
 package conformance
 
 import (
@@ -50,8 +53,8 @@ func (x Result) Line() string {
 
 // Target is what is checked.
 type Target struct {
-	// Config is the connection as the platform would make it; its Issuance, Companies and Cancellation are ignored (Issue, Companies
-	// and Cancellation decide).
+	// Config is the connection as the platform would make it; its Issuance, Companies, Cancellation and KeptResults are ignored (Issue,
+	// Companies, Cancellation and KeptResults decide).
 	Config  httpsource.Config
 	Context r.SourceContext // a context the product has granted
 	Query   r.QuerySpec     // a query of the catalog, inside that grant, with at least one row
@@ -64,6 +67,10 @@ type Target struct {
 	// refuses: P1 fails). The rules confirm one document under a job id of their own and cancel it, and reserve and void two more
 	// numbers. X1 to X4 are skipped without it, as the platform never asks a connection that does not declare the capability.
 	Cancellation bool
+	// KeptResults also checks the scope the source vouches for (ADR 0026, S25-B2): the connection would declare `kept_results: true`,
+	// and the sample read is taken with its `scope_expires_at`. K1 and K2 are skipped without it; a source that vouches for a scope
+	// then fails R1, as its reads would not verify through a connection that does not declare kept results.
+	KeptResults bool
 	// Client sends the raw requests of the rules that the adapter cannot make (a request without the credential); nil is a client with
 	// the configuration's TLS settings.
 	Client *http.Client
@@ -88,6 +95,7 @@ func Run(ctx context.Context, t Target) []Result {
 	}
 	cfg.Companies = t.Companies
 	cfg.Cancellation = t.Cancellation
+	cfg.KeptResults = t.KeptResults
 	a, err := httpsource.New(cfg)
 	if !add("P1", "the connection is one the platform accepts (https or loopback http, a credential, the bounds)", err) {
 		return out
@@ -219,6 +227,13 @@ func Run(ctx context.Context, t Target) []Result {
 		skipCancellation(skip, "the document authority did not pass (I1)")
 	default:
 		cancellation(ctx, a, sc, stranger, p, rows[0], add, skip)
+	}
+
+	// The scope the source vouches for (ADR 0026, S25-B2): K1–K2, on the sample read.
+	if !t.KeptResults {
+		skipKeptResults(skip, "not asked (-kept-results: the connection declares the capability)")
+	} else {
+		keptResults(ctx, a, sc, p, add, skip)
 	}
 	return out
 }

@@ -585,6 +585,8 @@ var durableScenarios = []scenario{
 	}},
 	{"a_version_1_database_is_upgraded_in_one_transaction_and_keeps_its_data", upgradeFromVersion1},
 	{"a_version_2_database_is_upgraded_and_its_documents_can_be_cancelled", upgradeFromVersion2},
+	// S25-B2 (ADR 0026): the scope the durable source vouches for; lifetime_test.go.
+	{"a_read_serves_its_pages_while_it_lasts_and_is_authorized_while_its_scope_does", readAndScopeLifetimes},
 	{"the_schema_holds_a_cancellation_to_a_job_once_and_to_its_form", func(t *testing.T) {
 		freshSchema(t)
 		g := authoritytest.NewRig(t, newDurableEnv, authoritytest.Finance())

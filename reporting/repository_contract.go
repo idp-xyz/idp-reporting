@@ -120,7 +120,7 @@ func ValidateAdmission(j Job) error {
 		return ErrInvalid
 	}
 	// The three lifetimes (ADR 0026): the scope a read declares is not before the read, and what the job keeps is within the scope.
-	if !j.Prepared.validLifetimes() || !validKeep(j) {
+	if !j.Prepared.ValidLifetimes() || !validKeep(j) {
 		return ErrInvalid
 	}
 	switch j.Kind {
