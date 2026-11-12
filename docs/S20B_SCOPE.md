@@ -146,7 +146,7 @@ nothing scrolling sideways, legibility, overflow and contrast in both schemes. S
 show, as the script's dark pass at its end does: the layout designer under the panel is a closed `<details>`, which Chrome restyles
 only when something reads it, so a change made with the workbench on screen let the audit's own reading start the 0.15 s background
 transition of the designer's buttons and measure its first frame (the new scheme's text on the old scheme's fill, 1.22:1, on buttons
-nobody sees; reproduced on a page of four lines, outside the console). `scripts/browser_english_s17a.mjs` adds a filter from the closed
+nobody sees; reproduced on a minimal page outside the console). `scripts/browser_english_s17a.mjs` adds a filter from the closed
 list, one that waits for its value (the reason in English), a sort key, a screenshot and its overflow measure at 1440, and runs its
 preview narrowed. Evidence: the CI job locally (`scripts/ci_browser_evidence.sh`): console (171 checks; 149 on main), library (41),
 baseline, baseline-team and english (52; 48 on main) pass.
