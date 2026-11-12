@@ -7,7 +7,9 @@
 // They only read: the sample query, and, for every filter and sort its dataset declares (S20-A, ADR 0023), the same query narrowed or
 // ordered by it (F1–F6, narrowing.go). With Companies set they also check the company directory (ADR 0015, S19-B), as a connection that
 // declares it would use it. With Issue set they also reserve a number for a job id of their own and void it at once, which a product
-// must be able to account for (do not set it against production).
+// must be able to account for (do not set it against production). With Cancellation set as well they check the cancellation of an
+// issued document (ADR 0025, S24-A; X1–X4, cancellation.go): one document of the check's own is confirmed and cancelled, and two more
+// numbers are reserved and voided, which a product must be able to account for in the same way.
 package conformance
 
 import (
@@ -48,13 +50,20 @@ func (x Result) Line() string {
 
 // Target is what is checked.
 type Target struct {
-	Config  httpsource.Config // the connection as the platform would make it; its Issuance and Companies are ignored (Issue and Companies decide)
-	Context r.SourceContext   // a context the product has granted
-	Query   r.QuerySpec       // a query of the catalog, inside that grant, with at least one row
-	Issue   bool              // also check the document authority (reserves and voids one number)
+	// Config is the connection as the platform would make it; its Issuance, Companies and Cancellation are ignored (Issue, Companies
+	// and Cancellation decide).
+	Config  httpsource.Config
+	Context r.SourceContext // a context the product has granted
+	Query   r.QuerySpec     // a query of the catalog, inside that grant, with at least one row
+	Issue   bool            // also check the document authority (reserves and voids one number)
 	// Companies also checks the company directory (ADR 0015, S19-B): the connection would declare `companies: true`. The rules D1 and
 	// D2 are skipped without it, as the platform never asks a connection that does not declare the capability.
 	Companies bool
+	// Cancellation also checks the cancellation of an issued document (ADR 0025, S24-A): the connection would declare
+	// `cancellation: true`, which needs an issuance, so it is asked together with Issue (alone, the connection is one the platform
+	// refuses: P1 fails). The rules confirm one document under a job id of their own and cancel it, and reserve and void two more
+	// numbers. X1 to X4 are skipped without it, as the platform never asks a connection that does not declare the capability.
+	Cancellation bool
 	// Client sends the raw requests of the rules that the adapter cannot make (a request without the credential); nil is a client with
 	// the configuration's TLS settings.
 	Client *http.Client
@@ -78,6 +87,7 @@ func Run(ctx context.Context, t Target) []Result {
 		cfg.Issuance = httpsource.IssuanceGroups
 	}
 	cfg.Companies = t.Companies
+	cfg.Cancellation = t.Cancellation
 	a, err := httpsource.New(cfg)
 	if !add("P1", "the connection is one the platform accepts (https or loopback http, a credential, the bounds)", err) {
 		return out
@@ -189,15 +199,27 @@ func Run(ctx context.Context, t Target) []Result {
 
 	// The document authority.
 	const issueRule = "a number is reserved for one row, the same intent answers the same reservation, a void is final"
-	if !t.Issue {
+	issues := false
+	switch {
+	case !t.Issue:
 		skip("I1", issueRule, "not asked (-issue reserves and voids one number)")
-		return out
-	}
-	if len(rows) == 0 {
+	case len(rows) == 0:
 		skip("I1", issueRule, "the sample query has no row")
-		return out
+	default:
+		issues = add("I1", issueRule, issue(ctx, a.(r.DocumentAuthority), sc, p, rows[0]))
 	}
-	add("I1", issueRule, issue(ctx, a.(r.DocumentAuthority), sc, p, rows[0]))
+
+	// The cancellation of an issued document (ADR 0025, S24-A): X1–X4.
+	switch {
+	case !t.Cancellation:
+		skipCancellation(skip, "not asked (-cancellation: the connection declares the capability; confirms and cancels one document)")
+	case len(rows) == 0:
+		skipCancellation(skip, "the sample query has no row")
+	case !issues:
+		skipCancellation(skip, "the document authority did not pass (I1)")
+	default:
+		cancellation(ctx, a, sc, stranger, p, rows[0], add, skip)
+	}
 	return out
 }
 

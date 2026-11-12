@@ -477,6 +477,78 @@ func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld)
 			t.Fatal("the issue record is not kept:", e)
 		}
 	})
+	// S24-A under ADR 0026 ("the refusal of a cancelled file ... does not change"): the file of an issued document that is kept beyond
+	// its read is no longer handed out once the product has cancelled the document, for as long as the file is kept, and the source
+	// is not asked for it; a kept file that is not cancelled is served as before; the cancellation stays with the record when the
+	// scope has ended and the file is gone.
+	t.Run("a_kept_issued_document_that_is_cancelled_is_no_longer_handed_out", func(t *testing.T) {
+		w := newWorld(t)
+		w.vouch()
+		s := w.svc()
+		snap := w.freeze(s, "snap")
+		withdrawn, standing := w.issue(s, snap.SnapshotID, "to cancel"), w.issue(s, snap.SnapshotID, "to keep")
+		read := w.job(withdrawn.ID).Prepared
+		scope := read.ScopeExpiresAt
+		if a := w.artifact(withdrawn.ArtifactID); scope.IsZero() || !a.ExpiresAt.Equal(scope) || a.Prepared == nil {
+			t.Fatalf("the issued file is not kept until the scope %s: %+v", scope, a)
+		}
+		// After the read both files stand without their snapshot, and the document is cancelled then: a cancellation needs no read.
+		w.until(read.ExpiresAt)
+		for _, id := range []string{withdrawn.ArtifactID, standing.ArtifactID} {
+			if e := w.download(s, id); e != nil {
+				t.Fatal("a kept issued file is refused after its read:", e)
+			}
+		}
+		view, e := s.CancelIssue(ctx, w.p, withdrawn.ID, "客户退回：金额有误")
+		if e != nil || view.Cancellation == nil || view.Expired || view.ArtifactID != withdrawn.ArtifactID {
+			t.Fatalf("the cancellation of a kept document: %+v %v", view, e)
+		}
+		// The file is refused as cancelled, and the source is not asked to authorize what will not be handed out.
+		asked := w.sim.asked.Load()
+		mustError(t, w.download(s, withdrawn.ArtifactID), r.ErrIssueCancelled)
+		w.sim.SetUnavailable(true)
+		mustError(t, w.download(s, withdrawn.ArtifactID), r.ErrIssueCancelled)
+		w.sim.SetUnavailable(false)
+		if n := w.sim.asked.Load(); n != asked {
+			t.Fatalf("the source was asked %d times about the file of a cancelled document", n-asked)
+		}
+		if e := w.download(s, standing.ArtifactID); e != nil {
+			t.Fatal("the kept file of a document that was not cancelled:", e)
+		}
+		// A sweep while the files are kept takes the working snapshot and leaves both files; the job's poll still answers, with the
+		// cancellation, and the file stays refused.
+		w.until(read.ExpiresAt.Add(grace))
+		if res := sweep(t, s); res.Snapshots != 1 || res.Artifacts != 0 {
+			t.Fatalf("the sweep while the issued files are kept: %+v", res)
+		}
+		if v, e := s.Job(ctx, w.p, withdrawn.ID); e != nil || v.Expired || v.Issue == nil || v.Issue.Cancellation == nil || *v.Issue.Cancellation != *view.Cancellation {
+			t.Fatal("the cancelled issue job's view while its file is kept:", v, e)
+		}
+		mustError(t, w.download(s, withdrawn.ArtifactID), r.ErrIssueCancelled)
+		w.refusedByTheSource("the kept file of the document that was not cancelled", func() error { return w.download(s, standing.ArtifactID) })
+		// The scope ends. The cancelled file is still refused as cancelled while its row is there; the other as a file whose time has
+		// passed; after the sweep neither is found, and the record keeps the cancellation.
+		w.until(scope)
+		mustError(t, w.download(s, withdrawn.ArtifactID), r.ErrIssueCancelled)
+		mustError(t, w.download(s, standing.ArtifactID), r.ErrIntegrity)
+		w.until(scope.Add(grace))
+		if res := sweep(t, s); res.Artifacts != 2 {
+			t.Fatalf("the sweep after the scope: %+v", res)
+		}
+		for _, id := range []string{withdrawn.ArtifactID, standing.ArtifactID} {
+			mustError(t, w.download(s, id), r.ErrNotFound)
+		}
+		rec, e := w.repo.Issue(ctx, w.p.Identity, withdrawn.ID)
+		if e != nil || rec.Cancellation == nil || rec.Cancellation.Ref != view.Cancellation.Ref {
+			t.Fatalf("the record after the scope: %+v %v", rec.Cancellation, e)
+		}
+		if v, e := s.Issue(ctx, w.p, withdrawn.ID); e != nil || !v.Expired || v.Cancellation == nil || *v.Cancellation != *view.Cancellation || v.Number != view.Number {
+			t.Fatalf("the cancelled issue's view after the scope: %+v %v", v, e)
+		}
+		if v, e := s.Issue(ctx, w.p, standing.ID); e != nil || !v.Expired || v.Cancellation != nil {
+			t.Fatalf("the other issue's view after the scope: %+v %v", v, e)
+		}
+	})
 	t.Run("a_kept_snapshot_is_read_and_exported_after_its_read_and_not_issued_from", func(t *testing.T) {
 		w := newWorld(t)
 		w.vouch()

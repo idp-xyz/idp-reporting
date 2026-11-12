@@ -27,6 +27,8 @@ var schemaTypes = map[string]reflect.Type{
 	"Reservation": reflect.TypeFor[protocol.Reservation](), "PrepareIssueResponse": reflect.TypeFor[protocol.PrepareIssueResponse](),
 	"Confirmation": reflect.TypeFor[protocol.Confirmation](), "ConfirmRequest": reflect.TypeFor[protocol.ConfirmRequest](), "Receipt": reflect.TypeFor[protocol.Receipt](),
 	"ConfirmResponse": reflect.TypeFor[protocol.ConfirmResponse](), "VoidRequest": reflect.TypeFor[protocol.VoidRequest](), "VoidResponse": reflect.TypeFor[protocol.VoidResponse](),
+	"Cancellation": reflect.TypeFor[protocol.Cancellation](), "CancelRequest": reflect.TypeFor[protocol.CancelRequest](),
+	"CancellationReceipt": reflect.TypeFor[protocol.CancellationReceipt](), "CancelResponse": reflect.TypeFor[protocol.CancelResponse](),
 	"Error": reflect.TypeFor[protocol.ErrorBody](),
 }
 
@@ -81,9 +83,11 @@ func field(t *testing.T, where string, s schema, ft reflect.Type) {
 }
 
 // TestTheOpenAPIDescriptionIsTheProtocol holds docs/source-openapi.json to the bodies of package protocol, which are what the adapter
-// sends and accepts: the eight routes (companies since revision 1, S19-B), each POST, its body and answer, the statuses of its error
-// codes, every schema's properties (the Go type's JSON fields, with their types) and required fields (those without omitempty), no
-// additional property, and the closed set of error codes.
+// sends and accepts: the nine routes (companies since S19-B, issue-cancellations since S24-A), each POST, its body and answer, the
+// statuses of its error codes, every schema's properties (the Go type's JSON fields, with their types) and required fields (those
+// without omitempty), no additional property, and the closed set of error codes. The description's version is the protocol's
+// version and revision (protocol.Version, protocol.Revision), and so is the revision the prose reference names in its title: the
+// number is written in those three places and nowhere else that a test could not find.
 func TestTheOpenAPIDescriptionIsTheProtocol(t *testing.T) {
 	b, err := os.ReadFile("../../docs/source-openapi.json")
 	if err != nil {
@@ -91,7 +95,10 @@ func TestTheOpenAPIDescriptionIsTheProtocol(t *testing.T) {
 	}
 	var doc struct {
 		OpenAPI string `json:"openapi"`
-		Paths   map[string]map[string]struct {
+		Info    struct {
+			Version string `json:"version"`
+		} `json:"info"`
+		Paths map[string]map[string]struct {
 			RequestBody struct {
 				Content map[string]struct{ Schema schema } `json:"content"`
 			} `json:"requestBody"`
@@ -106,11 +113,22 @@ func TestTheOpenAPIDescriptionIsTheProtocol(t *testing.T) {
 	if err := json.Unmarshal(b, &doc); err != nil || doc.OpenAPI != "3.1.0" {
 		t.Fatal(doc.OpenAPI, err)
 	}
+	revision := itoa(protocol.Version) + "." + itoa(protocol.Revision)
+	if doc.Info.Version != revision {
+		t.Errorf("the description is of revision %q, the protocol of %s", doc.Info.Version, revision)
+	}
+	prose, err := os.ReadFile("../../docs/SOURCE_HTTP_PROTOCOL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title, _, _ := strings.Cut(string(prose), "\n"); !strings.HasPrefix(title, "# The reporting source protocol, version "+itoa(protocol.Version)+" (") || !strings.Contains(title, "revision "+revision+",") {
+		t.Errorf("the prose reference's title does not name revision %s: %s", revision, title)
+	}
 	routes := map[string][2]string{
 		protocol.PathCatalog: {"CatalogRequest", "CatalogResponse"}, protocol.PathCompanies: {"CompaniesRequest", "CompaniesResponse"}, protocol.PathReads: {"PrepareRequest", "PrepareResponse"},
 		protocol.PathPages: {"PageRequest", "PageResponse"}, protocol.PathAuthorize: {"AuthorizeRequest", "AuthorizeResponse"},
 		protocol.PathPrepare: {"PrepareIssueRequest", "PrepareIssueResponse"}, protocol.PathConfirm: {"ConfirmRequest", "ConfirmResponse"},
-		protocol.PathVoid: {"VoidRequest", "VoidResponse"},
+		protocol.PathVoid: {"VoidRequest", "VoidResponse"}, protocol.PathCancellations: {"CancelRequest", "CancelResponse"},
 	}
 	if len(doc.Paths) != len(routes) {
 		t.Fatalf("%d paths, want %d", len(doc.Paths), len(routes))
@@ -130,7 +148,8 @@ func TestTheOpenAPIDescriptionIsTheProtocol(t *testing.T) {
 		if got := nameOf(op.Responses["200"].Content["application/json"].Schema.Ref); got != bodies[1] {
 			t.Errorf("%s: answer %q, want %q", path, got, bodies[1])
 		}
-		issue := strings.Contains(path, "/issues/")
+		// The issue routes may answer not_found and conflict; the cancellation of an issued document is one of them (S24-A).
+		issue := strings.Contains(path, "/issues/") || path == protocol.PathCancellations
 		want := []string{"200", "401"}
 		for _, c := range protocol.Codes {
 			if (issue || !c.IssueOnly) && !slices.Contains(want, itoa(c.Status)) {

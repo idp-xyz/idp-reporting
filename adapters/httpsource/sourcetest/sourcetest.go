@@ -1,6 +1,6 @@
 // Package sourcetest is the reference source of the reporting source protocol (S19-A, docs/SOURCE_HTTP_PROTOCOL.md): an http.Handler that
-// serves the protocol from any reporting.Adapter, from its reporting.DocumentAuthority when it has one and from its
-// reporting.CompanyDirectory when it has one (S19-B). The platform's tests run the
+// serves the protocol from any reporting.Adapter, from its reporting.DocumentAuthority when it has one, from its
+// reporting.CompanyDirectory when it has one (S19-B) and from its reporting.DocumentCanceller when it has one (S24-A). The platform's tests run the
 // contract simulators behind it, so that everything the platform does through adapters/httpsource is the same as what it does in process;
 // a product team written in Go can read it as the shape of its own implementation. It is not a product: authority is the wrapped
 // adapter's, and the handler only checks the service credential, decodes strictly and maps errors to the protocol's codes.
@@ -50,6 +50,7 @@ func New(a r.Adapter, o Options) http.Handler {
 	mux.HandleFunc("POST "+protocol.PathPrepare, h.prepareIssue)
 	mux.HandleFunc("POST "+protocol.PathConfirm, h.confirm)
 	mux.HandleFunc("POST "+protocol.PathVoid, h.void)
+	mux.HandleFunc("POST "+protocol.PathCancellations, h.cancel)
 	return h.guard(mux)
 }
 
@@ -354,4 +355,40 @@ func (h *handler) void(w http.ResponseWriter, req *http.Request) {
 	}
 	yes := true
 	answer(w, protocol.VoidResponse{Voided: &yes})
+}
+
+// cancel is the cancellation of a confirmed document (ADR 0025 decision 1, S24-A): the wrapped adapter's decision, answered with the
+// job it was asked about, its reference and its time. A request that is not of the contract's form is invalid; a source whose adapter
+// cannot cancel answers unsupported (the platform never asks a connection that does not declare the capability). The adapter's
+// refusals are the protocol's codes: denied, not_found for a job it never reserved, conflict for a document that is not a confirmed
+// one or that the request names otherwise.
+func (h *handler) cancel(w http.ResponseWriter, req *http.Request) {
+	var in protocol.CancelRequest
+	if !decode(w, req, &in) {
+		return
+	}
+	sc, ok := source(w, in.Context)
+	if !ok {
+		return
+	}
+	if in.Cancellation == nil {
+		refuse(w, protocol.CodeInvalid)
+		return
+	}
+	c := in.Cancellation.IssueCancellation()
+	if !c.Valid() {
+		refuse(w, protocol.CodeInvalid)
+		return
+	}
+	canceller, ok := h.a.(r.DocumentCanceller)
+	if !ok {
+		refuse(w, protocol.CodeUnsupported)
+		return
+	}
+	receipt, err := canceller.CancelDocument(req.Context(), sc, c)
+	if err != nil {
+		failed(w, err)
+		return
+	}
+	answer(w, protocol.CancelResponse{Receipt: &protocol.CancellationReceipt{JobID: c.JobID, Ref: receipt.Ref, CancelledAt: protocol.FormatTime(receipt.CancelledAt)}})
 }

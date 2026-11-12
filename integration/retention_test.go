@@ -285,6 +285,89 @@ func runRetentionContract(t *testing.T, newHarness func(*testing.T) *retention) 
 			t.Fatal("a dry run still finds something to delete", res)
 		}
 	})
+	// S24-A (ADR 0025 decisions 2 to 4), with the product of each harness (the in-memory simulator; the durable one on PostgreSQL): the
+	// service asks the product, keeps its receipt beside the record and no longer hands the file out; the cancellation stays with the
+	// record when retention removes the file, and a document whose file is long gone is cancelled all the same.
+	t.Run("a_cancellation_is_asked_of_the_product_and_stays_with_the_record_when_the_file_is_swept", func(t *testing.T) {
+		h := newHarness(t)
+		const reason = "客户取消了订单：重复开具"
+		snap := h.freeze("snap")
+		first, second, third := h.issue(snap.SnapshotID, "first"), h.issue(snap.SnapshotID, "second"), h.issue(snap.SnapshotID, "third")
+		if can := h.s.CanCancel(h.p); !can[contractsim.FinanceIntegration] {
+			t.Fatal("the product can be asked to cancel:", can)
+		}
+		before, e := h.repo.Issue(ctx, h.p.Identity, first.ID)
+		if e != nil || before.Cancellation != nil {
+			t.Fatal(before.Cancellation, e)
+		}
+		// Another identity's issue is not found, and nothing is asked or kept.
+		stranger := h.p
+		stranger.Subject = "stranger"
+		if _, e = h.s.CancelIssue(ctx, stranger, first.ID, reason); !errors.Is(e, r.ErrNotFound) {
+			t.Fatal("another identity's cancellation:", e)
+		}
+		view, e := h.s.CancelIssue(ctx, h.p, first.ID, reason)
+		if e != nil || view.Cancellation == nil || view.Cancellation.Reason != reason || view.State != "succeeded" || view.Number != first.Issue.Number || view.Expired {
+			t.Fatalf("%+v %v", view, e)
+		}
+		// The store holds the product's receipt beside the record, and the record is what it was.
+		rec, e := h.repo.Issue(ctx, h.p.Identity, first.ID)
+		if e != nil || rec.Cancellation == nil || rec.Cancellation.Ref != view.Cancellation.Ref || rec.Cancellation.CancelledAt.UTC().Format(time.RFC3339) != view.Cancellation.CancelledAt || rec.Cancellation.Reason != reason || rec.Cancellation.CancelledAt.Before(rec.ConfirmedAt) {
+			t.Fatalf("%+v %v", rec.Cancellation, e)
+		}
+		rec.Cancellation = nil
+		if !reflect.DeepEqual(rec, before) {
+			t.Fatalf("the cancellation changed the record:\n%+v\n%+v", rec, before)
+		}
+		// Asked again with another reason: the same view. The cancelled file is not handed out; the others are.
+		if again, e := h.s.CancelIssue(ctx, h.p, first.ID, "another reason"); e != nil || !reflect.DeepEqual(again, view) {
+			t.Fatalf("the repeat: %+v %v", again, e)
+		}
+		if _, e = h.s.Download(ctx, h.p, first.ArtifactID); !errors.Is(e, r.ErrIssueCancelled) {
+			t.Fatal("the download of a cancelled document:", e)
+		}
+		if _, e = h.s.Download(ctx, h.p, second.ArtifactID); e != nil {
+			t.Fatal("the download of another document:", e)
+		}
+		// The job's view and the listing say it, for the cancelled issue alone.
+		if j, e := h.s.Job(ctx, h.p, first.ID); e != nil || j.Issue == nil || j.Issue.Cancellation == nil || *j.Issue.Cancellation != *view.Cancellation {
+			t.Fatalf("the job's view: %+v %v", j.Issue, e)
+		}
+		list, e := h.s.Issues(ctx, h.p, 10)
+		if e != nil || len(list) != 3 || list[2].ID != first.ID || !reflect.DeepEqual(list[2], view) || list[0].Cancellation != nil || list[1].Cancellation != nil {
+			t.Fatalf("the listing: %+v %v", list, e)
+		}
+		// Ten years on the sweeps have removed the files and the snapshot. The record keeps its cancellation, and the views say both.
+		h.age(10 * 365 * 24 * time.Hour)
+		for range 2 {
+			h.sweep(r.SweepOptions{Grace: time.Second})
+		}
+		if h.held("artifact", first.ArtifactID) || h.held("artifact", second.ArtifactID) || h.held("snapshot", snap.SnapshotID) || !h.held("issue", first.ID) {
+			t.Fatal("the files and the snapshot are past their grace and must be gone, the record kept")
+		}
+		got, e := h.s.Issue(ctx, h.p, first.ID)
+		if e != nil || !got.Expired || got.Cancellation == nil || *got.Cancellation != *view.Cancellation || got.Number != view.Number || got.SHA256 != view.SHA256 || got.Pages != view.Pages {
+			t.Fatalf("the issue's view after the sweep: %+v %v", got, e)
+		}
+		if j, e := h.s.Job(ctx, h.p, first.ID); e != nil || !j.Expired || j.Issue == nil || j.Issue.Cancellation == nil || *j.Issue.Cancellation != *view.Cancellation {
+			t.Fatalf("the job's view after the sweep: %+v %v", j, e)
+		}
+		// A document whose file is long gone is cancelled all the same: a cancellation needs neither the snapshot nor the file.
+		late, e := h.s.CancelIssue(ctx, h.p, second.ID, reason)
+		if e != nil || late.Cancellation == nil || late.Cancellation.Reason != reason || !late.Expired || late.Number != second.Issue.Number || late.Cancellation.Ref == view.Cancellation.Ref {
+			t.Fatalf("a cancellation after the file was swept: %+v %v", late, e)
+		}
+		if other, e := h.s.Issue(ctx, h.p, third.ID); e != nil || other.Cancellation != nil || !other.Expired {
+			t.Fatalf("the third document: %+v %v", other, e)
+		}
+		// No sweep touches a cancellation.
+		h.sweep(r.SweepOptions{Grace: time.Second})
+		for _, id := range []string{first.ID, second.ID} {
+			if rec, e := h.repo.Issue(ctx, h.p.Identity, id); e != nil || rec.Cancellation == nil || rec.Cancellation.Reason != reason {
+				t.Fatalf("the cancellation of %s after another sweep: %+v %v", id, rec.Cancellation, e)
+			}
+		}
+	})
 	t.Run("what_a_queued_or_running_job_names_is_never_deleted", func(t *testing.T) {
 		h := newHarness(t)
 		snap := h.freeze("snap")

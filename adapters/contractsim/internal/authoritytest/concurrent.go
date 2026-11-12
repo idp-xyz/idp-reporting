@@ -40,6 +40,10 @@ func RunConcurrent(t *testing.T, newEnv NewEnv) {
 	for _, s := range concurrentScenarios {
 		t.Run(s.name, func(t *testing.T) { s.run(t, newEnv) })
 	}
+	// The cancellations of one document (S24-A, cancel_scenarios.go).
+	for _, s := range cancelConcurrentScenarios {
+		t.Run(s.name, func(t *testing.T) { s.run(t, newEnv) })
+	}
 }
 
 var concurrentScenarios = []ruleScenario{

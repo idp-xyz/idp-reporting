@@ -97,9 +97,10 @@ func checkShape(ctx context.Context, p *pgxpool.Pool) error {
 	return nil
 }
 
-// profileVersion is the schema this code requires: 2 since S03-H added the number sequences and
-// the issue reservations; version 1 databases are upgraded by Open(initialize=true).
-const profileVersion = 2
+// profileVersion is the schema this code requires: 3 since S24-A added the cancellations of
+// confirmed documents (2 since S03-H added the number sequences and the issue reservations);
+// version 1 and 2 databases are upgraded by Open(initialize=true).
+const profileVersion = 3
 
 // migrate creates the schema, or upgrades a version 1 one, in a single transaction. The advisory
 // lock keeps two initializing processes from creating the same tables at once.
@@ -129,7 +130,7 @@ var _ r.ClassedAdapter = (*Source)(nil)
 func (s *Source) Close()         { s.pool.Close() }
 func (s *Source) ReadCalls() int { return int(s.reads.Load()) }
 func (s *Source) ResetFixture(ctx context.Context) error {
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_source_s01.prepared,reporting_source_s01.grants,reporting_source_s01.heads,reporting_source_s01.versions,reporting_source_s01.issue_numbers,reporting_source_s01.issues")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_source_s01.prepared,reporting_source_s01.grants,reporting_source_s01.heads,reporting_source_s01.versions,reporting_source_s01.issue_numbers,reporting_source_s01.issues,reporting_source_s01.issue_cancellations")
 	return e
 }
 func rollback(ctx context.Context, tx pgx.Tx) {

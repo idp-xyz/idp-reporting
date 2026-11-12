@@ -1,13 +1,13 @@
 -- Persistent synthetic source contract. Separate database from platform assets.
 -- Profile version 2 (S03-H) adds the number sequences and the issue reservations of the
--- document-authority capability. Running this file on a version 1 database upgrades it: the
--- missing tables are created, nothing else is touched and the profile moves to version 2. Open
--- runs it inside one transaction.
+-- document-authority capability; version 3 (S24-A) the cancellations of confirmed documents.
+-- Running this file on a version 1 or 2 database upgrades it: the missing tables are created,
+-- nothing else is touched and the profile moves to version 3. Open runs it inside one transaction.
 CREATE SCHEMA IF NOT EXISTS reporting_source_s01;
 CREATE TABLE IF NOT EXISTS reporting_source_s01.profile (
  singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), profile text NOT NULL, version integer NOT NULL
 );
-INSERT INTO reporting_source_s01.profile(singleton,profile,version) VALUES(true,'durable-contract-simulator-only',2) ON CONFLICT DO NOTHING;
+INSERT INTO reporting_source_s01.profile(singleton,profile,version) VALUES(true,'durable-contract-simulator-only',3) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS reporting_source_s01.versions (
  integration text NOT NULL, source_tenant text NOT NULL, id text NOT NULL,
  catalog jsonb NOT NULL, catalog_sha text NOT NULL,
@@ -74,4 +74,18 @@ CREATE TABLE IF NOT EXISTS reporting_source_s01.issues (
     ELSE reason IS NOT NULL AND voided_at IS NOT NULL AND (sha256 IS NULL) = (pages IS NULL) AND (sha256 IS NULL) = (confirmation_ref IS NULL) AND (sha256 IS NULL) = (confirmed_at IS NULL) END
    END)
 );
-UPDATE reporting_source_s01.profile SET version=2 WHERE singleton AND profile='durable-contract-simulator-only' AND version=1;
+-- One row per cancelled document (S24-A, ADR 0025 decision 1): the confirmed document of a job, which
+-- the source cancelled when the platform asked for a person: the cancellation's reference, its time
+-- and the reason of the request that cancelled it. The issue row is not changed: a cancelled document
+-- is a confirmed one that was withdrawn, it keeps its confirmation, and its number stays used. A job
+-- has at most one cancellation, and only a job the source holds has one; that the job's document is
+-- a confirmed one is decided by the call, under the lock of its issue row.
+CREATE TABLE IF NOT EXISTS reporting_source_s01.issue_cancellations (
+ integration text NOT NULL, source_tenant text NOT NULL, job_id text NOT NULL,
+ ref text NOT NULL UNIQUE CHECK(ref ~ '^[0-9a-f]{32}$'),
+ cancelled_at timestamptz NOT NULL,
+ reason text NOT NULL CHECK(char_length(reason) BETWEEN 1 AND 200),
+ PRIMARY KEY(integration,source_tenant,job_id),
+ FOREIGN KEY(integration,source_tenant,job_id) REFERENCES reporting_source_s01.issues(integration,source_tenant,job_id)
+);
+UPDATE reporting_source_s01.profile SET version=3 WHERE singleton AND profile='durable-contract-simulator-only' AND version IN (1,2);
