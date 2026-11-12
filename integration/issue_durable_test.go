@@ -824,7 +824,7 @@ func TestDurablePostgresIssues(t *testing.T) {
 		if _, e = p.Exec(ctx, `DELETE FROM reporting_s01.schema_migrations WHERE version>2;
 DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
 ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
-DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps;
+DROP TABLE IF EXISTS reporting_s01.issue_cancellations;DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps;
 DROP INDEX reporting_s01.assets_expires_at;
 ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check;

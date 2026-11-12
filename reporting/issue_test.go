@@ -125,6 +125,7 @@ type product struct {
 	preparePn bool                      // PrepareDocument panics
 	voidPn    bool                      // VoidIssue panics
 	intentAs  func(*r.IssueIntent)      // changes the intent on its way to the product: what the product sees is not what the platform froze
+	canceller                           // the product's cancellations (S24-A, issue_cancellation_test.go)
 }
 
 func (p *product) PrepareDocument(ctx context.Context, sc r.SourceContext, in r.IssueIntent) (r.IssueReservation, error) {
@@ -222,6 +223,31 @@ type loseLease struct {
 	fails    []string       // the codes Fail was called with
 	resolves []string       // the codes ResolveFailure was called with
 	recordAs func(*r.Issue) // changes the record the store answers with
+	// The cancellation's record (S24-A): cancelE keeps RecordCancellation from reaching the store; cancelLie lets the store keep the
+	// cancellation and loses the answer, as a commit whose acknowledgement was lost; cancelCtx is the context of the last call.
+	// cancels counts the calls; the three are read and written under cancelMu, because cancellations of one issue run side by side.
+	cancelE   error
+	cancelLie bool
+	cancelCtx voidContext
+	cancels   int
+	cancelMu  sync.Mutex
+}
+
+func (l *loseLease) RecordCancellation(ctx context.Context, i r.Identity, c r.IssueCancellationRecord) (r.IssueCancellationRecord, error) {
+	deadline, ok := ctx.Deadline()
+	l.cancelMu.Lock()
+	l.cancels++
+	l.cancelCtx = voidContext{err: ctx.Err(), hasDeadline: ok, remaining: time.Until(deadline)}
+	refuse, lie := l.cancelE, l.cancelLie
+	l.cancelMu.Unlock()
+	if refuse != nil {
+		return r.IssueCancellationRecord{}, refuse
+	}
+	kept, e := l.Repository.RecordCancellation(ctx, i, c)
+	if e == nil && lie {
+		return r.IssueCancellationRecord{}, errors.New("the acknowledgement of the commit was lost")
+	}
+	return kept, e
 }
 
 func (l *loseLease) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, error) {
@@ -1593,6 +1619,10 @@ func TestIssueContractRefusesInconsistentJobsAndPublications(t *testing.T) {
 		"no confirmation time":                func(a *r.Artifact, i *r.Issue) { i.ConfirmedAt = time.Time{} },
 		"confirmation with a fraction":        func(a *r.Artifact, i *r.Issue) { i.ConfirmedAt = i.ConfirmedAt.Add(time.Millisecond) },
 		"confirmation before the issue time":  func(a *r.Artifact, i *r.Issue) { i.ConfirmedAt = i.IssuedAt.Add(-time.Second) },
+		// A cancellation is the product's later decision and a row of its own (S24-A): a worker publishes none, however well formed.
+		"a record published with a cancellation": func(a *r.Artifact, i *r.Issue) {
+			i.Cancellation = &r.IssueCancellationRecord{IssueID: i.ID, Ref: "cancellation-7", CancelledAt: i.ConfirmedAt, Reason: "withdrawn"}
+		},
 	} {
 		a, i := artifact, rec
 		change(&a, &i)

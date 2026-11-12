@@ -777,6 +777,11 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 			t.Fatalf("%+v %v", done, e)
 		}
 	})
+	// S24-A (ADR 0025 decision 3): the cancellation of an issued document is a row of its own beside the record, kept once with its audit
+	// event, its owner's alone, and read back with the record (cancellation_test.go).
+	t.Run("an_issue_cancellation_is_kept_once_beside_its_record_with_its_audit_event", func(t *testing.T) {
+		cancellationContract(t, envVia(t, through, factory(t)))
+	})
 }
 func TestMemoryContract(t *testing.T) {
 	runContract(t, direct, func(*testing.T) r.Repository { return memory.New(time.Now) })

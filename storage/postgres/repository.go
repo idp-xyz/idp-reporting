@@ -76,7 +76,7 @@ func (s *Store) ResetFixture(ctx context.Context) error {
 	if !s.fixture {
 		return r.ErrDenied
 	}
-	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.sweeps, reporting_s01.designs, reporting_s01.audit_events, reporting_s01.schedule_runs, reporting_s01.schedules")
+	_, e := s.pool.Exec(ctx, "TRUNCATE reporting_s01.assets, reporting_s01.jobs, reporting_s01.sweeps, reporting_s01.designs, reporting_s01.audit_events, reporting_s01.schedule_runs, reporting_s01.schedules, reporting_s01.issue_cancellations")
 	return e
 }
 
@@ -502,12 +502,9 @@ func (s *Store) ResolveFailure(ctx context.Context, c r.Claim, code string) erro
 	return s.workerUpdate(ctx, `UPDATE reporting_s01.jobs SET error_code=$1 WHERE id=$2 AND tenant=$3 AND integration=$4 AND issuer=$5 AND subject=$6 AND kind='issue' AND state='failed' AND generation=$7 AND error_code=$8`, code, c.Job.ID, c.Job.Owner.Tenant, c.Job.Owner.Integration, c.Job.Owner.Issuer, c.Job.Owner.Subject, c.Job.Generation, r.ErrUnreconciled.Error())
 }
 func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out any) error {
-	var b []byte
-	var digest, resourceID, resourceKind string
-	var owner r.Owner
-	var expires *time.Time
+	var row assetRow
 	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, assetByID+assetIdentity, id, i.Tenant, i.Issuer, i.Subject, kind).Scan(&b, &digest, &resourceID, &resourceKind, &owner.Tenant, &owner.Integration, &owner.Issuer, &owner.Subject, &expires)
+		return tx.QueryRow(ctx, assetByID+assetIdentity, id, i.Tenant, i.Issuer, i.Subject, kind).Scan(row.columns()...)
 	})
 	if errors.Is(e, pgx.ErrNoRows) {
 		return r.ErrNotFound
@@ -515,7 +512,25 @@ func (s *Store) asset(ctx context.Context, i r.Identity, id, kind string, out an
 	if e != nil {
 		return e
 	}
-	if e = fixturedb.Decode(b, digest, out); e != nil {
+	return row.decode(out)
+}
+
+// assetRow is a row of assets as the asset reads scan it (assetByID's columns), before its payload is decoded and held to the row.
+type assetRow struct {
+	b                                []byte
+	digest, resourceID, resourceKind string
+	owner                            r.Owner
+	expires                          *time.Time
+}
+
+func (a *assetRow) columns() []any {
+	return []any{&a.b, &a.digest, &a.resourceID, &a.resourceKind, &a.owner.Tenant, &a.owner.Integration, &a.owner.Issuer, &a.owner.Subject, &a.expires}
+}
+
+// decode decodes the payload under its digest into out and holds it to the row's own columns: the id, the owner, the kind, the expiry.
+func (a *assetRow) decode(out any) error {
+	b, digest, resourceID, resourceKind, owner, expires := a.b, a.digest, a.resourceID, a.resourceKind, a.owner, a.expires
+	if e := fixturedb.Decode(b, digest, out); e != nil {
 		return e
 	}
 	// The expiry column is what the sweep deletes by (S04-B): it must be the payload's expiry, as the store wrote it (to the microsecond),
@@ -553,10 +568,19 @@ func (s *Store) Artifact(ctx context.Context, i r.Identity, id string) (r.Artifa
 	e := s.asset(ctx, i, id, "artifact", &v)
 	return v, e
 }
+
+// Issue answers the issue record with the cancellation of its document, when there is one (S24-A): one statement, the record's row and
+// the cancellation's beside it, both the identity's.
 func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, error) {
 	var v r.Issue
-	e := s.asset(ctx, i, id, "issue", &v)
-	return v, e
+	e := asIdentity(ctx, s.pool, i, func(tx pgx.Tx) (err error) {
+		v, err = readIssue(ctx, tx, i, id)
+		return err
+	})
+	if e != nil {
+		return r.Issue{}, e
+	}
+	return v, nil
 }
 func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
 	return s.listing(ctx, i, integrations, limit, r.MaxIssueListing, issueListingSQL)

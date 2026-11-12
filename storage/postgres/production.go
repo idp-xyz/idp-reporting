@@ -148,9 +148,10 @@ func OpenProduction(ctx context.Context, cfg ProductionConfig, opts ...Option) (
 var dataTables = []string{"jobs", "assets", "issue_numbers", "designs", "schedules", "schedule_runs"}
 var readTables = []string{"profile", "schema_migrations", "sweeps"}
 
-// appendTables are the tables the application role inserts into and reads, and never updates (012 audit_events, S12-B): an audit is not
-// rewritten by the server that records it.
-var appendTables = []string{"audit_events"}
+// appendTables are the tables the application role inserts into and reads, and never updates or deletes: the audit (012 audit_events,
+// S12-B: an audit is not rewritten by the server that records it) and the cancellations of issued documents (014 issue_cancellations,
+// S24-A: a cancellation is the source product's decision, kept once beside the issue record).
+var appendTables = []string{"audit_events", "issue_cancellations"}
 
 // requiredTables are the tables a store at the latest version has for the application role; issue_numbers is not one, and sweeps is the
 // sweep role's (the application role never writes it and a store older than 006 still serves the rest).
@@ -345,6 +346,17 @@ var auditPolicies = map[string]policyRule{"identity": {"ALL", identityQual, iden
 // schedulesVersion is the schema version that has the schedules and their runs (013, S16-A), held to the policies of 007.
 const schedulesVersion = 13
 
+// cancellationsVersion is the schema version that has the cancellations of issued documents (014, S24-A), held to their own two policies
+// (cancellationPolicies).
+const cancellationsVersion = 14
+
+// The policies of 014 on issue_cancellations: the identity reads its own (SELECT), and inserts one only as itself and only for an issue
+// record it can see, which the policies of 007 on assets make its own record (INSERT). No policy admits UPDATE or DELETE, and none is a
+// worker's.
+const cancellationIssueQual = identityQual + ` AND EXISTS (SELECT 1 FROM reporting_s01.assets a WHERE a.id = issue_cancellations.issue_id AND a.kind = 'issue' AND a.tenant = issue_cancellations.tenant AND a.issuer = issue_cancellations.issuer AND a.subject = issue_cancellations.subject)`
+
+var cancellationPolicies = map[string]policyRule{"identity": {"SELECT", identityQual, ""}, "issue_owner": {"INSERT", "", cancellationIssueQual}}
+
 // rlsTablesAt is the tables with business rows at a schema version.
 func rlsTablesAt(version int) []string {
 	out := slices.Clone(rlsTables)
@@ -359,7 +371,9 @@ func rlsTablesAt(version int) []string {
 
 var rlsPolicies = map[string]string{"identity": identityQual, "worker": workerQual}
 
-var qualNoise = strings.NewReplacer(" ", "", "\n", "", "\t", "", "(", "", ")", "", "::text", "", "::name", "")
+// qualNoise is what a qualification is printed with or without: spaces, parentheses, casts, and the schema of a table a policy reads
+// (014's reads assets), which the database prints unless the session's search_path holds it.
+var qualNoise = strings.NewReplacer(" ", "", "\n", "", "\t", "", "(", "", ")", "", "::text", "", "::name", "", "reporting_s01.", "")
 
 func normalQual(q string) string { return strings.ToLower(qualNoise.Replace(q)) }
 
@@ -374,7 +388,8 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	if err := pool.QueryRow(ctx, "SELECT coalesce(max(version),0) FROM reporting_s01.schema_migrations").Scan(&version); err != nil || version < rlsVersion {
 		return nil, err
 	}
-	// The policies each table with business rows must have at this version: 007's two on jobs, assets and (011) designs; 012's two on the audit.
+	// The policies each table with business rows must have at this version: 007's two on jobs, assets and (011) designs; 012's two on the
+	// audit; 014's two on the cancellations of issued documents.
 	expected := map[string]map[string]policyRule{}
 	for _, table := range rlsTablesAt(version) {
 		expected[table] = map[string]policyRule{}
@@ -384,6 +399,9 @@ func rlsProblems(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	}
 	if version >= auditVersion {
 		expected["audit_events"] = auditPolicies
+	}
+	if version >= cancellationsVersion {
+		expected["issue_cancellations"] = cancellationPolicies
 	}
 	var problems []string
 	enabled := map[string]bool{}

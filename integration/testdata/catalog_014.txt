@@ -1,0 +1,209 @@
+column assets.id 1 text null=NO default=
+column assets.tenant 2 text null=NO default=
+column assets.integration 3 text null=NO default=
+column assets.issuer 4 text null=NO default=
+column assets.subject 5 text null=NO default=
+column assets.kind 6 text null=NO default=
+column assets.data 7 jsonb null=NO default=
+column assets.created_at 8 timestamp with time zone null=NO default=clock_timestamp()
+column assets.data_sha256 9 text null=NO default=
+column assets.expires_at 10 timestamp with time zone null=YES default=
+column audit_events.id 1 text null=NO default=
+column audit_events.tenant 2 text null=NO default=
+column audit_events.issuer 3 text null=NO default=
+column audit_events.subject 4 text null=NO default=
+column audit_events.at 5 timestamp with time zone null=NO default=clock_timestamp()
+column audit_events.action 6 text null=NO default=
+column audit_events.object_kind 7 text null=NO default=
+column audit_events.object_id 8 text null=NO default=''::text
+column audit_events.outcome 9 text null=NO default=
+column audit_events.code 10 text null=NO default=''::text
+column designs.store 1 text null=NO default=
+column designs.tenant 2 text null=NO default=
+column designs.issuer 3 text null=NO default=
+column designs.subject 4 text null=NO default=
+column designs.data 5 bytea null=NO default=
+column designs.updated_at 6 timestamp with time zone null=NO default=clock_timestamp()
+column issue_cancellations.issue_id 1 text null=NO default=
+column issue_cancellations.tenant 2 text null=NO default=
+column issue_cancellations.issuer 3 text null=NO default=
+column issue_cancellations.subject 4 text null=NO default=
+column issue_cancellations.ref 5 text null=NO default=
+column issue_cancellations.cancelled_at 6 timestamp with time zone null=NO default=
+column issue_cancellations.reason 7 text null=NO default=
+column issue_cancellations.recorded_at 8 timestamp with time zone null=NO default=clock_timestamp()
+column jobs.id 1 text null=NO default=
+column jobs.tenant 2 text null=NO default=
+column jobs.integration 3 text null=NO default=
+column jobs.issuer 4 text null=NO default=
+column jobs.subject 5 text null=NO default=
+column jobs.kind 6 text null=NO default=
+column jobs.state 7 text null=NO default=
+column jobs.idem_key 8 text null=NO default=
+column jobs.request_hash 9 text null=NO default=
+column jobs.generation 10 bigint null=NO default=0
+column jobs.lease_until 11 timestamp with time zone null=YES default=
+column jobs.source_expires_at 12 timestamp with time zone null=NO default=
+column jobs.snapshot_id 13 text null=NO default=''::text
+column jobs.artifact_id 14 text null=NO default=''::text
+column jobs.error_code 15 text null=NO default=''::text
+column jobs.data 16 jsonb null=NO default=
+column jobs.created_at 17 timestamp with time zone null=NO default=clock_timestamp()
+column jobs.data_sha256 18 text null=NO default=
+column profile.singleton 1 boolean null=NO default=true
+column profile.profile 2 text null=NO default=
+column profile.version 3 integer null=NO default=
+column schedule_runs.id 1 text null=NO default=
+column schedule_runs.schedule_id 2 text null=NO default=
+column schedule_runs.tenant 3 text null=NO default=
+column schedule_runs.integration 4 text null=NO default=
+column schedule_runs.issuer 5 text null=NO default=
+column schedule_runs.subject 6 text null=NO default=
+column schedule_runs.due_at 7 timestamp with time zone null=NO default=
+column schedule_runs.state 8 text null=NO default=
+column schedule_runs.data 9 jsonb null=NO default=
+column schedule_runs.data_sha256 10 text null=NO default=
+column schedule_runs.snapshot_job 11 text null=NO default=''::text
+column schedule_runs.export_job 12 text null=NO default=''::text
+column schedule_runs.snapshot_id 13 text null=NO default=''::text
+column schedule_runs.artifact_id 14 text null=NO default=''::text
+column schedule_runs.error_code 15 text null=NO default=''::text
+column schedule_runs.delivery 16 text null=NO default='none'::text
+column schedule_runs.attempts 17 integer null=NO default=0
+column schedule_runs.check_at 18 timestamp with time zone null=NO default=clock_timestamp()
+column schedule_runs.generation 19 bigint null=NO default=0
+column schedule_runs.lease_until 20 timestamp with time zone null=YES default=
+column schedule_runs.created_at 21 timestamp with time zone null=NO default=clock_timestamp()
+column schedule_runs.finished_at 22 timestamp with time zone null=YES default=
+column schedules.id 1 text null=NO default=
+column schedules.tenant 2 text null=NO default=
+column schedules.integration 3 text null=NO default=
+column schedules.issuer 4 text null=NO default=
+column schedules.subject 5 text null=NO default=
+column schedules.idem_key 6 text null=NO default=
+column schedules.request_hash 7 text null=NO default=
+column schedules.state 8 text null=NO default=
+column schedules.data 9 jsonb null=NO default=
+column schedules.data_sha256 10 text null=NO default=
+column schedules.next_run_at 11 timestamp with time zone null=YES default=
+column schedules.created_at 12 timestamp with time zone null=NO default=clock_timestamp()
+column schedules.updated_at 13 timestamp with time zone null=NO default=clock_timestamp()
+column schema_migrations.version 1 integer null=NO default=
+column schema_migrations.name 2 text null=NO default=
+column schema_migrations.checksum 3 text null=NO default=
+column schema_migrations.applied_at 4 timestamp with time zone null=NO default=clock_timestamp()
+column schema_migrations.applied_by 5 text null=NO default=
+column sweeps.id 1 bigint null=NO default=
+column sweeps.at 2 timestamp with time zone null=NO default=clock_timestamp()
+column sweeps.dry_run 3 boolean null=NO default=
+column sweeps.complete 4 boolean null=NO default=
+column sweeps.grace_seconds 5 bigint null=NO default=
+column sweeps.batch 6 integer null=NO default=
+column sweeps.artifacts 7 bigint null=NO default=
+column sweeps.snapshots 8 bigint null=NO default=
+column sweeps.jobs 9 bigint null=NO default=
+column sweeps.batches 10 bigint null=NO default=
+column sweeps.objects 11 bigint null=NO default=0
+column sweeps.orphans 12 bigint null=NO default=0
+constraint reporting_s01.assets assets_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'artifact'::text, 'issue'::text])))
+constraint reporting_s01.assets assets_pkey PRIMARY KEY (id)
+constraint reporting_s01.audit_events audit_events_action_check CHECK ((action = ANY (ARRAY['design.change'::text, 'design.release'::text, 'issue.submit'::text, 'export.submit'::text, 'artifact.download'::text, 'role.refused'::text, 'schedule.change'::text, 'schedule.run'::text, 'issue.cancel'::text])))
+constraint reporting_s01.audit_events audit_events_code_check CHECK ((length(code) <= 64))
+constraint reporting_s01.audit_events audit_events_id_check CHECK ((id ~ '^[0-9a-f]{32}$'::text))
+constraint reporting_s01.audit_events audit_events_object_id_check CHECK ((length(object_id) <= 64))
+constraint reporting_s01.audit_events audit_events_object_kind_check CHECK ((object_kind = ANY (ARRAY['layout'::text, 'dashboard'::text, 'template'::text, 'background'::text, 'image'::text, 'issue'::text, 'export'::text, 'artifact'::text, 'route'::text, 'schedule'::text])))
+constraint reporting_s01.audit_events audit_events_outcome_check CHECK ((outcome = ANY (ARRAY['requested'::text, 'succeeded'::text, 'refused'::text, 'failed'::text])))
+constraint reporting_s01.audit_events audit_events_pkey PRIMARY KEY (id)
+constraint reporting_s01.designs designs_data_check CHECK ((octet_length(data) <= 8388608))
+constraint reporting_s01.designs designs_pkey PRIMARY KEY (store, tenant, issuer, subject)
+constraint reporting_s01.designs designs_store_check CHECK ((store = ANY (ARRAY['layouts'::text, 'dashboards'::text, 'templates'::text, 'backgrounds'::text, 'images'::text])))
+constraint reporting_s01.issue_cancellations issue_cancellations_issue_id_check CHECK ((issue_id ~ '^[0-9a-f]{32}$'::text))
+constraint reporting_s01.issue_cancellations issue_cancellations_pkey PRIMARY KEY (issue_id)
+constraint reporting_s01.issue_cancellations issue_cancellations_reason_check CHECK (((char_length(reason) >= 1) AND (char_length(reason) <= 200)))
+constraint reporting_s01.issue_cancellations issue_cancellations_ref_check CHECK ((ref ~ '^[\x21-\x7E]{1,128}$'::text))
+constraint reporting_s01.jobs jobs_kind_check CHECK ((kind = ANY (ARRAY['snapshot'::text, 'export'::text, 'issue'::text])))
+constraint reporting_s01.jobs jobs_pkey PRIMARY KEY (id)
+constraint reporting_s01.jobs jobs_state_check CHECK ((state = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))
+constraint reporting_s01.jobs jobs_tenant_integration_issuer_subject_kind_idem_key_key UNIQUE (tenant, integration, issuer, subject, kind, idem_key)
+constraint reporting_s01.profile profile_pkey PRIMARY KEY (singleton)
+constraint reporting_s01.profile profile_singleton_check CHECK (singleton)
+constraint reporting_s01.schedule_runs schedule_runs_artifact_id_check CHECK (((artifact_id = ''::text) OR (artifact_id ~ '^[0-9a-f]{32}$'::text)))
+constraint reporting_s01.schedule_runs schedule_runs_attempts_check CHECK (((attempts >= 0) AND (attempts <= 100)))
+constraint reporting_s01.schedule_runs schedule_runs_data_sha256_check CHECK ((data_sha256 ~ '^[0-9a-f]{64}$'::text))
+constraint reporting_s01.schedule_runs schedule_runs_delivery_check CHECK ((delivery = ANY (ARRAY['none'::text, 'pending'::text, 'delivered'::text, 'failed'::text])))
+constraint reporting_s01.schedule_runs schedule_runs_error_code_check CHECK ((length(error_code) <= 64))
+constraint reporting_s01.schedule_runs schedule_runs_export_job_check CHECK (((export_job = ''::text) OR (export_job ~ '^[0-9a-f]{32}$'::text)))
+constraint reporting_s01.schedule_runs schedule_runs_id_check CHECK ((id ~ '^[0-9a-f]{32}$'::text))
+constraint reporting_s01.schedule_runs schedule_runs_pkey PRIMARY KEY (id)
+constraint reporting_s01.schedule_runs schedule_runs_schedule_id_due_at_key UNIQUE (schedule_id, due_at)
+constraint reporting_s01.schedule_runs schedule_runs_schedule_id_fkey FOREIGN KEY (schedule_id) REFERENCES reporting_s01.schedules(id)
+constraint reporting_s01.schedule_runs schedule_runs_snapshot_id_check CHECK (((snapshot_id = ''::text) OR (snapshot_id ~ '^[0-9a-f]{32}$'::text)))
+constraint reporting_s01.schedule_runs schedule_runs_snapshot_job_check CHECK (((snapshot_job = ''::text) OR (snapshot_job ~ '^[0-9a-f]{32}$'::text)))
+constraint reporting_s01.schedule_runs schedule_runs_state_check CHECK ((state = ANY (ARRAY['due'::text, 'snapshot'::text, 'export'::text, 'succeeded'::text, 'failed'::text, 'refused'::text, 'cancelled'::text])))
+constraint reporting_s01.schedules schedules_check CHECK (((state = 'active'::text) = (next_run_at IS NOT NULL)))
+constraint reporting_s01.schedules schedules_data_sha256_check CHECK ((data_sha256 ~ '^[0-9a-f]{64}$'::text))
+constraint reporting_s01.schedules schedules_id_check CHECK ((id ~ '^[0-9a-f]{32}$'::text))
+constraint reporting_s01.schedules schedules_idem_key_check CHECK (((length(idem_key) >= 1) AND (length(idem_key) <= 128)))
+constraint reporting_s01.schedules schedules_pkey PRIMARY KEY (id)
+constraint reporting_s01.schedules schedules_request_hash_check CHECK ((request_hash ~ '^[0-9a-f]{64}$'::text))
+constraint reporting_s01.schedules schedules_state_check CHECK ((state = ANY (ARRAY['active'::text, 'paused'::text, 'deleted'::text])))
+constraint reporting_s01.schedules schedules_tenant_issuer_subject_idem_key_key UNIQUE (tenant, issuer, subject, idem_key)
+constraint reporting_s01.schema_migrations schema_migrations_pkey PRIMARY KEY (version)
+constraint reporting_s01.schema_migrations schema_migrations_version_check CHECK ((version > 0))
+constraint reporting_s01.sweeps sweeps_artifacts_check CHECK ((artifacts >= 0))
+constraint reporting_s01.sweeps sweeps_batch_check CHECK ((batch > 0))
+constraint reporting_s01.sweeps sweeps_batches_check CHECK ((batches >= 0))
+constraint reporting_s01.sweeps sweeps_grace_seconds_check CHECK ((grace_seconds >= 0))
+constraint reporting_s01.sweeps sweeps_jobs_check CHECK ((jobs >= 0))
+constraint reporting_s01.sweeps sweeps_objects_check CHECK ((objects >= 0))
+constraint reporting_s01.sweeps sweeps_orphans_check CHECK ((orphans >= 0))
+constraint reporting_s01.sweeps sweeps_pkey PRIMARY KEY (id)
+constraint reporting_s01.sweeps sweeps_snapshots_check CHECK ((snapshots >= 0))
+index assets assets_expires_at CREATE INDEX assets_expires_at ON reporting_s01.assets USING btree (expires_at)
+index assets assets_identity_kind_expires CREATE INDEX assets_identity_kind_expires ON reporting_s01.assets USING btree (tenant, issuer, subject, kind, expires_at)
+index assets assets_pkey CREATE UNIQUE INDEX assets_pkey ON reporting_s01.assets USING btree (id)
+index audit_events audit_events_identity_at CREATE INDEX audit_events_identity_at ON reporting_s01.audit_events USING btree (tenant, issuer, subject, at DESC, id DESC)
+index audit_events audit_events_pkey CREATE UNIQUE INDEX audit_events_pkey ON reporting_s01.audit_events USING btree (id)
+index audit_events audit_events_tenant_at CREATE INDEX audit_events_tenant_at ON reporting_s01.audit_events USING btree (tenant, issuer, at DESC, id DESC)
+index designs designs_pkey CREATE UNIQUE INDEX designs_pkey ON reporting_s01.designs USING btree (store, tenant, issuer, subject)
+index issue_cancellations issue_cancellations_pkey CREATE UNIQUE INDEX issue_cancellations_pkey ON reporting_s01.issue_cancellations USING btree (issue_id)
+index jobs jobs_claim CREATE INDEX jobs_claim ON reporting_s01.jobs USING btree (state, created_at)
+index jobs jobs_identity_created CREATE INDEX jobs_identity_created ON reporting_s01.jobs USING btree (tenant, issuer, subject, created_at DESC)
+index jobs jobs_identity_in_flight CREATE INDEX jobs_identity_in_flight ON reporting_s01.jobs USING btree (tenant, issuer, subject) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))
+index jobs jobs_pkey CREATE UNIQUE INDEX jobs_pkey ON reporting_s01.jobs USING btree (id)
+index jobs jobs_reducible CREATE INDEX jobs_reducible ON reporting_s01.jobs USING btree (source_expires_at) WHERE ((state = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])) AND (NOT (data ? 'Reduced'::text)))
+index jobs jobs_tenant_integration_issuer_subject_kind_idem_key_key CREATE UNIQUE INDEX jobs_tenant_integration_issuer_subject_kind_idem_key_key ON reporting_s01.jobs USING btree (tenant, integration, issuer, subject, kind, idem_key)
+index profile profile_pkey CREATE UNIQUE INDEX profile_pkey ON reporting_s01.profile USING btree (singleton)
+index schedule_runs schedule_runs_open CREATE INDEX schedule_runs_open ON reporting_s01.schedule_runs USING btree (check_at) WHERE ((state = ANY (ARRAY['due'::text, 'snapshot'::text, 'export'::text])) OR (delivery = 'pending'::text))
+index schedule_runs schedule_runs_pkey CREATE UNIQUE INDEX schedule_runs_pkey ON reporting_s01.schedule_runs USING btree (id)
+index schedule_runs schedule_runs_schedule_id_due_at_key CREATE UNIQUE INDEX schedule_runs_schedule_id_due_at_key ON reporting_s01.schedule_runs USING btree (schedule_id, due_at)
+index schedules schedules_due CREATE INDEX schedules_due ON reporting_s01.schedules USING btree (next_run_at) WHERE (state = 'active'::text)
+index schedules schedules_identity_created CREATE INDEX schedules_identity_created ON reporting_s01.schedules USING btree (tenant, issuer, subject, created_at DESC, id DESC)
+index schedules schedules_pkey CREATE UNIQUE INDEX schedules_pkey ON reporting_s01.schedules USING btree (id)
+index schedules schedules_tenant_issuer_subject_idem_key_key CREATE UNIQUE INDEX schedules_tenant_issuer_subject_idem_key_key ON reporting_s01.schedules USING btree (tenant, issuer, subject, idem_key)
+index schema_migrations schema_migrations_pkey CREATE UNIQUE INDEX schema_migrations_pkey ON reporting_s01.schema_migrations USING btree (version)
+index sweeps sweeps_pkey CREATE UNIQUE INDEX sweeps_pkey ON reporting_s01.sweeps USING btree (id)
+rowsecurity assets enabled=true forced=false
+rowsecurity audit_events enabled=true forced=false
+rowsecurity designs enabled=true forced=false
+rowsecurity issue_cancellations enabled=true forced=false
+rowsecurity jobs enabled=true forced=false
+rowsecurity schedule_runs enabled=true forced=false
+rowsecurity schedules enabled=true forced=false
+policy assets identity ALL permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)))
+policy assets worker ALL permissive=PERMISSIVE roles={public} using=(current_setting('reporting.scope'::text, true) = 'worker'::text) check=(current_setting('reporting.scope'::text, true) = 'worker'::text)
+policy audit_events identity ALL permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)))
+policy audit_events tenant_audit SELECT permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (current_setting('reporting.audit'::text, true) = 'tenant'::text)) check=
+policy designs identity ALL permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)))
+policy designs worker ALL permissive=PERMISSIVE roles={public} using=(current_setting('reporting.scope'::text, true) = 'worker'::text) check=(current_setting('reporting.scope'::text, true) = 'worker'::text)
+policy issue_cancellations identity SELECT permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=
+policy issue_cancellations issue_owner INSERT permissive=PERMISSIVE roles={public} using= check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)) AND (EXISTS ( SELECT 1
+   FROM reporting_s01.assets a
+  WHERE ((a.id = issue_cancellations.issue_id) AND (a.kind = 'issue'::text) AND (a.tenant = issue_cancellations.tenant) AND (a.issuer = issue_cancellations.issuer) AND (a.subject = issue_cancellations.subject)))))
+policy jobs identity ALL permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)))
+policy jobs worker ALL permissive=PERMISSIVE roles={public} using=(current_setting('reporting.scope'::text, true) = 'worker'::text) check=(current_setting('reporting.scope'::text, true) = 'worker'::text)
+policy schedule_runs identity ALL permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)))
+policy schedule_runs worker ALL permissive=PERMISSIVE roles={public} using=(current_setting('reporting.scope'::text, true) = 'worker'::text) check=(current_setting('reporting.scope'::text, true) = 'worker'::text)
+policy schedules identity ALL permissive=PERMISSIVE roles={public} using=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text))) check=((tenant = NULLIF(current_setting('reporting.tenant'::text, true), ''::text)) AND (issuer = NULLIF(current_setting('reporting.issuer'::text, true), ''::text)) AND (subject = NULLIF(current_setting('reporting.subject'::text, true), ''::text)))
+policy schedules worker ALL permissive=PERMISSIVE roles={public} using=(current_setting('reporting.scope'::text, true) = 'worker'::text) check=(current_setting('reporting.scope'::text, true) = 'worker'::text)
+statistics reporting_s01.jobs jobs_identity_kind_stats kinds={d,f} on tenant,issuer,subject,kind

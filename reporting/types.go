@@ -35,6 +35,9 @@ var (
 	// dies, or the job's own code cannot be recorded afterwards. The product can find the
 	// reservation by the job id.
 	ErrUnreconciled = errors.New("ISSUE_UNRECONCILED")
+	// ErrIssueCancelled: the file of an issue the source product has cancelled is no longer handed out (S24-A, ADR 0025 decision 4): 409.
+	// The record, its number, digest and page count stay in the register.
+	ErrIssueCancelled = errors.New("ISSUE_CANCELLED")
 	// ErrQuota: admission would take the identity over one of its quotas (S04-D). The error that carries it names the quota
 	// (QuotaOf) and nothing else.
 	ErrQuota = errors.New("quota exceeded")
@@ -425,6 +428,10 @@ type Issue struct {
 	ReservationRef  string
 	ConfirmationRef string
 	ConfirmedAt     time.Time // the product's confirmation time, UTC, whole second
+	// Cancellation is the cancellation the source product made of the document, when the platform has recorded one (S24-A, ADR 0025
+	// decision 3). It is a row of its own that a repository reads with the record and never part of the record's payload: the record
+	// keeps every field it had. A publication carries none.
+	Cancellation *IssueCancellationRecord `json:"-"`
 }
 type JobView struct {
 	ID         string        `json:"job_id"`
@@ -452,13 +459,25 @@ type JobView struct {
 // issue and Group nil for a row issue. The group's key values are the caller's own data, shown to the caller
 // who asked for them, as the row's values are; the rows themselves are not repeated (RowCount and RowsSHA256
 // say how many and which).
+//
+// Cancellation is present once the source product has cancelled the document and the platform has recorded it (S24-A, ADR 0025 decision
+// 3): the state word stays the job's (`succeeded`), so that a client that does not know cancellations reads what it read.
 type IssueSummary struct {
-	Number          string          `json:"number,omitempty"`
-	TemplateID      string          `json:"template_id"`
-	TemplateVersion int             `json:"template_version"`
-	TemplateSHA256  string          `json:"template_sha256"`
-	RowIndex        *int            `json:"row_index,omitempty"`
-	Group           *IssueGroupView `json:"group,omitempty"`
+	Number          string                 `json:"number,omitempty"`
+	TemplateID      string                 `json:"template_id"`
+	TemplateVersion int                    `json:"template_version"`
+	TemplateSHA256  string                 `json:"template_sha256"`
+	RowIndex        *int                   `json:"row_index,omitempty"`
+	Group           *IssueGroupView        `json:"group,omitempty"`
+	Cancellation    *IssueCancellationView `json:"cancellation,omitempty"`
+}
+
+// IssueCancellationView is how a view shows the cancellation of an issued document: the product's reference and time (RFC 3339, UTC)
+// and the reason the person gave, shown to the identity that owns the issue and to nobody else.
+type IssueCancellationView struct {
+	Ref         string `json:"ref"`
+	CancelledAt string `json:"cancelled_at"`
+	Reason      string `json:"reason"`
 }
 
 // IssueGroupView is how a view shows the group of a schema 2.0 issue: the template's group fields, the key
@@ -471,11 +490,15 @@ type IssueGroupView struct {
 }
 
 // IssueView is one entry of the issue listing: the job and, once it succeeded, its record.
+//
+// Integration is the product the issue was made under (S24-A): the capabilities say per product whether a cancellation can be asked
+// (ADR 0025 decision 5), and an entry of a listing that spans the caller's products must say which one it belongs to.
 type IssueView struct {
-	ID         string `json:"issue_id"`
-	State      string `json:"state"`
-	ErrorCode  string `json:"error_code,omitempty"`
-	SnapshotID string `json:"snapshot_id"`
+	ID          string `json:"issue_id"`
+	Integration string `json:"integration_id"`
+	State       string `json:"state"`
+	ErrorCode   string `json:"error_code,omitempty"`
+	SnapshotID  string `json:"snapshot_id"`
 	IssueSummary
 	ArtifactID     string `json:"artifact_id,omitempty"`
 	SnapshotSHA256 string `json:"snapshot_sha256,omitempty"`
@@ -566,6 +589,17 @@ type IssueResult struct {
 // Claim returns the oldest job that is queued, or running with a lease that has run out, claimed for the lease it is given (the
 // generation one higher), or nil when there is none. A job that cannot be decoded is not claimed: it is failed in the same transaction as
 // its claim, terminally, with UnreadableJobCode, and Claim goes on to the next job, so that nil still means that nothing is claimable.
+//
+// RecordCancellation keeps the cancellation the source product made of an issued document (S24-A, ADR 0025 decision 3): one immutable row
+// per issue record, beside the record, which keeps every field it had, and, in the same atomic step, the audit event of the cancellation
+// (CancellationAuditEvent, at the time the row was kept): both are kept or neither, and a store that cannot write the event answers
+// ErrAuditUnavailable and keeps nothing. The identity must own the issue record (ErrNotFound otherwise, for another identity's as for
+// none); the cancellation must be that record's and well formed (ValidateCancellation: ErrInvalid). A cancellation is kept once: the same
+// receipt again (the product's reference and time) answers the row as it was first kept, with its first reason and its first time, and
+// writes nothing, no second audit event either; another receipt for the same issue is ErrConflict and changes nothing. RecordedAt is the
+// store's clock, whatever the caller put there. Issue answers the record with its cancellation (Issue.Cancellation, nil when there is
+// none). Nothing updates or deletes a cancellation, and Sweep never touches one: the retention that removes the file leaves the
+// cancellation with the record.
 type Repository interface {
 	Admit(context.Context, Job, Quotas) (Job, error)
 	Job(context.Context, Identity, string) (Job, error)
@@ -577,6 +611,7 @@ type Repository interface {
 	Snapshot(context.Context, Identity, string) (Snapshot, error)
 	Artifact(context.Context, Identity, string) (Artifact, error)
 	Issue(context.Context, Identity, string) (Issue, error)
+	RecordCancellation(context.Context, Identity, IssueCancellationRecord) (IssueCancellationRecord, error)
 	Issues(context.Context, Identity, []string, int) ([]Job, error)
 	Jobs(context.Context, Identity, JobListing) ([]Job, error)
 	Sweep(context.Context, SweepOptions) (SweepResult, error)

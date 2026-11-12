@@ -26,6 +26,10 @@ type Store struct {
 	audit     []r.AuditEvent        // S12-B, in the order recorded
 	schedules map[string]r.Schedule // S16-A, by id; made by the first schedule
 	runs      map[string]*storedRun // S16-A, by id
+	// cancellations are the cancellations of issued documents (S24-A), by the id of the issue record: kept once, never changed, never
+	// swept. auditDown, when set, is what every write of an audit event fails with (SetAuditFailure).
+	cancellations map[string]r.IssueCancellationRecord
+	auditDown     error
 }
 
 // UseObjects tells the store which object store the artifacts it is given have their files in (S04-E), so that its sweep deletes the objects
@@ -43,7 +47,7 @@ func New(now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}, admitted: map[string]time.Time{}}
+	return &Store{now: now, jobs: map[string]r.Job{}, keys: map[string]string{}, snapshots: map[string]r.Snapshot{}, artifacts: map[string]r.Artifact{}, issues: map[string]r.Issue{}, admitted: map[string]time.Time{}, cancellations: map[string]r.IssueCancellationRecord{}}
 }
 
 // clone copies a value through JSON, as the durable store keeps it. A value that cannot be encoded
@@ -342,7 +346,49 @@ func (s *Store) Issue(ctx context.Context, i r.Identity, id string) (r.Issue, er
 	if !ok || v.Owner.Identity != i {
 		return r.Issue{}, r.ErrNotFound
 	}
-	return clone(v)
+	out, e := clone(v)
+	if e != nil {
+		return r.Issue{}, e
+	}
+	// The cancellation is read with the record and is no part of it (S24-A): the record is what was published, copied as it is stored.
+	if c, cancelled := s.cancellations[id]; cancelled {
+		out.Cancellation = &c
+	}
+	return out, nil
+}
+
+// RecordCancellation keeps the cancellation of an issue record and its audit event under the store's mutex, which is the model's
+// transaction: both or neither (S24-A, reporting.Repository). The record must be the identity's; the cancellation is kept once, the same
+// receipt again answers the row as it was first kept and writes nothing, another receipt is a conflict.
+func (s *Store) RecordCancellation(ctx context.Context, i r.Identity, c r.IssueCancellationRecord) (r.IssueCancellationRecord, error) {
+	if e := ctx.Err(); e != nil {
+		return r.IssueCancellationRecord{}, e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.issues[c.IssueID]
+	if !ok || rec.Owner.Identity != i {
+		return r.IssueCancellationRecord{}, r.ErrNotFound
+	}
+	if e := r.ValidateCancellation(rec, c); e != nil {
+		return r.IssueCancellationRecord{}, e
+	}
+	if kept, cancelled := s.cancellations[c.IssueID]; cancelled {
+		if kept.Ref != c.Ref || !kept.CancelledAt.Equal(c.CancelledAt) {
+			return r.IssueCancellationRecord{}, r.ErrConflict
+		}
+		return kept, nil
+	}
+	// The audit event first: when it cannot be written nothing is kept.
+	if s.auditDown != nil {
+		return r.IssueCancellationRecord{}, fmt.Errorf("%w: the audit event of a cancellation could not be written", r.ErrAuditUnavailable)
+	}
+	c.CancelledAt, c.RecordedAt = c.CancelledAt.UTC(), s.now().UTC()
+	event := r.CancellationAuditEvent(i, c.IssueID)
+	event.At = c.RecordedAt
+	s.audit = append(s.audit, event)
+	s.cancellations[c.IssueID] = c
+	return c, nil
 }
 func (s *Store) Issues(ctx context.Context, i r.Identity, integrations []string, limit int) ([]r.Job, error) {
 	return s.listing(ctx, i, integrations, limit, r.MaxIssueListing, "issue", "", "")

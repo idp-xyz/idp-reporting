@@ -597,7 +597,7 @@ func (s *Service) expiredView(ctx context.Context, p Principal, j Job) (JobView,
 		if e != nil {
 			return JobView{}, e
 		}
-		out.Issue.Number = rec.Number
+		out.Issue.Number, out.Issue.Cancellation = rec.Number, rec.Cancellation
 	}
 	return out, nil
 }
@@ -605,8 +605,9 @@ func (s *Service) expiredView(ctx context.Context, p Principal, j Job) (JobView,
 // jobView is how an issue job is shown wherever it is shown: the admission and its replay, the
 // poll and the answer to a cancel. A job that succeeded carries the product's number, read from
 // its record through the cross-checks issueView makes (the record must be the job's, the stamp
-// the number's); any other state carries none. The record's view is returned for callers that
-// check more of it. For another kind of job it is view.
+// the number's), and the cancellation of its document when the product has made one (S24-A); any
+// other state carries neither. The record's view is returned for callers that check more of it.
+// For another kind of job it is view.
 func (s *Service) jobView(ctx context.Context, p Principal, j Job) (JobView, IssueView, error) {
 	v := view(j)
 	if j.Kind != "issue" || j.State != "succeeded" {
@@ -616,7 +617,7 @@ func (s *Service) jobView(ctx context.Context, p Principal, j Job) (JobView, Iss
 	if e != nil {
 		return JobView{}, IssueView{}, e
 	}
-	v.Issue.Number = rec.Number
+	v.Issue.Number, v.Issue.Cancellation = rec.Number, rec.Cancellation
 	return v, rec, nil
 }
 
@@ -822,25 +823,40 @@ func (s *Service) Issue(ctx context.Context, p Principal, id string) (IssueView,
 	return s.issueView(ctx, p, j)
 }
 func (s *Service) issueView(ctx context.Context, p Principal, j Job) (IssueView, error) {
-	v := IssueView{ID: j.ID, State: j.State, ErrorCode: j.ErrorCode, SnapshotID: j.SnapshotID, IssueSummary: *issueSummary(j)}
+	v, _, e := s.issueRecord(ctx, p, j)
+	return v, e
+}
+
+// issueRecord is the view of an issue job and, for a job that succeeded, the record the view was made from, read once and checked
+// against the job. A cancellation the repository read with the record (S24-A) is held to the record as a repository holds it before
+// keeping it (ValidateCancellation): one that is not the record's, or not of the contract's form, is INTEGRITY_FAILURE for the view,
+// like a record that is not the job's. The record is the zero value for a job that has not succeeded.
+func (s *Service) issueRecord(ctx context.Context, p Principal, j Job) (IssueView, Issue, error) {
+	v := IssueView{ID: j.ID, Integration: j.Owner.Integration, State: j.State, ErrorCode: j.ErrorCode, SnapshotID: j.SnapshotID, IssueSummary: *issueSummary(j)}
 	if j.State != "succeeded" {
-		return v, nil
+		return v, Issue{}, nil
 	}
 	rec, e := s.repo.Issue(ctx, p.Identity, j.ID)
 	if errors.Is(e, ErrNotFound) {
-		return IssueView{}, fmt.Errorf("the record of a succeeded issue job is missing: %w", ErrIntegrity)
+		return IssueView{}, Issue{}, fmt.Errorf("the record of a succeeded issue job is missing: %w", ErrIntegrity)
 	}
 	if e != nil {
-		return IssueView{}, e
+		return IssueView{}, Issue{}, e
 	}
 	if rec.Owner != j.Owner || rec.ArtifactID != j.ArtifactID || rec.TemplateID != j.TemplateID || rec.TemplateVersion != j.TemplateVersion || rec.TemplateSHA256 != j.TemplateSHA256 || rec.SnapshotID != j.SnapshotID || rec.RowIndex != j.RowIndex || !rec.Group.Equal(j.Group) || rec.Stamp != IssueStamp(rec.Number, rec.IssuedAt, rec.ID) {
-		return IssueView{}, ErrIntegrity
+		return IssueView{}, Issue{}, ErrIntegrity
 	}
 	v.Number = rec.Number
 	v.ArtifactID, v.SnapshotSHA256, v.SHA256, v.Pages, v.Stamp, v.IssuedAt = rec.ArtifactID, rec.SnapshotSHA256, rec.SHA256, rec.Pages, rec.Stamp, rec.IssuedAt.UTC().Format(time.RFC3339)
 	v.ReservationRef, v.ConfirmationRef, v.ConfirmedAt = rec.ReservationRef, rec.ConfirmationRef, rec.ConfirmedAt.UTC().Format(time.RFC3339)
 	v.Expired = s.expired(j)
-	return v, nil
+	if c := rec.Cancellation; c != nil {
+		if ValidateCancellation(rec, *c) != nil {
+			return IssueView{}, Issue{}, fmt.Errorf("the cancellation read with an issue record is not that record's: %w", ErrIntegrity)
+		}
+		v.Cancellation = &IssueCancellationView{Ref: c.Ref, CancelledAt: c.CancelledAt.UTC().Format(time.RFC3339), Reason: c.Reason}
+	}
+	return v, rec, nil
 }
 
 // Sweep is the retention of S04-B: it deletes the expired artifacts, then snapshots, once the grace period has passed by the store's
@@ -929,8 +945,12 @@ func (s *Service) Cancel(ctx context.Context, p Principal, id string) (JobView, 
 // it is read only then, with the row's digest and length, and every byte served has been compared with the row again here, whatever the
 // object store's implementation did: a different length or digest, or a missing object, is ErrIntegrity; a store that cannot be reached is
 // an *ObjectStoreError (ErrUnavailable), and nothing else of the store's reaches the caller.
+//
+// The file of an issue the source product has cancelled is no longer handed out (S24-A, ADR 0025 decision 4): ErrIssueCancelled, said as
+// soon as the record says so, before the source product is asked to authorize anything and whatever has expired since. The platform does
+// not alter or recall the file; it stops being the place the document comes from, and the register keeps saying what was cancelled.
 func (s *Service) Download(ctx context.Context, p Principal, id string) (Artifact, error) {
-	a, e := s.artifactRow(ctx, p, id)
+	a, e := s.artifact(ctx, p, id, true)
 	if e != nil || a.Object == "" {
 		return a, e
 	}
@@ -956,8 +976,18 @@ func (s *Service) Download(ctx context.Context, p Principal, id string) (Artifac
 }
 
 // artifactRow is the artifact as its row describes it, authorized and cross-checked but with no object read: Download without the file. An
-// inline artifact is checked against its content here, as it always was; an object's bytes are checked when Download reads them.
+// inline artifact is checked against its content here, as it always was; an object's bytes are checked when Download reads them. It says
+// nothing of a cancellation: a job's poll shows a cancelled issue with its cancellation, and only the download of its file is refused.
 func (s *Service) artifactRow(ctx context.Context, p Principal, id string) (Artifact, error) {
+	return s.artifact(ctx, p, id, false)
+}
+
+// artifact is artifactRow, and with serve the row of a file about to be handed out (Download): the file of a cancelled issue is then
+// refused with ErrIssueCancelled. The record of an issued PDF is read before the snapshot (and, for a file that outlives its read, ADR
+// 0026, before its scope is authorized), so that this refusal is given without asking the source product anything, for as long as the
+// file is kept; every other answer about the record is given where it always was, after the snapshot's or the scope's and the row's,
+// so that nothing else answers differently than before cancellations existed.
+func (s *Service) artifact(ctx context.Context, p Principal, id string, serve bool) (Artifact, error) {
 	if !p.Identity.Valid() || !validID(id) {
 		return Artifact{}, ErrNotFound
 	}
@@ -967,6 +997,18 @@ func (s *Service) artifactRow(ctx context.Context, p Principal, id string) (Arti
 	}
 	if _, _, e = s.source(p, a.Owner.Integration); e != nil {
 		return Artifact{}, e
+	}
+	// An issued PDF is served only as the record it was issued under describes it.
+	describes := func(rec Issue) bool {
+		return rec.Owner == a.Owner && rec.ArtifactID == a.ID && rec.SHA256 == a.SHA256 && rec.SnapshotID == a.SnapshotID
+	}
+	var rec Issue
+	var recErr error
+	if a.Issue != "" {
+		rec, recErr = s.repo.Issue(ctx, p.Identity, a.Issue)
+		if serve && recErr == nil && rec.Cancellation != nil && describes(rec) {
+			return Artifact{}, ErrIssueCancelled
+		}
 	}
 	if a.Query != nil || a.Prepared != nil {
 		// A file that outlives its read stands without its snapshot (ADR 0026 decisions 4 and 5): it carries the query and the read it was
@@ -989,15 +1031,13 @@ func (s *Service) artifactRow(ctx context.Context, p Principal, id string) (Arti
 		}
 	}
 	if a.Issue != "" {
-		// An issued PDF is served only as the record it was issued under describes it.
-		rec, e := s.repo.Issue(ctx, p.Identity, a.Issue)
-		if errors.Is(e, ErrNotFound) {
+		if errors.Is(recErr, ErrNotFound) {
 			return Artifact{}, fmt.Errorf("the record an artifact names is missing: %w", ErrIntegrity)
 		}
-		if e != nil {
-			return Artifact{}, e
+		if recErr != nil {
+			return Artifact{}, recErr
 		}
-		if rec.Owner != a.Owner || rec.ArtifactID != a.ID || rec.SHA256 != a.SHA256 || rec.SnapshotID != a.SnapshotID {
+		if !describes(rec) {
 			return Artifact{}, ErrIntegrity
 		}
 	}

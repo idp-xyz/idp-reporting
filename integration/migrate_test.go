@@ -641,6 +641,7 @@ func TestPostgresMigrations(t *testing.T) {
 	t.Run("object_storage_step_adds_the_two_counts_and_refuses_to_lose_what_they_say", func(t *testing.T) { migration008(t, admin) })
 	t.Run("capacity_indexes_step_adds_three_indexes_and_accepts_the_ones_made_beforehand", func(t *testing.T) { migration009(t, admin) })
 	t.Run("kind_statistics_step_adds_the_statistics_and_refuses_others_under_its_name", func(t *testing.T) { migration010(t, admin) })
+	t.Run("issue_cancellations_step_adds_the_table_its_policies_and_the_audits_action_and_refuses_to_lose_cancellations", func(t *testing.T) { migrationCancellations(t, admin) })
 	t.Run("capacity_plans_use_the_new_indexes_under_row_level_security", func(t *testing.T) { capacityPlans(t, admin) })
 	t.Run("concurrent_migrators_serialize_on_the_lock", func(t *testing.T) {
 		// Several rounds on a pool whose connections have seen the schema absent (a negative
@@ -707,7 +708,7 @@ func TestPostgresMigrations(t *testing.T) {
 		// counters table that 003 made is not there at the latest version either).
 		if _, e := admin.Exec(ctx, `DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
 ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
-DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+DROP TABLE IF EXISTS reporting_s01.issue_cancellations;DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 DROP TABLE reporting_s01.schema_migrations;
 ALTER TABLE reporting_s01.jobs DROP CONSTRAINT jobs_kind_check; ALTER TABLE reporting_s01.jobs ADD CONSTRAINT jobs_kind_check CHECK(kind IN ('snapshot','export'));
 ALTER TABLE reporting_s01.assets DROP CONSTRAINT assets_kind_check; ALTER TABLE reporting_s01.assets ADD CONSTRAINT assets_kind_check CHECK(kind IN ('snapshot','artifact'));
@@ -735,7 +736,7 @@ UPDATE reporting_s01.profile SET version=2`); e != nil {
 		// three legacy rows and applies 004.
 		if _, e := admin.Exec(ctx, `DROP POLICY identity ON reporting_s01.jobs; DROP POLICY worker ON reporting_s01.jobs; DROP POLICY identity ON reporting_s01.assets; DROP POLICY worker ON reporting_s01.assets;
 ALTER TABLE reporting_s01.jobs DISABLE ROW LEVEL SECURITY; ALTER TABLE reporting_s01.assets DISABLE ROW LEVEL SECURITY;
-DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
+DROP TABLE IF EXISTS reporting_s01.issue_cancellations;DROP TABLE IF EXISTS reporting_s01.schedule_runs;DROP TABLE IF EXISTS reporting_s01.schedules;DROP TABLE IF EXISTS reporting_s01.audit_events;DROP TABLE IF EXISTS reporting_s01.designs;DROP TABLE reporting_s01.sweeps; DROP INDEX reporting_s01.assets_expires_at; ALTER TABLE reporting_s01.assets DROP COLUMN expires_at;
 DROP TABLE reporting_s01.schema_migrations;
 CREATE TABLE reporting_s01.issue_numbers (
   tenant text NOT NULL, integration text NOT NULL, last bigint NOT NULL CHECK(last >= 0),
