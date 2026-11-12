@@ -170,12 +170,50 @@ checker's rules). What S25-B1 settled that the list left open:
 - The rollout rule is in docs/OPERATIONS.md with S25-B1 and does not wait for S25-D, because the migration of S25-B1 is what
   enforces most of it: a binary that does not know the step, and so does not know a kept result, refuses to open the store.
 
+Amended 2026-11-12, with S25-B2 (docs/S25B2_SCOPE.md). Decision 2 gains one condition, which the product owner decided (Q3
+below); no other decision changed. What S25-B2 settled that the text left open:
+
+- **The revision's number.** Decision 2 and the list of slices say 1.2. S24-A's `issue-cancellations` took that number first, so
+  `scope_expires_at` is the revision after it (the number is in the protocol's title, in docs/source-openapi.json and in
+  `protocol.Revision`).
+- **A connection declares that it keeps results** (the owner's answer to Q3). The adapter `http` takes a scope beyond the read's
+  own expiry only from a connection whose options say `kept_results: true`; through any other connection such a read does not
+  verify, and the whole read is refused. Decision 2 as it was accepted did not say this: by its words a source that sends the
+  field is taken. The condition is of a kind with the protocol's rule that a source gains nothing until its connection declares,
+  with one difference that makes it sharper: an optional route is simply not asked of a connection that does not declare, while
+  a field of an answer cannot be left unasked, so the read that carries it is refused, and a product that vouches before the
+  operator has declared loses its reports until the operator has. Its reason is who decides: that the platform holds a product's
+  data for days and years after a read is the operator's to declare (the storage, the backups and the two retention times are
+  the operator's), and a product's deployment does not turn it on by itself. The requirement can be lifted in a later release
+  without breaking any product; introducing it later would refuse the reads of every product that already vouched. A source that
+  says nothing is served as before either way, as decision 2 requires, and so is one whose scope ends with its read.
+  docs/DEPLOYMENT.md "Keeping results: the order" has the steps by which the two sides are turned on and off.
+- **What the checker sees** ("Consequences"). K1 and K2: the read declares a scope after its expiry, and the source holds the
+  scope's end itself (the read is authorized as it was given, refused when it comes back with another scope expiry or without
+  one, and authorized as it was given again); the refusals of R7 to R10 run on the same read. That the source goes on
+  authorizing after the read is the product's own test, and the onboarding guide lists what that test shows; the list is there
+  with S25-B2 and does not wait for S25-D, because the protocol's page and the command's help point to it.
+- **A read that is not the source's own is refused, by both simulators alike.** The durable simulator answered such a read with
+  an integrity failure where the in-memory one, and the protocol's table, say `denied`; with the scope's end now part of what
+  makes a read the source's own, the durable one says `denied` too, and keeps the integrity failure for a record of its own
+  that does not agree with itself.
+- **What vouching costs a source**, said in the protocol now. A source vouches at `reads`, before it can know what the platform
+  will make of the read: a preview's read is vouched for like a freeze's. A source that keeps a record per read keeps one for
+  each until the scope ends, a handle that describes itself costs nothing to keep, and for an issued document's file to be kept
+  its ten years the source vouches for ten years. This is decision 2's "its own business". Whether the platform should say at
+  `reads` what a read is for, so that a source need not vouch for previews, would be an additive field of the request; it is not
+  decided, and nothing here needs it.
+
 ## Questions for the product owner
 
 - **Q1, the model.** (a) The source vouches for the scope and the platform keeps by class, as above (recommended). (b) After
   publication the owner alone, without asking the source again. (c) Leave the one time as it is.
 - **Q2, the default times** (a deployment may change them). Export files and scheduled snapshots 7 days, issued documents 10
   years, working snapshots unchanged (recommended); or other numbers.
+- **Q3, the declaration** (asked on 2026-11-12, with S25-B2; the slice was written with (a) and was not merged before the
+  answer). When a source's read carries `scope_expires_at`: (a) the platform takes it only from a connection whose options
+  declare `kept_results: true` and refuses the read otherwise, so that the operator decides for each connection whether the
+  product's data is kept (recommended). (b) No declaration: a source that sends the field is taken, as decision 2's words say.
 
 ## The owner's answers (2026-11-11)
 
@@ -183,3 +221,8 @@ checker's rules). What S25-B1 settled that the list left open:
   owner was shown (b) with its cost (a revocation would not reach the files already kept) and (c), and chose (a).
 - **Q2: the recommended times.** Export files and scheduled snapshots 7 days, issued documents 10 years, working snapshots
   unchanged; a deployment may change the two times.
+
+## The owner's answer to Q3 (2026-11-12)
+
+- **Q3: (a).** A connection declares `kept_results`. Without the declaration a read that vouches for a scope beyond its own
+  expiry is refused, and nothing made from that connection's reads outlives them.

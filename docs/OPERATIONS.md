@@ -147,7 +147,20 @@ older than S25-A may run against a store on which a job can keep its result. Fro
 start: a binary that does not know the step refuses to open the store ("Schema lifecycle"), and every binary that knows it knows kept
 results. What the ledger cannot stop is a server that was already running when `up` was applied; roll every server right after the
 migration, as for every step (docs/DEPLOYMENT.md "Upgrade procedure"). No result is kept until a source of the deployment vouches for
-the scope of its reads, which no source of the protocol can do before S25-B2; declare that only when every server runs the new binary.
+the scope of its reads, which a source of the protocol does with a read's `scope_expires_at` (S25-B2), and the platform takes that
+only from a connection whose options declare `kept_results: true`. (The connection's option and the migration step have one name
+and are two things: the step makes the store ready, the option says that a connection uses it.) The order is: every server on the
+binary of S25-B2, then the declaration on the connection, then the product starts to vouch; docs/DEPLOYMENT.md "Keeping results:
+the order" has the steps, and the way back. A server of an earlier binary does not know the option (it refuses to start with it)
+and does not know the field (it refuses every read that carries it, 409 `INTEGRITY_FAILURE`); a server of S25-B2 whose connection
+does not declare refuses every read that vouches for a scope beyond its own expiry, the same way. Out of order, the product's
+reports are refused until the order is restored, and nothing is kept that was not declared.
+
+A way back to a binary before S25-B2, once results are kept, loses the use of them for as long as it lasts, and nothing else: that
+binary starts only without the option, refuses the reads of a product that still vouches, and sends a kept result's read back to
+the product without the scope the product gave it, which a product that holds its reads to its own record refuses (403). The kept
+files and their rows are untouched, and are served again by the newer binary. So the product stops vouching before such a
+rollback, and the kept results wait for the roll forward.
 
 The failure of an issue job (S03-H, docs/API.md) is recorded before the source product is told, in this order:
 
@@ -415,11 +428,12 @@ Rules that follow from it:
   adds nothing to the count, and `stored_results` never refuses one: at the limit a freeze and an export are refused and an issue is
   admitted. What bounds issuing is `jobs_in_flight` and `admissions_per_hour`. Until S25-B1 the issued file counted, like any
   artifact, for the minutes it lived; kept for years it would have held its slot for years.
-- Where the source vouches for the scope of its reads (ADR 0026; no source of the protocol can before S25-B2), an export file is kept
+- Where the source vouches for the scope of its reads and its connection declares `kept_results` (ADR 0026; S25-B2,
+  docs/DEPLOYMENT.md "Keeping results: the order"), an export file is kept
   for `retention.results` (seven days by default) and holds its slot for as long, beyond its read; so does the snapshot of a
   scheduled run. That is why the default is 512 and no longer 64: size `stored_results` together with `retention.results`, for what
-  an identity makes in that many days. With a source that vouches for nothing every result still ends with its read, and 512 is
-  simply more room than 64 was.
+  an identity makes in that many days. With a source that vouches for nothing, or a connection that does not declare, every result
+  still ends with its read, and 512 is simply more room than 64 was.
 - A replay of an existing Idempotency-Key is never refused by a quota: the job exists and the answer is its view. A replay with a
   changed request is still `IDEMPOTENCY_CONFLICT`, not a quota refusal.
 - A refusal admits nothing and changes nothing. The check order, when more than one quota is reached, is `jobs_in_flight`,
@@ -509,8 +523,8 @@ numbers in force; the console names the quota (docs/CONSOLE.md). Interplay with 
 at deletion, so a slow or stopped sweep does not hold anyone at their limit; the jobs table keeps its rows (the hour count reads them),
 and an identity that wants room sooner waits for expiry or cancels what it no longer needs. A quota of `stored_results` smaller than a
 tenant's working set makes its users wait for expiry: with a source that vouches for no scope a result expires with its read, within
-a quarter of an hour; with one that does, an export and a scheduled run's snapshot expire `retention.results` later (seven days by
-default), and that is the wait.
+a quarter of an hour; with one that does, through a connection that declares `kept_results`, an export and a scheduled run's snapshot
+expire `retention.results` later (seven days by default), and that is the wait.
 
 The counting statements read the identity's rows by the tenant prefix of the unique key of `jobs`; S04-G ("Capacity") added the indexes that
 lead with (tenant, issuer, subject) and measured the difference (docs/CAPACITY.md).
@@ -1009,11 +1023,15 @@ key id, so a cursor issued by a binary that had only `CursorKey` stays valid und
 of the ring with no early exit and compares with `hmac.Equal`.
 
 A cursor lives as long as its snapshot, which expires at most 15 minutes after the prepared read was checked (`validPrepared`; after that the rows are refused whatever the
-cursor says: `TestACursorStopsWorkingWhenItsSnapshotExpires`). The four-step rotation, with K1 the old key and K2 the new one:
+cursor says: `TestACursorStopsWorkingWhenItsSnapshotExpires`). One kind of snapshot lives longer: the snapshot of a scheduled run, where the connection keeps results
+(ADR 0026; the option `kept_results`, S25-B2), is served for `retention.results` after its read (seven days by default), and a cursor into it for as long.
+The four-step rotation, with K1 the old key and K2 the new one:
 
 1. Deploy the ring `[K1, K2]` to every server, one at a time. K1 still signs; K2 is known to all.
 2. Deploy `[K2, K1]`, one at a time. K2 signs; K1 is still accepted.
 3. Wait until no cursor signed by K1 can still be in a user's hand: 15 minutes after the last server that signed with K1 (step 2's last restart), or longer if you prefer.
+   Where a connection keeps results, a cursor into a scheduled run's snapshot may be in a hand for `retention.results`: waiting that long covers it, and not waiting costs
+   its reader what the emergency form below costs (the next page is 400 and the reading starts again from the first page).
 4. Deploy `[K2]`.
 
 **No downtime, proved**: `TestCursorKeyRotationAsARollingRestartRefusesNoCursor` runs the four rings against each other and shows that a cursor issued by

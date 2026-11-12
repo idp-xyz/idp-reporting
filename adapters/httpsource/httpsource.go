@@ -3,7 +3,8 @@
 // the platform carrying Go code for each product. It is registered in the shipped server as the adapter `http`.
 //
 // Nothing a source answers is passed on before it verifies against what was asked: the catalog's datasets, the read's query hash,
-// dataset, companies, zone, currency policy and expiry, every page's reference, hash, watermark, row widths and cell types, totals and
+// dataset, companies, zone, currency policy and expiry, and the scope it vouches for (S25-B2, taken only from a connection that
+// declares kept results), every page's reference, hash, watermark, row widths and cell types, totals and
 // cursor, the authorization's answer, the reservation's job and number and every time, the directory's companies (S19-B, for a
 // connection that declares them), the job, the reference and the time of a cancellation's receipt (S24-A, for a connection that
 // declares cancellation). An answer that does not verify is
@@ -81,6 +82,12 @@ type Config struct {
 	// reporting.DocumentCanceller and asks POST /reporting-source/v1/issue-cancellations. It needs Issuance rows or groups: a source
 	// cancels the documents it issues. Without it the route is never asked and a cancellation through the connection is unsupported.
 	Cancellation bool
+	// KeptResults declares that the source vouches for the scope of its reads (ADR 0026, S25-B2): a read may then say until when the
+	// source goes on answering authorize for it after its pages are gone (scope_expires_at), and the platform keeps what it makes from
+	// the read by its class, never beyond that time. Without it a read that vouches for a scope beyond its own expiry does not verify.
+	// That the platform keeps a product's data after the read has ended is the operator's declaration, not something a source's
+	// answer turns on by itself. A read this adapter took earlier is sent back as it is, whatever the connection declares now.
+	KeptResults bool
 	// Now is the clock a read's expiry is judged by; nil is time.Now.
 	Now func() time.Time
 }
@@ -99,6 +106,7 @@ type Options struct {
 	Issuance         string `json:"issuance"`
 	Companies        bool   `json:"companies"`
 	Cancellation     bool   `json:"cancellation"`
+	KeptResults      bool   `json:"kept_results"`
 }
 
 var envName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
@@ -124,7 +132,7 @@ func Factory(options json.RawMessage, getenv func(string) string) (r.Adapter, er
 
 // Config resolves the options: reads the CA and the client certificate and its key, and the credential from the environment.
 func (o Options) Config(getenv func(string) string) (Config, error) {
-	c := Config{BaseURL: o.BaseURL, LoopbackHTTP: o.LoopbackHTTP, MaxResponseBytes: o.MaxResponseBytes, Issuance: o.Issuance, Companies: o.Companies, Cancellation: o.Cancellation}
+	c := Config{BaseURL: o.BaseURL, LoopbackHTTP: o.LoopbackHTTP, MaxResponseBytes: o.MaxResponseBytes, Issuance: o.Issuance, Companies: o.Companies, Cancellation: o.Cancellation, KeptResults: o.KeptResults}
 	if o.Timeout < 0 || o.Timeout > int(MaxTimeout/time.Second) {
 		return Config{}, errConfig("timeout", "must be 0 or 1..60 seconds")
 	}
@@ -191,6 +199,7 @@ type Adapter struct {
 	token   string
 	timeout time.Duration
 	max     int
+	kept    bool // the connection declares kept results: a read may vouch for a scope beyond its own expiry
 	now     func() time.Time
 	client  *http.Client
 	tr      *http.Transport
@@ -306,7 +315,7 @@ func newAdapter(c Config) (*Adapter, error) {
 		ForceAttemptHTTP2:      true,
 	}
 	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return &Adapter{base: u.Scheme + "://" + u.Host + p, token: c.Token, timeout: c.Timeout, max: c.MaxResponseBytes, now: c.Now, client: client, tr: tr, catalog: map[catalogKey]r.Dataset{}}, nil
+	return &Adapter{base: u.Scheme + "://" + u.Host + p, token: c.Token, timeout: c.Timeout, max: c.MaxResponseBytes, kept: c.KeptResults, now: c.Now, client: client, tr: tr, catalog: map[catalogKey]r.Dataset{}}, nil
 }
 
 // Close releases the idle connections (the server calls it when it stops).
@@ -522,7 +531,8 @@ func (a *Adapter) dataset(ctx context.Context, sc r.SourceContext, ref r.Ref) (r
 
 // PrepareRead asks the source to prepare a stable read of the query and verifies the read against it. The query goes as it is, its
 // filters and sort included (S20-A): the service has validated them against the catalog this adapter verified, and the source applies
-// them and checks them again against what it published.
+// them and checks them again against what it published. The read's own expiry is judged by this adapter's clock; the scope it may
+// vouch for (S25-B2) is judged against that expiry, and taken beyond it only from a connection that declares kept results.
 func (a *Adapter) PrepareRead(ctx context.Context, sc r.SourceContext, q r.QuerySpec, hash string) (r.PreparedRead, error) {
 	if !validContext(sc) {
 		return r.PreparedRead{}, fail("reads", "the source context is incomplete", r.ErrDenied)
@@ -549,6 +559,16 @@ func (a *Adapter) PrepareRead(ctx context.Context, sc r.SourceContext, q r.Query
 	if p.ExpiresAt.After(now.Add(protocol.MaxReadLifetime)) {
 		return r.PreparedRead{}, fail("reads", "the read expires more than 15 minutes ahead", r.ErrIntegrity)
 	}
+	// The scope the source vouches for (ADR 0026 decision 2, S25-B2): a time at or after the read's own expiry, and one the platform
+	// can keep. Beyond the read's expiry it is taken only from a connection that declares kept results: without the declaration the
+	// read does not verify, and nothing made from it could have outlived it. A scope that ends with the read vouches for nothing
+	// more than every read does, and is taken from any connection.
+	if !p.ValidLifetimes() {
+		return r.PreparedRead{}, fail("reads", "the read's scope ends before the read does, or after the year 9999", r.ErrIntegrity)
+	}
+	if p.ScopeExpiresAt.After(p.ExpiresAt) && !a.kept {
+		return r.PreparedRead{}, fail("reads", "the read vouches for a scope beyond its expiry and the connection does not declare kept_results", r.ErrIntegrity)
+	}
 	return p, nil
 }
 
@@ -557,12 +577,14 @@ func validRead(p r.PreparedRead) bool {
 	return protocol.ValidRef(p.Ref) && protocol.Printable(p.ScopeHandle, protocol.MaxScopeHandle) && protocol.Printable(p.Watermark, protocol.MaxWatermark) && len(p.QueryHash) == 64 && p.Companies != nil
 }
 
-// sendable: the read is one this adapter can send back for the context: of the context, of the protocol's form.
+// sendable: the read is one this adapter can send back for the context: of the context, of the protocol's form, with a scope that is
+// well formed when it declares one. The connection's declaration of kept results is not asked here: it decides which reads are taken
+// (PrepareRead), and a read that was taken is sent back unchanged for as long as the platform holds something made from it.
 func sendable(op string, sc r.SourceContext, p r.PreparedRead) error {
 	if !validContext(sc) || p.Context != sc {
 		return fail(op, "the read is not of the source context", r.ErrDenied)
 	}
-	if !validRead(p) {
+	if !validRead(p) || !p.ValidLifetimes() {
 		return fail(op, "the read is not of the protocol's form", r.ErrIntegrity)
 	}
 	return nil
@@ -603,6 +625,8 @@ func (a *Adapter) ReadPage(ctx context.Context, sc r.SourceContext, p r.Prepared
 }
 
 // AuthorizeCurrent asks whether the principal's current rights still cover the whole frozen read; only `{"authorized": true}` is a yes.
+// It does not look at the read's times: the service asks while the read's scope lasts and never after it (ADR 0026 decision 2), and the
+// source decides by its own record of the read, not by the times the request carries.
 func (a *Adapter) AuthorizeCurrent(ctx context.Context, sc r.SourceContext, p r.PreparedRead) error {
 	if err := sendable("authorize", sc, p); err != nil {
 		return err

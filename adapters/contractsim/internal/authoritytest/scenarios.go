@@ -377,13 +377,12 @@ var ruleScenarios = []ruleScenario{
 		unknown.Prepared.Ref = r.NewID()
 		_, e := g.Src.PrepareDocument(ctx, g.SC, unknown)
 		is(t, e, r.ErrDenied, "read the product never made")
-		// a read that does not match what the product froze fails as AuthorizeCurrent says
+		// a read that does not match what the product froze is not the read the product made: refused, as AuthorizeCurrent refuses
+		// it, and by either simulator with the error the protocol's table gives it (S25-B2: the durable one said ErrIntegrity)
 		forged := g.Intent(1, 0)
 		forged.Prepared.ScopeHandle = "forged"
 		want := g.Src.AuthorizeCurrent(ctx, g.SC, forged.Prepared)
-		if want == nil {
-			t.Fatal("a forged read is authorized")
-		}
+		is(t, want, r.ErrDenied, "the authorization of a forged read")
 		_, e = g.Src.PrepareDocument(ctx, g.SC, forged)
 		is(t, e, want, "forged read")
 	}},

@@ -36,10 +36,11 @@ func (p PreparedRead) ScopeEnd() time.Time {
 // it; where it is false every path of the service is the one it was before ADR 0026.
 func (p PreparedRead) vouched() bool { return p.ScopeEnd().After(p.ExpiresAt) }
 
-// validLifetimes: the scope a read declares is absent, or not before the read's own expiry, within the years a product's time may name,
+// ValidLifetimes: the scope a read declares is absent, or not before the read's own expiry, within the years a product's time may name,
 // and a time that can be encoded as it is: the stores keep it in the time's own zone, where the last hours of 9999 UTC are the year
-// 10000 east of Greenwich, and a zone a day or more from UTC cannot be written at all.
-func (p PreparedRead) validLifetimes() bool {
+// 10000 east of Greenwich, and a zone a day or more from UTC cannot be written at all. The service and the stores hold every read to it;
+// an adapter that takes a read from outside the process (adapters/httpsource) refuses one that fails it before it passes it on.
+func (p PreparedRead) ValidLifetimes() bool {
 	s := p.ScopeExpiresAt
 	if s.IsZero() {
 		return true

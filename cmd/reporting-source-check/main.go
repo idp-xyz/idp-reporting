@@ -5,7 +5,7 @@
 //
 //	reporting-source-check -base-url https://product.internal -auth-env PRODUCT_REPORTING_AUTH -ca-file ca.pem \
 //	    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue [-cancellation]] [-companies] \
-//	    [-loopback-http] [-timeout 10]
+//	    [-kept-results] [-loopback-http] [-timeout 10]
 //
 // context.json is the protocol's context object (platform_tenant, issuer, subject, integration, source_tenant) of a subject the product has
 // granted; query.json a query of the platform (docs/API.md) inside that grant, with at least one row. The rules F1–F6 (S20-A, ADR 0023)
@@ -13,7 +13,13 @@
 // declare; a dataset that declares nothing skips F1, F2, F4 and F5. -companies checks the company directory (ADR 0015, S19-B) as a
 // connection with `companies: true` would use it. -cancellation, with -issue, checks the cancellation of an issued document (ADR 0025,
 // S24-A; X1–X4) as a connection with `cancellation: true` would use it: it confirms one document under a job id of its own and cancels
-// it, and reserves and voids two more numbers, so like -issue it is never run against production.
+// it, and reserves and voids two more numbers, so like -issue it is never run against production. -kept-results checks the scope a
+// source vouches for (ADR 0026, S25-B2; K1–K2) as a connection with `kept_results: true` would take its reads: the sample read says
+// until when the source goes on authorizing it after its pages have expired, and the source refuses the read when it comes back with
+// another such time or without one. It only reads. A source that vouches for a scope is checked with the flag: without it its reads
+// do not verify, as through a connection that does not declare kept results, and the check ends at R1. That the source really goes on
+// answering after a read has expired is not something a check of minutes can see; the product's own test shows it
+// (docs/REAL_SOURCE_ONBOARDING.md).
 package main
 
 import (
@@ -38,7 +44,7 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	fs.SetOutput(stderr)
 	var o httpsource.Options
 	var contextFile, queryFile string
-	var issue, companies, cancellation bool
+	var issue, companies, cancellation, keptResults bool
 	fs.StringVar(&o.BaseURL, "base-url", "", "the source's base URL (https://, or http:// to a loopback IP with -loopback-http)")
 	fs.StringVar(&o.AuthEnv, "auth-env", "", "the name of the environment variable that holds the bearer credential")
 	fs.StringVar(&o.CAFile, "ca-file", "", "a PEM file of the CA that vouches for the source (absolute path); default: the system's roots")
@@ -51,6 +57,7 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	fs.BoolVar(&issue, "issue", false, "also check the document authority: reserves one number and voids it (never against production)")
 	fs.BoolVar(&companies, "companies", false, "also check the company directory (ADR 0015), as a connection with companies: true would use it")
 	fs.BoolVar(&cancellation, "cancellation", false, "with -issue, also check the cancellation of an issued document (ADR 0025), as a connection with cancellation: true would use it: confirms one document and cancels it, reserves and voids two more numbers (never against production)")
+	fs.BoolVar(&keptResults, "kept-results", false, "also check the scope the source vouches for (ADR 0026), as a connection with kept_results: true would take its reads: the read says until when the source authorizes it after its pages have expired, and the source refuses it with another such time or without one; only reads. It cannot wait for a read to expire: that the source goes on authorizing afterwards, until the scope ends, is shown by the product's own test (docs/REAL_SOURCE_ONBOARDING.md)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -79,7 +86,7 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	results := conformance.Run(ctx, conformance.Target{Config: cfg, Context: wire.Source(), Query: q, Issue: issue, Companies: companies, Cancellation: cancellation})
+	results := conformance.Run(ctx, conformance.Target{Config: cfg, Context: wire.Source(), Query: q, Issue: issue, Companies: companies, Cancellation: cancellation, KeptResults: keptResults})
 	failed := 0
 	for _, x := range results {
 		fmt.Fprintln(stdout, x.Line())

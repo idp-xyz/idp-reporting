@@ -3,11 +3,14 @@ package integration_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"idp.local/reporting/adapters/contractsim"
+	"idp.local/reporting/adapters/httpsource"
+	"idp.local/reporting/adapters/httpsource/sourcetest"
 	"idp.local/reporting/export/xlsx"
 	r "idp.local/reporting/reporting"
 	"idp.local/reporting/storage/memory"
@@ -29,6 +32,7 @@ type lifetimeWorld struct {
 	t        *testing.T
 	repo     r.Repository
 	sim      *askCounter
+	through  r.Adapter     // how the services reach the simulator; nil is the simulator itself, in process
 	objects  r.ObjectStore // where the services put their files; nil keeps them inline in their rows
 	p        r.Principal
 	owner    r.Owner
@@ -86,7 +90,11 @@ func (c renderCounter) Write(ctx context.Context, v r.Snapshot) ([]byte, error) 
 
 func (w *lifetimeWorld) svcWith(q r.Quotas, keep r.Retention) *r.Service {
 	w.t.Helper()
-	s, e := r.NewService(r.Config{Repository: w.repo, Connections: []r.Connection{{Tenant: w.p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: w.sim}},
+	var source r.Adapter = w.sim
+	if w.through != nil {
+		source = w.through
+	}
+	s, e := r.NewService(r.Config{Repository: w.repo, Connections: []r.Connection{{Tenant: w.p.Tenant, Integration: contractsim.FinanceIntegration, SourceTenant: "tenant_a", Adapter: source}},
 		CursorKey: []byte("01234567890123456789012345678901"), Writer: renderCounter{rendered: &w.rendered}, Formats: map[string]r.WorkbookWriter{"pdf": fakePDFWriter{}}, Issuer: &stampIssuer{}, Now: w.clock, Quotas: q, Retention: keep, Objects: w.objects})
 	if e != nil {
 		w.t.Fatal(e)
@@ -106,6 +114,17 @@ func newLifetimeMemory(t *testing.T) *lifetimeWorld {
 	w.sim.SetClock(clock.Now)
 	w.sim.Grant(w.owner, contractsim.DefaultGrant())
 	w.repo = memory.New(clock.Now)
+	return w
+}
+
+// newLifetimeOverTheProtocol is the memory world with the simulator behind the reporting source protocol (S25-B2): the reference source
+// in front of it, and in front of that the platform's adapter `http` of a connection that declares kept results, on the world's clock.
+// The scope the simulator vouches for travels as scope_expires_at, and every question the services ask about a read is a request that
+// carries the read back as the source answered it. The contract does not tell the two worlds apart.
+func newLifetimeOverTheProtocol(t *testing.T) *lifetimeWorld {
+	t.Helper()
+	w := newLifetimeMemory(t)
+	w.through = sourcetest.Remote(t, w.sim, func(c *httpsource.Config) { c.Now = w.clock })
 	return w
 }
 
@@ -267,6 +286,12 @@ func (w *lifetimeWorld) refusedByTheSource(what string, disclose func() error) {
 }
 
 func TestMemoryLifetimeContract(t *testing.T) { runLifetimeContract(t, newLifetimeMemory) }
+
+// The same contract with the source behind the protocol (S25-B2): what the simulator vouches for reaches the services through
+// scope_expires_at, and every disclosure of a kept result asks the source over the wire.
+func TestMemoryLifetimeContractOverTheProtocol(t *testing.T) {
+	runLifetimeContract(t, newLifetimeOverTheProtocol)
+}
 
 func runLifetimeContract(t *testing.T, newWorld func(*testing.T) *lifetimeWorld) {
 	ctx := context.Background()
@@ -1198,6 +1223,120 @@ func TestAKeptFilesObjectOutlivesItsSnapshotAndGoesWithItsRow(t *testing.T) {
 		t.Fatalf("the sweep after the file's time: %+v, %d objects", res, keys())
 	}
 	mustError(t, w.download(s, ex.ArtifactID), r.ErrNotFound)
+}
+
+// crossing is a service's clock that passes a time between two looks: once armed, the first look answers the instant before the time
+// and every later one the time itself; unarmed it is the world's clock.
+type crossing struct {
+	world func() time.Time
+	mu    sync.Mutex
+	armed bool
+	at    time.Time
+	looks int
+}
+
+func (c *crossing) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.armed {
+		return c.world()
+	}
+	if c.looks++; c.looks == 1 {
+		return c.at.Add(-time.Nanosecond)
+	}
+	return c.at
+}
+func (c *crossing) arm(at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.armed, c.at, c.looks = true, at, 0
+}
+
+// A poll looks at the clock more than once, and the instant a result ends may lie between two looks: the first says that the result
+// lasts, a later one refuses it as a result that has ended. Under a source that vouches for the read's scope such a poll answers what
+// a poll a moment later answers, the job with its result over (S25-B2, found when a server test met the instant on a real clock):
+// before, a working freeze polled at its read's expiry answered an integrity failure of the store, and a result kept to the end of
+// its scope a refusal. Under a source that vouches for nothing the poll answers what it always did.
+func TestAPollAtTheInstantAResultEndsSaysThatItIsOver(t *testing.T) {
+	ctx := context.Background()
+	// The service that is polled: its clock crosses the armed time between its first look and its second.
+	polled := func(w *lifetimeWorld, keep r.Retention) (*r.Service, *crossing) {
+		c := &crossing{world: w.clock}
+		world := w.clock
+		w.clock = c.now
+		s := w.svcWith(r.Quotas{}, keep)
+		w.clock = world
+		return s, c
+	}
+	over := func(name string, s *r.Service, w *lifetimeWorld, id string) {
+		t.Helper()
+		v, e := s.Job(ctx, w.p, id)
+		if e != nil || !v.Expired || v.State != "succeeded" || v.ID != id {
+			t.Fatalf("%s: %+v %v", name, v, e)
+		}
+	}
+
+	t.Run("a working freeze at its read's expiry", func(t *testing.T) {
+		w := newLifetimeMemory(t)
+		w.vouch()
+		s, clock := polled(w, r.Retention{Results: lifetimeResults})
+		snap := w.freeze(s, "snap")
+		if v, e := s.Job(ctx, w.p, snap.ID); e != nil || v.Expired {
+			t.Fatal(v, e)
+		}
+		asked := w.sim.asked.Load()
+		clock.arm(w.job(snap.ID).Prepared.ExpiresAt)
+		over("the freeze", s, w, snap.ID)
+		// The source was asked, by the scope, and said yes: what refused was the snapshot's own time.
+		if n := w.sim.asked.Load() - asked; n != 1 {
+			t.Fatalf("the source was asked %d times", n)
+		}
+	})
+	t.Run("a kept export at its own time", func(t *testing.T) {
+		w := newLifetimeMemory(t)
+		w.vouch()
+		s, clock := polled(w, r.Retention{Results: lifetimeResults})
+		snap := w.freeze(s, "snap")
+		ex := w.export(s, snap.SnapshotID, "export")
+		job := w.job(ex.ID)
+		if !job.KeepUntil.Before(job.Prepared.ScopeExpiresAt) {
+			t.Fatal("the export's time is not within its scope: the next subtest is this one")
+		}
+		clock.arm(job.KeepUntil)
+		over("the export", s, w, ex.ID)
+	})
+	t.Run("a kept export whose time is the end of its scope", func(t *testing.T) {
+		w := newLifetimeMemory(t)
+		w.vouch()
+		s, clock := polled(w, r.Retention{Results: 24 * time.Hour}) // longer than the world's scope
+		snap := w.freeze(s, "snap")
+		ex := w.export(s, snap.SnapshotID, "export")
+		job := w.job(ex.ID)
+		if !job.KeepUntil.Equal(job.Prepared.ScopeExpiresAt) {
+			t.Fatalf("the export is kept until %s, its scope ends at %s", job.KeepUntil, job.Prepared.ScopeExpiresAt)
+		}
+		asked := w.sim.asked.Load()
+		clock.arm(job.KeepUntil)
+		over("the export", s, w, ex.ID)
+		// After the scope the source is not asked.
+		if n := w.sim.asked.Load() - asked; n != 0 {
+			t.Fatalf("the source was asked %d times at the end of the scope", n)
+		}
+	})
+	t.Run("a source that vouches for nothing is answered as before", func(t *testing.T) {
+		w := newLifetimeMemory(t)
+		s, clock := polled(w, r.Retention{Results: lifetimeResults})
+		snap := w.freeze(s, "snap")
+		clock.arm(w.job(snap.ID).Prepared.ExpiresAt)
+		if v, e := s.Job(ctx, w.p, snap.ID); !errors.Is(e, r.ErrDenied) {
+			t.Fatalf("the poll at the read's expiry: %+v %v", v, e)
+		}
+		// A moment later, with every look past the time, it is the job with its result over, as it always was.
+		clock.arm(w.job(snap.ID).Prepared.ExpiresAt.Add(time.Nanosecond))
+		over("the freeze a moment later", s, w, snap.ID)
+	})
+	// A job that is not finished has no result to be over: its poll after the read is denied under a scope too, which
+	// TestAFreezeAndAnIssueNeedTheReadItselfAlsoUnderAScope holds.
 }
 
 // scopeForger is the simulator declaring a scope it makes up: what an adapter that answers with a malformed scope is to the service.

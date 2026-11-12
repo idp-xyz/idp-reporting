@@ -16,12 +16,13 @@ import (
 // Version is the protocol's version, the v1 of every path.
 const Version = 1
 
-// Revision is the minor revision of version 1: 2 since S24-A added the optional route issue-cancellations (ADR 0025); 1 since S19-B
-// added the optional route companies and S20-A the optional filters and sorts of a dataset, which a query then carries
-// (docs/SOURCE_HTTP_PROTOCOL.md). A minor revision only adds optional routes and optional fields; a source of an earlier revision is
-// served unchanged. The number is written here, in the title of docs/SOURCE_HTTP_PROTOCOL.md and in docs/source-openapi.json
-// (info.version), and nowhere else: TestTheOpenAPIDescriptionIsTheProtocol holds the two documents to this constant.
-const Revision = 2
+// Revision is the minor revision of version 1: 3 since S25-B2 added the optional scope_expires_at of a read (ADR 0026); 2 since S24-A
+// added the optional route issue-cancellations (ADR 0025); 1 since S19-B added the optional route companies and S20-A the optional
+// filters and sorts of a dataset, which a query then carries (docs/SOURCE_HTTP_PROTOCOL.md). A minor revision only adds optional routes
+// and optional fields; a source of an earlier revision is served unchanged. The number is written here, in the title of
+// docs/SOURCE_HTTP_PROTOCOL.md and in docs/source-openapi.json (info.version), and nowhere else: TestTheOpenAPIDescriptionIsTheProtocol
+// holds the two documents to this constant.
+const Revision = 3
 
 // Prefix is the path every route of version 1 starts with, under the connection's base URL.
 const Prefix = "/reporting-source/v1"
@@ -102,6 +103,11 @@ func (c Context) Valid() bool {
 // Read is a prepared read on the wire: the source's answer to POST /reads, which the platform keeps and sends back unchanged in every
 // later request about it. ExpiresAt is RFC 3339 in the form Go's time.RFC3339Nano writes (no trailing zeros in the fraction), so that it
 // survives the platform's store unchanged.
+//
+// ScopeExpiresAt (S25-B2; ADR 0026 decision 2) is optional: until it passes, the source goes on answering authorize for the read, also
+// after ExpiresAt, when the read's pages are gone. A read without it is the read it always was, byte for byte, and its scope ends
+// with it. Present, it is a time in the same canonical form. It is a pointer so that the key with an empty text is not taken for its
+// absence: a source that writes the key says a time.
 type Read struct {
 	Ref            string   `json:"ref"`
 	ScopeHandle    string   `json:"scope_handle"`
@@ -112,29 +118,53 @@ type Read struct {
 	CurrencyPolicy *r.Ref   `json:"currency_policy,omitempty"`
 	Watermark      string   `json:"watermark"`
 	ExpiresAt      string   `json:"expires_at"`
+	ScopeExpiresAt *string  `json:"scope_expires_at,omitempty"`
 }
 
-// ReadOf is the wire form of a prepared read.
+// ReadOf is the wire form of a prepared read: the scope's expiry is written when the read declares one, and not otherwise.
 func ReadOf(p r.PreparedRead) Read {
-	return Read{Ref: p.Ref, ScopeHandle: p.ScopeHandle, QueryHash: p.QueryHash, Dataset: p.Dataset, Companies: p.Companies, Timezone: p.Timezone, CurrencyPolicy: p.CurrencyPolicy, Watermark: p.Watermark, ExpiresAt: FormatTime(p.ExpiresAt)}
+	w := Read{Ref: p.Ref, ScopeHandle: p.ScopeHandle, QueryHash: p.QueryHash, Dataset: p.Dataset, Companies: p.Companies, Timezone: p.Timezone, CurrencyPolicy: p.CurrencyPolicy, Watermark: p.Watermark, ExpiresAt: FormatTime(p.ExpiresAt)}
+	if !p.ScopeExpiresAt.IsZero() {
+		scope := FormatTime(p.ScopeExpiresAt)
+		w.ScopeExpiresAt = &scope
+	}
+	return w
 }
 
-// Prepared is the prepared read of the wire form, in the given context; the time must be canonical (ParseTime).
+// Prepared is the prepared read of the wire form, in the given context; its times must be canonical (ParseTime). A scope's expiry
+// that is present is a time of that form and not the zero time, which a prepared read cannot tell from none: it would be sent back
+// without the key, as another read than the source answered. Whether the scope is one the platform takes (not before the read's own
+// expiry, within the years a product's time may name) is reporting.PreparedRead.ValidLifetimes, which the caller asks.
 func (w Read) Prepared(sc r.SourceContext) (r.PreparedRead, bool) {
 	at, ok := ParseTime(w.ExpiresAt)
 	if !ok {
 		return r.PreparedRead{}, false
 	}
-	return r.PreparedRead{Context: sc, Ref: w.Ref, ScopeHandle: w.ScopeHandle, QueryHash: w.QueryHash, Dataset: w.Dataset, Companies: w.Companies, Timezone: w.Timezone, CurrencyPolicy: w.CurrencyPolicy, Watermark: w.Watermark, ExpiresAt: at}, true
+	p := r.PreparedRead{Context: sc, Ref: w.Ref, ScopeHandle: w.ScopeHandle, QueryHash: w.QueryHash, Dataset: w.Dataset, Companies: w.Companies, Timezone: w.Timezone, CurrencyPolicy: w.CurrencyPolicy, Watermark: w.Watermark, ExpiresAt: at}
+	if w.ScopeExpiresAt != nil {
+		scope, ok := ParseTime(*w.ScopeExpiresAt)
+		if !ok || scope.IsZero() {
+			return r.PreparedRead{}, false
+		}
+		p.ScopeExpiresAt = scope
+	}
+	return p, true
 }
 
 // FormatTime writes a time as the protocol does: RFC 3339 with the fraction Go's time.RFC3339Nano writes, in the time's own offset.
 func FormatTime(t time.Time) string { return t.Format(time.RFC3339Nano) }
 
-// ParseTime reads a protocol time and accepts it only in its canonical form: the text FormatTime writes for the time it parses to.
+// ParseTime reads a protocol time and accepts it only in its canonical form: the text FormatTime writes for the time it parses to, of
+// a time JSON can write as it is. The second condition excludes an offset of a day or more, +24:00 to +24:59 and -24:00 to -24:59:
+// Go's parser reads them and writes them back, RFC 3339 does not have them (an offset's hour is at most 23), and the platform keeps a
+// time in its own offset, which a store cannot encode for these (before S25-B2 such a time passed here and failed where the first job
+// that carried it was stored).
 func ParseTime(s string) (time.Time, bool) {
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil || FormatTime(t) != s {
+		return time.Time{}, false
+	}
+	if _, err = t.MarshalJSON(); err != nil {
 		return time.Time{}, false
 	}
 	return t, true

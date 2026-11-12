@@ -10,6 +10,12 @@
 // sort the adapter's dataset version does not declare is the adapter's reporting.ErrUnsupported, answered here as `unsupported`. Behind
 // the contract simulator (adapters/contractsim), which declares and applies them in memory, this is the reference source the checker
 // (cmd/reporting-source-check) passes with every rule, F1–F6 included.
+//
+// The scope a read vouches for (S25-B2, ADR 0026 decision 2) is the wrapped adapter's as well: the read the handler answers carries
+// scope_expires_at when the adapter's read declares one and not otherwise, a read sent back reaches the adapter with the scope the
+// request carries, and whether that read is the one the source made, and until when it is authorized, the adapter decides by its own
+// record (the simulator compares the whole read with the one it froze, and answers by its own clock). Behind a simulator that vouches
+// (contractsim.Simulator.SetScopeLifetime) this is the reference source the checker passes with K1 and K2.
 package sourcetest
 
 import (

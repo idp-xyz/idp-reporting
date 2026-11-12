@@ -135,8 +135,9 @@ func check(t *testing.T, args []string) (int, string) {
 	return code, out.String()
 }
 
-// rules is how many rules the checker has: every run that reaches the end prints this many lines, passed, failed or skipped.
-const rules = 32
+// rules is how many rules the checker has: every run that reaches the end prints this many lines, passed, failed or skipped. K1 and K2
+// (S25-B2) are the last two.
+const rules = 34
 
 var everyRulePassed = "reporting-source-check: every rule passed (" + strconv.Itoa(rules) + ")\n"
 
@@ -159,6 +160,11 @@ func TestTheReferenceSourcePassesEveryRule(t *testing.T) {
 	// The rules are printed in their order: the connection, the credential, the catalog, the read, the published filters and sorts, the
 	// directory, the document authority, the cancellation.
 	if order := regexp.MustCompile(`(?m)^(?:PASS|SKIP|FAIL) ([A-Z]+\d+) `).FindAllStringSubmatch(out, -1); len(order) != rules || order[18][1] != "R13" || order[19][1] != "F1" || order[24][1] != "F6" || order[25][1] != "D1" || order[26][1] != "D2" || order[27][1] != "I1" || order[28][1] != "X1" || order[29][1] != "X2" || order[30][1] != "X3" || order[31][1] != "X4" {
+		t.Fatal(out)
+	}
+	// The scope a source vouches for (S25-B2) is not asked without -kept-results, as a connection that does not declare kept results
+	// takes no such read: the two rules are skipped, last, and a source that vouches for nothing passes.
+	if !strings.Contains(out, "SKIP K1 the read vouches for a scope: scope_expires_at is after expires_at: not asked (-kept-results: the connection declares the capability)\nSKIP K2 the read is authorized as the source gave it, and refused with another scope expiry or without one (denied or expired): not asked (-kept-results: the connection declares the capability)\n"+everyRulePassed) {
 		t.Fatal(out)
 	}
 	// What the cancellation rules left in the product (S24-A): one document, confirmed and cancelled once under the check's own reason

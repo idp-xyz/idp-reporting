@@ -1,9 +1,13 @@
-# The reporting source protocol, version 1 (S19-A; revision 1.2, S24-A)
+# The reporting source protocol, version 1 (S19-A; revision 1.3, S25-B2)
 
 2026-11-09; revision 1.1 on 2026-11-11 adds one optional route, `companies` (S19-B, ADR 0015), and, in `catalog`, a dataset's optional
 `filters` and `sorts` declarations, which a query of `reads` then carries (S20-A, ADR 0023; the checker gains F1–F6); the revision of
-S24-A, the title's, adds one optional route, `issue-cancellations` (ADR 0025; the checker gains X1–X4). A revision changes nothing
-else: a source written to an earlier one is served unchanged, and gains nothing until its connection declares. What a source product
+S24-A adds one optional route, `issue-cancellations` (ADR 0025; the checker gains X1–X4); the revision of S25-B2, the title's, adds
+one optional field of a read, `scope_expires_at` (ADR 0026; the checker gains K1–K2), by which a source vouches for a read's scope
+after the read itself has expired, so that the platform may keep what it made from the read. A revision changes nothing
+else: a source written to an earlier one is served unchanged, and gains nothing until its connection declares (an optional route is
+not asked until then; an optional field of an answer cannot be left unasked, so a read that vouches for a scope before its connection
+declares is refused, "reads" below). What a source product
 implements so that the reporting platform reads it, through the platform's adapter `http` (`adapters/httpsource`), without the platform
 carrying Go code for the product. It is the adapter contract of docs/s00/INTERFACES.md (`DescribeCatalog`, `PrepareRead`, `ReadPage`,
 `AuthorizeCurrent`) and, optionally, the document authority of ADR 0003 (`PrepareDocument`, `ConfirmIssue`, `VoidIssue`), the company
@@ -42,7 +46,9 @@ contract simulators behind it and the platform behaves identically (docs/S19A_SC
   bytes without control characters other than tab, CR and LF). Never a JSON number for a value.
 - **Times** are RFC 3339 in the canonical form Go's `time.RFC3339Nano` writes: no trailing zeros in a fraction (`2026-11-09T10:00:00Z`,
   `2026-11-09T10:00:00.5Z`, `2026-11-09T18:00:00+08:00`), so that a time the platform stores and sends back is the same text. UTC with `Z`
-  is recommended.
+  is recommended. An offset is at most 23:59 either way, as in RFC 3339: a time written with an offset of a day or more (`+24:00`
+  to `+24:59`, either sign) is not a protocol time (since S25-B2 it is refused where it is read; before, a read that carried one
+  was taken and failed where the first job made from it was stored).
 
 ## 2. The source context
 
@@ -145,6 +151,48 @@ ahead** (an already expired read is a refusal). The platform keeps the read and 
 request about it. A source answers `integrity` when `query_hash` is not the query's, `unsupported` for a dataset version or a combination
 it does not publish, `denied` for a company outside the actor's rights, `invalid` for a query that is not well formed.
 
+**The scope a source vouches for** (optional; S25-B2, ADR 0026 decision 2). A read may carry one more time:
+
+```json
+{"read": {"ref": "r-7f3a", "scope_handle": "opaque-to-the-platform", …, "expires_at": "2026-11-09T10:08:00Z",
+  "scope_expires_at": "2036-11-09T10:08:00Z"}}
+```
+
+`expires_at` is how long the source serves the read's pages. With `scope_expires_at` the source **vouches for the read's scope**
+beyond that: until this time it goes on answering `authorize` for the read exactly as it answers while the read lasts (the actor's
+current rights against the whole frozen scope), also after `expires_at`, when `pages` is over. The platform may then keep what it
+made from the read after the read has expired, by its own rule and never beyond the scope: an export file and a scheduled report's
+rows for days, the file of an issued document for years (`retention.results` and `retention.issued`, docs/DEPLOYMENT.md), and it
+asks `authorize` before every disclosure of them, as it does today. Without the key the scope ends with the read, and so does
+everything made from it: a source that says nothing is served as it always was.
+
+- `scope_expires_at` is a time in the canonical form, **not before `expires_at`** and not after `9999-12-31T23:59:59Z`. The key is
+  absent or a time: never `null`, never an empty text. A read that fails this does not verify (an integrity failure).
+- The platform takes a scope **beyond `expires_at` only from a connection that declares `kept_results: true`**
+  (docs/DEPLOYMENT.md). Through any other connection such a read does not verify (an integrity failure; the whole read is refused,
+  a preview's too): that the platform keeps a product's data after a read is the operator's declaration, and a source's answer
+  does not turn it on. So the operator declares first and the product vouches afterwards; the reverse order refuses the reads that
+  vouch until the declaration is made (docs/DEPLOYMENT.md has the steps, for a new connection and for one that is in use). A
+  `scope_expires_at` equal to `expires_at` vouches for nothing more than every read does and is taken from any connection.
+- The fifteen minutes bound `expires_at` alone. The scope has no such bound: it may be any time from `expires_at` to the last one
+  the protocol's times name. The source says what it can keep its word for, and what the platform keeps is bounded by its own two
+  times.
+- **What the source holds in order to answer is its own business**: a record per read with the rights it froze, or a `scope_handle`
+  that describes itself (and that the source can tell is its own). It need not hold the frozen data version after `expires_at`. It
+  cannot tell at `reads` what the platform will make of a read (a preview keeps nothing, an export may be kept for days, an issued
+  document for years), so it vouches for every read alike, and a source that keeps a record per read keeps one for each, until the
+  scope ends; a source bounds what it holds and answers `budget` beyond, as for the reads themselves. A source may vouch for one
+  dataset and not for another, and for different times.
+- **The source decides by its own record of the scope's end, never by the time a request carries.** The read comes back with
+  `scope_expires_at` exactly as the source gave it. A read that comes back with another one, or without it, is not the read the
+  source made, and is refused (`denied`) like a read with another watermark. After its own record of the scope's end the source
+  refuses (`expired` or `denied`), whatever the request says; the platform does not ask then.
+- **A source that stops vouching keeps its word for what it vouched for.** Its new reads then carry no `scope_expires_at`; the
+  reads it answered with one are still asked about, each until its own scope ends, and the source goes on answering `authorize`
+  for them. A source that forgets them refuses every kept file made from them.
+- What needs the read itself still ends with it: `pages`, and the `prepare` of a document, which checks a row against the source's
+  own frozen rows (ADR 0026 decision 6). After `expires_at` both are refused (`expired` or `denied`), also while the scope lasts.
+
 **The query's filters and sort** (S20-A, ADR 0023) arrive as the query carries them: each filter `{"field", "operator", "value"}` on a
 field the dataset declares with one of its operators, `value` a string well formed for the column (a date `YYYY-MM-DD`; an integer or a
 decimal as the column writes it, exactly its scale; `true` or `false`; a string of 1..128 characters without control characters; from the
@@ -177,7 +225,9 @@ the next), and the `totals` are **the narrowed scope's**, not the dataset's. The
 are the read's; at most `limit` rows (1..100; the platform asks 50); every row has the dataset's columns and every cell its column's
 type; `totals` holds one total per metric, of the metric column's type, the **same on every page** (the totals of the whole read);
 `next_cursor` is `""` on the last page, otherwise 1..2048 printable ASCII, never the request's cursor and never after an empty page; a
-cursor that comes back is a loop. The whole read is at most 1000 rows and 1 MiB. A cursor the source did not give is `invalid`.
+cursor that comes back is a loop. The whole read is at most 1000 rows and 1 MiB. A cursor the source did not give is `invalid`. After
+`expires_at` a page is refused (`expired` or `denied`), also for a read whose scope goes on: the scope is the authorization's, not
+the data version's.
 
 ### authorize
 
@@ -185,6 +235,12 @@ cursor that comes back is a loop. The whole read is at most 1000 rows and 1 MiB.
 on, the zone and the currency policy), otherwise a refusal (`denied`, or `expired` for a read the source no longer holds). Widened rights
 never widen an old read; narrowed rights refuse it rather than filter it. The platform calls it before every disclosure (a page of rows, an
 export, an issue) and after the last page. Any other `200` body is an integrity failure.
+
+The source answers this **while the read's scope lasts**: until `expires_at`, or, for a read it vouched for, until its
+`scope_expires_at` (S25-B2; "The scope a source vouches for" above), by the same rule and by the rights of the moment it is asked.
+That is what lets the platform hand out a kept file days or years after the read: a revocation at the product stops the next
+download of everything the person holds, and a source that cannot be reached is not a yes. After the scope the source refuses, and
+the platform does not ask.
 
 ### The document authority (optional; ADR 0003, S03-H, S03-K)
 
@@ -195,7 +251,8 @@ The source authorizes a formal document, owns its number and confirms the file; 
   contract version 1) or, for a connection with `issuance: groups`, the same with `"group": {"fields", "key", "rows", "rows_sha256"}`,
   `row_index` 0 and `row_sha256` "" (contract version 2). `row_sha256` and `rows_sha256` are the digests docs/API.md defines; the source
   checks them against **its own** frozen rows of `read` and refuses (`denied`) when they differ, when the actor may not issue, when its
-  approval rules say no. It answers `{"reservation": {"ref", "job_id", "number", "issued_at", "expires_at"}}`: `ref` 1..128 printable ASCII,
+  approval rules say no. It needs those rows, so the read itself: after the read's `expires_at` a `prepare` is refused (`denied` or
+  `expired`), also for a read whose scope goes on (S25-B2). It answers `{"reservation": {"ref", "job_id", "number", "issued_at", "expires_at"}}`: `ref` 1..128 printable ASCII,
   `job_id` the intent's, `number` 1..32 of `A-Z a-z 0-9 . _ -` starting with a letter or digit, `issued_at` a whole second, `expires_at`
   after it. The same job with the same intent answers the same reservation; another intent under that job id, or a voided job, is
   `conflict`; an expired reservation is `expired`.
@@ -263,7 +320,7 @@ Every refusal is the status of its code with exactly this body: `{"code": "<code
 | `denied` | 403 | `AUTH_SCOPE_DENIED` | The actor may not: unknown subject, a company or row outside its rights, rights that no longer cover a read, a read that is not the one the source made. |
 | `not_found` | 404 | `NOT_FOUND` | Issue routes only (the cancellation's among them): a job the source never reserved. |
 | `conflict` | 409 | `IDEMPOTENCY_CONFLICT` | Issue routes only (the cancellation's among them): another intent or digest under a job id, a voided job; a cancellation of what is not a confirmed document, or that names the document otherwise than the source did. |
-| `expired` | 410 | `AUTH_SCOPE_DENIED` | A read or a reservation the source no longer holds or that has expired. |
+| `expired` | 410 | `AUTH_SCOPE_DENIED` | A read or a reservation the source no longer holds or that has expired. For a read that vouches for a scope (S25-B2): its pages and a document's `prepare` after `expires_at`, its authorization after `scope_expires_at`. |
 | `unsupported` | 422 | `UNSUPPORTED_COMBINATION` | A dataset version or combination the source does not publish: a filter or a sort outside the dataset's declaration, an operator the source does not know. |
 | `integrity` | 422 | `INTEGRITY_FAILURE` | The request contradicts itself (a query hash that is not the query's). |
 | `budget` | 429 | `BUDGET_EXCEEDED` | The source's own bound on prepared reads or work is reached. |
@@ -288,6 +345,7 @@ refusal (docs/API.md) and nothing of the source's.
 | Companies in a directory; a company's `id` and `name` | 1000, no id twice; each 1..128 bytes of UTF-8 text without control characters, not blank |
 | `read.ref`; `scope_handle`; `watermark` | 1..128 of `A-Z a-z 0-9 . _ ~ -`; 1..1024 and 1..256 printable ASCII |
 | A read's lifetime | after now, at most 15 minutes ahead (the platform's clock) |
+| A read's scope (`scope_expires_at`, optional) | absent, or from `expires_at` to `9999-12-31T23:59:59Z`; after `expires_at` only from a connection with `kept_results: true` |
 | Rows of a page; of a read | at most `limit` (1..100, the platform asks 50); 1000 and 1 MiB in all |
 | A cursor | 1..2048 printable ASCII, `""` for none |
 | A cell; an integer or decimal | 4096 bytes; 128 characters |
@@ -297,7 +355,8 @@ refusal (docs/API.md) and nothing of the source's.
 ## 6. Idempotency and repetition
 
 `catalog`, `companies`, `pages` and `authorize` are reads: repeating one changes nothing. `reads` makes a new read each time (a repeated job prepares
-again; old reads expire by themselves; a source bounds how many it holds and answers `budget` beyond). The issue routes are idempotent by
+again; old reads expire by themselves, and what a source keeps of a read it vouched for goes when its scope ends; a source bounds how
+many it holds and answers `budget` beyond). The issue routes are idempotent by
 job id as section 3 says, so a job that a second worker re-runs reaches the same outcome, and so is `issue-cancellations`: a
 cancellation asked again answers the receipt it answered first. No `Idempotency-Key` header is used: the job id is the key.
 
@@ -306,7 +365,8 @@ cancellation asked again answers the receipt it answered first. No `Idempotency-
 ```
 export PRODUCT_REPORTING_AUTH=…          # the credential the operator gave the product
 reporting-source-check -base-url https://product.staging.internal -auth-env PRODUCT_REPORTING_AUTH -ca-file /path/ca.pem \
-    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue [-cancellation]] [-companies]
+    -context context.json -query query.json [-client-cert-file c.pem -client-key-file c.key] [-issue [-cancellation]] [-companies] \
+    [-kept-results]
 ```
 
 `context.json` is a context object (section 2) of a test subject the product has granted; `query.json` a query inside that grant with at
@@ -330,10 +390,21 @@ reservation that was not confirmed is `conflict`, a job the source never reserve
 is `denied`, before the document is cancelled and after. X4: a job reserved after the cancellation gets another number. They are
 skipped without the flag; a source that answers the route `unsupported` fails X1 and skips the rest, and a document the check could
 not cancel is voided. **This confirms and cancels one document and reserves and voids two more numbers: never against production**;
-`-cancellation` without `-issue` is a usage error): 32 rules in all. It prints `PASS`, `FAIL` or `SKIP` per rule with a fixed
+`-cancellation` without `-issue` is a usage error) and, with `-kept-results`, the scope the source vouches for (K1–K2, S25-B2, as a
+connection with `kept_results: true` would take its reads; they only read. K1: the sample read vouches for a scope, its
+`scope_expires_at` after its `expires_at`. K2: the read is authorized as the source gave it, refused when it comes back with
+another scope expiry or without one, and authorized as the source gave it again after those two, so the source holds the scope's
+end itself and the refusals are not those of a read that ran out meanwhile. They are skipped without the flag. A source that
+vouches is checked **with** the flag: without it its reads do not verify, as through a connection that does not declare kept
+results, and the check ends at R1 saying so; with the flag a source that vouches for nothing, or whose scope ends with its read,
+fails K1): 34 rules in all. It prints
+`PASS`, `FAIL` or `SKIP` per rule with a fixed
 text and exits 0 when nothing failed, 1 when a rule failed, 2 for a usage error. It never prints the credential, a URL or a byte of an
 answer. Passing it is necessary, not sufficient: the reconciliation of the product's data (go-live item 18) is the product's and the
-platform's together.
+platform's together. And **what a source that vouches promises cannot be seen by a check of minutes**: that it goes on answering
+`authorize` after a read has expired, until the scope's end, by the rights of that moment, and refuses afterwards. A read lasts up to
+a quarter of an hour and a scope may last years; the product shows it with a test of its own, on a clock it moves
+(docs/REAL_SOURCE_ONBOARDING.md, "为读取范围担保的产品", lists what that test shows).
 
 ## 8. Not in version 1
 
@@ -344,5 +415,5 @@ platform's together.
 
 A later version is a new path prefix (`/reporting-source/v2/`); additions inside version 1 are new optional routes and optional fields
 only, each a minor revision of this page (1.1: the `companies` route, S19-B; a dataset's `filters` and `sorts` and a query's filters and
-sort, S20-A. The title's: the `issue-cancellations` route, S24-A). The revision's number is written in this page's title, in
-docs/source-openapi.json (`info.version`) and in `protocol.Revision`, which a test holds together.
+sort, S20-A. Then the `issue-cancellations` route, S24-A. The title's: a read's `scope_expires_at`, S25-B2). The revision's number
+is written in this page's title, in docs/source-openapi.json (`info.version`) and in `protocol.Revision`, which a test holds together.
