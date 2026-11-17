@@ -16,7 +16,7 @@
     "espree": "11.2.0",
     "globals": "17.14.0",
     "jsdom": "30.1.3",
-    "prettier": "3.9.10"
+    "prettier": "3.10.1"
   },
   "overrides": {
     "minimatch": "11.0.5"
