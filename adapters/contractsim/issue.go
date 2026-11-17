@@ -134,8 +134,8 @@ func IntentDigest(in r.IssueIntent) string {
 // FrozenRows re-reads the whole frozen source read, page after page through ReadFrozenPage, and
 // returns its rows in order: the rows the platform's snapshot holds. Like ReadFrozenPage it is
 // not an authorization endpoint; the simulators authorize before calling it.
-func FrozenRows(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p r.PreparedRead) ([][]string, error) {
-	rows := [][]string{}
+func FrozenRows(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p r.PreparedRead) ([][]r.Cell, error) {
+	rows := [][]r.Cell{}
 	cursor := ""
 	for {
 		page, e := ReadFrozenPage(ctx, seed, q, g, p, cursor, 100)
@@ -155,7 +155,7 @@ func FrozenRows(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p r.P
 
 // CheckRow: the intent's row must be one of the frozen read's rows with the digest the platform
 // froze; otherwise it is not what the source snapshot produced (ErrDenied).
-func CheckRow(rows [][]string, in r.IssueIntent) error {
+func CheckRow(rows [][]r.Cell, in r.IssueIntent) error {
 	if in.RowIndex < 0 || in.RowIndex >= len(rows) || r.Digest(rows[in.RowIndex]) != in.RowSHA256 {
 		return r.ErrDenied
 	}
@@ -164,7 +164,7 @@ func CheckRow(rows [][]string, in r.IssueIntent) error {
 
 // CheckIntent is the product's check of what an intent names against the rows of its frozen read: CheckRow for a
 // row, CheckGroup for a group. dimensions are the dimensions of the read's query, which head every row.
-func CheckIntent(rows [][]string, dimensions []string, in r.IssueIntent) error {
+func CheckIntent(rows [][]r.Cell, dimensions []string, in r.IssueIntent) error {
 	if in.Group != nil {
 		return CheckGroup(rows, dimensions, in)
 	}
@@ -177,7 +177,7 @@ func CheckIntent(rows [][]string, dimensions []string, in r.IssueIntent) error {
 // the one the platform froze. A group field that is not a dimension of the read, a row that is not there, a row of
 // another key, a group that leaves a row of its key out and a digest of other rows are not what the source snapshot
 // produced (ErrDenied). The errors carry no value.
-func CheckGroup(rows [][]string, dimensions []string, in r.IssueIntent) error {
+func CheckGroup(rows [][]r.Cell, dimensions []string, in r.IssueIntent) error {
 	g := in.Group
 	if g == nil {
 		return r.ErrInvalid
@@ -190,7 +190,7 @@ func CheckGroup(rows [][]string, dimensions []string, in r.IssueIntent) error {
 		}
 		at[k] = i
 	}
-	has := func(row []string) (bool, error) {
+	has := func(row []r.Cell) (bool, error) {
 		for k, i := range at {
 			if i >= len(row) {
 				return false, r.ErrIntegrity
@@ -214,7 +214,7 @@ func CheckGroup(rows [][]string, dimensions []string, in r.IssueIntent) error {
 	if count != len(g.Rows) {
 		return r.ErrDenied
 	}
-	picked := make([][]string, 0, len(g.Rows))
+	picked := make([][]r.Cell, 0, len(g.Rows))
 	for _, i := range g.Rows {
 		if i < 0 || i >= len(rows) {
 			return r.ErrDenied

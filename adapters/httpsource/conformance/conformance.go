@@ -292,9 +292,13 @@ func listedCompaniesRead(ctx context.Context, a r.Adapter, sc r.SourceContext, q
 }
 
 // readAll reads the whole read page after page, as the service does: the totals equal on every page, at most 1000 rows.
+//
+// The checker computes with texts: it narrows, orders and sums what it read. A cell without a value is not one this revision of the
+// protocol can carry (the adapter refuses the page before it is seen here), so the rows are taken as texts and a cell without a value
+// fails the read; S26-B teaches the checker the absent value.
 func readAll(ctx context.Context, a r.Adapter, sc r.SourceContext, p r.PreparedRead) ([][]string, map[string]string, error) {
-	var rows [][]string
-	var totals map[string]string
+	var rows [][]r.Cell
+	var totals map[string]r.Cell
 	cursor := ""
 	seen := map[string]bool{}
 	for n := 0; ; n++ {
@@ -312,7 +316,21 @@ func readAll(ctx context.Context, a r.Adapter, sc r.SourceContext, p r.PreparedR
 			return nil, nil, fail("the read has more than 1000 rows", r.ErrBudget)
 		}
 		if page.NextCursor == "" {
-			return rows, totals, nil
+			texts, err := r.RequiredRows(rows)
+			if err != nil {
+				return nil, nil, fail("a row holds a cell without a value", err)
+			}
+			if rows == nil {
+				texts = nil
+			}
+			sums, err := r.RequiredTotals(totals)
+			if err != nil {
+				return nil, nil, fail("a total is without a value", err)
+			}
+			if totals == nil {
+				sums = nil
+			}
+			return texts, sums, nil
 		}
 		if seen[page.NextCursor] {
 			return nil, nil, fail("a cursor came back", r.ErrIntegrity)

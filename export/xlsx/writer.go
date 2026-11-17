@@ -278,7 +278,12 @@ func (Writer) write(ctx context.Context, s r.Snapshot, p r.Presentation) ([]byte
 				col = c
 			}
 		}
-		exact := s.Result.Totals[m.ID]
+		// The source's total as its exact text. A total without a value fails closed until a metric can declare one (S26-B decides
+		// what the sheet writes for it).
+		exact, e := s.Result.Totals[m.ID].Required()
+		if e != nil {
+			return nil, e
+		}
 		if e := putText("Totals", i+2, []string{m.ID, "", exact, col.Currency, col.Unit}); e != nil {
 			return nil, e
 		}

@@ -29,7 +29,7 @@ func TestAnIssueFromAFilteredSnapshotRecordsThatSnapshot(t *testing.T) {
 	}
 	// The snapshot is the narrowed scope in the order asked (the larger balance first), and its frozen query holds the filters in
 	// the normalized order and the sort.
-	if rows := snap.Result.Rows; len(rows) != 2 || rows[0][0] != "customer_c" || rows[1][0] != "customer_b" || snap.Result.Totals["ar.open_balance"] != "9007199254740892.76" {
+	if rows := snap.Result.Rows; len(rows) != 2 || rows[0][0] != r.Text("customer_c") || rows[1][0] != r.Text("customer_b") || snap.Result.Totals["ar.open_balance"] != r.Text("9007199254740892.76") {
 		t.Fatalf("the filtered snapshot: %v, totals %v", rows, snap.Result.Totals)
 	}
 	wantFilters := []r.Filter{{Field: "aging.bucket", Operator: "in", Value: `["1_30","31_60"]`}, {Field: "customer.id", Operator: "ne", Value: "customer_a"}}

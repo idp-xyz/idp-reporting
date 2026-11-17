@@ -47,7 +47,7 @@ func utcSecond(t *testing.T, at time.Time, what string) {
 
 var profileScenarios = []profileScenario{
 	{"the_frozen_read_has_the_documented_rows", func(t *testing.T, g *Rig) {
-		rows, cursor := [][]string{}, ""
+		rows, cursor := [][]r.Cell{}, ""
 		for {
 			page, e := g.Src.ReadPage(ctx, g.SC, g.Prep, cursor, 50)
 			if e != nil {

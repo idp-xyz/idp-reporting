@@ -335,7 +335,7 @@ func TestIntentDigestOfARowIntentIsUnchanged(t *testing.T) {
 	a.RowIndex, a.RowSHA256 = 0, ""
 	a.Group = &r.IssueGroup{Fields: nil, Key: nil, Rows: []int{0, 1}, RowsSHA256: strings.Repeat("a", 64)}
 	b := a
-	b.Group = &r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0, 1}, RowsSHA256: strings.Repeat("a", 64)}
+	b.Group = &r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: []int{0, 1}, RowsSHA256: strings.Repeat("a", 64)}
 	if contractsim.IntentDigest(a) != contractsim.IntentDigest(b) || contractsim.IntentDigest(a) == want {
 		t.Fatal("the digest of a group intent")
 	}

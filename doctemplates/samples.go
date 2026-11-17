@@ -275,9 +275,9 @@ func (s Sample) Snapshot() r.Snapshot {
 		for i, f := range s.Fields {
 			out[i] = row[f.ID]
 		}
-		snap.Result.Rows = append(snap.Result.Rows, out)
+		snap.Result.Rows = append(snap.Result.Rows, r.Cells(out...))
 	}
-	snap.Result.Totals = map[string]string{}
+	snap.Result.Totals = map[string]r.Cell{}
 	return snap
 }
 

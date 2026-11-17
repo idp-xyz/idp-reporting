@@ -19,6 +19,11 @@ import (
 
 // DecodeStrict bounds the document, rejects duplicate keys, null, unknown or
 // wrongly-cased field names, multiple roots and excessive nesting.
+//
+// A null is refused wherever it stands, with one exception (ADR 0028 decision 1, S26-A): where the value it is decoded into is a
+// Cell, which is a JSON string or null. That is the one rule, held by the one type: a cell of a row, a total, a value of a group's
+// key. Whether a cell may be without a value there is not the decoder's question: the validation of the rows, the totals and the key
+// answers it, and until a column can declare that it is nullable (S26-B) it refuses every one.
 func DecodeStrict(in io.Reader, out any) error {
 	b, err := io.ReadAll(io.LimitReader(in, MaxResultBytes+1))
 	if err != nil || len(b) > MaxResultBytes || !utf8.Valid(b) {
@@ -51,8 +56,12 @@ func readJSON(d *json.Decoder, depth int) (any, error) {
 		return nil, ErrInvalid
 	}
 	t, err := d.Token()
-	if err != nil || t == nil {
+	if err != nil {
 		return nil, ErrInvalid
+	}
+	if t == nil {
+		// A null: kept as itself, and refused by checkShape everywhere but where a Cell is read.
+		return jsonNull{}, nil
 	}
 	if delim, ok := t.(json.Delim); ok {
 		switch delim {
@@ -100,11 +109,74 @@ func readJSON(d *json.Decoder, depth int) (any, error) {
 	}
 	return t, nil
 }
+
+// jsonNull is a null of the document, as readJSON keeps it: it is written back as null for the decoding that follows the check.
+type jsonNull struct{}
+
+func (jsonNull) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+
+var cellType = reflect.TypeOf(Cell{})
+
+// holdsNull says whether a value of the document holds a null anywhere.
+func holdsNull(v any) bool {
+	switch v := v.(type) {
+	case jsonNull:
+		return true
+	case map[string]any:
+		for _, value := range v {
+			if holdsNull(value) {
+				return true
+			}
+		}
+	case []any:
+		for _, value := range v {
+			if holdsNull(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkShape holds a value of the document to the type it is decoded into: no field the type does not have, and no null but where
+// the type is a Cell. A value whose type has no shape to walk (a text, a number, an interface) holds no null either.
 func checkShape(v any, t reflect.Type) error {
+	if t == cellType {
+		switch v.(type) {
+		case string, jsonNull:
+			return nil
+		}
+		return ErrInvalid
+	}
+	if _, null := v.(jsonNull); null {
+		return ErrInvalid
+	}
 	if t.Kind() == reflect.Pointer {
 		return checkShape(v, t.Elem())
 	}
 	switch t.Kind() {
+	case reflect.Map:
+		// The values of a map were never walked (an unknown field inside one is ignored, as before); what is held is that they hold
+		// no null, except that the values of a map of cells (a result's totals) are cells.
+		if t.Elem() != cellType {
+			if holdsNull(v) {
+				return ErrInvalid
+			}
+			return nil
+		}
+		m, ok := v.(map[string]any)
+		if !ok {
+			return ErrInvalid
+		}
+		for _, value := range m {
+			if checkShape(value, cellType) != nil {
+				return ErrInvalid
+			}
+		}
+	default:
+		if holdsNull(v) {
+			return ErrInvalid
+		}
 	case reflect.Struct:
 		m, ok := v.(map[string]any)
 		if !ok {
@@ -225,7 +297,15 @@ func validColumn(c Column) bool {
 
 var integerPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)$`)
 
-func validCell(v string, c Column) bool {
+// validCell holds a cell to its column: it has a value, and the value is a text of the column's type (validText). A cell without a
+// value is not valid in any column: no column can declare that it may be absent yet (ADR 0028 decision 1; S26-B adds the declaration).
+func validCell(cell Cell, c Column) bool {
+	v, ok := cell.Value()
+	return ok && validText(v, c)
+}
+
+// validText holds a text to the column's type: what a cell that has a value holds, and what a filter's value is.
+func validText(v string, c Column) bool {
 	if !utf8.ValidString(v) || len(v) > 4096 {
 		return false
 	}
@@ -261,7 +341,7 @@ func allDigits(s string) bool {
 	}
 	return s != ""
 }
-func validateRows(rows [][]string, cols []Column) error {
+func validateRows(rows [][]Cell, cols []Column) error {
 	for _, row := range rows {
 		if len(row) != len(cols) {
 			return ErrIntegrity
@@ -274,7 +354,7 @@ func validateRows(rows [][]string, cols []Column) error {
 	}
 	return nil
 }
-func validateTotals(t map[string]string, q QuerySpec, cols []Column) error {
+func validateTotals(t map[string]Cell, q QuerySpec, cols []Column) error {
 	if len(t) != len(q.Metrics) {
 		return ErrIntegrity
 	}
@@ -291,7 +371,7 @@ func validateTotals(t map[string]string, q QuerySpec, cols []Column) error {
 // of its column's type, and a total for each metric and nothing else (ErrIntegrity otherwise). An adapter that reaches its product over a
 // network (adapters/httpsource, S19-A) calls it before it passes a page on, with the dataset of the product's own catalog; the service
 // applies the same checks again to the columns the job froze. The dataset must be one ValidateQuery accepts.
-func ValidateSourcePage(rows [][]string, totals map[string]string, d Dataset) error {
+func ValidateSourcePage(rows [][]Cell, totals map[string]Cell, d Dataset) error {
 	if len(d.Columns) != len(d.Dimensions)+len(d.Metrics) {
 		return ErrIntegrity
 	}

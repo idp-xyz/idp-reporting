@@ -32,7 +32,7 @@ func TestSourceMultiplePagesUseSameFrozenVersion(t *testing.T) {
 	q := contractsim.FinancialQuery()
 	q.Page.Limit = 100
 	result, e := s.Query(context.Background(), p, q)
-	if e != nil || len(result.Rows) != 60 || result.Rows[59][0] != "row_0059" || result.Totals["ar.open_balance"] != "60.00" || a.ReadCalls() != 2 {
+	if e != nil || len(result.Rows) != 60 || result.Rows[59][0] != r.Text("row_0059") || result.Totals["ar.open_balance"] != r.Text("60.00") || a.ReadCalls() != 2 {
 		t.Fatal(len(result.Rows), result.Totals, a.ReadCalls(), e)
 	}
 }
@@ -50,7 +50,7 @@ func TestInvalidTypedSourceCellRejected(t *testing.T) {
 	a := contractsim.Financial()
 	p := contractsim.DemoPrincipal()
 	a.Grant(contractsim.DemoOwner(p, contractsim.FinanceIntegration), contractsim.DefaultGrant())
-	wrapped := intercept{Adapter: a, mutate: func(v r.SourcePage) r.SourcePage { v.Rows[0][2] = "1e99"; return v }}
+	wrapped := intercept{Adapter: a, mutate: func(v r.SourcePage) r.SourcePage { v.Rows[0][2] = r.Text("1e99"); return v }}
 	s, p, _ := intercepted(t, wrapped)
 	_, e := s.Query(context.Background(), p, contractsim.FinancialQuery())
 	mustError(t, e, r.ErrIntegrity)

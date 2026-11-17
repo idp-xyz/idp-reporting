@@ -85,7 +85,7 @@ func TestRowsDigestEncodingAndVectors(t *testing.T) {
 			if hex.EncodeToString(sum[:]) != c.digest {
 				t.Fatalf("the documented encoding hashes to %x, not the documented digest %s", sum, c.digest)
 			}
-			if got := r.RowsDigest(c.rows); got != c.digest {
+			if got := r.RowsDigest(r.CellRows(c.rows)); got != c.digest {
 				t.Fatalf("RowsDigest is %s, the documented digest is %s", got, c.digest)
 			}
 		})

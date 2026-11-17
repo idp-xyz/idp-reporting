@@ -71,7 +71,7 @@ func (f *fakeRenderer) Issue(_ context.Context, d doctemplates.Document, values 
 
 func snapshot() r.Snapshot {
 	return r.Snapshot{ID: strings.Repeat("5", 32), Owner: r.Owner{Identity: contractsim.DemoPrincipal().Identity, Integration: "i"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}},
-		Result: r.Result{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2}}, Rows: [][]string{{"甲", "1.00"}, {"乙", "2.50"}}, Totals: map[string]string{"amount": "3.50"}, Completeness: "complete"}}
+		Result: r.Result{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2}}, Rows: r.CellRows([][]string{{"甲", "1.00"}, {"乙", "2.50"}}), Totals: r.CellTotals(map[string]string{"amount": "3.50"}), Completeness: "complete"}}
 }
 
 func document() doctemplates.Document {
@@ -399,7 +399,7 @@ func TestIssuerIssuesA2xTemplateByGroup(t *testing.T) {
 	renderer := &fakeRenderer{out: []byte("%PDF-1.7 issued"), pages: 2}
 	issuer, _ := issuance.New(store, nil, renderer)
 	snap := groupSnapshot()
-	group, e := r.NewIssueGroup(snap, []string{"customer"}, []string{"乙"}, []int{1, 3})
+	group, e := r.NewIssueGroup(snap, []string{"customer"}, r.Cells("乙"), []int{1, 3})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -458,7 +458,7 @@ func TestIssuerIssuesA2xTemplateByGroup(t *testing.T) {
 		}, r.ErrIntegrity},
 		"no fields for a template with a group": {func(j *r.Job, s r.Snapshot) r.Snapshot {
 			g := j.Group.Clone()
-			g.Fields, g.Key = []string{}, []string{}
+			g.Fields, g.Key = []string{}, r.Cells()
 			j.Group = &g
 			return s
 		}, r.ErrIntegrity},
@@ -475,13 +475,13 @@ func TestIssuerIssuesA2xTemplateByGroup(t *testing.T) {
 			return s
 		}, r.ErrIntegrity},
 		"a snapshot whose rows changed": {func(j *r.Job, s r.Snapshot) r.Snapshot {
-			s.Result.Rows = append([][]string{}, s.Result.Rows...)
-			s.Result.Rows[3] = []string{"乙", "9.99"}
+			s.Result.Rows = append([][]r.Cell{}, s.Result.Rows...)
+			s.Result.Rows[3] = r.Cells("乙", "9.99")
 			return s
 		}, r.ErrIntegrity},
 		"another key": {func(j *r.Job, s r.Snapshot) r.Snapshot {
 			g := j.Group.Clone()
-			g.Key = []string{"甲"}
+			g.Key = r.Cells("甲")
 			j.Group = &g
 			return s
 		}, r.ErrIntegrity},
@@ -541,7 +541,7 @@ func TestIssuerRefusesAGroupWhoseFieldDiffersWithoutNamingTheValue(t *testing.T)
 		t.Fatal(e)
 	}
 	frozen, _ := doctemplates.Canonical(v1.Layout)
-	group, e := r.NewIssueGroup(snap, []string{"customer"}, []string{"乙"}, []int{1, 3})
+	group, e := r.NewIssueGroup(snap, []string{"customer"}, r.Cells("乙"), []int{1, 3})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -598,7 +598,7 @@ func groupSnapshot() r.Snapshot {
 	return r.Snapshot{ID: strings.Repeat("5", 32), Owner: r.Owner{Identity: contractsim.DemoPrincipal().Identity, Integration: "i"},
 		Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}, Dimensions: []string{"customer"}, Metrics: []r.Ref{{ID: "amount", Version: "1"}}},
 		Result: r.Result{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2}},
-			Rows: [][]string{{"甲", "1.00"}, {"乙", "2.50"}, {"甲", "3.00"}, {"乙", "4.00"}}, Totals: map[string]string{"amount": "10.50"}, Completeness: "complete"}}
+			Rows: r.CellRows([][]string{{"甲", "1.00"}, {"乙", "2.50"}, {"甲", "3.00"}, {"乙", "4.00"}}), Totals: r.CellTotals(map[string]string{"amount": "10.50"}), Completeness: "complete"}}
 }
 
 // bandedDocument is a 2.0 template over groupSnapshot: the customer in the page header, the group's lines in the
@@ -642,7 +642,7 @@ func TestIssuerIssuesAFormByGroupWithNoTable(t *testing.T) {
 	renderer := &fakeRenderer{out: []byte("%PDF-1.7 form"), pages: 1}
 	issuer, _ := issuance.New(store, nil, renderer)
 	snap := groupSnapshot()
-	group, e := r.NewIssueGroup(snap, []string{"customer"}, []string{"乙"}, []int{1, 3})
+	group, e := r.NewIssueGroup(snap, []string{"customer"}, r.Cells("乙"), []int{1, 3})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -267,14 +267,14 @@ func freezeAndPage(t *testing.T, direct bool) {
 	}
 	// sum of i + (i % 100) / 100 for i in 0..119: 7140 + (4950 + 190) / 100 = 7191.40
 	const wantTotal = "7191.40"
-	var rows [][]string
+	var rows [][]r.Cell
 	cursor := ""
 	for {
 		page, err := w.s.Rows(ctx, w.p, v.SnapshotID, 40, cursor)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if page.Evidence.Watermark != "fixture-v1" || page.TotalRows != 120 || page.Totals["ar.open_balance"] != wantTotal {
+		if page.Evidence.Watermark != "fixture-v1" || page.TotalRows != 120 || page.Totals["ar.open_balance"] != r.Text(wantTotal) {
 			t.Fatalf("%+v", page.Evidence)
 		}
 		rows = append(rows, page.Rows...)
@@ -283,7 +283,7 @@ func freezeAndPage(t *testing.T, direct bool) {
 		}
 		cursor = page.NextCursor
 	}
-	if len(rows) != 120 || rows[0][0] != "customer_000" || rows[119][0] != "customer_119" || rows[119][2] != "119.19" {
+	if len(rows) != 120 || rows[0][0] != r.Text("customer_000") || rows[119][0] != r.Text("customer_119") || rows[119][2] != r.Text("119.19") {
 		t.Fatal(len(rows), rows[0], rows[len(rows)-1])
 	}
 	// A revoked grant refuses every later disclosure; an expired read is refused, through the protocol as in process.
@@ -307,7 +307,7 @@ func freezeAndPage(t *testing.T, direct bool) {
 	}
 	// A new query is prepared on the source's current data.
 	res, err := w.s.Query(ctx, w.p, contractsim.FinancialQuery())
-	if err != nil || len(res.Rows) != 0 || res.Evidence.Watermark != "fixture-v2" || res.Totals["ar.open_balance"] != "0.00" {
+	if err != nil || len(res.Rows) != 0 || res.Evidence.Watermark != "fixture-v2" || res.Totals["ar.open_balance"] != r.Text("0.00") {
 		t.Fatalf("%+v %v", res, err)
 	}
 }
@@ -366,7 +366,7 @@ func TestAConnectionWithoutIssuanceCannotIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	group := r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0}, RowsSHA256: strings.Repeat("a", 64)}
+	group := r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: []int{0}, RowsSHA256: strings.Repeat("a", 64)}
 	_, err = auth.PrepareDocument(ctx, sc, r.IssueIntent{JobID: strings.Repeat("a", 32), Prepared: prep, TemplateID: strings.Repeat("b", 32), TemplateVersion: 1, TemplateSHA256: strings.Repeat("c", 64), Group: &group})
 	want(t, err, r.ErrUnsupported, "a group sent to a connection of issuance rows")
 	if _, held := sim.IssueRecord(strings.Repeat("a", 32)); held {

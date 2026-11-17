@@ -13,7 +13,7 @@ import (
 
 func publication(c r.Claim) r.Publication {
 	j := c.Job
-	result := r.Result{Columns: j.Columns, Rows: [][]string{{"customer_a", "current", "100.25"}, {"customer_b", "1_30", "-0.24"}, {"customer_c", "31_60", "9007199254740893.00"}}, Totals: map[string]string{"ar.open_balance": "9007199254740993.01"}, Completeness: "complete", Issues: []string{}, Evidence: r.Evidence{QueryHash: j.Prepared.QueryHash, SourceRef: j.Prepared.Ref, Watermark: j.Prepared.Watermark, DataClass: "contract-simulator"}}
+	result := r.Result{Columns: j.Columns, Rows: r.CellRows([][]string{{"customer_a", "current", "100.25"}, {"customer_b", "1_30", "-0.24"}, {"customer_c", "31_60", "9007199254740893.00"}}), Totals: r.CellTotals(map[string]string{"ar.open_balance": "9007199254740993.01"}), Completeness: "complete", Issues: []string{}, Evidence: r.Evidence{QueryHash: j.Prepared.QueryHash, SourceRef: j.Prepared.Ref, Watermark: j.Prepared.Watermark, DataClass: "contract-simulator"}}
 	return r.Publication{Snapshot: &r.Snapshot{ID: r.NewID(), Owner: j.Owner, Query: j.Query, Prepared: j.Prepared, Result: result, ExpiresAt: j.Prepared.ExpiresAt, SHA256: r.Digest(result)}}
 }
 func TestLeaseGenerationAndAtomicPublication(t *testing.T) {

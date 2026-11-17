@@ -161,7 +161,11 @@ func BindTable(d Document, s r.Snapshot) (*TableData, error) {
 		picked[i] = j
 		out.Columns = append(out.Columns, s.Result.Columns[j])
 		out.Metric = append(out.Metric, metrics[c.Field])
-		if v, ok := s.Result.Totals[c.Field]; ok {
+		if total, ok := s.Result.Totals[c.Field]; ok {
+			v, e := total.Required()
+			if e != nil {
+				return nil, e
+			}
 			out.Totals[c.Field] = v
 		}
 	}
@@ -169,10 +173,14 @@ func BindTable(d Document, s r.Snapshot) (*TableData, error) {
 	for i, row := range s.Result.Rows {
 		out.Rows[i] = make([]string, len(picked))
 		for k, j := range picked {
-			if j >= len(row) || !utf8.ValidString(row[j]) {
+			if j >= len(row) {
 				return nil, r.ErrIntegrity
 			}
-			out.Rows[i][k] = row[j]
+			v, e := row[j].Required()
+			if e != nil || !utf8.ValidString(v) {
+				return nil, r.ErrIntegrity
+			}
+			out.Rows[i][k] = v
 		}
 	}
 	return out, nil

@@ -86,7 +86,7 @@ func ReadFrozenPage(ctx context.Context, seed Fixture, q r.QuerySpec, g Grant, p
 		return r.SourcePage{}, r.ErrInvalid
 	}
 	end := min(start+limit, len(rows))
-	page := r.SourcePage{Ref: p.Ref, QueryHash: p.QueryHash, Watermark: p.Watermark, Rows: rows[start:end], Totals: totals}
+	page := r.SourcePage{Ref: p.Ref, QueryHash: p.QueryHash, Watermark: p.Watermark, Rows: r.CellRows(rows[start:end]), Totals: r.CellTotals(totals)}
 	if end < len(rows) {
 		page.NextCursor = p.Ref + ":" + strconv.Itoa(end)
 	}

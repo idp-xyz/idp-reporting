@@ -199,12 +199,19 @@ func Bind(d Document, s r.Snapshot, index int) (map[string]string, error) {
 				if col >= len(s.Result.Rows[index]) {
 					return nil, r.ErrIntegrity
 				}
-				text = s.Result.Rows[index][col]
+				cell := s.Result.Rows[index][col]
+				var e error
+				if text, e = cell.Required(); e != nil {
+					return nil, e
+				}
 			} else {
-				var ok bool
-				text, ok = s.Result.Totals[v.Field]
+				total, ok := s.Result.Totals[v.Field]
 				if !ok {
 					return nil, r.ErrDenied
+				}
+				var e error
+				if text, e = total.Required(); e != nil {
+					return nil, e
 				}
 			}
 		}

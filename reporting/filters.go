@@ -223,7 +223,7 @@ func ValidFilterValue(v string, c Column) bool {
 		}
 		return n >= 1 && n <= MaxFilterValueChars
 	case "integer", "decimal", "date", "boolean":
-		return validCell(v, c)
+		return validText(v, c)
 	}
 	return false
 }

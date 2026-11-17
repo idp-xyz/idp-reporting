@@ -97,17 +97,17 @@ func TestTheProtocolCarriesTheContractSimulatorsBehaviour(t *testing.T) {
 		t.Fatal(err)
 	}
 	page, err := g.adapter.ReadPage(ctx, g.sc, p, "", 2)
-	if err != nil || len(page.Rows) != 2 || page.Rows[0][2] != "100.25" || page.Totals["ar.open_balance"] != "9007199254740993.01" || page.NextCursor == "" {
+	if err != nil || len(page.Rows) != 2 || page.Rows[0][2] != r.Text("100.25") || page.Totals["ar.open_balance"] != r.Text("9007199254740993.01") || page.NextCursor == "" {
 		t.Fatalf("%+v %v", page, err)
 	}
 	last, err := g.adapter.ReadPage(ctx, g.sc, p, page.NextCursor, 2)
-	if err != nil || len(last.Rows) != 1 || last.Rows[0][2] != "9007199254740893.00" || last.NextCursor != "" {
+	if err != nil || len(last.Rows) != 1 || last.Rows[0][2] != r.Text("9007199254740893.00") || last.NextCursor != "" {
 		t.Fatalf("%+v %v", last, err)
 	}
 	// The source's data changes; the frozen read does not.
 	g.sim.ReplaceRecords([]contractsim.Record{{Company: "company_demo", Key: "r1", Values: []string{"changed", "current", "1.00"}}})
 	again, err := g.adapter.ReadPage(ctx, g.sc, p, "", 2)
-	if err != nil || again.Rows[0][0] != "customer_a" || again.Watermark != "fixture-v1" {
+	if err != nil || again.Rows[0][0] != r.Text("customer_a") || again.Watermark != "fixture-v1" {
 		t.Fatalf("%+v %v", again, err)
 	}
 	// A company outside the grant, a revoked grant, an unavailable source: the simulator's own refusals, through the protocol.
@@ -175,16 +175,16 @@ func TestTheProtocolCarriesTheDeclaredFiltersAndSorts(t *testing.T) {
 		t.Fatalf("the read did not carry the query as it is: %s %v", wire, err)
 	}
 	page, err := a.ReadPage(ctx, g.sc, p, "", 50)
-	if err != nil || len(page.Rows) != 2 || page.Rows[0][0] != "customer_c" || page.Rows[1][0] != "customer_a" || page.Totals["ar.open_balance"] != "9007199254740993.25" || page.NextCursor != "" {
+	if err != nil || len(page.Rows) != 2 || page.Rows[0][0] != r.Text("customer_c") || page.Rows[1][0] != r.Text("customer_a") || page.Totals["ar.open_balance"] != r.Text("9007199254740993.25") || page.NextCursor != "" {
 		t.Fatalf("%+v %v", page, err)
 	}
 	// The same read, one row a page, is the same order.
 	first, err := a.ReadPage(ctx, g.sc, p, "", 1)
-	if err != nil || len(first.Rows) != 1 || first.Rows[0][0] != "customer_c" || first.Totals["ar.open_balance"] != "9007199254740993.25" {
+	if err != nil || len(first.Rows) != 1 || first.Rows[0][0] != r.Text("customer_c") || first.Totals["ar.open_balance"] != r.Text("9007199254740993.25") {
 		t.Fatalf("%+v %v", first, err)
 	}
 	second, err := a.ReadPage(ctx, g.sc, p, first.NextCursor, 1)
-	if err != nil || len(second.Rows) != 1 || second.Rows[0][0] != "customer_a" || second.NextCursor != "" {
+	if err != nil || len(second.Rows) != 1 || second.Rows[0][0] != r.Text("customer_a") || second.NextCursor != "" {
 		t.Fatalf("%+v %v", second, err)
 	}
 	// The hash binds the narrowed scope: the plain query's hash is not this query's.

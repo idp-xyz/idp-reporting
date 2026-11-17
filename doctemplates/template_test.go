@@ -43,7 +43,7 @@ func TestBackgroundSchemaStrictCompatibility(t *testing.T) {
 }
 func TestFrozenBindingExactValuesAndBounds(t *testing.T) {
 	d := document()
-	s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: [][]string{{"9007199254740993.01"}}, Totals: map[string]string{"amount": "9007199254740993.01"}}}
+	s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: r.CellRows([][]string{{"9007199254740993.01"}}), Totals: r.CellTotals(map[string]string{"amount": "9007199254740993.01"})}}
 	values, e := doctemplates.Bind(d, s, 0)
 	if e != nil || values["n1"] != "9007199254740993.01" {
 		t.Fatal(values, e)
@@ -166,7 +166,7 @@ func TestPrintJSONRequiresBothExplicitOffsets(t *testing.T) {
 func TestBindRefusesValuesThePreviewCannotPrint(t *testing.T) {
 	d := document()
 	for name, value := range map[string]string{"a tab": "a\tb", "a line break": "a\nb", "DEL": "a\x7fb", "too long": strings.Repeat("a", 257)} {
-		s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: [][]string{{value}}, Totals: map[string]string{"amount": value}}}
+		s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: r.CellRows([][]string{{value}}), Totals: r.CellTotals(map[string]string{"amount": value})}}
 		if _, e := doctemplates.Bind(d, s, 0); !errors.Is(e, r.ErrUnsupported) {
 			t.Errorf("%s: %v; want unsupported", name, e)
 		}

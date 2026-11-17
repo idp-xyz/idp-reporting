@@ -30,7 +30,7 @@ func invoiceSnapshot(rows [][]string) r.Snapshot {
 		Owner:    r.Owner{Integration: "i"},
 		Query:    r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}, Dimensions: []string{"order", "customer", "address", "item"}, Metrics: []r.Ref{{ID: "qty", Version: "1"}, {ID: "amount", Version: "1"}, {ID: "weight", Version: "1"}}},
 		Prepared: r.PreparedRead{Watermark: "wm"},
-		Result: r.Result{Totals: map[string]string{}, Rows: rows, Columns: []r.Column{
+		Result: r.Result{Totals: r.CellTotals(map[string]string{}), Rows: r.CellRows(rows), Columns: []r.Column{
 			{ID: "order", Label: "订单", Type: "string"}, {ID: "customer", Label: "客户", Type: "string"}, {ID: "address", Label: "地址", Type: "string"}, {ID: "item", Label: "品名", Type: "string"},
 			{ID: "qty", Label: "数量", Type: "integer", Unit: "pcs"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}, {ID: "weight", Label: "重量", Type: "decimal", Scale: 3, Unit: "kg"}}},
 	}
@@ -100,7 +100,7 @@ func groupSums(d doctemplates.Document, s r.Snapshot, g doctemplates.RowGroup) m
 			}
 			in := sumInput{Values: []string{}, Scale: c.Scale}
 			for _, i := range g.Rows {
-				in.Values = append(in.Values, s.Result.Rows[i][j])
+				in.Values = append(in.Values, s.Result.Rows[i][j].Text())
 			}
 			out[bi.Item.ID] = in
 		}
@@ -344,7 +344,7 @@ func testTypstRendersBandedDocuments(t *testing.T, w *Writer) {
 	}
 	snap := invoiceSnapshot(rows)
 	groups, values, tables, sums := bandedGroups(t, d, snap)
-	if len(groups) != 3 || groups[0].Key[0] != "INV-0001" || groups[1].Key[0] != "INV-0002" || groups[2].Key[0] != "INV-0003" || len(groups[0].Rows) != 6 || groups[0].Rows[1] != 2 {
+	if len(groups) != 3 || groups[0].Key[0] != r.Text("INV-0001") || groups[1].Key[0] != r.Text("INV-0002") || groups[2].Key[0] != r.Text("INV-0003") || len(groups[0].Rows) != 6 || groups[0].Rows[1] != 2 {
 		t.Fatalf("groups %+v", groups)
 	}
 	for i, name := range []string{"banded_invoice_1", "banded_invoice_2", "banded_invoice_3"} {

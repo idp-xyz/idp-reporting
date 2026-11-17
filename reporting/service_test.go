@@ -37,7 +37,7 @@ func TestFinancialSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Rows) != 1 || page.Rows[0][2] != "100.25" || page.Totals["ar.open_balance"] != "9007199254740993.01" {
+	if len(page.Rows) != 1 || page.Rows[0][2] != r.Text("100.25") || page.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 		t.Fatalf("unexpected financial result: %+v", page)
 	}
 }

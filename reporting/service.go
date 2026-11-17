@@ -288,7 +288,7 @@ func (s *Service) collect(ctx context.Context, o Owner, q QuerySpec, p PreparedR
 	}
 	c, sc, _ := s.sourceOwner(o)
 	// The evidence says where the data comes from in the word of the connection's adapter (S08-A): never a constant of the platform.
-	out = Result{Columns: cols, Rows: [][]string{}, Completeness: "complete", Issues: []string{}, Evidence: Evidence{QueryHash: p.QueryHash, SourceRef: p.Ref, Watermark: p.Watermark, DataClass: s.classes[[2]string{o.Tenant, o.Integration}]}}
+	out = Result{Columns: cols, Rows: [][]Cell{}, Completeness: "complete", Issues: []string{}, Evidence: Evidence{QueryHash: p.QueryHash, SourceRef: p.Ref, Watermark: p.Watermark, DataClass: s.classes[[2]string{o.Tenant, o.Integration}]}}
 	cursor := ""
 	seen := map[string]bool{}
 	for n := 0; n <= MaxRows; n++ {

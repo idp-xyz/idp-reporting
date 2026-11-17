@@ -27,12 +27,17 @@ const (
 
 // IssueGroup is one row group of a frozen snapshot, as an issue job freezes it, the product is asked about it and
 // the record keeps it. Fields are the template's group fields in order (none for a template without a group, whose
-// group is the whole snapshot); Key holds the exact frozen strings of those fields, in that order; Rows are the
+// group is the whole snapshot); Key holds the exact frozen cells of those fields, in that order; Rows are the
 // snapshot's row indices of the group, strictly ascending and never none; RowsSHA256 is RowsDigest of those rows
 // as the snapshot holds them.
+//
+// A key is a list of cells (ADR 0028 decision 1, S26-A), as the row it is a projection of is. A key whose cells all
+// have a value is encoded and digested exactly as the list of strings it was, and no other key exists yet:
+// ValidGroupShape refuses a key that holds a cell without a value until a dimension can declare that it may be absent
+// (S26-B).
 type IssueGroup struct {
 	Fields     []string
-	Key        []string
+	Key        []Cell
 	Rows       []int
 	RowsSHA256 string
 }
@@ -64,9 +69,10 @@ func GroupIssueSupported(adapter any) bool {
 // RowsDigest is the digest of a list of rows (IssueGroup.RowsSHA256): the SHA-256, in lowercase hexadecimal, of the
 // rows as one JSON array of the rows' arrays of strings, with no white space and escaped as docs/API.md specifies
 // for the digest of one row (Digest(row)), so that a product not written in Go can reproduce it. No rows is `[]`.
-func RowsDigest(rows [][]string) string {
+// A cell that has a value is its string, as it always was (Cell.MarshalJSON).
+func RowsDigest(rows [][]Cell) string {
 	if rows == nil {
-		rows = [][]string{}
+		rows = [][]Cell{}
 	}
 	return Digest(rows)
 }
@@ -74,7 +80,7 @@ func RowsDigest(rows [][]string) string {
 // Clone copies the group with non-nil lists, so that a group of no fields is `[]` wherever it is encoded and
 // compares and digests alike however it was made.
 func (g IssueGroup) Clone() IssueGroup {
-	return IssueGroup{Fields: append([]string{}, g.Fields...), Key: append([]string{}, g.Key...), Rows: append([]int{}, g.Rows...), RowsSHA256: g.RowsSHA256}
+	return IssueGroup{Fields: append([]string{}, g.Fields...), Key: append([]Cell{}, g.Key...), Rows: append([]int{}, g.Rows...), RowsSHA256: g.RowsSHA256}
 }
 
 // Equal reports whether two groups are the same group; a nil group equals only a nil group, and an empty list
@@ -113,8 +119,10 @@ func ValidGroupShape(g IssueGroup) bool {
 			return false
 		}
 	}
-	for _, v := range g.Key {
-		if len(v) > maxGroupKeyBytes || !utf8.ValidString(v) {
+	for _, cell := range g.Key {
+		// A key's cell has a value: no dimension can be without one yet (S26-B).
+		v, ok := cell.Value()
+		if !ok || len(v) > maxGroupKeyBytes || !utf8.ValidString(v) {
 			return false
 		}
 	}
@@ -134,8 +142,8 @@ func ValidGroupShape(g IssueGroup) bool {
 }
 
 // GroupRows takes the rows of the group from the snapshot, in the group's order.
-func GroupRows(snap Snapshot, rows []int) ([][]string, error) {
-	out := make([][]string, 0, len(rows))
+func GroupRows(snap Snapshot, rows []int) ([][]Cell, error) {
+	out := make([][]Cell, 0, len(rows))
 	for _, i := range rows {
 		if i < 0 || i >= len(snap.Result.Rows) {
 			return nil, ErrInvalid
@@ -147,7 +155,7 @@ func GroupRows(snap Snapshot, rows []int) ([][]string, error) {
 
 // NewIssueGroup makes the group of the snapshot rows with the given indices under the given template fields and
 // key, digesting those rows as the snapshot holds them, and verifies it: VerifyGroup's refusals apply.
-func NewIssueGroup(snap Snapshot, fields, key []string, rows []int) (IssueGroup, error) {
+func NewIssueGroup(snap Snapshot, fields []string, key []Cell, rows []int) (IssueGroup, error) {
 	picked, e := GroupRows(snap, rows)
 	if e != nil {
 		return IssueGroup{}, e
@@ -182,7 +190,7 @@ func VerifyGroup(snap Snapshot, g IssueGroup) error {
 		at[k] = i
 	}
 	rows := snap.Result.Rows
-	matches := func(row []string) (bool, error) {
+	matches := func(row []Cell) (bool, error) {
 		if len(row) != len(snap.Result.Columns) {
 			return false, fmt.Errorf("a row of the snapshot does not fit its columns: %w", ErrIntegrity)
 		}
@@ -206,7 +214,7 @@ func VerifyGroup(snap Snapshot, g IssueGroup) error {
 	if count != len(g.Rows) {
 		return fmt.Errorf("the group is not the rows of the snapshot with its key: %w", ErrInvalid)
 	}
-	picked := make([][]string, 0, len(g.Rows))
+	picked := make([][]Cell, 0, len(g.Rows))
 	for _, i := range g.Rows {
 		if i >= len(rows) {
 			return fmt.Errorf("a row of the group is not in the snapshot: %w", ErrInvalid)

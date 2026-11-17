@@ -293,7 +293,7 @@ func rowsOf(data [][]string, rows []int) [][]string {
 
 // GroupOf is the group of GroupData with the given fields, key and rows, digested as the platform digests it.
 func GroupOf(fields, key []string, rows ...int) *r.IssueGroup {
-	return &r.IssueGroup{Fields: append([]string{}, fields...), Key: append([]string{}, key...), Rows: append([]int{}, rows...), RowsSHA256: r.RowsDigest(rowsOf(GroupData, rows))}
+	return &r.IssueGroup{Fields: append([]string{}, fields...), Key: r.Cells(key...), Rows: append([]int{}, rows...), RowsSHA256: r.RowsDigest(r.CellRows(rowsOf(GroupData, rows)))}
 }
 
 // GroupIntent asks for the n-th job to print the group: no row index and no row digest.

@@ -130,7 +130,12 @@ func plainTable(s r.Snapshot) (*shown, error) {
 	}
 	dims := len(s.Query.Dimensions)
 	numeric := func(j int) bool { return r.NumericColumnType(cols[j].Type) }
-	value := func(j int, v string) (string, error) {
+	// What is printed is a cell's text. A cell without a value fails closed until a column can declare one (S26-B: an empty cell).
+	value := func(j int, cell r.Cell) (string, error) {
+		v, e := cell.Required()
+		if e != nil {
+			return "", e
+		}
 		if j < dims || !numeric(j) {
 			return printable(v), nil
 		}
@@ -164,11 +169,11 @@ func plainTable(s r.Snapshot) (*shown, error) {
 	}
 	var totals []string
 	for i, metric := range s.Query.Metrics {
-		v, ok := s.Result.Totals[metric.ID]
+		total, ok := s.Result.Totals[metric.ID]
 		if !ok || cols[dims+i].ID != metric.ID {
 			return nil, r.ErrIntegrity
 		}
-		v, err := value(dims+i, v)
+		v, err := value(dims+i, total)
 		if err != nil {
 			return nil, err
 		}

@@ -16,7 +16,7 @@ import (
 // RowGroup is one document of a 2.0 template: the rows of the frozen snapshot that have the same
 // exact values of the template's group fields (ADR 0004, decision 2).
 type RowGroup struct {
-	Key  []string // the exact frozen strings of the group fields, in the order of the template
+	Key  []r.Cell // the exact frozen cells of the group fields, in the order of the template (ADR 0028: a key is a list of cells)
 	Rows []int    // the snapshot row indices, in the snapshot's order
 }
 
@@ -69,17 +69,24 @@ func groupColumns(d Document, s r.Snapshot) ([]int, error) {
 
 // groupKey is the key of a row: the length of each value before it, so that no two different
 // tuples of values make the same key.
-func groupKey(row []string, cols []int) (string, []string, error) {
+//
+// The key is made of the values' texts. A cell without a value fails closed (reporting.Cell.Required) until a dimension can declare
+// that it may be absent: S26-B gives the rows without a value in a group field their own group, and this key its way to say so.
+func groupKey(row []r.Cell, cols []int) (string, []r.Cell, error) {
 	var b strings.Builder
-	parts := make([]string, len(cols))
+	parts := make([]r.Cell, len(cols))
 	for i, j := range cols {
 		if j >= len(row) {
 			return "", nil, r.ErrIntegrity
 		}
+		v, e := row[j].Required()
+		if e != nil {
+			return "", nil, e
+		}
 		parts[i] = row[j]
-		b.WriteString(strconv.Itoa(len(row[j])))
+		b.WriteString(strconv.Itoa(len(v)))
 		b.WriteByte(':')
-		b.WriteString(row[j])
+		b.WriteString(v)
 	}
 	return b.String(), parts, nil
 }
@@ -158,7 +165,7 @@ func GroupOf(d Document, s r.Snapshot, row int) (RowGroup, error) {
 // (none for a template without a group, whose one group is the whole snapshot). A key of another length is
 // invalid; a key that no group of the snapshot has, and the whole-snapshot group of a snapshot without rows,
 // is not found (there are no rows to make a document of). Errors carry no value.
-func GroupByKey(d Document, s r.Snapshot, key []string) (RowGroup, error) {
+func GroupByKey(d Document, s r.Snapshot, key []r.Cell) (RowGroup, error) {
 	groups, e := Groups(d, s)
 	if e != nil {
 		return RowGroup{}, e
@@ -219,7 +226,11 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 				return nil, nil, r.ErrDenied
 			}
 			if i, isGroup := groupPos[it.Field]; isGroup {
-				text = g.Key[i]
+				v, e := g.Key[i].Required()
+				if e != nil {
+					return nil, nil, e
+				}
+				text = v
 				break
 			}
 			for n, i := range g.Rows {
@@ -227,9 +238,13 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 				if j >= len(row) {
 					return nil, nil, r.ErrIntegrity
 				}
+				v, e := row[j].Required()
+				if e != nil {
+					return nil, nil, e
+				}
 				if n == 0 {
-					text = row[j]
-				} else if row[j] != text {
+					text = v
+				} else if v != text {
 					return nil, nil, Refuse(r.ErrUnsupported, Detail{Reason: ReasonInconsistentGroup, Band: bi.Band, Element: it.ID, Column: it.Field}.At(i))
 				}
 			}
@@ -254,7 +269,11 @@ func BindGroup(d Document, s r.Snapshot, g RowGroup) (map[string]string, *TableD
 				if j >= len(row) {
 					return nil, nil, r.ErrIntegrity
 				}
-				if e := sum.add(row[j]); e != nil {
+				v, e := row[j].Required()
+				if e != nil {
+					return nil, nil, e
+				}
+				if e := sum.add(v); e != nil {
 					return nil, nil, e
 				}
 			}
@@ -414,10 +433,14 @@ func bindGroupTable(t Item, s r.Snapshot, rows []int, metrics map[string]bool) (
 		row := s.Result.Rows[i]
 		out.Rows[n] = make([]string, len(picked))
 		for k, j := range picked {
-			if j >= len(row) || !utf8.ValidString(row[j]) {
+			if j >= len(row) {
 				return nil, r.ErrIntegrity
 			}
-			out.Rows[n][k] = row[j]
+			v, e := row[j].Required()
+			if e != nil || !utf8.ValidString(v) {
+				return nil, r.ErrIntegrity
+			}
+			out.Rows[n][k] = v
 		}
 	}
 	return out, nil

@@ -618,10 +618,13 @@ func (a *Adapter) ReadPage(ctx context.Context, sc r.SourceContext, p r.Prepared
 	if next != "" && (!protocol.Printable(next, protocol.MaxCursor) || next == cursor || len(out.Rows) == 0) {
 		return r.SourcePage{}, fail("pages", "the next cursor is out of bounds, does not move or follows an empty page", r.ErrIntegrity)
 	}
-	if r.ValidateSourcePage(out.Rows, out.Totals, d) != nil {
+	// On the wire a row is a list of texts and a total a text: the protocol has no absent value until a column can declare one (S26-B),
+	// and the strict decoder refused a null in the answer as it always did. What the adapter passes on is cells, each with a value.
+	rows, totals := r.CellRows(out.Rows), r.CellTotals(out.Totals)
+	if r.ValidateSourcePage(rows, totals, d) != nil {
 		return r.SourcePage{}, fail("pages", "a row or a total does not fit the dataset's columns", r.ErrIntegrity)
 	}
-	return r.SourcePage{Ref: out.Ref, QueryHash: out.QueryHash, Watermark: out.Watermark, Rows: out.Rows, Totals: out.Totals, NextCursor: next}, nil
+	return r.SourcePage{Ref: out.Ref, QueryHash: out.QueryHash, Watermark: out.Watermark, Rows: rows, Totals: totals, NextCursor: next}, nil
 }
 
 // AuthorizeCurrent asks whether the principal's current rights still cover the whole frozen read; only `{"authorized": true}` is a yes.

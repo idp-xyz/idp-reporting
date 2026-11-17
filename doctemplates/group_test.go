@@ -18,7 +18,7 @@ func orders(rows ...[]string) r.Snapshot {
 		Owner: r.Owner{Integration: "source"},
 		Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}, Dimensions: []string{"order", "customer", "note"}, Metrics: []r.Ref{{ID: "qty", Version: "1"}, {ID: "amount", Version: "1"}}},
 		Result: r.Result{Columns: []r.Column{{ID: "order", Label: "订单", Type: "string"}, {ID: "customer", Label: "客户", Type: "string"}, {ID: "note", Label: "备注", Type: "string"},
-			{ID: "qty", Label: "数量", Type: "integer"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}}, Rows: rows, Totals: map[string]string{}},
+			{ID: "qty", Label: "数量", Type: "integer"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}}, Rows: r.CellRows(rows), Totals: r.CellTotals(map[string]string{})},
 	}
 }
 
@@ -67,19 +67,19 @@ func TestGroupsPartitionByExactFrozenStringsInOrderOfFirstRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []doctemplates.RowGroup{{Key: []string{"B"}, Rows: []int{0, 2}}, {Key: []string{"A"}, Rows: []int{1, 5}}, {Key: []string{""}, Rows: []int{3, 6}}, {Key: []string{"a"}, Rows: []int{4}}}
+	want := []doctemplates.RowGroup{{Key: r.Cells("B"), Rows: []int{0, 2}}, {Key: r.Cells("A"), Rows: []int{1, 5}}, {Key: r.Cells(""), Rows: []int{3, 6}}, {Key: r.Cells("a"), Rows: []int{4}}}
 	if !reflect.DeepEqual(groups, want) {
 		t.Errorf("groups %+v, want %+v", groups, want)
 	}
 	// Two fields: the pairs partition, in order of the first row; no two different tuples make one key.
 	s = orders(line("a", "bc", "", "1", "1"), line("ab", "c", "", "1", "1"), line("a", "bc", "", "1", "1"), line("a\x00", "bc", "", "1", "1"))
 	groups, err = doctemplates.Groups(invoice([]string{"order", "customer"}), s)
-	if err != nil || len(groups) != 3 || !reflect.DeepEqual(groups[0].Rows, []int{0, 2}) || !reflect.DeepEqual(groups[1].Key, []string{"ab", "c"}) {
+	if err != nil || len(groups) != 3 || !reflect.DeepEqual(groups[0].Rows, []int{0, 2}) || !reflect.DeepEqual(groups[1].Key, r.Cells("ab", "c")) {
 		t.Errorf("pairs: %+v %v", groups, err)
 	}
 	// Three fields at most are allowed by the template; the order of the fields is the key's order.
 	groups, err = doctemplates.Groups(invoice([]string{"customer", "order", "note"}), orders(line("A", "甲", "n", "1", "1")))
-	if err != nil || len(groups) != 1 || !reflect.DeepEqual(groups[0].Key, []string{"甲", "A", "n"}) {
+	if err != nil || len(groups) != 1 || !reflect.DeepEqual(groups[0].Key, r.Cells("甲", "A", "n")) {
 		t.Errorf("three fields: %+v %v", groups, err)
 	}
 	// Without a group the whole snapshot is one group, in the snapshot's order, with no key; without rows it is one without rows.
@@ -116,7 +116,7 @@ func TestGroupsPartitionByExactFrozenStringsInOrderOfFirstRow(t *testing.T) {
 	}
 	// The group that holds a row.
 	g, err := doctemplates.GroupOf(invoice([]string{"order"}), orders(line("B", "乙", "", "1", "1"), line("A", "甲", "", "1", "1"), line("B", "乙", "", "1", "1")), 2)
-	if err != nil || !reflect.DeepEqual(g, doctemplates.RowGroup{Key: []string{"B"}, Rows: []int{0, 2}}) {
+	if err != nil || !reflect.DeepEqual(g, doctemplates.RowGroup{Key: r.Cells("B"), Rows: []int{0, 2}}) {
 		t.Errorf("group of row 2: %+v %v", g, err)
 	}
 	for _, row := range []int{-1, 3} {
@@ -158,7 +158,7 @@ func TestBindGroupTakesFieldsFromTheGroupAndSumsExactly(t *testing.T) {
 		t.Errorf("columns %+v %v", table.Columns, table.Metric)
 	}
 	// The scale of the column is kept: a sum of whole numbers prints with it.
-	values, _, err = doctemplates.BindGroup(d, orders(line("A", "甲", "", "1", "1"), line("A", "甲", "", "1", "2")), doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0, 1}})
+	values, _, err = doctemplates.BindGroup(d, orders(line("A", "甲", "", "1", "1"), line("A", "甲", "", "1", "2")), doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0, 1}})
 	if err != nil || values["e6"] != "3.00" || values["e7"] != "2" {
 		t.Errorf("scale kept: %v %v", values, err)
 	}
@@ -185,7 +185,7 @@ func TestBindGroupRefusesAFieldThatDiffersWithinTheGroup(t *testing.T) {
 		}
 	}
 	// The same field in a group where it agrees is fine, and a group field is never inconsistent.
-	if _, _, err := doctemplates.BindGroup(d, orders(line("A", "甲", "x", "1", "1.00"), line("A", "甲", "y", "1", "1.00")), doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0, 1}}); err != nil {
+	if _, _, err := doctemplates.BindGroup(d, orders(line("A", "甲", "x", "1", "1.00"), line("A", "甲", "y", "1", "1.00")), doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0, 1}}); err != nil {
 		t.Error(err)
 	}
 	// The first row that differs is named, not the last.
@@ -212,38 +212,38 @@ func TestBindGroupRefusesWhatItCannotSumOrFind(t *testing.T) {
 	sum := invoice([]string{"order"})
 	sum.Bands.DocumentFooter.Elements[0].Field = "customer"
 	good := orders(line("A", "甲", "x", "1", "1.00"))
-	if _, _, err := doctemplates.BindGroup(sum, good, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
+	if _, _, err := doctemplates.BindGroup(sum, good, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
 		t.Errorf("a sum of a dimension: %v", err)
 	}
 	sum.Bands.DocumentFooter.Elements[0].Field = "ghost"
-	if _, _, err := doctemplates.BindGroup(sum, good, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
+	if _, _, err := doctemplates.BindGroup(sum, good, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
 		t.Errorf("a sum of a field the snapshot lacks: %v", err)
 	}
 	field := invoice([]string{"order"})
 	field.Bands.PageHeader.Elements[1].Field = "ghost"
-	if _, _, err := doctemplates.BindGroup(field, good, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
+	if _, _, err := doctemplates.BindGroup(field, good, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
 		t.Errorf("a field the snapshot lacks: %v", err)
 	}
 	// A sum of a text metric (a metric that is not a number) is not a sum.
 	text := orders(line("A", "甲", "x", "1", "1.00"))
 	text.Result.Columns[4].Type = "string"
-	if _, _, err := doctemplates.BindGroup(d, text, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrUnsupported) {
+	if _, _, err := doctemplates.BindGroup(d, text, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrUnsupported) {
 		t.Errorf("a sum of a string metric: %v", err)
 	}
 	// A table field the snapshot lacks is denied.
 	tbl := invoice([]string{"order"})
 	tbl.Bands.Detail.Elements[0].Columns[0].Field = "ghost"
-	if _, _, err := doctemplates.BindGroup(tbl, good, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
+	if _, _, err := doctemplates.BindGroup(tbl, good, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
 		t.Errorf("a table field the snapshot lacks: %v", err)
 	}
 	// A cell that is not valid UTF-8 and a short row are integrity failures.
 	bad := orders(line("A", "甲", "a\xffb", "1", "1.00"))
-	if _, _, err := doctemplates.BindGroup(d, bad, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrIntegrity) {
+	if _, _, err := doctemplates.BindGroup(d, bad, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrIntegrity) {
 		t.Errorf("a cell of invalid UTF-8: %v", err)
 	}
 	// Another snapshot, and a 1.x document.
 	d.Binding.Dataset.Version = "2"
-	if _, _, err := doctemplates.BindGroup(d, good, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
+	if _, _, err := doctemplates.BindGroup(d, good, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}); !errors.Is(err, r.ErrDenied) {
 		t.Errorf("another dataset: %v", err)
 	}
 	if _, _, err := doctemplates.BindGroup(document(), good, doctemplates.RowGroup{}); !errors.Is(err, r.ErrInvalid) {
@@ -257,16 +257,16 @@ func TestBindGroupBindsOnlyWholeGroupsOfTheSnapshot(t *testing.T) {
 	s := orders(line("A", "甲", "", "1", "1.00"), line("B", "乙", "", "1", "2.00"), line("A", "甲", "", "1", "3.00"))
 	d := invoice([]string{"order"})
 	for name, g := range map[string]doctemplates.RowGroup{
-		"part of a group":          {Key: []string{"A"}, Rows: []int{0}},
-		"rows of two groups":       {Key: []string{"A"}, Rows: []int{0, 1, 2}},
-		"rows out of order":        {Key: []string{"A"}, Rows: []int{2, 0}},
-		"a repeated row":           {Key: []string{"A"}, Rows: []int{0, 0, 2}},
-		"a row the snapshot lacks": {Key: []string{"A"}, Rows: []int{0, 2, 3}},
-		"a negative row":           {Key: []string{"A"}, Rows: []int{-1, 0, 2}},
-		"another key":              {Key: []string{"B"}, Rows: []int{0, 2}},
+		"part of a group":          {Key: r.Cells("A"), Rows: []int{0}},
+		"rows of two groups":       {Key: r.Cells("A"), Rows: []int{0, 1, 2}},
+		"rows out of order":        {Key: r.Cells("A"), Rows: []int{2, 0}},
+		"a repeated row":           {Key: r.Cells("A"), Rows: []int{0, 0, 2}},
+		"a row the snapshot lacks": {Key: r.Cells("A"), Rows: []int{0, 2, 3}},
+		"a negative row":           {Key: r.Cells("A"), Rows: []int{-1, 0, 2}},
+		"another key":              {Key: r.Cells("B"), Rows: []int{0, 2}},
 		"no key":                   {Rows: []int{0, 2}},
-		"a longer key":             {Key: []string{"A", "甲"}, Rows: []int{0, 2}},
-		"no rows":                  {Key: []string{"A"}},
+		"a longer key":             {Key: r.Cells("A", "甲"), Rows: []int{0, 2}},
+		"no rows":                  {Key: r.Cells("A")},
 	} {
 		if _, _, err := doctemplates.BindGroup(d, s, g); !errors.Is(err, r.ErrInvalid) && !errors.Is(err, r.ErrIntegrity) {
 			t.Errorf("%s: %v", name, err)
@@ -281,14 +281,14 @@ func TestBindGroupBindsOnlyWholeGroupsOfTheSnapshot(t *testing.T) {
 		// Inconsistent fields (the customer differs) are the refusal of an ungrouped document over many orders.
 		t.Logf("a whole snapshot: %v", err)
 	}
-	if _, _, err := doctemplates.BindGroup(d, s, doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0, 2}}); err != nil {
+	if _, _, err := doctemplates.BindGroup(d, s, doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0, 2}}); err != nil {
 		t.Errorf("a whole group: %v", err)
 	}
 }
 
 func TestBindGroupChecksWhatEachTextCanPrint(t *testing.T) {
 	d := invoice([]string{"order"})
-	g := doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0}}
+	g := doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0}}
 	bind := func(customer string, wrap bool) error {
 		dd := cloneDocument(t, d)
 		dd.Bands.PageHeader.Elements[1].Wrap = wrap
@@ -332,7 +332,7 @@ func TestBindGroupChecksWhatEachTextCanPrint(t *testing.T) {
 		check(name, err, c.reason)
 	}
 	// A group field of 300 characters: refused as a value, with its place.
-	long := doctemplates.RowGroup{Key: []string{strings.Repeat("a", 300)}, Rows: []int{0}}
+	long := doctemplates.RowGroup{Key: r.Cells(strings.Repeat("a", 300)), Rows: []int{0}}
 	_, _, err := doctemplates.BindGroup(d, orders(line(strings.Repeat("a", 300), "甲", "", "1", "1.00")), long)
 	if det, _ := doctemplates.DetailOf(err); !errors.Is(err, r.ErrUnsupported) || det.Reason != doctemplates.ReasonDoesNotFit || det.Element != "e1" {
 		t.Errorf("a group value over 256 characters: %v %+v", err, det)
@@ -353,7 +353,7 @@ func TestBind1xStillBindsByRowAndNowSaysWhereItRefuses(t *testing.T) {
 		v      string
 		reason string
 	}{"a tab": {"a\tb", doctemplates.ReasonNotCovered}, "too long": {strings.Repeat("a", 257), doctemplates.ReasonDoesNotFit}, "DEL": {"a\x7fb", doctemplates.ReasonNotCovered}} {
-		s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: [][]string{{c.v}}, Totals: map[string]string{"amount": c.v}}}
+		s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}}, Result: r.Result{Columns: []r.Column{{ID: "amount"}}, Rows: r.CellRows([][]string{{c.v}}), Totals: r.CellTotals(map[string]string{"amount": c.v})}}
 		_, e := doctemplates.Bind(d, s, 0)
 		det, ok := doctemplates.DetailOf(e)
 		if !errors.Is(e, r.ErrUnsupported) || !ok || det.Reason != c.reason || det.Element != "n1" || det.Band != "" || det.Row != nil || det.Column != "" {
@@ -421,9 +421,9 @@ func TestGroupByKeyFindsTheGroupByItsExactKey(t *testing.T) {
 		line("", "丙", "n4", "1", "4.00"),
 	)
 	by := func(fields []string, key ...string) (doctemplates.RowGroup, error) {
-		return doctemplates.GroupByKey(invoice(fields), s, key)
+		return doctemplates.GroupByKey(invoice(fields), s, r.Cells(key...))
 	}
-	if g, e := by([]string{"order"}, "B"); e != nil || !reflect.DeepEqual(g, doctemplates.RowGroup{Key: []string{"B"}, Rows: []int{0, 2}}) {
+	if g, e := by([]string{"order"}, "B"); e != nil || !reflect.DeepEqual(g, doctemplates.RowGroup{Key: r.Cells("B"), Rows: []int{0, 2}}) {
 		t.Errorf("B: %+v %v", g, e)
 	}
 	// The empty string is a key like any other.
@@ -450,7 +450,7 @@ func TestGroupByKeyFindsTheGroupByItsExactKey(t *testing.T) {
 		"a key for no fields":         {nil, []string{"B"}, r.ErrInvalid},
 		"no key for a field":          {[]string{"order"}, nil, r.ErrInvalid},
 	} {
-		g, e := doctemplates.GroupByKey(invoice(c.fields), s, c.key)
+		g, e := doctemplates.GroupByKey(invoice(c.fields), s, r.Cells(c.key...))
 		if !errors.Is(e, c.want) || len(g.Rows) != 0 || strings.Contains(e.Error(), "secret") {
 			t.Errorf("%s: %+v %v", name, g, e)
 		}
@@ -460,7 +460,7 @@ func TestGroupByKeyFindsTheGroupByItsExactKey(t *testing.T) {
 	if _, e := doctemplates.GroupByKey(invoice(nil), empty, nil); !errors.Is(e, r.ErrNotFound) {
 		t.Errorf("the whole snapshot of no rows: %v", e)
 	}
-	if _, e := doctemplates.GroupByKey(invoice([]string{"order"}), empty, []string{"A"}); !errors.Is(e, r.ErrNotFound) {
+	if _, e := doctemplates.GroupByKey(invoice([]string{"order"}), empty, r.Cells("A")); !errors.Is(e, r.ErrNotFound) {
 		t.Errorf("a group of no rows: %v", e)
 	}
 }

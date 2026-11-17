@@ -58,7 +58,7 @@ func resolveIssueGroup(layout doctemplates.Document, snap r.Snapshot, row *int, 
 	if row != nil {
 		group, e = doctemplates.GroupOf(layout, snap, *row)
 	} else {
-		group, e = doctemplates.GroupByKey(layout, snap, *key)
+		group, e = doctemplates.GroupByKey(layout, snap, r.Cells(*key...))
 	}
 	if e != nil {
 		return nil, e

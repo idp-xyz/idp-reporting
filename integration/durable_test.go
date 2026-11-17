@@ -199,11 +199,11 @@ func TestDurablePostgresContract(t *testing.T) {
 			t.Fatal(e)
 		}
 		rows, e := v.s.Rows(ctx, v.p, j.SnapshotID, 100, "")
-		if e != nil || len(rows.Rows) != 3 || rows.Rows[0][0] != "customer_a" || rows.Totals["ar.open_balance"] != "9007199254740993.01" {
+		if e != nil || len(rows.Rows) != 3 || rows.Rows[0][0] != r.Text("customer_a") || rows.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 			t.Fatal(rows, e)
 		}
 		current, e := v.s.Query(ctx, v.p, q)
-		if e != nil || current.Totals["ar.open_balance"] != "999.00" {
+		if e != nil || current.Totals["ar.open_balance"] != r.Text("999.00") {
 			t.Fatal(current, e)
 		}
 	})
@@ -356,7 +356,7 @@ func TestDurablePostgresContract(t *testing.T) {
 			t.Fatal(e)
 		}
 		rows, e := v.s.Rows(ctx, v.p, j.SnapshotID, 100, "")
-		if e != nil || len(rows.Rows) != 3 || rows.Totals["ar.open_balance"] != "9007199254740993.01" {
+		if e != nil || len(rows.Rows) != 3 || rows.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 			t.Fatal(rows, e)
 		}
 		g.Timezone = "UTC"
@@ -678,7 +678,7 @@ func TestDurablePostgresContract(t *testing.T) {
 		q := contractsim.FinancialQuery()
 		q.Page.Limit = 100
 		result, e := s.Query(ctx, v.p, q)
-		if e != nil || len(result.Rows) != 60 || result.Rows[59][0] != "row_0059" || result.Totals["ar.open_balance"] != "60.00" || v.source.ReadCalls() != 2 {
+		if e != nil || len(result.Rows) != 60 || result.Rows[59][0] != r.Text("row_0059") || result.Totals["ar.open_balance"] != r.Text("60.00") || v.source.ReadCalls() != 2 {
 			t.Fatal(len(result.Rows), result.Totals, v.source.ReadCalls(), e)
 		}
 	})

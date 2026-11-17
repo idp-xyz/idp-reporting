@@ -295,8 +295,8 @@ type SourcePage struct {
 	Ref        string
 	QueryHash  string
 	Watermark  string
-	Rows       [][]string
-	Totals     map[string]string
+	Rows       [][]Cell
+	Totals     map[string]Cell
 	NextCursor string
 }
 
@@ -315,12 +315,12 @@ type Connection struct {
 	Adapter      Adapter
 }
 type Result struct {
-	Columns      []Column          `json:"columns"`
-	Rows         [][]string        `json:"rows"`
-	Totals       map[string]string `json:"totals"`
-	Completeness string            `json:"completeness"`
-	Issues       []string          `json:"issues"`
-	Evidence     Evidence          `json:"evidence"`
+	Columns      []Column        `json:"columns"`
+	Rows         [][]Cell        `json:"rows"`
+	Totals       map[string]Cell `json:"totals"`
+	Completeness string          `json:"completeness"`
+	Issues       []string        `json:"issues"`
+	Evidence     Evidence        `json:"evidence"`
 }
 type Evidence struct {
 	QueryHash string `json:"query_hash"`
@@ -494,7 +494,7 @@ type IssueCancellationView struct {
 // values in their order, how many rows the group has and the digest of those rows.
 type IssueGroupView struct {
 	Fields     []string `json:"fields"`
-	Key        []string `json:"key"`
+	Key        []Cell   `json:"key"`
 	RowCount   int      `json:"row_count"`
 	RowsSHA256 string   `json:"rows_sha256"`
 }

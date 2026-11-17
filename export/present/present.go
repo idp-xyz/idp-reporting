@@ -173,7 +173,12 @@ func Build(s r.Snapshot, p r.Presentation) (*Table, error) {
 			groups = append(groups, &group{rows: []int{i}})
 			continue
 		}
-		key := row[by]
+		// The group's key is the frozen text of the subtotal column. A cell without a value there fails closed until a column can
+		// declare one (S26-B decides the group of the rows without a value).
+		key, e := row[by].Required()
+		if e != nil {
+			return nil, e
+		}
 		g, ok := position[key]
 		if !ok {
 			g = &group{key: key}
@@ -195,7 +200,11 @@ func Build(s r.Snapshot, p r.Presentation) (*Table, error) {
 		for _, i := range g.rows {
 			out := Row{Index: i, Cells: make([]Cell, len(t.Columns))}
 			for k, c := range t.Columns {
-				v := rows[i][c.Index]
+				// A cell is printed, marked and summed by its text; one without a value fails closed (S26-B: what each does with it).
+				v, e := rows[i][c.Index].Required()
+				if e != nil {
+					return nil, e
+				}
 				cell, e := c.cell(v)
 				if e != nil {
 					return nil, e
@@ -232,12 +241,16 @@ func Build(s r.Snapshot, p r.Presentation) (*Table, error) {
 	totals := make([]Cell, len(t.Columns))
 	some := false
 	for k, c := range t.Columns {
-		v, ok := s.Result.Totals[c.Source.ID]
+		total, ok := s.Result.Totals[c.Source.ID]
 		if !metrics[c.Source.ID] || !ok {
 			if t.TotalLabelAt < 0 {
 				t.TotalLabelAt = k
 			}
 			continue
+		}
+		v, e := total.Required()
+		if e != nil {
+			return nil, e
 		}
 		cell, e := c.cell(v)
 		if e != nil {

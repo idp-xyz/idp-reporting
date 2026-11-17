@@ -26,13 +26,13 @@ func ledger() r.Snapshot {
 		ExpiresAt: time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC),
 		Result: r.Result{
 			Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "year", Label: "年份", Type: "integer"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}, {ID: "count", Label: "笔数", Type: "integer", Unit: "笔"}},
-			Rows: [][]string{
+			Rows: r.CellRows([][]string{
 				{"甲", "2026", "100.25", "3"},
 				{"乙", "2026", "-0.24", "0"},
 				{"甲", "2025", "9007199254740993.01", "9007199254740993"},
 				{"=SUM(A1)", "2025", "0.00", "1"},
-			},
-			Totals: map[string]string{"amount": "9007199254741093.02", "count": "9007199254740997"},
+			}),
+			Totals: r.CellTotals(map[string]string{"amount": "9007199254741093.02", "count": "9007199254740997"}),
 			// The data class is the snapshot's own word since S08-A; the fixture is a simulator's, as every workbook was labelled before.
 			Evidence: r.Evidence{DataClass: r.DataClassSimulator},
 		},

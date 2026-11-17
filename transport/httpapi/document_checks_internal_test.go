@@ -38,7 +38,7 @@ func snapshotOf(columns []string, rows ...[]string) r.Snapshot {
 	for _, id := range columns {
 		s.Result.Columns = append(s.Result.Columns, r.Column{ID: id, Type: "string"})
 	}
-	s.Result.Rows = rows
+	s.Result.Rows = r.CellRows(rows)
 	return s
 }
 

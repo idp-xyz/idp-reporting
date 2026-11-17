@@ -154,7 +154,7 @@ func TestIssueByGroupNamedByKeyOrByRowIsOneRequest(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &rec)
 	var raw map[string]any
 	json.Unmarshal(w.Body.Bytes(), &raw)
-	if w.Code != 200 || rec.State != "succeeded" || rec.Number != "AR-000001" || rec.RowIndex != nil || rec.Group == nil || rec.Group.RowCount != 3 || rec.Group.Key[0] != "customer_a" || rec.Group.Fields[0] != "customer.id" || len(rec.Group.RowsSHA256) != 64 {
+	if w.Code != 200 || rec.State != "succeeded" || rec.Number != "AR-000001" || rec.RowIndex != nil || rec.Group == nil || rec.Group.RowCount != 3 || rec.Group.Key[0] != r.Text("customer_a") || rec.Group.Fields[0] != "customer.id" || len(rec.Group.RowsSHA256) != 64 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if _, has := raw["row_index"]; has {
@@ -226,15 +226,19 @@ func TestIssueByGroupRequestShapes(t *testing.T) {
 		code int
 		want string
 	}{
-		"both":                          {v.body(id, map[string]any{"group": []string{"customer_a"}, "row_index": 0}), 400, "INVALID_REQUEST"},
-		"neither":                       {v.body(id, nil), 400, "INVALID_REQUEST"},
-		"a group of 1.x":                {v.body(v.template, map[string]any{"group": []string{"customer_a"}}), 400, "INVALID_REQUEST"},
-		"an empty group of 1.x":         {v.body(v.template, map[string]any{"group": []string{}}), 400, "INVALID_REQUEST"},
-		"a group and a row of 1.x":      {v.body(v.template, map[string]any{"group": []string{"customer_a"}, "row_index": 0}), 400, "INVALID_REQUEST"},
-		"too short a key":               {v.body(id, map[string]any{"group": []string{}}), 400, "INVALID_REQUEST"},
-		"too long a key":                {v.body(id, map[string]any{"group": []string{"customer_a", "current"}}), 400, "INVALID_REQUEST"},
-		"a key too short for two":       {v.body(two, map[string]any{"group": []string{"customer_a"}}), 400, "INVALID_REQUEST"},
-		"a null group":                  {v.body(id, map[string]any{"group": nil}), 400, "INVALID_REQUEST"},
+		"both":                     {v.body(id, map[string]any{"group": []string{"customer_a"}, "row_index": 0}), 400, "INVALID_REQUEST"},
+		"neither":                  {v.body(id, nil), 400, "INVALID_REQUEST"},
+		"a group of 1.x":           {v.body(v.template, map[string]any{"group": []string{"customer_a"}}), 400, "INVALID_REQUEST"},
+		"an empty group of 1.x":    {v.body(v.template, map[string]any{"group": []string{}}), 400, "INVALID_REQUEST"},
+		"a group and a row of 1.x": {v.body(v.template, map[string]any{"group": []string{"customer_a"}, "row_index": 0}), 400, "INVALID_REQUEST"},
+		"too short a key":          {v.body(id, map[string]any{"group": []string{}}), 400, "INVALID_REQUEST"},
+		"too long a key":           {v.body(id, map[string]any{"group": []string{"customer_a", "current"}}), 400, "INVALID_REQUEST"},
+		"a key too short for two":  {v.body(two, map[string]any{"group": []string{"customer_a"}}), 400, "INVALID_REQUEST"},
+		"a null group":             {v.body(id, map[string]any{"group": nil}), 400, "INVALID_REQUEST"},
+		// A key is a list of cells in the core (S26-A, ADR 0028); in a request it is still a list of texts, and a null in it is refused
+		// where it always was, until a dimension can declare that it may be absent (S26-B).
+		"a null as the key's value":     {v.body(id, map[string]any{"group": []any{nil}}), 400, "INVALID_REQUEST"},
+		"a null among the key's values": {v.body(two, map[string]any{"group": []any{"customer_a", nil}}), 400, "INVALID_REQUEST"},
 		"a group that is a string":      {v.body(id, map[string]any{"group": "customer_a"}), 400, "INVALID_REQUEST"},
 		"a group of numbers":            {v.body(id, map[string]any{"group": []int{1}}), 400, "INVALID_REQUEST"},
 		"a group of an object":          {v.body(id, map[string]any{"group": []any{map[string]any{"a": "b"}}}), 400, "INVALID_REQUEST"},

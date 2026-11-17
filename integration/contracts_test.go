@@ -256,11 +256,11 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 			t.Fatal(e)
 		}
 		rows, e := v.s.Rows(ctx, v.p, j.SnapshotID, 1, "")
-		if e != nil || rows.Rows[0][0] != "customer_a" || rows.Totals["ar.open_balance"] != "9007199254740993.01" {
+		if e != nil || rows.Rows[0][0] != r.Text("customer_a") || rows.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 			t.Fatal(rows, e)
 		}
 		next, e := v.s.Rows(ctx, v.p, j.SnapshotID, 1, rows.NextCursor)
-		if e != nil || next.Rows[0][0] != "customer_b" {
+		if e != nil || next.Rows[0][0] != r.Text("customer_b") {
 			t.Fatal(next, e)
 		}
 		_, e = v.s.Rows(ctx, v.p, j.SnapshotID, 1, rows.NextCursor+"tampered")
@@ -284,7 +284,7 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 			t.Fatal(e)
 		}
 		rows, e := v.s.Rows(ctx, v.p, j.SnapshotID, 100, "")
-		if e != nil || len(rows.Rows) != 3 || rows.Totals["ar.open_balance"] != "9007199254740993.01" {
+		if e != nil || len(rows.Rows) != 3 || rows.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 			t.Fatal(rows, e)
 		}
 	})
@@ -717,7 +717,7 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 		sum := sha256.Sum256([]byte(frozenTemplate))
 		templateID, digest := strings.Repeat("a", 32), hex.EncodeToString(sum[:])
 		rows := stored.Result.Rows
-		group := r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0, 1, 2}, RowsSHA256: r.RowsDigest(rows)}
+		group := r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: []int{0, 1, 2}, RowsSHA256: r.RowsDigest(rows)}
 		job := func(key string, g r.IssueGroup) r.Job {
 			return r.Job{ID: r.NewID(), Owner: stored.Owner, Kind: "issue", State: "queued", Key: key, RequestHash: r.IssueGroupRequestHash(templateID, 1, digest, stored.ID, g), Query: stored.Query, Prepared: stored.Prepared,
 				SnapshotID: stored.ID, Format: "pdf", TemplateID: templateID, TemplateVersion: 1, TemplateSHA256: digest, Template: frozenTemplate, Group: &g}
@@ -755,7 +755,7 @@ func runContract(t *testing.T, through via, factory func(*testing.T) r.Repositor
 		// A record whose group is not the job's is refused and publishes nothing.
 		wrong := rec
 		wg := group.Clone()
-		wg.Key = []string{"x"}
+		wg.Key = r.Cells("x")
 		wg.Fields = []string{"x"}
 		wrong.Group = &wg
 		mustError(t, v.repo.Publish(ctx, *claim, r.Publication{Artifact: &artifact, Issue: &wrong}), r.ErrIntegrity)
