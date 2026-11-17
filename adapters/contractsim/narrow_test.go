@@ -26,7 +26,7 @@ func page(t *testing.T, seed contractsim.Fixture, q r.QuerySpec) r.SourcePage {
 func customers(p r.SourcePage) []string {
 	out := []string{}
 	for _, row := range p.Rows {
-		out = append(out, row[0])
+		out = append(out, row[0].Text())
 	}
 	return out
 }
@@ -61,25 +61,25 @@ func TestTheFixtureAppliesEveryDeclaredFilterAndTotalsTheNarrowedRows(t *testing
 		q := contractsim.FinancialQuery()
 		q.Filters = []r.Filter{c.filter}
 		got := page(t, seed, q)
-		if !slices.Equal(customers(got), c.rows) || got.Totals["ar.open_balance"] != c.total || got.NextCursor != "" {
+		if !slices.Equal(customers(got), c.rows) || got.Totals["ar.open_balance"] != r.Text(c.total) || got.NextCursor != "" {
 			t.Errorf("%s %s %q: %v %v", c.filter.Field, c.filter.Operator, c.filter.Value, customers(got), got.Totals)
 		}
 	}
 	// Filters are a conjunction.
 	q := contractsim.FinancialQuery()
 	q.Filters = []r.Filter{{Field: "ar.open_balance", Operator: "ge", Value: "0.00"}, {Field: "customer.id", Operator: "in", Value: `["customer_a","customer_b"]`}}
-	if got := page(t, seed, q); !slices.Equal(customers(got), []string{"customer_a"}) || got.Totals["ar.open_balance"] != "100.25" {
+	if got := page(t, seed, q); !slices.Equal(customers(got), []string{"customer_a"}) || got.Totals["ar.open_balance"] != r.Text("100.25") {
 		t.Fatalf("%v %v", customers(got), got.Totals)
 	}
 	// The shipments fixture declares its own; an integer bound compares exactly.
 	ship := contractsim.Shipment().Fixture()
 	sq := contractsim.ShipmentQuery()
 	sq.Filters = []r.Filter{{Field: "shipment.count", Operator: "ge", Value: "9007199254740993"}}
-	if got := page(t, ship, sq); len(got.Rows) != 1 || got.Rows[0][0] != "CN" || got.Totals["shipment.count"] != "9007199254740993" {
+	if got := page(t, ship, sq); len(got.Rows) != 1 || got.Rows[0][0] != r.Text("CN") || got.Totals["shipment.count"] != r.Text("9007199254740993") {
 		t.Fatalf("%+v", got)
 	}
 	sq.Filters = []r.Filter{{Field: "shipment.destination_country", Operator: "in", Value: `["DE","US"]`}, {Field: "shipment.service_code", Operator: "eq", Value: "standard"}}
-	if got := page(t, ship, sq); len(got.Rows) != 1 || got.Rows[0][0] != "DE" || got.Totals["shipment.count"] != "7" {
+	if got := page(t, ship, sq); len(got.Rows) != 1 || got.Rows[0][0] != r.Text("DE") || got.Totals["shipment.count"] != r.Text("7") {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -97,7 +97,7 @@ func TestTheFixtureSortsStablyAndTheSameAcrossPages(t *testing.T) {
 	} {
 		q := contractsim.FinancialQuery()
 		q.Sort = c.sort
-		if got := page(t, seed, q); !slices.Equal(customers(got), c.rows) || got.Totals["ar.open_balance"] != "9007199254740993.01" {
+		if got := page(t, seed, q); !slices.Equal(customers(got), c.rows) || got.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 			t.Errorf("%v: %v", c.sort, customers(got))
 		}
 	}
@@ -125,11 +125,11 @@ func TestTheFixtureSortsStablyAndTheSameAcrossPages(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	var paged [][]string
+	var paged [][]r.Cell
 	cursor := ""
 	for pages := 0; ; pages++ {
 		pg, e := sim.ReadPage(ctx, sc, prepared, cursor, 7)
-		if e != nil || pg.Totals["ar.open_balance"] != "420.00" { // 12 rows each of 5, 6, 7, 8 and 9: 12 × 35
+		if e != nil || pg.Totals["ar.open_balance"] != r.Text("420.00") { // 12 rows each of 5, 6, 7, 8 and 9: 12 × 35
 			t.Fatal(pg.Totals, e)
 		}
 		paged = append(paged, pg.Rows...)
@@ -148,7 +148,7 @@ func TestTheFixtureSortsStablyAndTheSameAcrossPages(t *testing.T) {
 	for i, row := range whole.Rows {
 		wantBalance := fmt.Sprintf("%d.00", 9-i/12)
 		wantCustomer := fmt.Sprintf("customer_%03d", (9-i/12)+10*(i%12))
-		if row[2] != wantBalance || row[0] != wantCustomer {
+		if row[2] != r.Text(wantBalance) || row[0] != r.Text(wantCustomer) {
 			t.Fatalf("row %d: %v, want %s %s", i, row, wantCustomer, wantBalance)
 		}
 	}

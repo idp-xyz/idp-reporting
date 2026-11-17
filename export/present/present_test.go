@@ -17,13 +17,13 @@ func ledger() r.Snapshot {
 		Query: r.QuerySpec{Dataset: r.Ref{ID: "finance.ledger", Version: "1"}, Dimensions: []string{"customer", "year"}, Metrics: []r.Ref{{ID: "amount", Version: "1"}, {ID: "count", Version: "1"}}},
 		Result: r.Result{
 			Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "year", Label: "年份", Type: "integer"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2, Currency: "CNY"}, {ID: "count", Label: "笔数", Type: "integer", Unit: "笔"}},
-			Rows: [][]string{
+			Rows: r.CellRows([][]string{
 				{"甲", "2026", "1234567.89", "3"},
 				{"乙", "2026", "-0.50", "0"},
 				{"甲", "2025", "0.00", "9007199254740993"},
 				{"", "2025", "100.00", "1"},
-			},
-			Totals: map[string]string{"amount": "1234667.39", "count": "9007199254740997"},
+			}),
+			Totals: r.CellTotals(map[string]string{"amount": "1234667.39", "count": "9007199254740997"}),
 		},
 	}
 }
@@ -286,9 +286,9 @@ func TestBuildListsTotalsWhenEveryShownColumnIsAMetric(t *testing.T) {
 	s.Query.Metrics = append(s.Query.Metrics, r.Ref{ID: "status", Version: "1"})
 	s.Result.Columns = append(s.Result.Columns, r.Column{ID: "status", Label: "状态", Type: "string"})
 	for i := range s.Result.Rows {
-		s.Result.Rows[i] = append(s.Result.Rows[i], "open")
+		s.Result.Rows[i] = append(s.Result.Rows[i], r.Text("open"))
 	}
-	s.Result.Totals["status"] = "mixed"
+	s.Result.Totals["status"] = r.Text("mixed")
 	table, err = present.Build(s, r.Presentation{Columns: []r.PresentedColumn{{ID: "customer", Align: r.AlignLeft}, {ID: "status", Align: r.AlignLeft}, {ID: "amount", Align: r.AlignRight}}, SubtotalBy: "customer"})
 	if err != nil || table.TotalLabelAt != 0 || !equal(cellTexts(table.Totals), []string{"合计", "mixed", "1,234,667.39"}) || table.Columns[1].Metric {
 		t.Errorf("a string metric: totals %v at %d, metric %v (%v)", cellTexts(table.Totals), table.TotalLabelAt, table.Columns[1].Metric, err)
@@ -318,7 +318,7 @@ func TestBuildRefusesWhatDoesNotFit(t *testing.T) {
 	}
 	// A numeric cell that is not an exact number is a snapshot that cannot be trusted.
 	bad := ledger()
-	bad.Result.Rows[1][2] = "1,000"
+	bad.Result.Rows[1][2] = r.Text("1,000")
 	if _, err := present.Build(bad, present.Whole(bad)); !errors.Is(err, r.ErrIntegrity) {
 		t.Errorf("a grouped value in the snapshot: %v", err)
 	}

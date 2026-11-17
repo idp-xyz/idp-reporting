@@ -36,12 +36,13 @@ type wireWatch struct {
 	mu       sync.Mutex
 	answered map[string]any            // the read of the last /reads answer
 	sent     map[string]map[string]any // the last segment of a route → the read its last request carried
+	raw      map[string][]byte         // the last segment of a route → the body of its last request
 	count    int                       // the requests the source received
 }
 
 func watchWire(t *testing.T) *wireWatch {
 	t.Helper()
-	o := &wireWatch{sim: contractsim.Financial(), sent: map[string]map[string]any{}}
+	o := &wireWatch{sim: contractsim.Financial(), sent: map[string]map[string]any{}, raw: map[string][]byte{}}
 	owner := contractsim.DemoOwner(contractsim.DemoPrincipal(), contractsim.FinanceIntegration)
 	grant := contractsim.DefaultGrant()
 	grant.IssueDocuments = true
@@ -60,6 +61,7 @@ func watchWire(t *testing.T) *wireWatch {
 		route := req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:]
 		o.mu.Lock()
 		o.count++
+		o.raw[route] = body
 		if in.Read != nil {
 			o.sent[route] = in.Read
 		}
@@ -91,6 +93,11 @@ func watchWire(t *testing.T) *wireWatch {
 
 func (o *wireWatch) answer() map[string]any { o.mu.Lock(); defer o.mu.Unlock(); return o.answered }
 func (o *wireWatch) requests() int          { o.mu.Lock(); defer o.mu.Unlock(); return o.count }
+func (o *wireWatch) body(route string) []byte {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.raw[route]
+}
 func (o *wireWatch) request(route string) map[string]any {
 	o.mu.Lock()
 	defer o.mu.Unlock()

@@ -91,7 +91,7 @@ func TestTableValidation(t *testing.T) {
 func TestBindTableTakesRowsFromTheSnapshot(t *testing.T) {
 	d := tableDocument()
 	s := r.Snapshot{Owner: r.Owner{Integration: "source"}, Query: r.QuerySpec{Dataset: r.Ref{ID: "d", Version: "1"}, Dimensions: []string{"customer"}, Metrics: []r.Ref{{ID: "amount"}}},
-		Result: r.Result{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2}}, Rows: [][]string{{"a", "1.00"}, {"b", "2.50"}}, Totals: map[string]string{"amount": "3.50"}}}
+		Result: r.Result{Columns: []r.Column{{ID: "customer", Label: "客户", Type: "string"}, {ID: "amount", Label: "金额", Type: "decimal", Scale: 2}}, Rows: r.CellRows([][]string{{"a", "1.00"}, {"b", "2.50"}}), Totals: r.CellTotals(map[string]string{"amount": "3.50"})}}
 	data, e := doctemplates.BindTable(d, s)
 	if e != nil || len(data.Rows) != 2 || data.Rows[1][1] != "2.50" || data.Columns[1].Label != "金额" || data.Metric[0] || !data.Metric[1] || data.Totals["amount"] != "3.50" || len(data.Totals) != 1 {
 		t.Fatalf("%+v %v", data, e)
@@ -118,11 +118,11 @@ func TestBindTableTakesRowsFromTheSnapshot(t *testing.T) {
 	}
 	// A snapshot row shorter than its columns, or with invalid UTF-8, is an integrity failure.
 	short := s
-	short.Result.Rows = [][]string{{"a"}}
+	short.Result.Rows = r.CellRows([][]string{{"a"}})
 	if _, e = doctemplates.BindTable(tableDocument(), short); !errors.Is(e, r.ErrIntegrity) {
 		t.Errorf("short row: %v", e)
 	}
-	short.Result.Rows = [][]string{{"a", "1.\xff"}}
+	short.Result.Rows = r.CellRows([][]string{{"a", "1.\xff"}})
 	if _, e = doctemplates.BindTable(tableDocument(), short); !errors.Is(e, r.ErrIntegrity) {
 		t.Errorf("invalid UTF-8: %v", e)
 	}

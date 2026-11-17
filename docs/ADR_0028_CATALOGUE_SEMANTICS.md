@@ -164,6 +164,20 @@ The cell type goes first, because everything else of this ADR is written on top 
 - **S26-C**: `datetime` and `aggregation`, through the same layers; the English catalogue; a baseline task.
 - **S26-D**: the documents: API, the protocol, the onboarding guide, SECURITY_REVIEW; the notes in ADR 0003, 0004, 0023 and 0024.
 
+Amended 2026-11-13, with S26-A (docs/S26A_SCOPE.md). No decision changed. What the first slice settled that the list left open:
+
+- **The wire is S26-B's.** S26-A makes the cell the type of the core and of everything that reads a row. The structures of the
+  source protocol and the group key of an issue request stay lists of texts until S26-B: the protocol's revision and the API have
+  no absent value before a column can declare one, and the revision that brings `nullable` brings `null` with it. Until then a
+  `null` in an answer or in a request is refused where it always was, in the same words. The strict decoder's exception
+  (decision 1, "one rule, held by one type") is in place and tested, and no type that is decoded strictly holds a cell yet.
+- **The stores needed no change**: their payloads are the JSON of the core's types, and that JSON is what it was.
+- **Every reader fails closed until S26-B.** Wherever a cell is printed, measured, added or grouped, a cell without a value is an
+  integrity failure in S26-A, because no snapshot can hold one. Those calls are the list of the places where S26-B writes the rule
+  of decision 1: an empty cell in an export, nothing in a document's field, a sum that skips it, the group of the rows without
+  a value.
+- **A host's own Go adapter** (ADR 0022) builds against this version only when its pages hold cells. None exists.
+
 ## Questions for the product owner
 
 - **Q1, absent values.** (a) A nullable column whose absent value is the empty text (recommended). (b) JSON `null` in the rows.

@@ -101,7 +101,10 @@ func newCheckFixture(t *testing.T, customers []string, withAssets bool) *checkFi
 	if e != nil {
 		t.Fatal(e)
 	}
-	f.rows = snap.Result.Rows
+	f.rows = make([][]string, len(snap.Result.Rows))
+	for i, row := range snap.Result.Rows {
+		f.rows[i] = r.Texts(row)
+	}
 	demo, _ := httpapi.DemoBearer(secret, p)
 	auth := func(req *http.Request) (r.Principal, error) {
 		v, e := demo(req)

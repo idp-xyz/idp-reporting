@@ -74,7 +74,7 @@ var groupScenarios = []ruleScenario{
 		g := NewGroupRig(t, newEnv)
 		first := g.ReserveGroup(1, byCustomerA())
 		// the group made again, its lists made another way, is the same intent
-		again, e := g.PrepareGroup(1, &r.IssueGroup{Fields: []string{"customer.id"}, Key: []string{"customer_a"}, Rows: []int{0, 2, 4}, RowsSHA256: literalDigest()})
+		again, e := g.PrepareGroup(1, &r.IssueGroup{Fields: []string{"customer.id"}, Key: r.Cells("customer_a"), Rows: []int{0, 2, 4}, RowsSHA256: literalDigest()})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -143,7 +143,7 @@ var groupScenarios = []ruleScenario{
 		bad := map[string]func() *r.IssueGroup{
 			"a digest of other rows": func() *r.IssueGroup {
 				x := byCustomerA()
-				x.RowsSHA256 = r.RowsDigest(rowsOf(GroupData, []int{0, 2}))
+				x.RowsSHA256 = r.RowsDigest(r.CellRows(rowsOf(GroupData, []int{0, 2})))
 				return x
 			},
 			"a digest of nothing":  func() *r.IssueGroup { x := byCustomerA(); x.RowsSHA256 = strings.Repeat("0", 64); return x },
@@ -151,25 +151,25 @@ var groupScenarios = []ruleScenario{
 			"a row left out":       func() *r.IssueGroup { return GroupOf([]string{"customer.id"}, []string{"customer_a"}, 0, 2) },
 			"a row of another key": func() *r.IssueGroup { return GroupOf([]string{"customer.id"}, []string{"customer_a"}, 0, 1, 2, 4) },
 			"the first row past":   func() *r.IssueGroup { x := byCustomerA(); x.Rows = []int{0, 2, 4, 5}; return x },
-			"another customer":     func() *r.IssueGroup { x := byCustomerA(); x.Key = []string{"customer_b"}; return x },
+			"another customer":     func() *r.IssueGroup { x := byCustomerA(); x.Key = r.Cells("customer_b"); return x },
 			"a customer the read lacks": func() *r.IssueGroup {
 				x := byCustomerA()
-				x.Key = []string{"customer_z"}
+				x.Key = r.Cells("customer_z")
 				return x
 			},
-			"a key of another case": func() *r.IssueGroup { x := byCustomerA(); x.Key = []string{"Customer_a"}; return x },
+			"a key of another case": func() *r.IssueGroup { x := byCustomerA(); x.Key = r.Cells("Customer_a"); return x },
 			"a metric as a field": func() *r.IssueGroup {
-				return &r.IssueGroup{Fields: []string{"ar.open_balance"}, Key: []string{"10.00"}, Rows: []int{0}, RowsSHA256: r.RowsDigest(rowsOf(GroupData, []int{0}))}
+				return &r.IssueGroup{Fields: []string{"ar.open_balance"}, Key: r.Cells("10.00"), Rows: []int{0}, RowsSHA256: r.RowsDigest(r.CellRows(rowsOf(GroupData, []int{0})))}
 			},
 			"a field the read lacks": func() *r.IssueGroup {
-				return &r.IssueGroup{Fields: []string{"ghost"}, Key: []string{"customer_a"}, Rows: []int{0, 2, 4}, RowsSHA256: literalDigest()}
+				return &r.IssueGroup{Fields: []string{"ghost"}, Key: r.Cells("customer_a"), Rows: []int{0, 2, 4}, RowsSHA256: literalDigest()}
 			},
 			"the whole snapshot as a keyed group": func() *r.IssueGroup {
-				return &r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0, 2, 4}, RowsSHA256: literalDigest()}
+				return &r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: []int{0, 2, 4}, RowsSHA256: literalDigest()}
 			},
 			"the whole snapshot short of a row": func() *r.IssueGroup { return GroupOf(nil, nil, 0, 1, 2, 3) },
 			"a keyed group as the whole snapshot": func() *r.IssueGroup {
-				return &r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{0, 1, 2, 3, 4}, RowsSHA256: literalDigest()}
+				return &r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: []int{0, 1, 2, 3, 4}, RowsSHA256: literalDigest()}
 			},
 			"another field's key": func() *r.IssueGroup { return GroupOf([]string{"aging.bucket"}, []string{"customer_a"}, 0, 2, 4) },
 		}
@@ -199,7 +199,7 @@ var groupScenarios = []ruleScenario{
 			t.Fatal("customer_b of the frozen read, whom the current data lacks:", e)
 		}
 		now := GroupOf([]string{"customer.id"}, []string{"customer_a"}, 0)
-		now.RowsSHA256 = r.RowsDigest([][]string{{"customer_a", "current", "999.00"}})
+		now.RowsSHA256 = r.RowsDigest(r.CellRows([][]string{{"customer_a", "current", "999.00"}}))
 		_, e := g.PrepareGroup(3, now)
 		is(t, e, r.ErrDenied, "the current data's group")
 	}},
@@ -223,7 +223,7 @@ var groupScenarios = []ruleScenario{
 		g.Env.SetGrant(g.SC, grant)
 		g.Prep = g.Read(g.SC)
 		group := func(rows [][]string, ids []int) *r.IssueGroup {
-			return &r.IssueGroup{Fields: []string{"customer.id"}, Key: []string{"customer_3"}, Rows: ids, RowsSHA256: r.RowsDigest(rowsOf(rows, ids))}
+			return &r.IssueGroup{Fields: []string{"customer.id"}, Key: r.Cells("customer_3"), Rows: ids, RowsSHA256: r.RowsDigest(r.CellRows(rowsOf(rows, ids)))}
 		}
 		// customer_3 has 50 rows, up to row 248, which the source returns on its third page
 		if len(members) != 50 || members[49] != 248 {
@@ -250,20 +250,20 @@ var groupScenarios = []ruleScenario{
 			"a row twice":                    func(in *r.IssueIntent) { in.Group.Rows = []int{0, 0, 2, 4} },
 			"a negative row":                 func(in *r.IssueIntent) { in.Group.Rows = []int{-1, 0, 2, 4} },
 			"a row past the platform's rows": func(in *r.IssueIntent) { in.Group.Rows = []int{0, 2, 4, r.MaxRows} },
-			"more keys than fields":          func(in *r.IssueIntent) { in.Group.Key = []string{"customer_a", "x"} },
-			"fewer keys than fields":         func(in *r.IssueIntent) { in.Group.Key = []string{} },
+			"more keys than fields":          func(in *r.IssueIntent) { in.Group.Key = r.Cells("customer_a", "x") },
+			"fewer keys than fields":         func(in *r.IssueIntent) { in.Group.Key = r.Cells() },
 			"a field twice": func(in *r.IssueIntent) {
-				in.Group.Fields, in.Group.Key = []string{"customer.id", "customer.id"}, []string{"customer_a", "customer_a"}
+				in.Group.Fields, in.Group.Key = []string{"customer.id", "customer.id"}, r.Cells("customer_a", "customer_a")
 			},
 			"four fields": func(in *r.IssueIntent) {
-				in.Group.Fields, in.Group.Key = []string{"customer.id", "aging.bucket", "a", "b"}, []string{"customer_a", "current", "x", "y"}
+				in.Group.Fields, in.Group.Key = []string{"customer.id", "aging.bucket", "a", "b"}, r.Cells("customer_a", "current", "x", "y")
 			},
 			"an empty field name":      func(in *r.IssueIntent) { in.Group.Fields = []string{""} },
 			"a digest too short":       func(in *r.IssueIntent) { in.Group.RowsSHA256 = in.Group.RowsSHA256[:63] },
 			"a digest in upper case":   func(in *r.IssueIntent) { in.Group.RowsSHA256 = strings.ToUpper(in.Group.RowsSHA256) },
 			"a digest not hexadecimal": func(in *r.IssueIntent) { in.Group.RowsSHA256 = strings.Repeat("z", 64) },
 			"no digest":                func(in *r.IssueIntent) { in.Group.RowsSHA256 = "" },
-			"a key that is not UTF-8":  func(in *r.IssueIntent) { in.Group.Key = []string{"customer_a\xff"} },
+			"a key that is not UTF-8":  func(in *r.IssueIntent) { in.Group.Key = r.Cells("customer_a\xff") },
 			"job id empty":             func(in *r.IssueIntent) { in.JobID = "" },
 			"template version zero":    func(in *r.IssueIntent) { in.TemplateVersion = 0 },
 			"template digest empty":    func(in *r.IssueIntent) { in.TemplateSHA256 = "" },

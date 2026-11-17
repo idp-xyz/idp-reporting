@@ -79,7 +79,7 @@ func durableGroupIssues(t *testing.T) {
 		v := newDurable(t)
 		s := issueDurableService(t, v, &stampIssuer{})
 		snap := groupedDurable(t, v, s)
-		a, e := r.NewIssueGroup(snap, []string{"customer.id"}, []string{"customer_a"}, []int{0, 2, 4})
+		a, e := r.NewIssueGroup(snap, []string{"customer.id"}, r.Cells("customer_a"), []int{0, 2, 4})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -141,7 +141,7 @@ func durableGroupIssues(t *testing.T) {
 			t.Fatalf("%+v %v", done, e)
 		}
 		view, e := s.Issue(ctx, v.p, first.ID)
-		if e != nil || view.Group == nil || !slices.Equal(view.Group.Key, []string{"customer_a"}) || view.Group.RowCount != 3 || view.RowIndex != nil || view.Number != "AR-000001" {
+		if e != nil || view.Group == nil || !slices.Equal(view.Group.Key, r.Cells("customer_a")) || view.Group.RowCount != 3 || view.RowIndex != nil || view.Number != "AR-000001" {
 			t.Fatalf("%+v %v", view, e)
 		}
 		list, e := s.Issues(ctx, v.p, 10)
@@ -156,7 +156,7 @@ func durableGroupIssues(t *testing.T) {
 		v := newDurable(t)
 		base := issueDurableService(t, v, &stampIssuer{})
 		snap := groupedDurable(t, v, base)
-		g, e := r.NewIssueGroup(snap, []string{"customer.id"}, []string{"customer_a"}, []int{0, 2, 4})
+		g, e := r.NewIssueGroup(snap, []string{"customer.id"}, r.Cells("customer_a"), []int{0, 2, 4})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -187,7 +187,7 @@ func durableGroupIssues(t *testing.T) {
 		v := newDurable(t)
 		base := issueDurableService(t, v, &stampIssuer{})
 		snap := groupedDurable(t, v, base)
-		g, e := r.NewIssueGroup(snap, []string{"customer.id"}, []string{"customer_a"}, []int{0, 2, 4})
+		g, e := r.NewIssueGroup(snap, []string{"customer.id"}, r.Cells("customer_a"), []int{0, 2, 4})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -238,7 +238,7 @@ func durableGroupIssues(t *testing.T) {
 		v := newDurable(t)
 		s := issueDurableService(t, v, &stampIssuer{})
 		snap := groupedDurable(t, v, s)
-		g, e := r.NewIssueGroup(snap, []string{"customer.id"}, []string{"customer_a"}, []int{0, 2, 4})
+		g, e := r.NewIssueGroup(snap, []string{"customer.id"}, r.Cells("customer_a"), []int{0, 2, 4})
 		if e != nil {
 			t.Fatal(e)
 		}

@@ -36,7 +36,7 @@ func table(dims, metrics int, rows ...[]string) r.Snapshot {
 		ID:       "0123456789abcdef0123456789abcdef",
 		Query:    r.QuerySpec{Dataset: r.Ref{ID: "finance.ledger", Version: "2026.10"}, Companies: []string{"c-east", "c-west"}, AsOf: "2026-10-27", Timezone: "Asia/Shanghai"},
 		Prepared: r.PreparedRead{Watermark: "wm-42"},
-		Result:   r.Result{Totals: map[string]string{}, Rows: rows, Evidence: r.Evidence{DataClass: "contract-simulator"}},
+		Result:   r.Result{Totals: r.CellTotals(map[string]string{}), Rows: r.CellRows(rows), Evidence: r.Evidence{DataClass: "contract-simulator"}},
 	}
 	for i := range dims {
 		id := "d" + strconv.Itoa(i)
@@ -47,7 +47,7 @@ func table(dims, metrics int, rows ...[]string) r.Snapshot {
 		id := "m" + strconv.Itoa(i)
 		s.Query.Metrics = append(s.Query.Metrics, r.Ref{ID: id, Version: "1"})
 		s.Result.Columns = append(s.Result.Columns, r.Column{ID: id, Label: "金额" + strconv.Itoa(i), Type: "decimal", Scale: 2, Currency: "CNY"})
-		s.Result.Totals[id] = "1234567.89"
+		s.Result.Totals[id] = r.Text("1234567.89")
 	}
 	return s
 }
@@ -261,7 +261,7 @@ func TestBuildRefusesCharactersTheFontsDoNotCover(t *testing.T) {
 	const missing = '☃'
 	m := string(missing)
 	for name, change := range map[string]func(*r.Snapshot){
-		"value":     func(s *r.Snapshot) { s.Result.Rows[0][0] = "a" + m },
+		"value":     func(s *r.Snapshot) { s.Result.Rows[0][0] = r.Text("a" + m) },
 		"label":     func(s *r.Snapshot) { s.Result.Columns[0].Label = m },
 		"currency":  func(s *r.Snapshot) { s.Result.Columns[1].Currency = m },
 		"unit":      func(s *r.Snapshot) { s.Result.Columns[1].Unit = m },
@@ -294,7 +294,7 @@ func TestBuildRefusesMalformedOrTooWideSnapshots(t *testing.T) {
 	extraColumn.Result.Columns = append(extraColumn.Result.Columns, r.Column{ID: "x", Label: "x", Type: "string"})
 	badNumber := table(1, 1, []string{"a", "1234x"})
 	badTotal := table(1, 1, []string{"a", "1.00"})
-	badTotal.Result.Totals["m0"] = "1,000.00"
+	badTotal.Result.Totals["m0"] = r.Text("1,000.00")
 	for name, s := range map[string]r.Snapshot{"short row": short, "missing total": noTotal, "extra column": extraColumn, "no columns": {}, "a malformed number": badNumber, "a malformed total": badTotal} {
 		if _, err := build(s, fakeMetrics(), created); !errors.Is(err, r.ErrIntegrity) {
 			t.Errorf("%s: %v; want integrity failure", name, err)

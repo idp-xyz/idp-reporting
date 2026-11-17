@@ -382,7 +382,7 @@ func TestTheServiceRunsAFilteredAndSortedQuery(t *testing.T) {
 	q.Filters = []r.Filter{{Field: "ar.open_balance", Operator: "ge", Value: "0.00"}}
 	q.Sort = []r.Sort{{Field: "ar.open_balance", Direction: "desc"}}
 	res, err := s.Query(ctx, p, q)
-	if err != nil || len(res.Rows) != 2 || res.Rows[0][0] != "customer_c" || res.Rows[1][0] != "customer_a" || res.Totals["ar.open_balance"] != "9007199254740993.25" || res.Evidence.QueryHash != r.QueryHash(q) || res.Evidence.QueryHash == r.QueryHash(contractsim.FinancialQuery()) {
+	if err != nil || len(res.Rows) != 2 || res.Rows[0][0] != r.Text("customer_c") || res.Rows[1][0] != r.Text("customer_a") || res.Totals["ar.open_balance"] != r.Text("9007199254740993.25") || res.Evidence.QueryHash != r.QueryHash(q) || res.Evidence.QueryHash == r.QueryHash(contractsim.FinancialQuery()) {
 		t.Fatalf("%+v %v", res, err)
 	}
 	job, err := s.SubmitSnapshot(ctx, p, q, "narrowed")
@@ -397,7 +397,7 @@ func TestTheServiceRunsAFilteredAndSortedQuery(t *testing.T) {
 		t.Fatal(job, err)
 	}
 	page, err := s.Rows(ctx, p, job.SnapshotID, 10, "")
-	if err != nil || page.TotalRows != 2 || page.Rows[0][2] != "9007199254740893.00" || page.Rows[1][2] != "100.25" || page.Totals["ar.open_balance"] != "9007199254740993.25" || page.Evidence.QueryHash != r.QueryHash(q) {
+	if err != nil || page.TotalRows != 2 || page.Rows[0][2] != r.Text("9007199254740893.00") || page.Rows[1][2] != r.Text("100.25") || page.Totals["ar.open_balance"] != r.Text("9007199254740993.25") || page.Evidence.QueryHash != r.QueryHash(q) {
 		t.Fatalf("%+v %v", page, err)
 	}
 	snap, err := s.AuthorizedSnapshot(ctx, p, job.SnapshotID)

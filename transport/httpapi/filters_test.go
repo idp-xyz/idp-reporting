@@ -63,7 +63,7 @@ func TestQueriesAndSnapshotJobsTakeDeclaredFiltersAndRefuseTheRest(t *testing.T)
 		t.Fatal(w.Code, w.Body.String())
 	}
 	var res r.Result
-	if e := json.Unmarshal(w.Body.Bytes(), &res); e != nil || len(res.Rows) != 2 || res.Rows[0][0] != "customer_b" || res.Rows[1][0] != "customer_a" || res.Totals["ar.open_balance"] != "100.01" || res.Completeness != "complete" || res.Evidence.QueryHash != r.QueryHash(q) {
+	if e := json.Unmarshal(w.Body.Bytes(), &res); e != nil || len(res.Rows) != 2 || res.Rows[0][0] != r.Text("customer_b") || res.Rows[1][0] != r.Text("customer_a") || res.Totals["ar.open_balance"] != r.Text("100.01") || res.Completeness != "complete" || res.Evidence.QueryHash != r.QueryHash(q) {
 		t.Fatalf("%+v %v", res, e)
 	}
 	w = request(h, "POST", "/api/reporting/v1/snapshot-jobs", b, true)
@@ -82,7 +82,7 @@ func TestQueriesAndSnapshotJobsTakeDeclaredFiltersAndRefuseTheRest(t *testing.T)
 	}
 	w = request(h, "GET", "/api/reporting/v1/snapshots/"+j.SnapshotID+"/rows?limit=10", nil, true)
 	var page r.RowsPage
-	if e := json.Unmarshal(w.Body.Bytes(), &page); w.Code != 200 || e != nil || page.TotalRows != 2 || page.Rows[0][2] != "-0.24" || page.Totals["ar.open_balance"] != "100.01" {
+	if e := json.Unmarshal(w.Body.Bytes(), &page); w.Code != 200 || e != nil || page.TotalRows != 2 || page.Rows[0][2] != r.Text("-0.24") || page.Totals["ar.open_balance"] != r.Text("100.01") {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	// The same query without its filters is another snapshot: another hash, every row.

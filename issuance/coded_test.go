@@ -92,7 +92,7 @@ func TestIssuerIssuesASchema21TemplateWithItsImagesAndTheProductsNumber(t *testi
 		t.Fatal(e)
 	}
 	frozen, _ := doctemplates.Canonical(v.Layout)
-	group, e := r.NewIssueGroup(snap, []string{"customer"}, []string{"乙"}, []int{1, 3})
+	group, e := r.NewIssueGroup(snap, []string{"customer"}, r.Cells("乙"), []int{1, 3})
 	if e != nil {
 		t.Fatal(e)
 	}

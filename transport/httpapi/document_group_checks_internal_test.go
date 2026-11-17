@@ -35,7 +35,7 @@ func bandedWide(groups, columns int) (doctemplates.Document, r.Snapshot) {
 					row[j] = strings.Repeat("x", width)
 				}
 			}
-			s.Result.Rows = append(s.Result.Rows, row)
+			s.Result.Rows = append(s.Result.Rows, r.Cells(row...))
 		}
 	}
 	// A page header and a document footer of 24 field texts each and a table of 12 columns: 49 elements.
@@ -126,8 +126,8 @@ func TestBoundaryGroupsAreCappedAndKeepTheFirstAndTheLastGroup(t *testing.T) {
 		t.Errorf("a field the snapshot lacks: %v", err)
 	}
 	short := s
-	short.Result.Rows = append([][]string{}, s.Result.Rows...)
-	short.Result.Rows[0] = []string{"g000"}
+	short.Result.Rows = append([][]r.Cell{}, s.Result.Rows...)
+	short.Result.Rows[0] = r.Cells("g000")
 	if _, err := boundaryGroups(d, short, groups); err != r.ErrIntegrity {
 		t.Errorf("a short row: %v", err)
 	}

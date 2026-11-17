@@ -24,7 +24,7 @@ func TestShipmentUsesSameCore(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if result.Totals["shipment.count"] != "9007199254741000" || result.Rows[0][2] != "9007199254740993" || result.Columns[2].Type != "integer" {
+	if result.Totals["shipment.count"] != r.Text("9007199254741000") || result.Rows[0][2] != r.Text("9007199254740993") || result.Columns[2].Type != "integer" {
 		t.Fatalf("unexpected shipment result: %+v", result)
 	}
 }

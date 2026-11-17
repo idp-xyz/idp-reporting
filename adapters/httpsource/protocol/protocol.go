@@ -242,13 +242,16 @@ type Intent struct {
 	Group           *Group `json:"group,omitempty"`
 }
 
-// IntentOf is the wire form of an intent.
+// IntentOf is the wire form of an intent. On the wire a group's key is a list of texts (the protocol has no absent value until a
+// column can declare one, S26-B): a key the core accepts holds a value in every cell (reporting.ValidGroupShape), and the adapter
+// refuses a group that is not well formed before it writes the intent (httpsource's PrepareDocument), so no key is written here
+// whose cell has no value.
 func IntentOf(in r.IssueIntent) Intent {
 	read := ReadOf(in.Prepared)
 	out := Intent{JobID: in.JobID, Read: &read, RowIndex: in.RowIndex, RowSHA256: in.RowSHA256, TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion, TemplateSHA256: in.TemplateSHA256}
 	if in.Group != nil {
 		g := in.Group.Clone()
-		out.Group = &Group{Fields: g.Fields, Key: g.Key, Rows: g.Rows, RowsSHA256: g.RowsSHA256}
+		out.Group = &Group{Fields: g.Fields, Key: r.Texts(g.Key), Rows: g.Rows, RowsSHA256: g.RowsSHA256}
 	}
 	return out
 }
@@ -264,7 +267,7 @@ func (w Intent) IssueIntent(sc r.SourceContext) (r.IssueIntent, bool) {
 	}
 	in := r.IssueIntent{JobID: w.JobID, Prepared: p, RowIndex: w.RowIndex, RowSHA256: w.RowSHA256, TemplateID: w.TemplateID, TemplateVersion: w.TemplateVersion, TemplateSHA256: w.TemplateSHA256}
 	if w.Group != nil {
-		g := r.IssueGroup{Fields: w.Group.Fields, Key: w.Group.Key, Rows: w.Group.Rows, RowsSHA256: w.Group.RowsSHA256}.Clone()
+		g := r.IssueGroup{Fields: w.Group.Fields, Key: r.Cells(w.Group.Key...), Rows: w.Group.Rows, RowsSHA256: w.Group.RowsSHA256}.Clone()
 		in.Group = &g
 	}
 	return in, true

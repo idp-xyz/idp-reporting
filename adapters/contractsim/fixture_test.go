@@ -13,7 +13,7 @@ func TestPersistableFixtureProjectsOriginalScope(t *testing.T) {
 	g := contractsim.DefaultGrant()
 	p := r.PreparedRead{Ref: "frozen_ref", QueryHash: r.QueryHash(q), Watermark: "original"}
 	page, e := contractsim.ReadFrozenPage(context.Background(), seed, q, g, p, "", 1)
-	if e != nil || len(page.Rows) != 1 || page.Rows[0][2] != "100.25" || page.Totals["ar.open_balance"] != "9007199254740993.01" || page.NextCursor == "" {
+	if e != nil || len(page.Rows) != 1 || page.Rows[0][2] != r.Text("100.25") || page.Totals["ar.open_balance"] != r.Text("9007199254740993.01") || page.NextCursor == "" {
 		t.Fatal(page, e)
 	}
 	if len(seed.Records) != 5 {

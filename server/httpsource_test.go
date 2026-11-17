@@ -75,7 +75,7 @@ func TestTheShippedRegistryServesAnHTTPSourceEndToEnd(t *testing.T) {
 	}
 	status, header, body := s.do(t, "POST", api+"/queries", good, contractsim.FinancialQuery())
 	var result r.Result
-	if status != 200 || json.Unmarshal(body, &result) != nil || len(result.Rows) != 3 || result.Totals["ar.open_balance"] != "9007199254740993.01" {
+	if status != 200 || json.Unmarshal(body, &result) != nil || len(result.Rows) != 3 || result.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 		t.Fatalf("query: %d %s", status, body)
 	}
 	if result.Evidence.DataClass != "business-data" || header.Get("X-Reporting-Data-Class") != "business-data" {

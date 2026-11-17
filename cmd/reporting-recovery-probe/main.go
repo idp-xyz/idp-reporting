@@ -354,7 +354,7 @@ func (p *probe) existing() error {
 			expected = "9007199254741000"
 			second = "DE"
 		}
-		if rows.Totals[q.Metrics[0].ID] != expected {
+		if rows.Totals[q.Metrics[0].ID] != r.Text(expected) {
 			return r.ErrIntegrity
 		}
 		ex, e := p.submit("/exports", map[string]string{"snapshot_id": j.SnapshotID}, "initial")
@@ -446,7 +446,7 @@ func (p *probe) verifyExisting(label string) error {
 			return fmt.Errorf("immutable artifact continuity: %w", e)
 		}
 		rows, e := p.rows(a.Snapshot, a.Cursor)
-		if e != nil || len(rows.Rows) != 1 || rows.Rows[0][0] != a.SecondValue || rows.Evidence.SourceRef != a.SourceRef || rows.Evidence.Watermark != a.Watermark {
+		if e != nil || len(rows.Rows) != 1 || rows.Rows[0][0] != r.Text(a.SecondValue) || rows.Evidence.SourceRef != a.SourceRef || rows.Evidence.Watermark != a.Watermark {
 			return fmt.Errorf("frozen cursor/source continuity: %w", e)
 		}
 	}
@@ -473,7 +473,7 @@ func (p *probe) verify() error {
 	}
 	p.proof.PendingSnapshot = j
 	rows, e := p.rows(j.SnapshotID, "")
-	if e != nil || rows.Totals["ar.open_balance"] != "9007199254740993.01" {
+	if e != nil || rows.Totals["ar.open_balance"] != r.Text("9007199254740993.01") {
 		return r.ErrIntegrity
 	}
 	ex, e := p.wait(p.proof.PendingExport.ID)

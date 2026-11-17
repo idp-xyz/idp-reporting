@@ -196,11 +196,15 @@ func boundaryRows(config doctemplates.Document, snap r.Snapshot) ([]checkRowPick
 			if column >= len(row) {
 				return nil, r.ErrIntegrity
 			}
+			text, err := row[column].Required()
+			if err != nil {
+				return nil, err
+			}
 			// Strict comparisons keep the lowest index on a tie.
-			if w := displayWidth(row[column]); w > most {
+			if w := displayWidth(text); w > most {
 				longest, most = i, w
 			}
-			if w := displayWidth(row[column]); w < least {
+			if w := displayWidth(text); w < least {
 				shortest, least = i, w
 			}
 		}

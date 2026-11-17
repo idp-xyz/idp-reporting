@@ -93,6 +93,19 @@ type label struct {
 	Unit     string `json:"unit"`
 }
 
+// rowTexts is the rows as the texts their cells hold, nil for nil: what the expectations written for the evidence scripts list, as
+// they listed the rows when a row was a list of strings.
+func rowTexts(rows [][]r.Cell) [][]string {
+	if rows == nil {
+		return nil
+	}
+	out := make([][]string, len(rows))
+	for i, row := range rows {
+		out[i] = r.Texts(row)
+	}
+	return out
+}
+
 func evidence(t *testing.T, name string, pdf []byte, d *document, s r.Snapshot, minPages int) {
 	t.Helper()
 	scopedEvidence(t, name, pdf, d, s, minPages, nil, "")
@@ -109,7 +122,7 @@ func scopedEvidence(t *testing.T, name string, pdf []byte, d *document, s r.Snap
 	}
 	q := s.Query
 	e := expectation{File: name + ".pdf", Landscape: d.Landscape, Margin: marginX, Inset: insetX, MinPages: minPages,
-		Title: q.Dataset.ID, Dimensions: len(q.Dimensions), Rows: s.Result.Rows, Totals: []string{},
+		Title: q.Dataset.ID, Dimensions: len(q.Dimensions), Rows: rowTexts(s.Result.Rows), Totals: []string{},
 		Meta: append([]string{q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, q.Timezone, strings.Join(q.Companies, "、"), strconv.Itoa(len(s.Result.Rows)) + " 行", "生成于 2026-10-27 08:30:00 UTC"}, scope...),
 		// The text of the snapshot's data class (S08-A), as the test says it (footerClasses), not as the writer made it.
 		Footer: []string{footerClasses[s.Result.Evidence.DataClass], "快照 " + s.ID + mark, q.Dataset.ID + "@" + q.Dataset.Version, "截至 " + q.AsOf, "来源水位 " + s.Prepared.Watermark}}
@@ -129,7 +142,7 @@ func scopedEvidence(t *testing.T, name string, pdf []byte, d *document, s r.Snap
 		e.Metric = append(e.Metric, j >= len(q.Dimensions) && (c.Type == "decimal" || c.Type == "integer"))
 	}
 	for _, m := range q.Metrics {
-		e.Totals = append(e.Totals, s.Result.Totals[m.ID])
+		e.Totals = append(e.Totals, s.Result.Totals[m.ID].Text())
 	}
 	b, _ := json.MarshalIndent(e, "", " ")
 	for file, content := range map[string][]byte{name + ".pdf": pdf, name + ".json": b} {
@@ -260,7 +273,7 @@ func TestTypstExportsThroughTheService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows := narrowed.Result.Rows; len(rows) != 2 || rows[0][0] != "customer_a" || rows[1][0] != "customer_b" || narrowed.Result.Totals["ar.open_balance"] != "100.01" {
+	if rows := narrowed.Result.Rows; len(rows) != 2 || rows[0][0] != r.Text("customer_a") || rows[1][0] != r.Text("customer_b") || narrowed.Result.Totals["ar.open_balance"] != r.Text("100.01") {
 		t.Fatalf("the narrowed snapshot: %v, totals %v", rows, narrowed.Result.Totals)
 	}
 	scope := []string{"筛选：账龄区间 属于 current、1_30；应收余额 不小于 -1.00", "排序：应收余额 降序"}
@@ -322,7 +335,7 @@ func hostile() r.Snapshot {
 	}
 	for i, v := range values {
 		amount := []string{"-0.01", "123456789012345678.99", "0.00", "1000.10"}[i%4]
-		s.Result.Rows = append(s.Result.Rows, []string{"行 " + strconv.Itoa(i+1), v, amount})
+		s.Result.Rows = append(s.Result.Rows, r.Cells("行 "+strconv.Itoa(i+1), v, amount))
 	}
 	return s
 }
@@ -339,11 +352,11 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 				row = append(row, fmt.Sprintf("%d.%02d", i*1000+j, j))
 			}
 		}
-		wide.Result.Rows = append(wide.Result.Rows, row)
+		wide.Result.Rows = append(wide.Result.Rows, r.Cells(row...))
 	}
 	many := table(2, 1)
 	for i := range r.MaxRows {
-		many.Result.Rows = append(many.Result.Rows, []string{fmt.Sprintf("公司%d", i%7), fmt.Sprintf("摘要 %d：应收账款含税及运费", i), fmt.Sprintf("%d.%02d", i*1234567, i%100)})
+		many.Result.Rows = append(many.Result.Rows, r.Cells(fmt.Sprintf("公司%d", i%7), fmt.Sprintf("摘要 %d：应收账款含税及运费", i), fmt.Sprintf("%d.%02d", i*1234567, i%100)))
 	}
 	// Runs of punctuation that no line may start or end with, in narrow middle and last columns.
 	marks := table(8, 1)
@@ -353,18 +366,18 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 		if i%2 == 1 {
 			row[7] = strings.Repeat("！", 50)
 		}
-		marks.Result.Rows = append(marks.Result.Rows, row)
+		marks.Result.Rows = append(marks.Result.Rows, r.Cells(row...))
 	}
 	// Runs of every length around the width of their cell, with brackets glued on, next to a
 	// long text that makes the columns shrink; and a bold total that is the widest number.
 	edge := table(2, 1)
-	edge.Result.Totals["m0"] = "-999999999999999999999999.99"
+	edge.Result.Totals["m0"] = r.Text("-999999999999999999999999.99")
 	for k := 1; k <= 40; k++ {
 		long := ""
 		if k == 1 {
 			long = strings.Repeat("长文本说明，迫使各列收窄。", 30)
 		}
-		edge.Result.Rows = append(edge.Result.Rows, []string{long, strings.Repeat("W", k) + "（" + strings.Repeat("x", k) + "）", "-999999999999999999999999.99"})
+		edge.Result.Rows = append(edge.Result.Rows, r.Cells(long, strings.Repeat("W", k)+"（"+strings.Repeat("x", k)+"）", "-999999999999999999999999.99"))
 	}
 	// Text of every kind mixed at random, with a fixed seed, in columns squeezed so narrow that
 	// numbers break across lines.
@@ -381,7 +394,7 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 			row[j] = string(b)
 		}
 		row[9] = strconv.Itoa(rnd.IntN(1e9)) + ".00"
-		mixed.Result.Rows = append(mixed.Result.Rows, row)
+		mixed.Result.Rows = append(mixed.Result.Rows, r.Cells(row...))
 	}
 	// Pairs the font kerns outward, values that start with a line break, and ligature
 	// characters.
@@ -391,9 +404,9 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 		if k == 1 {
 			long = strings.Repeat("长文本说明，迫使各列收窄。", 30)
 		}
-		kerned.Result.Rows = append(kerned.Result.Rows, []string{long, strings.Repeat("(j", k) + strings.Repeat("fV", k%5), strconv.Itoa(k) + ".00"})
+		kerned.Result.Rows = append(kerned.Result.Rows, r.Cells(long, strings.Repeat("(j", k)+strings.Repeat("fV", k%5), strconv.Itoa(k)+".00"))
 	}
-	kerned.Result.Rows = append(kerned.Result.Rows, []string{"\n前", "\r\nabc", "1.00"}, []string{"   \nabc", "ﬁ ﬂ ﬀ only", "2.00"})
+	kerned.Result.Rows = append(kerned.Result.Rows, r.Cells("\n前", "\r\nabc", "1.00"), r.Cells("   \nabc", "ﬁ ﬂ ﬀ only", "2.00"))
 	docs := []struct {
 		name     string
 		s        r.Snapshot
@@ -508,7 +521,7 @@ func TestTypstLaysOutDocuments(t *testing.T) {
 		s := table(2, 1)
 		s.Result.Columns[0].Label = "客户"
 		for i := range 120 {
-			s.Result.Rows = append(s.Result.Rows, []string{fmt.Sprintf("公司%d", i%7), fmt.Sprintf("摘要 %d：应收账款含税及运费", i), fmt.Sprintf("%d.%02d", i*1234567, i%100)})
+			s.Result.Rows = append(s.Result.Rows, r.Cells(fmt.Sprintf("公司%d", i%7), fmt.Sprintf("摘要 %d：应收账款含税及运费", i), fmt.Sprintf("%d.%02d", i*1234567, i%100)))
 		}
 		var conditions []string
 		for _, unit := range "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳" {
@@ -652,7 +665,7 @@ func TestTypstFailsClosed(t *testing.T) {
 		for j := range row {
 			row[j] = strings.Repeat("x", 30)
 		}
-		huge.Result.Rows = append(huge.Result.Rows, row)
+		huge.Result.Rows = append(huge.Result.Rows, r.Cells(row...))
 	}
 	if _, err := w.Write(ctx, huge); !errors.Is(err, r.ErrBudget) {
 		t.Errorf("a document over the artifact limit: %v; want budget", err)

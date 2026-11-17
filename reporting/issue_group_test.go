@@ -57,7 +57,7 @@ func newGroupEnv(t *testing.T, o envOpts) (*issueEnv, r.Snapshot) {
 // groupOf makes the group of the snapshot with the given template fields, key and rows.
 func groupOf(t *testing.T, snap r.Snapshot, fields, key []string, rows ...int) r.IssueGroup {
 	t.Helper()
-	g, e := r.NewIssueGroup(snap, fields, key, rows)
+	g, e := r.NewIssueGroup(snap, fields, r.Cells(key...), rows)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -96,7 +96,7 @@ func TestGroupIssueFreezesTheGroupAsksTheProductAboutItAndKeepsItInTheRecord(t *
 	if j.Kind != "issue" || j.State != "queued" || j.Issue == nil || j.Issue.Number != "" || j.Issue.RowIndex != nil || j.Issue.Group == nil {
 		t.Fatalf("admitted job: %+v %+v", j, j.Issue)
 	}
-	if got := j.Issue.Group; !slices.Equal(got.Fields, []string{"customer.id"}) || !slices.Equal(got.Key, []string{"customer_a"}) || got.RowCount != 3 || got.RowsSHA256 != want {
+	if got := j.Issue.Group; !slices.Equal(got.Fields, []string{"customer.id"}) || !slices.Equal(got.Key, r.Cells("customer_a")) || got.RowCount != 3 || got.RowsSHA256 != want {
 		t.Fatalf("the group of the view: %+v", got)
 	}
 	if len(v.finance.intents) != 0 || v.finance.ReadCalls() != reads || v.issuer.calls != 0 {
@@ -155,7 +155,7 @@ func TestGroupIssueFreezesTheGroupAsksTheProductAboutItAndKeepsItInTheRecord(t *
 	}
 	// Every view shows the group, and the number, and no row.
 	view, e := v.s.Issue(ctx, v.p, j.ID)
-	if e != nil || view.Number != "AR-000001" || view.RowIndex != nil || view.Group == nil || view.Group.RowCount != 3 || !slices.Equal(view.Group.Key, []string{"customer_a"}) || view.ReservationRef != theirs.Ref {
+	if e != nil || view.Number != "AR-000001" || view.RowIndex != nil || view.Group == nil || view.Group.RowCount != 3 || !slices.Equal(view.Group.Key, r.Cells("customer_a")) || view.ReservationRef != theirs.Ref {
 		t.Fatalf("issue view: %+v %v", view, e)
 	}
 	list, e := v.s.Issues(ctx, v.p, 10)
@@ -228,7 +228,7 @@ func TestGroupRequestHashIsTheResolvedGroup(t *testing.T) {
 		t.Fatal(e)
 	}
 	// The group made again, from the same rows, with the lists made another way, is the same request.
-	again := r.IssueGroup{Fields: []string{"customer.id"}, Key: []string{"customer_a"}, Rows: []int{0, 2, 4}, RowsSHA256: g.RowsSHA256}
+	again := r.IssueGroup{Fields: []string{"customer.id"}, Key: r.Cells("customer_a"), Rows: []int{0, 2, 4}, RowsSHA256: g.RowsSHA256}
 	if replay, e := v.s.SubmitIssue(ctx, v.p, groupInput(v, snap, again), "k"); e != nil || replay.ID != first.ID {
 		t.Fatal("the same group is another request", replay, e)
 	}
@@ -274,24 +274,24 @@ func TestGroupIssueAdmissionRefusesAGroupThatIsNotTheSnapshots(t *testing.T) {
 		"a digest of other rows":      func(g *r.IssueGroup) { g.RowsSHA256 = jsonDigest(`["customer_a","current","10.00"]`) },
 		"a row left out":              func(g *r.IssueGroup) { g.Rows = []int{0, 2}; g.RowsSHA256 = rowsDigest(t, snap, 0, 2) },
 		"a row of another key":        func(g *r.IssueGroup) { g.Rows = []int{0, 1, 2, 4}; g.RowsSHA256 = rowsDigest(t, snap, 0, 1, 2, 4) },
-		"another key":                 func(g *r.IssueGroup) { g.Key = []string{"customer_b"} },
-		"a key of another case":       func(g *r.IssueGroup) { g.Key = []string{"Customer_a"} },
-		"a key with a trailing space": func(g *r.IssueGroup) { g.Key = []string{"customer_a "} },
+		"another key":                 func(g *r.IssueGroup) { g.Key = r.Cells("customer_b") },
+		"a key of another case":       func(g *r.IssueGroup) { g.Key = r.Cells("Customer_a") },
+		"a key with a trailing space": func(g *r.IssueGroup) { g.Key = r.Cells("customer_a ") },
 		"no key value":                func(g *r.IssueGroup) { g.Key = nil },
-		"a key value too many":        func(g *r.IssueGroup) { g.Key = []string{"customer_a", "current"} },
+		"a key value too many":        func(g *r.IssueGroup) { g.Key = r.Cells("customer_a", "current") },
 		"rows out of order":           func(g *r.IssueGroup) { g.Rows = []int{2, 0, 4} },
 		"a row twice":                 func(g *r.IssueGroup) { g.Rows = []int{0, 0, 2, 4} },
 		"a row beyond the snapshot":   func(g *r.IssueGroup) { g.Rows = []int{0, 2, 4, 5} },
 		"a negative row":              func(g *r.IssueGroup) { g.Rows = []int{-1, 0, 2, 4} },
 		"no row":                      func(g *r.IssueGroup) { g.Rows = nil },
-		"a field that is a metric":    func(g *r.IssueGroup) { g.Fields, g.Key = []string{"ar.open_balance"}, []string{"10.00"} },
-		"a field the snapshot lacks":  func(g *r.IssueGroup) { g.Fields, g.Key = []string{"ghost"}, []string{"customer_a"} },
+		"a field that is a metric":    func(g *r.IssueGroup) { g.Fields, g.Key = []string{"ar.open_balance"}, r.Cells("10.00") },
+		"a field the snapshot lacks":  func(g *r.IssueGroup) { g.Fields, g.Key = []string{"ghost"}, r.Cells("customer_a") },
 		"an empty field name":         func(g *r.IssueGroup) { g.Fields = []string{""} },
 		"a field twice": func(g *r.IssueGroup) {
-			g.Fields, g.Key = []string{"customer.id", "customer.id"}, []string{"customer_a", "customer_a"}
+			g.Fields, g.Key = []string{"customer.id", "customer.id"}, r.Cells("customer_a", "customer_a")
 		},
 		"four fields": func(g *r.IssueGroup) {
-			g.Fields, g.Key = []string{"customer.id", "aging.bucket", "a", "b"}, []string{"customer_a", "current", "", ""}
+			g.Fields, g.Key = []string{"customer.id", "aging.bucket", "a", "b"}, r.Cells("customer_a", "current", "", "")
 		},
 		"no digest":            func(g *r.IssueGroup) { g.RowsSHA256 = "" },
 		"an upper-case digest": func(g *r.IssueGroup) { g.RowsSHA256 = strings.ToUpper(g.RowsSHA256) },
@@ -319,7 +319,7 @@ func TestGroupIssueAdmissionRefusesAGroupThatIsNotTheSnapshots(t *testing.T) {
 		t.Fatal("a job was admitted", jobs, e)
 	}
 	// None of the refusals carries a value of the snapshot.
-	_, e := v.s.SubmitIssue(ctx, v.p, groupInput(v, snap, r.IssueGroup{Fields: good.Fields, Key: []string{"customer_a"}, Rows: []int{0}, RowsSHA256: good.RowsSHA256}), "k")
+	_, e := v.s.SubmitIssue(ctx, v.p, groupInput(v, snap, r.IssueGroup{Fields: good.Fields, Key: r.Cells("customer_a"), Rows: []int{0}, RowsSHA256: good.RowsSHA256}), "k")
 	if e == nil || strings.Contains(e.Error(), "customer") || strings.Contains(e.Error(), "10.00") {
 		t.Fatalf("the refusal names a value: %v", e)
 	}
@@ -345,7 +345,7 @@ func groupOfAllRows(t *testing.T, snap r.Snapshot, n int) r.IssueGroup {
 	for i := range rows {
 		rows[i] = i
 	}
-	return r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: rows, RowsSHA256: rowsDigest(t, snap, rows...)}
+	return r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: rows, RowsSHA256: rowsDigest(t, snap, rows...)}
 }
 
 // A product that does not declare contract version 2 is never sent a group: admission answers unsupported and
@@ -420,7 +420,7 @@ func TestGroupJobThatIsNotItsSnapshotsFailsWithoutCallingTheProduct(t *testing.T
 	for name, change := range map[string]func(g *r.IssueGroup){
 		"a digest of other rows": func(g *r.IssueGroup) { g.RowsSHA256 = jsonDigest(`["x"]`) },
 		"a row left out":         func(g *r.IssueGroup) { g.Rows = []int{0, 2}; g.RowsSHA256 = rowsDigest(t, snap, 0, 2) },
-		"another key":            func(g *r.IssueGroup) { g.Key = []string{"customer_b"} },
+		"another key":            func(g *r.IssueGroup) { g.Key = r.Cells("customer_b") },
 		"a row beyond":           func(g *r.IssueGroup) { g.Rows = []int{0, 2, 4, 5} },
 	} {
 		crafted := good
@@ -478,7 +478,7 @@ func TestGroupRefusedByTheProductIsVoidedInTheOrderOfS03H(t *testing.T) {
 		},
 		"another key": func(in *r.IssueIntent) {
 			g := in.Group.Clone()
-			g.Key = []string{"customer_b"}
+			g.Key = r.Cells("customer_b")
 			in.Group = &g
 		},
 	} {
@@ -594,7 +594,7 @@ func TestGroupViewsCheckTheRecordsGroupAgainstTheJobs(t *testing.T) {
 	ctx := context.Background()
 	for name, change := range map[string]func(i *r.Issue){
 		"another key": func(i *r.Issue) {
-			i.Group = &r.IssueGroup{Fields: i.Group.Fields, Key: []string{"customer_b"}, Rows: i.Group.Rows, RowsSHA256: i.Group.RowsSHA256}
+			i.Group = &r.IssueGroup{Fields: i.Group.Fields, Key: r.Cells("customer_b"), Rows: i.Group.Rows, RowsSHA256: i.Group.RowsSHA256}
 		},
 		"another rows":   func(i *r.Issue) { g := i.Group.Clone(); g.Rows = g.Rows[:2]; i.Group = &g },
 		"another digest": func(i *r.Issue) { g := i.Group.Clone(); g.RowsSHA256 = strings.Repeat("0", 64); i.Group = &g },
@@ -652,7 +652,7 @@ func TestGroupContractRefusesInconsistentJobsAndPublications(t *testing.T) {
 		}
 	}
 	for name, change := range map[string]func(*r.Job){
-		"another key":    func(j *r.Job) { g := j.Group.Clone(); g.Key = []string{"x"}; j.Group = &g },
+		"another key":    func(j *r.Job) { g := j.Group.Clone(); g.Key = r.Cells("x"); j.Group = &g },
 		"another digest": func(j *r.Job) { g := j.Group.Clone(); g.RowsSHA256 = strings.Repeat("0", 64); j.Group = &g },
 		"another rows":   func(j *r.Job) { g := j.Group.Clone(); g.Rows = g.Rows[1:]; j.Group = &g },
 		"the request hash unmoved": func(j *r.Job) {
@@ -668,7 +668,7 @@ func TestGroupContractRefusesInconsistentJobsAndPublications(t *testing.T) {
 		"no rows":               func(j *r.Job) { g := j.Group.Clone(); g.Rows = []int{}; j.Group = &g; rehash(j) },
 		"unordered rows":        func(j *r.Job) { g := j.Group.Clone(); g.Rows = []int{2, 0, 4}; j.Group = &g; rehash(j) },
 		"a row past the limit":  func(j *r.Job) { g := j.Group.Clone(); g.Rows = []int{0, r.MaxRows}; j.Group = &g; rehash(j) },
-		"more keys than fields": func(j *r.Job) { g := j.Group.Clone(); g.Key = []string{"a", "b"}; j.Group = &g; rehash(j) },
+		"more keys than fields": func(j *r.Job) { g := j.Group.Clone(); g.Key = r.Cells("a", "b"); j.Group = &g; rehash(j) },
 		"an export with a group": func(j *r.Job) {
 			j.Kind, j.Format, j.RequestHash, j.TemplateID, j.TemplateVersion, j.TemplateSHA256, j.Template = "export", "pdf", r.ExportRequestHash(j.SnapshotID, "pdf"), "", 0, "", ""
 		},
@@ -702,7 +702,7 @@ func TestGroupContractRefusesInconsistentJobsAndPublications(t *testing.T) {
 	}
 	for name, change := range map[string]func(i *r.Issue){
 		"no group":       func(i *r.Issue) { i.Group = nil },
-		"another key":    func(i *r.Issue) { g := i.Group.Clone(); g.Key = []string{"customer_b"}; i.Group = &g },
+		"another key":    func(i *r.Issue) { g := i.Group.Clone(); g.Key = r.Cells("customer_b"); i.Group = &g },
 		"another rows":   func(i *r.Issue) { g := i.Group.Clone(); g.Rows = []int{0, 2}; i.Group = &g },
 		"another digest": func(i *r.Issue) { g := i.Group.Clone(); g.RowsSHA256 = strings.Repeat("1", 64); i.Group = &g },
 		"another fields": func(i *r.Issue) { g := i.Group.Clone(); g.Fields = nil; i.Group = &g },
@@ -725,13 +725,13 @@ func TestIssueGroupHelpers(t *testing.T) {
 	}
 	// A snapshot row that does not fit the columns is an integrity failure, not a refusal of the group.
 	broken := snap
-	broken.Result.Rows = append([][]string{}, snap.Result.Rows...)
-	broken.Result.Rows[3] = []string{"customer_c"}
+	broken.Result.Rows = append([][]r.Cell{}, snap.Result.Rows...)
+	broken.Result.Rows[3] = r.Cells("customer_c")
 	if e := r.VerifyGroup(broken, g); !errors.Is(e, r.ErrIntegrity) {
 		t.Fatal(e)
 	}
 	// Neither the key nor a row is named by an error.
-	for _, bad := range []r.IssueGroup{{Fields: g.Fields, Key: []string{"customer_a-secret"}, Rows: g.Rows, RowsSHA256: g.RowsSHA256}, {Fields: []string{"customer.id-secret"}, Key: g.Key, Rows: g.Rows, RowsSHA256: g.RowsSHA256}} {
+	for _, bad := range []r.IssueGroup{{Fields: g.Fields, Key: r.Cells("customer_a-secret"), Rows: g.Rows, RowsSHA256: g.RowsSHA256}, {Fields: []string{"customer.id-secret"}, Key: g.Key, Rows: g.Rows, RowsSHA256: g.RowsSHA256}} {
 		if e := r.VerifyGroup(snap, bad); e == nil || strings.Contains(e.Error(), "secret") || strings.Contains(e.Error(), "customer") {
 			t.Fatalf("the refusal: %v", e)
 		}
@@ -740,7 +740,7 @@ func TestIssueGroupHelpers(t *testing.T) {
 	var none *r.IssueGroup
 	empty := r.IssueGroup{}
 	other := g.Clone()
-	if !none.Equal(nil) || none.Equal(&g) || g.Equal(nil) || !g.Equal(&other) || !(&empty).Equal(&r.IssueGroup{Fields: []string{}, Key: []string{}, Rows: []int{}}) {
+	if !none.Equal(nil) || none.Equal(&g) || g.Equal(nil) || !g.Equal(&other) || !(&empty).Equal(&r.IssueGroup{Fields: []string{}, Key: r.Cells(), Rows: []int{}}) {
 		t.Fatal("equality")
 	}
 	other.Rows[0] = 1
@@ -748,11 +748,11 @@ func TestIssueGroupHelpers(t *testing.T) {
 		t.Fatal("a clone shares its lists")
 	}
 	// The digest of no rows is of `[]`, whether the list is nil or empty.
-	if r.RowsDigest(nil) != r.RowsDigest([][]string{}) || r.RowsDigest(nil) != jsonDigest() {
+	if r.RowsDigest(nil) != r.RowsDigest(r.CellRows([][]string{})) || r.RowsDigest(nil) != jsonDigest() {
 		t.Fatal("the digest of no rows")
 	}
 	// The digest is the SHA-256 of the JSON array of the rows' arrays, escaped as Go escapes: the form docs/API.md gives.
-	if got := r.RowsDigest([][]string{{"甲方<&>", "a" + "\u2028" + "b"}, {"", "x\"y"}}); got != jsonDigest(`["甲方\u003c\u0026\u003e","a\u2028b"]`, `["","x\"y"]`) {
+	if got := r.RowsDigest(r.CellRows([][]string{{"甲方<&>", "a" + "\u2028" + "b"}, {"", "x\"y"}})); got != jsonDigest(`["甲方\u003c\u0026\u003e","a\u2028b"]`, `["","x\"y"]`) {
 		t.Fatalf("the digest of rows with characters JSON escapes: %s", got)
 	}
 }

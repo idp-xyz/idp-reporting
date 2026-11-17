@@ -47,7 +47,7 @@ func testTypstIssuesBandedDocuments(t *testing.T, w, later *Writer) {
 	rows, _ := issueInvoiceRows()
 	snap := invoiceSnapshot(rows)
 	groups, values, tables, sums := bandedGroups(t, d, snap)
-	if len(groups) != 4 || groups[1].Key[0] != "INV-0002" || groups[3].Key[0] != "INV-LONG" || len(groups[3].Rows) != 90 {
+	if len(groups) != 4 || groups[1].Key[0] != r.Text("INV-0002") || groups[3].Key[0] != r.Text("INV-LONG") || len(groups[3].Rows) != 90 {
 		t.Fatalf("groups %+v", groups)
 	}
 	id := strings.Repeat("7", 32)

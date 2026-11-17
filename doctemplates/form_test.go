@@ -77,7 +77,7 @@ func TestAFormsGroupIsItsGroupFieldsRowsOrOneRowWithoutGroupFields(t *testing.T)
 		t.Fatalf("a form binds values and no table: %v %v %v", values, table, err)
 	}
 	// A field that is not a group field must agree within the group, as ever.
-	if _, _, err := doctemplates.BindGroup(formOf([]string{"order"}), orders(line("A", "x", "n", "1", "1"), line("A", "z", "n", "1", "1")), doctemplates.RowGroup{Key: []string{"A"}, Rows: []int{0, 1}}); !errors.Is(err, r.ErrUnsupported) {
+	if _, _, err := doctemplates.BindGroup(formOf([]string{"order"}), orders(line("A", "x", "n", "1", "1"), line("A", "z", "n", "1", "1")), doctemplates.RowGroup{Key: r.Cells("A"), Rows: []int{0, 1}}); !errors.Is(err, r.ErrUnsupported) {
 		t.Fatalf("inconsistent group: %v", err)
 	}
 	// Without group fields it is one document per row (as 1.x row fields): each row is its own group, a group of two rows is no group.

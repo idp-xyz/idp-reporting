@@ -238,14 +238,20 @@ func (h *handler) page(w http.ResponseWriter, req *http.Request) {
 		failed(w, err)
 		return
 	}
-	if page.Rows == nil {
-		page.Rows = [][]string{}
+	// On the wire a row is a list of texts and a total a text: the protocol has no absent value until a column can declare one
+	// (S26-B). An adapter that answers a cell without a value answers what this revision cannot carry.
+	rows, err := r.RequiredRows(page.Rows)
+	if err != nil {
+		failed(w, err)
+		return
 	}
-	if page.Totals == nil {
-		page.Totals = map[string]string{}
+	totals, err := r.RequiredTotals(page.Totals)
+	if err != nil {
+		failed(w, err)
+		return
 	}
 	next := page.NextCursor
-	answer(w, protocol.PageResponse{Ref: page.Ref, QueryHash: page.QueryHash, Watermark: page.Watermark, Rows: page.Rows, Totals: page.Totals, NextCursor: &next})
+	answer(w, protocol.PageResponse{Ref: page.Ref, QueryHash: page.QueryHash, Watermark: page.Watermark, Rows: rows, Totals: totals, NextCursor: &next})
 }
 
 func (h *handler) authorize(w http.ResponseWriter, req *http.Request) {

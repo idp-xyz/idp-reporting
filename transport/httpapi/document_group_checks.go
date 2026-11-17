@@ -177,18 +177,26 @@ func boundaryGroups(config doctemplates.Document, snap r.Snapshot, groups []doct
 			for gi, g := range groups {
 				value := ""
 				if it.Source == doctemplates.SourceField {
-					if row := snap.Result.Rows[g.Rows[0]]; column >= len(row) {
+					row := snap.Result.Rows[g.Rows[0]]
+					if column >= len(row) {
 						return nil, r.ErrIntegrity
-					} else {
-						value = row[column]
 					}
+					text, err := row[column].Required()
+					if err != nil {
+						return nil, err
+					}
+					value = text
 				} else {
 					values := make([]string, 0, len(g.Rows))
 					for _, i := range g.Rows {
 						if column >= len(snap.Result.Rows[i]) {
 							return nil, r.ErrIntegrity
 						}
-						values = append(values, snap.Result.Rows[i][column])
+						text, err := snap.Result.Rows[i][column].Required()
+						if err != nil {
+							return nil, err
+						}
+						values = append(values, text)
 					}
 					sum, e := doctemplates.SumDecimals(values, snap.Result.Columns[column].Scale)
 					if e != nil {
@@ -218,7 +226,11 @@ func boundaryGroups(config doctemplates.Document, snap r.Snapshot, groups []doct
 						if column >= len(snap.Result.Rows[i]) {
 							return nil, r.ErrIntegrity
 						}
-						if w := displayWidth(snap.Result.Rows[i][column]); w > most {
+						text, err := snap.Result.Rows[i][column].Required()
+						if err != nil {
+							return nil, err
+						}
+						if w := displayWidth(text); w > most {
 							widest, most = gi, w
 						}
 					}
